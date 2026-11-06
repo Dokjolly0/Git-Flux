@@ -85,7 +85,7 @@ La **V1** è la prima release pubblica pensata per un uso personale quotidiano s
 | Apertura rapida | Aprire **uno o più gruppi** senza creare un workspace; mostrare l'unione dei repository senza duplicati. |
 | Workspace | Creare, rinominare, eliminare e aprire workspace dedicati; associare gruppi e repository singoli. |
 | Sessione workspace | Salvare e ripristinare repository/tab selezionati, filtri e stato base dei pannelli. |
-| Navigazione | Sidebar, tab per workspace, pannelli ridimensionabili, tema scuro e interfaccia da tastiera. |
+| Navigazione | Home Page a 3 colonne (Repo, Gruppi, Workspace), sidebar, tab per workspace, pannelli ridimensionabili, tema scuro e interfaccia da tastiera. |
 | Stato Git | Branch corrente, modifiche, staged/unstaged/untracked, conflitti rilevabili, ahead/behind quando disponibile. |
 | Commit | Stage/unstage, diff, creazione di commit ordinari e storico essenziale. |
 | Branch | Elenco, creazione, checkout/switch e rimozione con verifiche appropriate. |
@@ -202,11 +202,59 @@ Modalità rapida (nessun workspace necessario)
 
 Interfaccia moderna, ispirata nella filosofia visiva a **GitKraken, Linear e VS Code**: scura, ordinata, informazioni dense, sidebar contestuale, tab, pannelli puliti e feedback immediato. L'ispirazione **non** significa copiare branding o asset di prodotti terzi.
 
-### 4.2 Layout V1
+### 4.2 Struttura delle viste e schermate
+
+L'applicazione prevede due modalità di visualizzazione complementari: la **Home Page (Hub iniziale)** per la gestione e apertura dei progetti, e la **Workspace View (Spazio operativo)** per il lavoro attivo su branch, commit e diff.
+
+#### 4.2.1 Home Page — Hub a tre colonne
+
+La Home Page è la schermata principale di accoglienza all'avvio (o accessibile in qualsiasi momento tramite il tab fisso / logo Git Flux). Riflette direttamente il modello dati a tre entità del progetto:
+
+```text
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ ⭘ Git Flux                                                    ⚙  👤 Profile │
+├───────────────────────┬──────────────────────────┬───────────────────────────┤
+│ REPOS LIST        [+] │ GROUPS LIST          [+] │ WORKSPACES LIST       [+] │
+├───────────────────────┼──────────────────────────┼───────────────────────────┤
+│ 📁 frontend           │ 👥 Cliente Alpha         │ 💼 Lavoro Alpha           │
+│    /projects/frontend │    3 repository          │    2 gruppi, 1 repo dir.  │
+│                       │                          │    Ultima aperta: oggi    │
+│ 📁 backend            │ 👥 Microservizi Core     │                           │
+│    /projects/backend  │    5 repository          │ 💼 Sprint Corrente        │
+│                       │                          │    backend + infra        │
+│ 📁 infra              │ 👥 Personale             │                           │
+│    /projects/infra    │    2 repository          │ 💼 Open Source Flux       │
+│                       │                          │    GitFlux core           │
+│ 📁 personal-blog      │                          │                           │
+│    /notes/blog        │                          │                           │
+└───────────────────────┴──────────────────────────┴───────────────────────────┘
+```
+
+**Caratteristiche delle tre colonne:**
+1. **Header superiore:**
+   - **Logo & Nome Git Flux**: identifica l'applicazione e funge da scorciatoia per tornare alla Home Page.
+   - **⚙ Impostazioni**: configurazioni globali (tema, limiti concorrenza, percorsi Git, scorciatoie).
+   - **👤 Profile**: gestione delle identità Git locali/globali (`user.name`, `user.email`), verifica dello stato SSH agent e credenziali di sistema, con eventuale supporto a profili di commit multipli (es. *Lavoro* vs *Personale*).
+2. **Colonna 1 — REPOS LIST (`+`):**
+   - Elenco dei repository locali registrati nel catalogo, ordinabili o filtrabili per nome/percorso.
+   - Pulsante **`+`**: apre menu contestuale rapido per *«Apri cartella locale esistente»*, *«Clona da URL remoto»*, *«Inizializza nuovo repository»*.
+   - Facendo clic su un repository lo si apre direttamente in visualizzazione singola veloce.
+3. **Colonna 2 — GROUPS LIST (`+`):**
+   - Elenco dei gruppi leggeri con indicazione del numero di repository membri.
+   - Pulsante **`+`**: crea un nuovo gruppo e associa repository esistenti.
+   - Supporta selezione singola o multipla per l'**Apertura Rapida (Quick Open)**: apre l'unione dei repository dei gruppi selezionati senza richiedere la persistenza di un workspace.
+4. **Colonna 3 — WORKSPACE LIST (`+`):**
+   - Elenco degli ambienti persistenti con anteprima della sessione salvata (tab aperti, gruppi inclusi, filtri attivi, ultimo accesso).
+   - Pulsante **`+`**: avvia il wizard di creazione workspace (selezione gruppi + repository diretti + assegnazione nome).
+   - Facendo clic su un workspace si ripristina istantaneamente l'intera sessione operativa.
+
+#### 4.2.2 Workspace View — Layout operativo
+
+Una volta aperto un repository singolo, uno o più gruppi o un workspace persistente, l'interfaccia passa alla vista operativa con tab e pannelli modulari:
 
 ```text
 ┌────────────────────────────────────────────────────────────────────┐
-│ Titolo / workspace tabs             Search   Command Palette   ⚙ │
+│ ⭘ Home │ Workspace Tabs [Alpha ✕] [+]       Search   Palette   ⚙ │
 ├──────────────────┬─────────────────────────────────────────────────┤
 │ Sidebar          │ Repository selezionato / branch / azioni Git    │
 │                  ├───────────────────────────┬─────────────────────┤
