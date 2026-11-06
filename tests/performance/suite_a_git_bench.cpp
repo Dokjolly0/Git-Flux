@@ -133,6 +133,16 @@ TEST_CASE("Suite A - Report Comparativo Completo (Win32 vs Qt, Shim vs Direct, C
     });
     REQUIRE(singleCreated.has_value());
 
+#ifdef _WIN32
+constexpr const char* kNativeAdapterName = "Native (CreateProcessW)";
+constexpr const char* kNativeSpawnLabel = "CreateProcessW";
+constexpr const char* kGitBinaryName = "git.exe";
+#else
+constexpr const char* kNativeAdapterName = "Native (posix_spawn)";
+constexpr const char* kNativeSpawnLabel = "posix_spawn";
+constexpr const char* kGitBinaryName = "git";
+#endif
+
     struct ExecutorVariant {
         std::string name;
         std::unique_ptr<gf::git::ports::IGitCommandExecutor> exec;
@@ -146,7 +156,7 @@ TEST_CASE("Suite A - Report Comparativo Completo (Win32 vs Qt, Shim vs Direct, C
         });
     }
     variants.push_back({
-        "Native (CreateProcessW) + direct git.exe",
+        std::format("{} + direct {}", kNativeAdapterName, kGitBinaryName),
         std::make_unique<gf::infra::git::NativeGitCommandExecutor>(gitInfo->directBinaryPath)
     });
 
@@ -158,7 +168,7 @@ TEST_CASE("Suite A - Report Comparativo Completo (Win32 vs Qt, Shim vs Direct, C
         });
     }
     variants.push_back({
-        "Qt 6 (QProcess)         + direct git.exe",
+        std::format("Qt 6 (QProcess)         + direct {}", kGitBinaryName),
         std::make_unique<gf::infra::git::QtGitCommandExecutor>(gitInfo->directBinaryPath)
     });
 #endif
@@ -213,7 +223,8 @@ TEST_CASE("Suite A - Report Comparativo Completo (Win32 vs Qt, Shim vs Direct, C
     std::cout << std::format(
         "### A.3 — Refresh stato su 30 Repository (generati in {} ms) — Concurrency Sweep\n\n",
         fleetRes->elapsed.count());
-    std::cout << "| Adapter (direct git.exe) | Concurrency | Wall-Clock 30 Repo (ms) | Active Repo Latency (ms) |\n";
+    std::cout << std::format("| Adapter (direct {}) | Concurrency | Wall-Clock 30 Repo (ms) | Active Repo Latency (ms) |\n",
+                             kGitBinaryName);
     std::cout << "| :--- | ---: | ---: | ---: |\n";
 
     const std::size_t concurrencies[] = {1, 2, 4, 8, 12, 16};
@@ -286,7 +297,7 @@ TEST_CASE("Suite A - Report Comparativo Completo (Win32 vs Qt, Shim vs Direct, C
         }
     };
 
-    runFleetSweep("Native (CreateProcessW)", [&]() {
+    runFleetSweep(kNativeAdapterName, [&]() {
         return std::make_unique<gf::infra::git::NativeGitCommandExecutor>(gitInfo->directBinaryPath);
     });
 
@@ -321,8 +332,8 @@ TEST_CASE("Suite A - Report Comparativo Completo (Win32 vs Qt, Shim vs Direct, C
             REQUIRE((r.has_value() && r->succeeded()));
         }
         nativeSingleShotMs = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
-        std::cout << std::format("| Native Single-Shot (150x CreateProcessW) | {:.1f} | {:.3f} | 1.0x (baseline) |\n",
-                                 nativeSingleShotMs, nativeSingleShotMs / 150.0);
+        std::cout << std::format("| Native Single-Shot (150x {}) | {:.1f} | {:.3f} | 1.0x (baseline) |\n",
+                                 kNativeSpawnLabel, nativeSingleShotMs, nativeSingleShotMs / 150.0);
     }
 
 #ifdef GF_HAS_QT_ADAPTER

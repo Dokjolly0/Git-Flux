@@ -21,6 +21,7 @@
 
 namespace gf::infra::git {
 
+#ifdef _WIN32
 namespace {
 
 [[nodiscard]] std::string toLowerAscii(std::string s) {
@@ -31,6 +32,7 @@ namespace {
 }
 
 } // namespace
+#endif
 
 std::expected<gf::git::bo::GitExecutableInfo, gf::git::bo::GitExecutionError>
 GitDiscovery::discover() {

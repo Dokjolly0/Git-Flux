@@ -8,7 +8,7 @@
   "configurePresets": [
     {
       "name": "core-release",
-      "displayName": "Core C++23 Only (ZERO Qt - Release)",
+      "displayName": "Core C++23 Only (ZERO Qt - Release - MSVC)",
       "description": "Compila e testa Core e Infrastructure nativa senza alcuna dipendenza da Qt",
       "generator": "Visual Studio 17 2022",
       "architecture": {
@@ -20,11 +20,16 @@
         "GF_BUILD_DESKTOP": "OFF",
         "GF_BUILD_TESTING": "ON",
         "GF_BUILD_BENCHMARKS": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
       }
     },
     {
       "name": "qt-release",
-      "displayName": "Full Build with Qt 6 Adapter (Release)",
+      "displayName": "Full Build with Qt 6 Adapter (Release - MSVC)",
       "description": "Abilita Qt 6 per confrontare Native Win32 vs Qt QProcess nei benchmark",
       "generator": "Visual Studio 17 2022",
       "architecture": {
@@ -37,6 +42,47 @@
         "GF_BUILD_TESTING": "ON",
         "GF_BUILD_BENCHMARKS": "ON",
         "CMAKE_PREFIX_PATH": "C:/Qt/6.6.2/msvc2019_64"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "linux-core-release",
+      "displayName": "Linux Core C++23 Only (ZERO Qt - Release)",
+      "description": "Compila e testa Core e Infrastructure nativa su Linux senza Qt",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/core-linux",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "GF_BUILD_DESKTOP": "OFF",
+        "GF_BUILD_TESTING": "ON",
+        "GF_BUILD_BENCHMARKS": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-qt-release",
+      "displayName": "Linux Full Build with Qt 6 Adapter (Release)",
+      "description": "Abilita Qt 6 su Linux per confrontare posix_spawn vs QProcess",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/qt-linux",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "GF_BUILD_DESKTOP": "ON",
+        "GF_BUILD_TESTING": "ON",
+        "GF_BUILD_BENCHMARKS": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
       }
     }
   ],
@@ -44,12 +90,42 @@
     {
       "name": "core-release",
       "configurePreset": "core-release",
-      "configuration": "Release"
+      "configuration": "Release",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
     },
     {
       "name": "qt-release",
       "configurePreset": "qt-release",
-      "configuration": "Release"
+      "configuration": "Release",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "linux-core-release",
+      "configurePreset": "linux-core-release",
+      "configuration": "Release",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-qt-release",
+      "configurePreset": "linux-qt-release",
+      "configuration": "Release",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
     }
   ],
   "testPresets": [
@@ -59,6 +135,11 @@
       "configuration": "Release",
       "output": {
         "outputOnFailure": true
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
       }
     },
     {
@@ -67,6 +148,37 @@
       "configuration": "Release",
       "output": {
         "outputOnFailure": true
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "linux-core-release",
+      "configurePreset": "linux-core-release",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-qt-release",
+      "configurePreset": "linux-qt-release",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
       }
     }
   ]

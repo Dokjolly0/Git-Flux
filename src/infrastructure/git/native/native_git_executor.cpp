@@ -499,6 +499,12 @@ NativeGitCommandExecutor::execute(const gf::git::bo::GitCommand& command,
     }
 
     GitProcessResult result;
+    std::atomic<bool> cancelledFlag{false};
+    std::stop_callback stopCb(stopToken, [&]() noexcept {
+        cancelledFlag.store(true, std::memory_order_release);
+        ::kill(pid, SIGTERM);
+    });
+
     std::jthread errThread([fd = errPipe[0], &result]() {
         char buf[8192];
         ssize_t n = 0;
@@ -519,6 +525,7 @@ NativeGitCommandExecutor::execute(const gf::git::bo::GitCommand& command,
     int status = 0;
     ::waitpid(pid, &status, 0);
     result.exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    result.cancelled = cancelledFlag.load(std::memory_order_acquire);
     result.elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now() - startClock);
     return result;

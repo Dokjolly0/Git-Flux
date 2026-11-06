@@ -43,6 +43,7 @@ TEST_CASE("Suite A.0 - GitDiscovery rileva eseguibile Git e risolve lo shim su W
     gf::infra::git::NativeGitCommandExecutor exec(discovered->directBinaryPath);
     const auto ver = exec.execute({
         .args = {"--version"},
+        .workingDirectory = {},
         .lockPolicy = gf::git::bo::GitLockPolicy::Standard
     });
     REQUIRE(ver.has_value());

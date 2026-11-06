@@ -45,6 +45,8 @@ Tutte le suite utilizzano repository sintetici generati localmente in modo deter
 
 ## 3. Esecuzione Build, Test e Benchmark
 
+### Su Windows (PowerShell / Visual Studio MSVC)
+
 ```powershell
 # 1. Build Core pura (ZERO Qt — verifica ADR-002)
 cmake --preset core-release
@@ -57,7 +59,27 @@ cmake --build --preset qt-release
 ctest --preset qt-release --output-on-failure
 
 # 3. Esecuzione Suite A Benchmark (con report comparativo)
-.\build\qt-release\tests\performance\gf_bench_suite_a.exe
+.\build\qt-msvc\tests\performance\gf_bench_suite_a.exe
 ```
 
-I risultati raccolti vengono registrati in `docs/performance/` specificando sistema operativo, CPU, versione Git e configurazione antivirus/disco.
+### Su Linux (Bash / GCC o Clang + Ninja)
+
+```bash
+# 1. Build Core pura (ZERO Qt — verifica ADR-002)
+cmake --preset linux-core-release
+cmake --build --preset linux-core-release
+ctest --preset linux-core-release --output-on-failure
+
+# 2. Build completa con Qt 6
+cmake --preset linux-qt-release
+cmake --build --preset linux-qt-release
+ctest --preset linux-qt-release --output-on-failure
+
+# 3. Esecuzione Suite A Benchmark (con report comparativo e microbenchmark)
+./build/qt-linux/gf_bench_suite_a
+./build/qt-linux/gf_bench_suite_a "[micro]"
+```
+
+I risultati raccolti vengono registrati in `docs/performance/`:
+- Windows: [`baseline-windows.md`](performance/baseline-windows.md)
+- Linux: [`baseline-linux.md`](performance/baseline-linux.md)
