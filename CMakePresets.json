@@ -1,0 +1,73 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "core-release",
+      "displayName": "Core C++23 Only (ZERO Qt - Release)",
+      "description": "Compila e testa Core e Infrastructure nativa senza alcuna dipendenza da Qt",
+      "generator": "Visual Studio 17 2022",
+      "architecture": {
+        "value": "x64",
+        "strategy": "set"
+      },
+      "binaryDir": "${sourceDir}/build/core-msvc",
+      "cacheVariables": {
+        "GF_BUILD_DESKTOP": "OFF",
+        "GF_BUILD_TESTING": "ON",
+        "GF_BUILD_BENCHMARKS": "ON"
+      }
+    },
+    {
+      "name": "qt-release",
+      "displayName": "Full Build with Qt 6 Adapter (Release)",
+      "description": "Abilita Qt 6 per confrontare Native Win32 vs Qt QProcess nei benchmark",
+      "generator": "Visual Studio 17 2022",
+      "architecture": {
+        "value": "x64",
+        "strategy": "set"
+      },
+      "binaryDir": "${sourceDir}/build/qt-msvc",
+      "cacheVariables": {
+        "GF_BUILD_DESKTOP": "ON",
+        "GF_BUILD_TESTING": "ON",
+        "GF_BUILD_BENCHMARKS": "ON",
+        "CMAKE_PREFIX_PATH": "C:/Qt/6.6.2/msvc2019_64"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "core-release",
+      "configurePreset": "core-release",
+      "configuration": "Release"
+    },
+    {
+      "name": "qt-release",
+      "configurePreset": "qt-release",
+      "configuration": "Release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "core-release",
+      "configurePreset": "core-release",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "qt-release",
+      "configurePreset": "qt-release",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}
