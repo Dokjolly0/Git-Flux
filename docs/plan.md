@@ -1,7 +1,7 @@
-# Git Manager — Piano di progetto e architettura
+# Git Flux — Piano di progetto e architettura
 
 > **Stato:** progettazione, prima dell'implementazione  
-> **Nome:** «Git Manager» è provvisorio  
+> **Nome:** Git Flux  
 > **Documento:** versione 0.1 — 5 novembre 2026  
 > **Piattaforme:** macOS · Windows · Linux  
 > **Priorità assoluta:** pubblicare una **V1 usabile e affidabile**, senza compromettere l'evoluzione futura.
@@ -53,7 +53,7 @@ Il progetto nasce dall'esigenza di sostituire un Git client commerciale nell'uso
 5. **Controllo dell'esperienza:** layout, menu contestuali, scorciatoie e flussi devono poter diventare altamente personalizzabili.
 6. **Nessun abbonamento obbligatorio:** l'utilizzo delle funzionalità locali di base non richiede un servizio cloud proprietario né un account applicativo.
 
-**Posizionamento:** non un clone di GitKraken, ma un **Git Manager desktop local-first, moderno, modulare ed espandibile**, progettato intorno ai contesti di lavoro e alla trasparenza delle operazioni.
+**Posizionamento:** non un clone di GitKraken, ma **Git Flux**: un client Git desktop **local-first, moderno, modulare ed espandibile**, progettato intorno ai contesti di lavoro e alla trasparenza delle operazioni.
 
 ### 1.2 Principi di prodotto — deciso
 
@@ -480,7 +480,7 @@ Le chiavi delle tabelle di join saranno composte e uniche, con **foreign key** e
 
 ```cpp
 // Esempio concettuale, non ancora API pubblica stabile.
-namespace gm::workspaces::ports {
+namespace gf::workspaces::ports {
 
 struct StorageError {
     std::string message;
@@ -497,7 +497,7 @@ public:
     save(const bo::Workspace& workspace) = 0;
 };
 
-} // namespace gm::workspaces::ports
+} // namespace gf::workspaces::ports
 ```
 
 I casi d'uso dipendono da `IWorkspaceStore`, non da `SqliteWorkspaceStore`. Nei test sarà possibile sostituire la persistenza con un fake/in-memory store. Errori attesi sono rappresentati da tipi (`std::expected` dove supportato), mentre le eccezioni inattese seguono una policy separata.
@@ -641,11 +641,11 @@ Misurare su **tutti e tre i sistemi operativi** con hardware e ambiente descritt
 | **Strategy** | Futuri backend AI/process | Solo quando esistono varianti reali |
 | **Factory** | Creazione configurable di adapter | Quando emerge la necessità |
 
-**Da evitare:** singleton globali mutabili, Service Locator, god class `GitManager`, un Controller per ogni View, utility onnivore, ereditarietà superflua, astrazioni speculative, accessi SQLite diretti dalla UI.
+**Da evitare:** singleton globali mutabili, Service Locator, god class `GitFlux`, un Controller per ogni View, utility onnivore, ereditarietà superflua, astrazioni speculative, accessi SQLite diretti dalla UI.
 
 ### 12.2 Convenzioni di naming
 
-- Namespace per responsabilità, es. `gm::groups::bo`, `gm::groups::bl`, `gm::groups::ports`.
+- Namespace per responsabilità, es. `gf::groups::bo`, `gf::groups::bl`, `gf::groups::ports`.
 - Classi e value objects con significato preciso (`WorkspaceId`, `AddRepositoryToGroup`).
 - Identificativi di Action Registry stabili e gerarchici: `git.fetch`, `git.commit`, `workspace.open`, `group.openQuick`.
 - `BO/BL/DAL/DML` conservati come convenzione richiesta, con definizioni esplicite.
@@ -655,7 +655,7 @@ Misurare su **tutti e tre i sistemi operativi** con hardware e ambiente descritt
 ### 12.3 Directory suggerite
 
 ```text
-git-manager/
+git-flux/
 ├── README.md
 ├── LICENSE                     # da scegliere prima della pubblicazione
 ├── CMakeLists.txt
@@ -705,12 +705,12 @@ Le directory sono **una mappa**, non l'obbligo di creare subito centinaia di fil
 ### 12.4 Target CMake — proposti
 
 ```text
-gm_domain                # BO; nessuna dipendenza Qt
-gm_application           # BL + ports; dipende dal domain
-gm_persistence_sqlite    # implementa ports; SQLite C API o wrapper verificato
-gm_git_cli_adapter       # implementa port Git; può usare Qt solo qui
-gm_desktop               # Qt Quick, ViewModel, Bootstrap
-gm_tests                 # core e integrazione
+gf_domain                # BO; nessuna dipendenza Qt
+gf_application           # BL + ports; dipende dal domain
+gf_persistence_sqlite    # implementa ports; SQLite C API o wrapper verificato
+gf_git_cli_adapter       # implementa port Git; può usare Qt solo qui
+gf_desktop               # Qt Quick, ViewModel, Bootstrap
+gf_tests                 # core e integrazione
 ```
 
 Non imporremo `QSqlDatabase` nel livello di persistenza: l'**API SQLite nativa** è una candidata per mantenere l'adapter database indipendente da Qt. Se l'adapter processi usa `QProcess`, ciò resta **esterno** al core.
@@ -928,7 +928,7 @@ Quando il progetto sarà pubblico: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` se ri
 
 | ID | Decisione | Motivo |
 | --- | --- | --- |
-| ADR-001 | Desktop multipiattaforma macOS/Windows/Linux | Un unico Git Manager per diversi ambienti |
+| ADR-001 | Desktop multipiattaforma macOS/Windows/Linux | Un'unica applicazione Git Flux per diversi ambienti |
 | ADR-002 | C++ standard nel core (BO/BL), senza Qt | Portabilità, testabilità, evoluzione |
 | ADR-003 | Qt 6 Quick/QML invece di Electron/Qt Widgets per la UI | Design moderno, rendering nativo e controllo |
 | ADR-004 | MVVM per la UI + Controller mirati | Separazione presentazione/operazioni |
@@ -941,7 +941,7 @@ Quando il progetto sarà pubblico: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` se ri
 
 ### 19.2 Questioni ancora aperte
 
-- **Nome e identità visiva** del progetto.
+- **Identità visiva** del progetto (il nome **Git Flux** è stato definito).
 - **Licenza definitiva** (MIT/Apache-2.0/altro), contributi e eventuale CLA.
 - **Toolchain/versioni minime**: Qt 6.x, Git, macOS/Windows/Linux e compilatori che supportino C++23 necessario.
 - **Git Process Adapter**: `QProcess` nell'infrastruttura desktop oppure libreria/process adapter nativo indipendente da Qt.
@@ -993,7 +993,7 @@ Fonti ufficiali da consultare durante l'implementazione (la documentazione preva
 
 ## Sintesi della strategia
 
-> **Prima un Git Manager V1 stabile e piacevole da utilizzare; poi un ambiente Git avanzato, personalizzabile e con AI opzionale.**
+> **Prima un Git Flux V1 stabile e piacevole da utilizzare; poi un ambiente Git avanzato, personalizzabile e con AI opzionale.**
 >
 > Le fondamenta devono supportare il futuro, ma non è necessario costruirlo tutto oggi.
 
