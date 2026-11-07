@@ -1,0 +1,83 @@
+#include "desktop/bootstrap/app_bootstrap.hpp"
+
+#include <QGuiApplication>
+#include <QQmlApplicationEngine>
+#include <QCommandLineParser>
+#include <QCommandLineOption>
+#include <iostream>
+
+int main(int argc, char* argv[]) {
+    QGuiApplication app(argc, argv);
+    app.setApplicationName(QStringLiteral("GitFlux"));
+    app.setOrganizationName(QStringLiteral("GitFlux"));
+    app.setApplicationVersion(QStringLiteral("0.1.0"));
+
+    QCommandLineParser parser;
+    parser.setApplicationDescription(QStringLiteral("Git Flux — Modern local-first desktop Git client"));
+    parser.addHelpOption();
+    parser.addVersionOption();
+
+    QCommandLineOption dbOption(
+        QStringList() << QStringLiteral("d") << QStringLiteral("db"),
+        QStringLiteral("Specifica il percorso del database SQLite"),
+        QStringLiteral("path")
+    );
+    parser.addOption(dbOption);
+
+    QCommandLineOption smokeTestOption(
+        QStringLiteral("test-startup"),
+        QStringLiteral("Verifica l'avvio completo del bootstrap e del caricamento QML ed esce immediatamente")
+    );
+    parser.addOption(smokeTestOption);
+
+    parser.process(app);
+
+    std::filesystem::path dbPath;
+    if (parser.isSet(dbOption)) {
+        dbPath = std::filesystem::path(parser.value(dbOption).toStdString());
+    } else if (parser.isSet(smokeTestOption)) {
+        dbPath = ":memory:";
+    } else {
+        dbPath = gf::desktop::AppBootstrap::defaultDatabasePath();
+    }
+
+    try {
+        gf::desktop::AppBootstrap bootstrap(dbPath);
+        bootstrap.initialize();
+
+        QQmlApplicationEngine engine;
+        bootstrap.registerWithQml(engine);
+
+        const QUrl url(QStringLiteral("qrc:/qt/qml/GitFlux/Desktop/src/desktop/ui/qml/main.qml"));
+        QObject::connect(
+            &engine,
+            &QQmlApplicationEngine::objectCreated,
+            &app,
+            [url](QObject* obj, const QUrl& objUrl) {
+                if (!obj && url == objUrl) {
+                    std::cerr << "Errore critico: impossibile caricare il file QML principale: "
+                              << url.toString().toStdString() << std::endl;
+                    QCoreApplication::exit(-1);
+                }
+            },
+            Qt::QueuedConnection
+        );
+
+        engine.load(url);
+
+        if (engine.rootObjects().isEmpty()) {
+            std::cerr << "Errore: nessun oggetto radice QML caricato." << std::endl;
+            return 1;
+        }
+
+        if (parser.isSet(smokeTestOption)) {
+            std::cout << "[SMOKE_TEST] Git Flux bootstrap & QML engine inizializzati con successo." << std::endl;
+            return 0;
+        }
+
+        return app.exec();
+    } catch (const std::exception& ex) {
+        std::cerr << "Errore fatale all'avvio di Git Flux: " << ex.what() << std::endl;
+        return 1;
+    }
+}

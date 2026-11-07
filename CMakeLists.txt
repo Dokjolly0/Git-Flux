@@ -25,6 +25,20 @@ function(gf_apply_compiler_warnings target_name)
     )
 endfunction()
 
+# Helper per copiare automaticamente le DLL di runtime (es. Qt6Core.dll su Windows)
+function(gf_deploy_runtime_dlls target_name)
+    if(WIN32 AND GF_BUILD_DESKTOP)
+        add_custom_command(TARGET ${target_name} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_RUNTIME_DLLS:${target_name}>
+                $<TARGET_FILE_DIR:${target_name}>
+            COMMAND_EXPAND_LISTS
+        )
+    endif()
+endfunction()
+
+
+
 # ==============================================================================
 # 1. CORE (ZERO Qt — ADR-002)
 # ==============================================================================
@@ -100,7 +114,28 @@ target_link_libraries(gf_git_cli_native PUBLIC gf_application)
 gf_apply_compiler_warnings(gf_git_cli_native)
 
 if(GF_BUILD_DESKTOP)
-    find_package(Qt6 REQUIRED COMPONENTS Core)
+    set(CMAKE_AUTOMOC ON)
+    set(CMAKE_AUTORCC ON)
+
+    if(UNIX AND NOT APPLE)
+        if(EXISTS "$ENV{HOME}/.local/qt6-declarative/usr/lib/x86_64-linux-gnu/cmake/Qt6Quick")
+            list(PREPEND CMAKE_PREFIX_PATH
+                "$ENV{HOME}/.local/qt6-declarative/usr"
+                "$ENV{HOME}/.local/qt6-declarative/usr/lib/x86_64-linux-gnu/cmake"
+            )
+            set(Qt6Quick_DIR "$ENV{HOME}/.local/qt6-declarative/usr/lib/x86_64-linux-gnu/cmake/Qt6Quick" CACHE PATH "Path to Qt6Quick")
+            set(Qt6Qml_DIR "$ENV{HOME}/.local/qt6-declarative/usr/lib/x86_64-linux-gnu/cmake/Qt6Qml" CACHE PATH "Path to Qt6Qml")
+            set(Qt6QmlTools_DIR "$ENV{HOME}/.local/qt6-declarative/usr/lib/x86_64-linux-gnu/cmake/Qt6QmlTools" CACHE PATH "Path to Qt6QmlTools")
+            set(Qt6QuickControls2_DIR "$ENV{HOME}/.local/qt6-declarative/usr/lib/x86_64-linux-gnu/cmake/Qt6QuickControls2" CACHE PATH "Path to Qt6QuickControls2")
+        endif()
+    endif()
+
+    find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml QuickControls2)
+    if(GF_BUILD_TESTING)
+        find_package(Qt6 REQUIRED COMPONENTS Test)
+    endif()
+    qt_policy(SET QTP0001 NEW)
+    qt_policy(SET QTP0004 OLD)
 
     add_library(gf_git_cli_qt STATIC
         src/infrastructure/git/qt/qt_git_executor.cpp
@@ -114,6 +149,57 @@ if(GF_BUILD_DESKTOP)
         Qt6::Core
     )
     gf_apply_compiler_warnings(gf_git_cli_qt)
+
+    # MVVM ViewModels e Desktop Composition Root
+    add_library(gf_desktop_viewmodels STATIC
+        src/desktop/viewmodels/repository_list_model.cpp
+        src/desktop/viewmodels/group_list_model.cpp
+        src/desktop/viewmodels/workspace_list_model.cpp
+        src/desktop/viewmodels/home_hub_viewmodel.cpp
+        src/desktop/viewmodels/quick_open_viewmodel.cpp
+        src/desktop/bootstrap/app_bootstrap.cpp
+    )
+    target_include_directories(gf_desktop_viewmodels PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    )
+    target_link_libraries(gf_desktop_viewmodels PUBLIC
+        gf_application
+        gf_persistence_sqlite
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Quick
+        Qt6::Qml
+        Qt6::QuickControls2
+    )
+    gf_apply_compiler_warnings(gf_desktop_viewmodels)
+
+    # Applicazione Desktop Eseguibile (Qt Quick 6)
+    qt_add_executable(git_flux
+        src/desktop/main.cpp
+    )
+    qt_add_qml_module(git_flux
+        URI "GitFlux.Desktop"
+        VERSION 1.0
+        RESOURCE_PREFIX "/qt/qml"
+        QML_FILES
+            src/desktop/ui/qml/main.qml
+            src/desktop/ui/qml/themes/FluxTheme.qml
+            src/desktop/ui/qml/views/HomeHubView.qml
+            src/desktop/ui/qml/views/QuickOpenModal.qml
+    )
+    target_include_directories(git_flux PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    )
+    target_link_libraries(git_flux PRIVATE
+        gf_desktop_viewmodels
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Quick
+        Qt6::Qml
+        Qt6::QuickControls2
+    )
+    gf_apply_compiler_warnings(git_flux)
+    gf_deploy_runtime_dlls(git_flux)
 endif()
 
 # ==============================================================================
@@ -135,17 +221,7 @@ add_executable(gf_fixture_gen
 target_link_libraries(gf_fixture_gen PRIVATE gf_fixture_gen_lib)
 gf_apply_compiler_warnings(gf_fixture_gen)
 
-# Helper per copiare automaticamente le DLL di runtime (es. Qt6Core.dll su Windows)
-function(gf_deploy_runtime_dlls target_name)
-    if(WIN32 AND GF_BUILD_DESKTOP)
-        add_custom_command(TARGET ${target_name} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_RUNTIME_DLLS:${target_name}>
-                $<TARGET_FILE_DIR:${target_name}>
-            COMMAND_EXPAND_LISTS
-        )
-    endif()
-endfunction()
+
 
 # ==============================================================================
 # 5. TESTS & BENCHMARKS (Catch2 v3)
@@ -196,6 +272,19 @@ if(GF_BUILD_TESTING)
         target_link_libraries(gf_integration_tests PRIVATE gf_git_cli_qt)
         target_compile_definitions(gf_integration_tests PRIVATE GF_HAS_QT_ADAPTER=1)
         gf_deploy_runtime_dlls(gf_integration_tests)
+
+        # Unit test per MVVM (ViewModels & Models con Catch2 + QSignalSpy)
+        add_executable(gf_viewmodels_tests
+            tests/unit/viewmodels_unit_tests.cpp
+        )
+        target_link_libraries(gf_viewmodels_tests PRIVATE
+            gf_desktop_viewmodels
+            Qt6::Test
+            Catch2::Catch2WithMain
+        )
+        gf_apply_compiler_warnings(gf_viewmodels_tests)
+        gf_deploy_runtime_dlls(gf_viewmodels_tests)
+        add_test(NAME gf_viewmodels_tests COMMAND gf_viewmodels_tests)
     endif()
     gf_apply_compiler_warnings(gf_integration_tests)
     add_test(NAME gf_integration_tests COMMAND gf_integration_tests)

@@ -1,6 +1,6 @@
 # Git Flux — Specifica e Stato di Avanzamento Fase 1 (Fondamenta della V1)
 
-> **Stato:** in corso — completati Task 1.1, Task 1.2 e Task 1.3  
+> **Stato:** completata Fase 1 (Task 1.1, 1.2, 1.3, 1.4)  
 > **Architettura di riferimento:** [plan.md](plan.md) (Sezioni 3, 6, 8)  
 > **Wireframe UI di riferimento:** [`docs/ui/git-flux-ui-v2.drawio`](ui/git-flux-ui-v2.drawio) (Pagine 01, 02, 03, 10)  
 
@@ -15,7 +15,7 @@ La Fase 1 costruisce le fondamenta del catalogo, dei gruppi, dei workspace e del
 | **1.1** | **Core Domain (BO) & Ports** | Definizione entità tipizzate (`Repository`, `Group`, `Workspace`, `WorkspaceSession`), ID sicuri (`GroupId`, `WorkspaceId`) e contratti di storage (`IRepositoryStore`, `IGroupStore`, `IWorkspaceStore`). | **Completato** |
 | **1.2** | **Persistenza SQLite (DAL/DML)** | Schema relazionale con foreign key e vincoli, migrazioni versionate, connessioni RAII con WAL mode, implementazione concreta degli Store SQLite Zero-Qt e suite di test DB. | **Completato** |
 | **1.3** | **Application Services (BL)** | Use case: `RepositoryService` (validazione `.git`, missing repo, update path), `GroupService` (membership, deduplicazione per Quick Open), `WorkspaceService` (composizione e ripristino sessione). | **Completato** |
-| **1.4** | **Desktop Bootstrap & MVVM UI** | Composition Root desktop, ViewModels (`HomeHubViewModel`, `QuickOpenViewModel`), modelli `QAbstractListModel` e prima schermata funzionante della Home a 3 colonne (Pagina 02). | *Prossimo* |
+| **1.4** | **Desktop Bootstrap & MVVM UI** | Composition Root desktop, ViewModels (`HomeHubViewModel`, `QuickOpenViewModel`), modelli `QAbstractListModel` e prima schermata funzionante della Home a 3 colonne (Pagina 02) e Modale Quick Open (Pagina 03). | **Completato** |
 
 ---
 
@@ -118,3 +118,59 @@ Test implementati in [`tests/unit/services_unit_tests.cpp`](../tests/unit/servic
 3. **WorkspaceService:** composizione gruppi + repo diretti, deduplicazione deterministica dei repository effettivi nel workspace, inizializzazione automatica della sessione, persistenza delle modifiche al layout (sidebar, viste) ed eliminazione con pulizia a cascata.
 
 Risultato suite unit test: **128 asserzioni superate in 13 test case** (0 fallimenti).
+
+---
+
+## 6. Dettaglio Task 1.4 — Desktop Bootstrap & MVVM UI (Qt Quick 6)
+
+### Architettura Bootstrap & Desktop Composition Root
+- **`AppBootstrap`** (`src/desktop/bootstrap/app_bootstrap.hpp` & `.cpp`):
+  - Inizializza la persistenza SQLite locale (apertura RAII su file o in-memory `:memory:`).
+  - Esegue automaticamente le migrazioni versionate (`SchemaMigrator::migrateToLatest`).
+  - Istanzia gli Store concreti del Core (`SqliteRepositoryStore`, `SqliteGroupStore`, `SqliteWorkspaceStore`).
+  - Istanzia i Servizi applicativi (`RepositoryService`, `GroupService`, `WorkspaceService`).
+  - Istanzia i ViewModels (`HomeHubViewModel`, `QuickOpenViewModel`) e registra i tipi e i contesti QML (`homeHubVm`, `quickOpenVm`).
+  - Fornisce il metodo statico `defaultDatabasePath()` tramite `QStandardPaths::AppDataLocation`.
+
+### Modelli e ViewModels (Pattern MVVM)
+- **Modelli `QAbstractListModel`**:
+  - `RepositoryListModel` (`src/desktop/viewmodels/repository_list_model.hpp`): espone ruoli `id`, `displayName`, `localPath`, `status`, `isMissing`, `lastAccessedAt`. Supporta aggiornamenti atomici reattivi con `dataChanged`.
+  - `GroupListModel` (`src/desktop/viewmodels/group_list_model.hpp`): espone ruoli `id`, `name`, `repositoryCount`, `repositoryIds`.
+  - `WorkspaceListModel` (`src/desktop/viewmodels/workspace_list_model.hpp`): espone ruoli `id`, `name`, `groupCount`, `directRepoCount`, `totalRepoCount`, `summary` (es. *"1 gruppo, 1 repo singolo"*), `lastOpenedAt`.
+- **`HomeHubViewModel`** (`src/desktop/viewmodels/home_hub_viewmodel.hpp`):
+  - Coordina i dati per la schermata principale a 3 colonne (Pagina 02 dei wireframe).
+  - Gestisce la ricerca/filtro reattiva su repository, gruppi e workspace in tempo reale.
+  - Espone metodi `Q_INVOKABLE` per la registrazione repository, ricollegamento percorso mancante, rimozione, creazione ed eliminazione di gruppi e workspace.
+  - Notifica segnali strongly-typed: `repositoryOpened`, `groupOpened`, `workspaceOpened`, `errorOccurred`.
+- **`QuickOpenViewModel`** (`src/desktop/viewmodels/quick_open_viewmodel.hpp`):
+  - Implementa l'Apertura Rapida multi-gruppo conforme a Pagina 03 dei wireframe.
+  - Selezione multipla ordinata di gruppi con calcolo istantaneo del contesto volatile deduplicato tramite `GroupService::resolveQuickOpenContext`.
+  - Calcola live il conteggio dei duplicati unificati (`deduplicatedCount`).
+  - Emittanza del segnale `quickSessionStarted(QStringList repoIds)`.
+
+### Componenti e Viste QML (Qt Quick 6)
+- **`FluxTheme.qml`** (`src/desktop/ui/qml/themes/`):
+  - Palette dark moderna derivata dal logo di Git Flux: Canvas `#0E1117`, Surface `#161B22`, Card `#21262D`, Bordi `#30363D`, Accento Cyan `#00E5FF`, Accento Purple `#7C4DFF`.
+- **`HomeHubView.qml`** (`src/desktop/ui/qml/views/`):
+  - Top bar con brand, campo di ricerca centrale reattivo e bottoni per "+ Repository", "+ Gruppo", "+ Workspace", "⚡ Quick Open".
+  - SplitView orizzontale a 3 colonne ridimensionabili:
+    1. **Repositories:** elenco card, badge valid/missing, pulsante "Ricollega" immediato per repo non trovati, rimozione.
+    2. **Gruppi:** elenco card con chip conteggio repo e rimozione.
+    3. **Workspace:** elenco card con riepilogo composizione gruppi/repo e ultimo accesso.
+  - Dialoghi modali integrati per la registrazione repo, riconnessione missing, creazione gruppi e workspace.
+  - Status bar inferiore con messaggi di stato ed errori.
+- **`QuickOpenModal.qml`** (`src/desktop/ui/qml/views/`):
+  - Dialogo modale dark con split interno a due colonne: a sinistra la selezione dei gruppi con checkbox e conteggi, a destra l'anteprima in tempo reale dei repository unificati con badge di deduplicazione ("⚡ X duplicati uniti").
+- **`main.qml` & `main.cpp`** (`src/desktop/`):
+  - ApplicationWindow radice con supporto alla CLI: flag `--db <path>` per percorsi personalizzati e switch `--test-startup` per smoke test headless in pipeline CI.
+
+### Test di Unità Desktop MVVM
+Test implementati in [`tests/unit/viewmodels_unit_tests.cpp`](../tests/unit/viewmodels_unit_tests.cpp) (utilizzano Catch2 v3 e `QSignalSpy` su driver offscreen headless):
+1. **RepositoryListModel:** verifica popolazione, ruoli, stato missing e aggiornamento live di stato.
+2. **GroupListModel:** verifica metadati, ruoli e recupero per ID.
+3. **WorkspaceListModel:** verifica composizione, risoluzione conteggio totale repo tramite service e formattazione summary.
+4. **HomeHubViewModel:** ciclo di vita completo (aggiunta repo, apertura con segnale, creazione gruppo con protezione duplicati, creazione workspace, filtraggio della ricerca e cancellazione a cascata).
+5. **QuickOpenViewModel:** selezione multi-gruppo con 2 gruppi aventi un repository in comune; verifica della deduplicazione corretta (3 repo totali, 1 duplicato unito), emissione di `quickSessionStarted` con lista ID e protezione su selezione vuota.
+
+Risultato suite MVVM unit test: **94 asserzioni superate in 5 test case** (0 fallimenti).  
+Risultato smoke test headless dell'applicazione desktop (`git_flux --test-startup`): **Avvio ed esecuzione del motore QML completati con successo (exit code 0)**.
