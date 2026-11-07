@@ -23,7 +23,8 @@ if [ ! -d "${BUILD_DIR}" ]; then
         -DCMAKE_BUILD_TYPE=Release \
         -DGF_BUILD_DESKTOP=ON \
         -DGF_BUILD_TESTING=OFF \
-        -DGF_BUILD_BENCHMARKS=OFF
+        -DGF_BUILD_BENCHMARKS=OFF \
+        ${CMAKE_PREFIX_PATH:+-DCMAKE_PREFIX_PATH="${CMAKE_PREFIX_PATH}"}
 fi
 
 echo "🔨 Building git_flux target..."
