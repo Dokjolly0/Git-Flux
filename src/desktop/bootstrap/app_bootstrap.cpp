@@ -57,6 +57,9 @@ void AppBootstrap::initialize() {
     m_workingTreeService = std::make_unique<git::bl::GitWorkingTreeService>(*m_gitOps);
     m_stagingService = std::make_unique<git::bl::GitStagingService>(*m_gitOps);
     m_diffService = std::make_unique<git::bl::GitDiffService>(*m_gitOps);
+    m_branchService = std::make_unique<git::bl::GitBranchService>(*m_gitOps);
+    m_historyService = std::make_unique<git::bl::GitHistoryService>(*m_gitOps);
+    m_remoteMergeService = std::make_unique<git::bl::GitRemoteMergeService>(*m_gitOps);
 
     m_homeHubVm = std::make_unique<HomeHubViewModel>(*m_repoService, *m_groupService, *m_workspaceService);
     m_quickOpenVm = std::make_unique<QuickOpenViewModel>(*m_groupService, *m_repoService);
@@ -65,7 +68,10 @@ void AppBootstrap::initialize() {
         *m_workspaceService,
         *m_workingTreeService,
         *m_stagingService,
-        *m_diffService
+        *m_diffService,
+        *m_branchService,
+        *m_historyService,
+        *m_remoteMergeService
     );
 }
 
@@ -80,6 +86,10 @@ void AppBootstrap::registerWithQml(QQmlApplicationEngine& engine) {
         "Modello fornito da WorkingTreeViewModel");
     qmlRegisterUncreatableType<DiffLineListModel>("GitFlux.Desktop", 1, 0, "DiffLineListModel",
         "Modello fornito da DiffViewModel");
+    qmlRegisterUncreatableType<BranchListModel>("GitFlux.Desktop", 1, 0, "BranchListModel",
+        "Modello fornito da BranchManagerViewModel");
+    qmlRegisterUncreatableType<CommitHistoryListModel>("GitFlux.Desktop", 1, 0, "CommitHistoryListModel",
+        "Modello fornito da BranchManagerViewModel");
 
     qmlRegisterUncreatableType<HomeHubViewModel>("GitFlux.Desktop", 1, 0, "HomeHubViewModel",
         "ViewModel gestito dal bootstrap");
@@ -90,6 +100,8 @@ void AppBootstrap::registerWithQml(QQmlApplicationEngine& engine) {
     qmlRegisterUncreatableType<CommitBoxViewModel>("GitFlux.Desktop", 1, 0, "CommitBoxViewModel",
         "ViewModel gestito da WorkspaceSessionViewModel");
     qmlRegisterUncreatableType<DiffViewModel>("GitFlux.Desktop", 1, 0, "DiffViewModel",
+        "ViewModel gestito da WorkspaceSessionViewModel");
+    qmlRegisterUncreatableType<BranchManagerViewModel>("GitFlux.Desktop", 1, 0, "BranchManagerViewModel",
         "ViewModel gestito da WorkspaceSessionViewModel");
     qmlRegisterUncreatableType<WorkspaceSessionViewModel>("GitFlux.Desktop", 1, 0, "WorkspaceSessionViewModel",
         "ViewModel gestito dal bootstrap");

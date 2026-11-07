@@ -1,6 +1,6 @@
 # Git Flux — Specifica e Stato di Avanzamento Fase 3 (Branching, Merging & Remote Operations)
 
-> **Stato:** Task 3.1, 3.2 & 3.3 Completati | In avvio Task 3.4 — Branch Manager & Commit Graph UI  
+> **Stato:** Fase 3 Completata al 100% (Task 3.1, 3.2, 3.3, 3.4)  
 > **Architettura di riferimento:** [plan.md](plan.md) (Sezioni 2.1, 7, 8, 15)  
 > **Wireframe UI di riferimento:** [`docs/ui/git-flux-ui-v2.drawio`](ui/git-flux-ui-v2.drawio) (Pagine 07, 08)  
 
@@ -15,7 +15,7 @@ La Fase 3 estende Git Flux per gestire la topologia del repository (branch, tag,
 | **3.1** | **Branching & Checkout Engine** | Domain BO (`GitBranch`, `BranchType`, `CreateBranchOptions`, `CheckoutOptions`), port `IRepositoryGitOps`, service `GitBranchService` (con validatore `git-check-ref-format` e locking atomico), implementazione nativa `for-each-ref` e `checkout`. | **Completato** |
 | **3.2** | **Tagging & Commit History / Log Engine** | Domain BO (`GitCommitLogItem`, `GitTag`, `TagType`), parser deterministico record separator (`\x1e`/`\0`), service `GitHistoryService` con validazione tag, filtri e paginazione `git log`, supporto tag lightweight e annotated. | **Completato** |
 | **3.3** | **Remote Operations & Merge Engine** | Gestione remotes (`listRemotes`, `addRemote`, `removeRemote`, `fetch`, `pull`, `push`), merge automatico (FF e 3-way no-ff), rilevamento conflitti di merge e abort merge atomico. | **Completato** |
-| **3.4** | **Branch Manager & Commit Graph UI** | ViewModels MVVM (`BranchListModel`, `BranchManagerViewModel`, `CommitHistoryViewModel`) e viste QML (`BranchSwitcherDropdown`, `BranchManagerModal`, `CommitHistoryGraphView`). | **In corso** |
+| **3.4** | **Branch Manager & Commit Graph UI** | ViewModels MVVM (`BranchListModel`, `CommitHistoryListModel`, `BranchManagerViewModel`), estensione `WorkspaceSessionViewModel`, e viste QML (`BranchSwitcherDropdown`, `BranchManagerModal`, `CommitHistoryPanel`, `WorkspaceSessionView`). | **Completato** |
 
 ---
 
@@ -81,7 +81,37 @@ La Fase 3 estende Git Flux per gestire la topologia del repository (branch, tag,
 - `tests/unit/remote_merge_unit_tests.cpp`: Unit test su validazione nomi remote, opzioni e deleghe (34 asserzioni).
 - `tests/integration/remote_merge_integration_tests.cpp`: Test di integrazione su bare remote reale + 2 repository locali sincronizzati, fast-forward, 3-way merge, rilevamento conflitti e `abortMerge` (99 asserzioni).
 
+---
+
+## 5. Dettaglio Task 3.4 — Branch Manager & Commit Graph UI (Completato)
+
+### Obiettivi e Principi Architetturali
+- **Architettura MVVM Separata:**
+  - `BranchListModel` (`QAbstractListModel`): espone branch locali e remoti con ruoli `name`, `shortName`, `isCurrent`, `isRemote`, `upstream`, `ahead`, `behind`, `targetSha`.
+  - `CommitHistoryListModel` (`QAbstractListModel`): espone l'elenco dei commit con ruoli `sha`, `shortSha`, `subject`, `body`, `authorName`, `authorEmail`, `authorDate`, `decorations`, `parents`.
+  - `BranchManagerViewModel` (`QObject`): orchestratore delle operazioni di branch, checkout, merge, abort e remote fetch/pull/push.
+- **Integrazione fluida nella Sessione Multi-Repo (`WorkspaceSessionViewModel`):**
+  - Coordinamento automatico al cambio di tab o commit riuscito: aggiornamento trasparente del branch corrente, dello stato dirty e della cronologia commit.
+- **Componenti UI QML Moderni:**
+  - `BranchSwitcherDropdown.qml`: pillola con icona branch, nome branch attivo (o indicazione detached/conflict), popup con ricerca e switch istantaneo, e dialog per la creazione di nuovi branch.
+  - `BranchManagerModal.qml`: pannello modale per la gestione avanzata di branch, eliminazione, ridenominazione, merge nel branch attivo, sincronizzazione con remote (Fetch, Pull, Push) e pulsante di emergenza `Abort Merge` in caso di conflitti.
+  - `CommitHistoryPanel.qml`: vista della cronologia commit con grafo/bullet dei commit, pillole colorate per i tag e branch di riferimento, e pannello laterale di dettaglio commit (autore, email, data, SHA esteso, genitori, corpo del messaggio).
+  - `WorkspaceSessionView.qml`: header arricchito con selettore branch, pulsanti rapidi di rete e toggle di vista tra "Changes" (Working Tree + Diff) e "History" (Commit Graph).
+
+### File Introdotti / Modificati
+- `src/desktop/viewmodels/branch_list_model.hpp` & `.cpp`: Modello Qt per lista branch.
+- `src/desktop/viewmodels/commit_history_list_model.hpp` & `.cpp`: Modello Qt per commit log.
+- `src/desktop/viewmodels/branch_manager_viewmodel.hpp` & `.cpp`: ViewModel di gestione branch e remote.
+- `src/desktop/viewmodels/workspace_session_viewmodel.hpp` & `.cpp`: Composizione con `BranchManagerViewModel`.
+- `src/desktop/bootstrap/app_bootstrap.hpp` & `.cpp`: Registrazione tipi QML e wiring dei nuovi servizi Git.
+- `src/desktop/ui/qml/views/BranchSwitcherDropdown.qml`: Componente QML per selezione e creazione rapida di branch.
+- `src/desktop/ui/qml/views/BranchManagerModal.qml`: Finestra di dialogo per gestione completa branch e sincronizzazione remote.
+- `src/desktop/ui/qml/views/CommitHistoryPanel.qml`: Vista completa del commit log con dettagli.
+- `src/desktop/ui/qml/views/WorkspaceSessionView.qml`: Header arricchito e switch di modalità Changes / History.
+- `tests/unit/viewmodels_unit_tests.cpp`: Test unitari MVVM (188 asserzioni Catch2 + QSignalSpy).
+
 ### Risultati di Verifica
-- **Unit Tests:** `gf_unit_tests` 100% passed.
-- **Integration Tests:** `gf_integration_tests` 100% passed (99 asserzioni nel caso remote/merge).
+- **Unit Tests MVVM:** `gf_viewmodels_tests` 100% passed (188 asserzioni).
+- **Smoke Test Headless Desktop:** `./build/qt-linux/git_flux --test-startup` completato con codice 0.
+- **CTest Suite Completa:** `gf_unit_tests`, `gf_viewmodels_tests`, `gf_integration_tests` 100% passed.
 - **Compilazione Clean:** Compilazione con `-Werror` su GCC 14/Ninja senza warning sia su preset `linux-core-release` (Zero-Qt) che su preset `linux-qt-release`.

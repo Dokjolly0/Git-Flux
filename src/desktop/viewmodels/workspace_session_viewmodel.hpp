@@ -2,9 +2,10 @@
 
 #include "core/modules/repositories/bl/repository_service.hpp"
 #include "core/modules/workspaces/bl/workspace_service.hpp"
-#include "desktop/viewmodels/working_tree_viewmodel.hpp"
+#include "desktop/viewmodels/branch_manager_viewmodel.hpp"
 #include "desktop/viewmodels/commit_box_viewmodel.hpp"
 #include "desktop/viewmodels/diff_viewmodel.hpp"
+#include "desktop/viewmodels/working_tree_viewmodel.hpp"
 
 #include <QObject>
 #include <QString>
@@ -29,6 +30,7 @@ class WorkspaceSessionViewModel final : public QObject {
     Q_PROPERTY(WorkingTreeViewModel* workingTree READ workingTree CONSTANT)
     Q_PROPERTY(CommitBoxViewModel* commitBox READ commitBox CONSTANT)
     Q_PROPERTY(DiffViewModel* diffViewer READ diffViewer CONSTANT)
+    Q_PROPERTY(BranchManagerViewModel* branchManager READ branchManager CONSTANT)
 
 public:
     struct SessionTabItem {
@@ -44,6 +46,9 @@ public:
                                        gf::git::bl::GitWorkingTreeService& statusService,
                                        gf::git::bl::GitStagingService& stagingService,
                                        gf::git::bl::GitDiffService& diffService,
+                                       gf::git::bl::GitBranchService& branchService,
+                                       gf::git::bl::GitHistoryService& historyService,
+                                       gf::git::bl::GitRemoteMergeService& remoteMergeService,
                                        QObject* parent = nullptr);
     ~WorkspaceSessionViewModel() override = default;
 
@@ -59,6 +64,7 @@ public:
     [[nodiscard]] WorkingTreeViewModel* workingTree() noexcept { return &m_workingTree; }
     [[nodiscard]] CommitBoxViewModel* commitBox() noexcept { return &m_commitBox; }
     [[nodiscard]] DiffViewModel* diffViewer() noexcept { return &m_diffViewer; }
+    [[nodiscard]] BranchManagerViewModel* branchManager() noexcept { return &m_branchManager; }
 
     Q_INVOKABLE void openRepository(const QString& repoId, const QString& name, const QString& path);
     Q_INVOKABLE void openRepositories(const QStringList& repoIds);
@@ -80,6 +86,7 @@ private:
     WorkingTreeViewModel m_workingTree;
     CommitBoxViewModel m_commitBox;
     DiffViewModel m_diffViewer;
+    BranchManagerViewModel m_branchManager;
 
     std::vector<SessionTabItem> m_tabs;
     int m_activeTabIndex = -1;

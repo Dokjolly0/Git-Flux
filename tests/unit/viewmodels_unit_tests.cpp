@@ -10,11 +10,17 @@
 #include "desktop/viewmodels/working_tree_viewmodel.hpp"
 #include "desktop/viewmodels/commit_box_viewmodel.hpp"
 #include "desktop/viewmodels/diff_viewmodel.hpp"
+#include "desktop/viewmodels/branch_list_model.hpp"
+#include "desktop/viewmodels/commit_history_list_model.hpp"
+#include "desktop/viewmodels/branch_manager_viewmodel.hpp"
 #include "desktop/viewmodels/workspace_session_viewmodel.hpp"
 #include "core/modules/git/ports/repository_git_ops.hpp"
 #include "core/modules/git/bl/git_working_tree_service.hpp"
 #include "core/modules/git/bl/git_staging_service.hpp"
 #include "core/modules/git/bl/git_diff_service.hpp"
+#include "core/modules/git/bl/git_branch_service.hpp"
+#include "core/modules/git/bl/git_history_service.hpp"
+#include "core/modules/git/bl/git_remote_merge_service.hpp"
 
 #include "infrastructure/persistence/sqlite/connection/sqlite_connection.hpp"
 #include "infrastructure/persistence/sqlite/migrations/schema_migrator.hpp"
@@ -655,13 +661,19 @@ TEST_CASE("WorkspaceSessionViewModel multi-tab orchestration", "[viewmodel][sess
     gf::git::bl::GitWorkingTreeService statusService(mockOps);
     gf::git::bl::GitStagingService stagingService(mockOps);
     gf::git::bl::GitDiffService diffService(mockOps);
+    gf::git::bl::GitBranchService branchService(mockOps);
+    gf::git::bl::GitHistoryService historyService(mockOps);
+    gf::git::bl::GitRemoteMergeService remoteMergeService(mockOps);
 
     WorkspaceSessionViewModel sessionVm(
         *ctx.repoService,
         *ctx.workspaceService,
         statusService,
         stagingService,
-        diffService
+        diffService,
+        branchService,
+        historyService,
+        remoteMergeService
     );
 
     CHECK_FALSE(sessionVm.hasOpenTabs());
@@ -699,4 +711,142 @@ TEST_CASE("WorkspaceSessionViewModel multi-tab orchestration", "[viewmodel][sess
     sessionVm.closeTab(0);
     CHECK_FALSE(sessionVm.hasOpenTabs());
     CHECK(sessionVm.activeTabIndex() == -1);
+}
+
+TEST_CASE("BranchListModel and CommitHistoryListModel MVVM representations", "[viewmodel][models][branch][history]") {
+    ensureQtApp();
+
+    SECTION("BranchListModel handles branch roles and reset") {
+        BranchListModel model;
+        CHECK(model.rowCount() == 0);
+
+        std::vector<gf::git::bo::GitBranch> branches = {
+            gf::git::bo::GitBranch{
+                .name = "main",
+                .shortName = "main",
+                .fullName = "refs/heads/main",
+                .targetCommitSha = "aaaa1111",
+                .upstream = "origin/main",
+                .ahead = 2,
+                .behind = 1,
+                .isCurrent = true,
+                .isDetached = false,
+                .type = gf::git::bo::BranchType::Local
+            },
+            gf::git::bo::GitBranch{
+                .name = "origin/feature",
+                .shortName = "feature",
+                .fullName = "refs/remotes/origin/feature",
+                .targetCommitSha = "bbbb2222",
+                .upstream = {},
+                .ahead = 0,
+                .behind = 0,
+                .isCurrent = false,
+                .isDetached = false,
+                .type = gf::git::bo::BranchType::Remote
+            }
+        };
+
+        model.setBranches(branches);
+        REQUIRE(model.rowCount() == 2);
+
+        auto idx0 = model.index(0);
+        CHECK(model.data(idx0, BranchListModel::NameRole).toString() == "main");
+        CHECK(model.data(idx0, BranchListModel::ShortNameRole).toString() == "main");
+        CHECK(model.data(idx0, BranchListModel::IsCurrentRole).toBool() == true);
+        CHECK(model.data(idx0, BranchListModel::IsRemoteRole).toBool() == false);
+        CHECK(model.data(idx0, BranchListModel::UpstreamRole).toString() == "origin/main");
+        CHECK(model.data(idx0, BranchListModel::AheadCountRole).toLongLong() == 2);
+        CHECK(model.data(idx0, BranchListModel::BehindCountRole).toLongLong() == 1);
+        CHECK(model.data(idx0, BranchListModel::TargetShaRole).toString() == "aaaa1111");
+
+        auto idx1 = model.index(1);
+        CHECK(model.data(idx1, BranchListModel::IsRemoteRole).toBool() == true);
+        CHECK(model.data(idx1, BranchListModel::IsCurrentRole).toBool() == false);
+    }
+
+    SECTION("CommitHistoryListModel handles commit roles and reset") {
+        CommitHistoryListModel model;
+        CHECK(model.rowCount() == 0);
+
+        std::vector<gf::git::bo::GitCommitLogItem> commits = {
+            gf::git::bo::GitCommitLogItem{
+                .sha = "1234567890abcdef",
+                .shortSha = "1234567",
+                .parents = {"parent1", "parent2"},
+                .authorName = "Author A",
+                .authorEmail = "a@test.com",
+                .authorDateIso = "2026-11-07T12:00:00Z",
+                .subject = "Commit Subject",
+                .body = "Commit Body",
+                .refDecorations = {"HEAD -> main", "tag: v1.0"}
+            }
+        };
+
+        model.setCommits(commits);
+        REQUIRE(model.rowCount() == 1);
+
+        auto idx0 = model.index(0);
+        CHECK(model.data(idx0, CommitHistoryListModel::ShaRole).toString() == "1234567890abcdef");
+        CHECK(model.data(idx0, CommitHistoryListModel::ShortShaRole).toString() == "1234567");
+        CHECK(model.data(idx0, CommitHistoryListModel::SubjectRole).toString() == "Commit Subject");
+        CHECK(model.data(idx0, CommitHistoryListModel::BodyRole).toString() == "Commit Body");
+        CHECK(model.data(idx0, CommitHistoryListModel::AuthorNameRole).toString() == "Author A");
+        CHECK(model.data(idx0, CommitHistoryListModel::AuthorEmailRole).toString() == "a@test.com");
+        CHECK(model.data(idx0, CommitHistoryListModel::AuthorDateRole).toString() == "2026-11-07T12:00:00Z");
+
+        auto decs = model.data(idx0, CommitHistoryListModel::DecorationsRole).toStringList();
+        REQUIRE(decs.size() == 2);
+        CHECK(decs[0] == "HEAD -> main");
+        CHECK(decs[1] == "tag: v1.0");
+
+        auto parents = model.data(idx0, CommitHistoryListModel::ParentsRole).toStringList();
+        REQUIRE(parents.size() == 2);
+        CHECK(parents[0] == "parent1");
+        CHECK(parents[1] == "parent2");
+    }
+}
+
+TEST_CASE("BranchManagerViewModel operations and signal propagation", "[viewmodel][branch][manager]") {
+    ensureQtApp();
+
+    MockFullGitOps mockOps;
+    gf::git::bl::GitBranchService branchService(mockOps);
+    gf::git::bl::GitHistoryService historyService(mockOps);
+    gf::git::bl::GitRemoteMergeService remoteMergeService(mockOps);
+
+    BranchManagerViewModel branchVm(branchService, historyService, remoteMergeService);
+    auto tempDir = std::filesystem::temp_directory_path();
+
+    branchVm.setRepositoryPath(QString::fromStdString(tempDir.string()));
+
+    QSignalSpy switchedSpy(&branchVm, &BranchManagerViewModel::branchSwitched);
+    QSignalSpy completedSpy(&branchVm, &BranchManagerViewModel::operationCompleted);
+
+    // Checkout
+    bool checkedOut = branchVm.checkoutBranch("main");
+    CHECK(checkedOut);
+    CHECK(switchedSpy.count() == 1);
+    CHECK(completedSpy.count() == 1);
+
+    // Create branch
+    bool created = branchVm.createBranch("feature/test", true);
+    CHECK(created);
+    CHECK(switchedSpy.count() == 2);
+    CHECK(completedSpy.count() == 2);
+
+    // Delete branch
+    bool deleted = branchVm.deleteBranch("feature/test", false);
+    CHECK(deleted);
+    CHECK(completedSpy.count() == 3);
+
+    // Rename branch
+    bool renamed = branchVm.renameBranch("old-name", "new-name");
+    CHECK(renamed);
+    CHECK(completedSpy.count() == 4);
+
+    // Merge branch
+    bool merged = branchVm.mergeBranch("feature/test", false);
+    CHECK(merged);
+    CHECK(completedSpy.count() == 5);
 }

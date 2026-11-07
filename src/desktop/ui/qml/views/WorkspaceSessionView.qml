@@ -7,6 +7,7 @@ Rectangle {
     color: "#0E1117"
 
     property var sessionVm: null
+    property string activeViewMode: "changes" // "changes" | "history"
 
     signal returnToHomeRequested()
     signal quickOpenRequested()
@@ -16,7 +17,7 @@ Rectangle {
         spacing: 0
 
         // ==========================================
-        // 1. REPO TABS HEADER (Wireframe Pagina 04)
+        // 1. REPO TABS & BRANCH TOOLBAR HEADER
         // ==========================================
         Rectangle {
             Layout.fillWidth: true
@@ -123,13 +124,11 @@ Rectangle {
                                         visible: modelData.isDirty
                                     }
 
-                                    // Icona Cartella
                                     Text {
                                         text: "📁"
                                         font.pixelSize: 12
                                     }
 
-                                    // Nome Repository
                                     Text {
                                         text: modelData.name
                                         color: (sessionVm && sessionVm.activeTabIndex === index) ? "#FFFFFF" : "#94A3B8"
@@ -137,7 +136,6 @@ Rectangle {
                                         font.pixelSize: 12
                                     }
 
-                                    // Crocetta Chiusura Tab
                                     MouseArea {
                                         width: 16
                                         height: 16
@@ -178,44 +176,208 @@ Rectangle {
                         }
                     }
                 }
+
+                // Separatore
+                Rectangle {
+                    Layout.preferredWidth: 1
+                    Layout.preferredHeight: 22
+                    color: "#334155"
+                }
+
+                // Selettore Branch Dropdown
+                BranchSwitcherDropdown {
+                    Layout.preferredHeight: 32
+                    branchManager: (root.sessionVm && root.sessionVm.branchManager) ? root.sessionVm.branchManager : null
+                }
+
+                // Pulsanti Azioni Remote Rapide
+                Button {
+                    text: "⬇ Fetch"
+                    Layout.preferredHeight: 32
+                    background: Rectangle {
+                        color: parent.hovered ? "#1E293B" : "transparent"
+                        radius: 4
+                    }
+                    contentItem: Text {
+                        text: parent.text
+                        color: "#94A3B8"
+                        font.pixelSize: 11
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: {
+                        if (root.sessionVm && root.sessionVm.branchManager) {
+                            root.sessionVm.branchManager.fetchRemote("origin");
+                        }
+                    }
+                }
+
+                Button {
+                    text: "⬇ Pull"
+                    Layout.preferredHeight: 32
+                    background: Rectangle {
+                        color: parent.hovered ? "#1E293B" : "transparent"
+                        radius: 4
+                    }
+                    contentItem: Text {
+                        text: parent.text
+                        color: "#94A3B8"
+                        font.pixelSize: 11
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: {
+                        if (root.sessionVm && root.sessionVm.branchManager) {
+                            root.sessionVm.branchManager.pullRemote("origin");
+                        }
+                    }
+                }
+
+                Button {
+                    text: "⬆ Push"
+                    Layout.preferredHeight: 32
+                    background: Rectangle {
+                        color: parent.hovered ? "#1E293B" : "transparent"
+                        radius: 4
+                    }
+                    contentItem: Text {
+                        text: parent.text
+                        color: "#94A3B8"
+                        font.pixelSize: 11
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: {
+                        if (root.sessionVm && root.sessionVm.branchManager) {
+                            root.sessionVm.branchManager.pushRemote("origin", false);
+                        }
+                    }
+                }
+
+                Button {
+                    text: "⚙ Branch..."
+                    Layout.preferredHeight: 32
+                    background: Rectangle {
+                        color: parent.hovered ? "#1E293B" : "#161B22"
+                        radius: 4
+                        border.color: "#334155"
+                        border.width: 1
+                    }
+                    contentItem: Text {
+                        text: parent.text
+                        color: "#E2E8F0"
+                        font.pixelSize: 11
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: {
+                        branchModal.open();
+                    }
+                }
+
+                // Separatore
+                Rectangle {
+                    Layout.preferredWidth: 1
+                    Layout.preferredHeight: 22
+                    color: "#334155"
+                }
+
+                // Toggle Vista: "Changes" vs "History"
+                RowLayout {
+                    spacing: 2
+                    Rectangle {
+                        Layout.preferredHeight: 28
+                        Layout.preferredWidth: 70
+                        radius: 4
+                        color: root.activeViewMode === "changes" ? "#2563EB" : "#1E293B"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Changes"
+                            color: root.activeViewMode === "changes" ? "#FFFFFF" : "#94A3B8"
+                            font.bold: root.activeViewMode === "changes"
+                            font.pixelSize: 11
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.activeViewMode = "changes"
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.preferredHeight: 28
+                        Layout.preferredWidth: 70
+                        radius: 4
+                        color: root.activeViewMode === "history" ? "#2563EB" : "#1E293B"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "History"
+                            color: root.activeViewMode === "history" ? "#FFFFFF" : "#94A3B8"
+                            font.bold: root.activeViewMode === "history"
+                            font.pixelSize: 11
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.activeViewMode = "history"
+                        }
+                    }
+                }
             }
         }
 
         // ==========================================
-        // 2. CORPO DELLA SESSIONE (SplitView)
+        // 2. CORPO DELLA SESSIONE (Changes vs History)
         // ==========================================
-        SplitView {
+        StackLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            orientation: Qt.Horizontal
+            currentIndex: root.activeViewMode === "changes" ? 0 : 1
 
-            // Colonna Sinistra: Working Tree + Commit Box
+            // Vista 0: Changes (Working Tree + Commit Box + Diff Viewer)
             SplitView {
-                SplitView.preferredWidth: 380
-                SplitView.minimumWidth: 280
-                SplitView.maximumWidth: 600
-                orientation: Qt.Vertical
+                orientation: Qt.Horizontal
 
-                WorkingTreePanel {
-                    SplitView.fillHeight: true
-                    SplitView.minimumHeight: 200
-                    sessionVm: root.sessionVm
+                SplitView {
+                    SplitView.preferredWidth: 380
+                    SplitView.minimumWidth: 280
+                    SplitView.maximumWidth: 600
+                    orientation: Qt.Vertical
+
+                    WorkingTreePanel {
+                        SplitView.fillHeight: true
+                        SplitView.minimumHeight: 200
+                        sessionVm: root.sessionVm
+                    }
+
+                    CommitBox {
+                        SplitView.preferredHeight: 180
+                        SplitView.minimumHeight: 140
+                        SplitView.maximumHeight: 300
+                        sessionVm: root.sessionVm
+                    }
                 }
 
-                CommitBox {
-                    SplitView.preferredHeight: 180
-                    SplitView.minimumHeight: 140
-                    SplitView.maximumHeight: 300
+                DiffViewerPanel {
+                    SplitView.fillWidth: true
+                    SplitView.minimumWidth: 400
                     sessionVm: root.sessionVm
                 }
             }
 
-            // Colonna Destra: Diff Viewer
-            DiffViewerPanel {
-                SplitView.fillWidth: true
-                SplitView.minimumWidth: 400
+            // Vista 1: History (Commit Graph / Log)
+            CommitHistoryPanel {
                 sessionVm: root.sessionVm
             }
         }
+    }
+
+    BranchManagerModal {
+        id: branchModal
+        branchManager: (root.sessionVm && root.sessionVm.branchManager) ? root.sessionVm.branchManager : null
     }
 }

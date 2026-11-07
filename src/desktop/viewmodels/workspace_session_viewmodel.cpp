@@ -9,16 +9,23 @@ WorkspaceSessionViewModel::WorkspaceSessionViewModel(repositories::bl::Repositor
                                                      gf::git::bl::GitWorkingTreeService& statusService,
                                                      gf::git::bl::GitStagingService& stagingService,
                                                      gf::git::bl::GitDiffService& diffService,
+                                                     gf::git::bl::GitBranchService& branchService,
+                                                     gf::git::bl::GitHistoryService& historyService,
+                                                     gf::git::bl::GitRemoteMergeService& remoteMergeService,
                                                      QObject* parent)
     : QObject(parent)
     , m_repoService(repoService)
     , m_workspaceService(workspaceService)
     , m_workingTree(statusService, stagingService, this)
     , m_commitBox(stagingService, this)
-    , m_diffViewer(diffService, this) {
+    , m_diffViewer(diffService, this)
+    , m_branchManager(branchService, historyService, remoteMergeService, this) {
 
     connect(&m_commitBox, &CommitBoxViewModel::commitSucceeded,
             this, &WorkspaceSessionViewModel::onCommitSucceeded);
+
+    connect(&m_branchManager, &BranchManagerViewModel::branchSwitched,
+            this, [this](const QString&) { refreshActiveTab(); });
 }
 
 QVariantList WorkspaceSessionViewModel::tabs() const {
@@ -41,6 +48,7 @@ void WorkspaceSessionViewModel::setActiveTabIndex(int index) {
         m_activeTabIndex = -1;
         m_workingTree.refresh({});
         m_diffViewer.clear();
+        m_branchManager.setRepositoryPath({});
         emit activeTabChanged();
         return;
     }
@@ -148,6 +156,7 @@ void WorkspaceSessionViewModel::closeTab(int index) {
         m_activeTabIndex = -1;
         m_workingTree.refresh({});
         m_diffViewer.clear();
+        m_branchManager.setRepositoryPath({});
         emit activeTabChanged();
     } else if (m_activeTabIndex >= static_cast<int>(m_tabs.size())) {
         setActiveTabIndex(static_cast<int>(m_tabs.size() - 1));
@@ -162,6 +171,7 @@ void WorkspaceSessionViewModel::closeAllTabs() {
     m_activeTabIndex = -1;
     m_workingTree.refresh({});
     m_diffViewer.clear();
+    m_branchManager.setRepositoryPath({});
     emit tabsChanged();
     emit activeTabChanged();
 }
@@ -171,11 +181,13 @@ void WorkspaceSessionViewModel::refreshActiveTab() {
     if (path.isEmpty()) {
         m_workingTree.refresh({});
         m_diffViewer.clear();
+        m_branchManager.setRepositoryPath({});
         return;
     }
 
     m_workingTree.refresh(path);
     m_diffViewer.clear();
+    m_branchManager.setRepositoryPath(path);
 
     if (m_activeTabIndex >= 0 && m_activeTabIndex < static_cast<int>(m_tabs.size())) {
         m_tabs[static_cast<std::size_t>(m_activeTabIndex)].branch = m_workingTree.branchName();
