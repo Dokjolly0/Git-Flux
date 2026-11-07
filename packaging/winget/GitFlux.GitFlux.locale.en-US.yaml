@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: GitFlux.GitFlux
+PackageVersion: 0.1.0
+PackageLocale: en-US
+Publisher: GitFlux
+PublisherUrl: https://github.com/dokjolly/GitFlux
+PublisherSupportUrl: https://github.com/dokjolly/GitFlux/issues
+PackageName: Git Flux
+PackageUrl: https://github.com/dokjolly/GitFlux
+License: MIT
+LicenseUrl: https://github.com/dokjolly/GitFlux/blob/main/LICENSE
+Copyright: Copyright (c) 2026 GitFlux Authors
+ShortDescription: Modern local-first desktop Git client engineered in C++23 and Qt Quick 6
+Description: |
+  Git Flux is a high-performance, modern local-first Git client engineered in C++23
+  and Qt Quick 6. It features blazing fast branch management, visual commit tree
+  navigation, side-by-side diff viewers with rich syntax highlighting, integrated
+  conflict resolution, stash management, and multi-repository workspaces.
+Tags:
+  - git
+  - vcs
+  - developer-tools
+  - gui
+  - desktop
+  - source-control
+ReleaseNotesUrl: https://github.com/dokjolly/GitFlux/releases
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

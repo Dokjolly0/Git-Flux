@@ -206,6 +206,8 @@ jobs:
     name: 🚀 Create GitHub Release & Upload Packages
     needs: [quality-gate-test, build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.release_info.outputs.tag_name }}
 
     steps:
       - name: Checkout Code
@@ -265,3 +267,33 @@ jobs:
 
             ### Integrity:
             All packages are verified with SHA-256 checksums available in `SHA256SUMS.txt`.
+
+  # ==============================================================================
+  # 6. PUBLISH TO WINDOWS PACKAGE MANAGER (WINGET)
+  # ==============================================================================
+  publish-winget:
+    name: 🪟 Publish to WinGet (Windows Package Manager)
+    needs: publish-release
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check WINGET_TOKEN Secret
+        id: check_token
+        run: |
+          if [ -z "${{ secrets.WINGET_TOKEN }}" ]; then
+            echo "::warning::WINGET_TOKEN secret is not set. Skipping WinGet package publication. See packaging/winget/README.md for instructions."
+            echo "has_token=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_token=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Publish to microsoft/winget-pkgs via winget-releaser
+        if: steps.check_token.outputs.has_token == 'true'
+        uses: vedantmgoyal9/winget-releaser@v2
+        with:
+          identifier: GitFlux.GitFlux
+          token: ${{ secrets.WINGET_TOKEN }}
+          installers-regex: 'windows-x64\.zip$'
+          release-tag: ${{ needs.publish-release.outputs.tag_name }}
+          max-versions-to-keep: 5
