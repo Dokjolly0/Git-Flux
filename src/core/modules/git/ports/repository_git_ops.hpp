@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/modules/git/bo/commit_options.hpp"
+#include "core/modules/git/bo/diff_models.hpp"
 #include "core/modules/git/bo/repo_working_tree_status.hpp"
 
 #include <expected>
@@ -59,6 +60,17 @@ public:
     /// Crea un commit con i file attualmente staged.
     [[nodiscard]] virtual std::expected<bo::CommitResult, GitOpsError>
     createCommit(const std::filesystem::path& repoPath, const bo::CommitOptions& options) = 0;
+
+    /// Estrae il diff per un file specifico nello scope specificato (staged, unstaged o untracked).
+    [[nodiscard]] virtual std::expected<bo::FileDiff, GitOpsError>
+    getFileDiff(const std::filesystem::path& repoPath,
+                const std::string& filePath,
+                bo::DiffScope scope) = 0;
+
+    /// Estrae tutti i diff per lo scope specificato (staged o unstaged).
+    [[nodiscard]] virtual std::expected<std::vector<bo::FileDiff>, GitOpsError>
+    getAllDiffs(const std::filesystem::path& repoPath,
+                bo::DiffScope scope) = 0;
 };
 
 } // namespace gf::git::ports

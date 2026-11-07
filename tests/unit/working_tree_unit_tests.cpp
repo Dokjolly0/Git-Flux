@@ -81,6 +81,19 @@ public:
     createCommit(const std::filesystem::path&, const gf::git::bo::CommitOptions&) override {
         return gf::git::bo::CommitResult{};
     }
+
+    [[nodiscard]] std::expected<gf::git::bo::FileDiff, GitOpsError>
+    getFileDiff(const std::filesystem::path&,
+                const std::string&,
+                gf::git::bo::DiffScope) override {
+        return gf::git::bo::FileDiff{};
+    }
+
+    [[nodiscard]] std::expected<std::vector<gf::git::bo::FileDiff>, GitOpsError>
+    getAllDiffs(const std::filesystem::path&,
+                gf::git::bo::DiffScope) override {
+        return std::vector<gf::git::bo::FileDiff>{};
+    }
 };
 
 } // namespace

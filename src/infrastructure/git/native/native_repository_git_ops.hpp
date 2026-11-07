@@ -31,6 +31,15 @@ public:
     [[nodiscard]] std::expected<gf::git::bo::CommitResult, gf::git::ports::GitOpsError>
     createCommit(const std::filesystem::path& repoPath, const gf::git::bo::CommitOptions& options) override;
 
+    [[nodiscard]] std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
+    getFileDiff(const std::filesystem::path& repoPath,
+                const std::string& filePath,
+                gf::git::bo::DiffScope scope) override;
+
+    [[nodiscard]] std::expected<std::vector<gf::git::bo::FileDiff>, gf::git::ports::GitOpsError>
+    getAllDiffs(const std::filesystem::path& repoPath,
+                gf::git::bo::DiffScope scope) override;
+
 private:
     gf::git::ports::IGitCommandExecutor& m_executor;
 };

@@ -1,5 +1,6 @@
 #include "infrastructure/git/native/native_repository_git_ops.hpp"
 #include "core/modules/git/bl/porcelain_status_parser.hpp"
+#include "core/modules/git/bl/unified_diff_parser.hpp"
 #include "core/modules/git/bo/git_command.hpp"
 
 #include <algorithm>
@@ -477,6 +478,126 @@ NativeRepositoryGitOps::createCommit(const std::filesystem::path& repoPath,
         .summary = extractSummaryLine(options.message),
         .branch = std::move(branch)
     };
+}
+
+std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::getFileDiff(const std::filesystem::path& repoPath,
+                                    const std::string& filePath,
+                                    gf::git::bo::DiffScope scope) {
+    std::vector<std::string> args;
+    if (scope == gf::git::bo::DiffScope::Staged) {
+        args = {"diff", "--cached", "--no-color", "-p", "--", filePath};
+    } else if (scope == gf::git::bo::DiffScope::Unstaged) {
+        args = {"diff", "--no-color", "-p", "--", filePath};
+    } else {
+        // Untracked: usa --no-index rispetto a /dev/null
+        args = {"diff", "--no-index", "--no-color", "-p", "--", "/dev/null", filePath};
+    }
+
+    gf::git::bo::GitCommand cmd{
+        .args = std::move(args),
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile eseguire git diff: " + execResult.error().message,
+            .command = "git diff"
+        });
+    }
+
+    // Per --no-index, exitCode 1 significa che sono presenti differenze
+    const bool isNoIndex = (scope == gf::git::bo::DiffScope::Untracked);
+    if ((isNoIndex && execResult->exitCode >= 2) || (!isNoIndex && execResult->exitCode > 1)) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes,
+            .command = "git diff"
+        });
+    }
+
+    if (execResult->stdoutBytes.empty()) {
+        return gf::git::bo::FileDiff{
+            .oldPath = filePath,
+            .newPath = filePath
+        };
+    }
+
+    auto diffOpt = gf::git::bl::UnifiedDiffParser::parseSingle(execResult->stdoutBytes);
+    if (diffOpt.has_value()) {
+        if (diffOpt->newPath.empty()) {
+            diffOpt->newPath = filePath;
+        }
+        return std::move(*diffOpt);
+    }
+
+    return gf::git::bo::FileDiff{
+        .oldPath = filePath,
+        .newPath = filePath
+    };
+}
+
+std::expected<std::vector<gf::git::bo::FileDiff>, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::getAllDiffs(const std::filesystem::path& repoPath,
+                                    gf::git::bo::DiffScope scope) {
+    if (scope == gf::git::bo::DiffScope::Untracked) {
+        // Per Untracked, elenca i file non tracciati e ricava il diff per ciascuno
+        auto statusRes = getWorkingTreeStatus(repoPath);
+        if (!statusRes) {
+            return std::unexpected(statusRes.error());
+        }
+
+        std::vector<gf::git::bo::FileDiff> result;
+        result.reserve(statusRes->untrackedFiles.size());
+        for (const auto& item : statusRes->untrackedFiles) {
+            auto diff = getFileDiff(repoPath, item.path, gf::git::bo::DiffScope::Untracked);
+            if (diff) {
+                result.push_back(std::move(*diff));
+            }
+        }
+        return result;
+    }
+
+    std::vector<std::string> args;
+    if (scope == gf::git::bo::DiffScope::Staged) {
+        args = {"diff", "--cached", "--no-color", "-p"};
+    } else {
+        args = {"diff", "--no-color", "-p"};
+    }
+
+    gf::git::bo::GitCommand cmd{
+        .args = std::move(args),
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile eseguire git diff: " + execResult.error().message,
+            .command = "git diff"
+        });
+    }
+
+    if (execResult->exitCode > 1) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes,
+            .command = "git diff"
+        });
+    }
+
+    return gf::git::bl::UnifiedDiffParser::parse(execResult->stdoutBytes);
 }
 
 } // namespace gf::infra::git

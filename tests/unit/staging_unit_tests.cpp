@@ -79,6 +79,19 @@ public:
             .branch = "main"
         };
     }
+
+    std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
+    getFileDiff(const std::filesystem::path&,
+                const std::string&,
+                gf::git::bo::DiffScope) override {
+        return gf::git::bo::FileDiff{};
+    }
+
+    std::expected<std::vector<gf::git::bo::FileDiff>, gf::git::ports::GitOpsError>
+    getAllDiffs(const std::filesystem::path&,
+                gf::git::bo::DiffScope) override {
+        return std::vector<gf::git::bo::FileDiff>{};
+    }
 };
 
 } // namespace

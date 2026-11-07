@@ -1,0 +1,170 @@
+#include "core/modules/git/bl/git_diff_service.hpp"
+#include "core/modules/git/bl/git_staging_service.hpp"
+#include "core/modules/git/bl/git_working_tree_service.hpp"
+#include "infrastructure/git/git_discovery.hpp"
+#include "infrastructure/git/native/native_git_executor.hpp"
+#include "infrastructure/git/native/native_repository_git_ops.hpp"
+
+#include <catch2/catch_test_macros.hpp>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+
+namespace {
+
+struct DiffTestSandbox {
+    std::filesystem::path root;
+
+    DiffTestSandbox() {
+        const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+        root = std::filesystem::temp_directory_path() / ("gf_diff_integ_" + std::to_string(nonce));
+        std::filesystem::create_directories(root);
+    }
+
+    ~DiffTestSandbox() {
+        std::error_code ec;
+        std::filesystem::remove_all(root, ec);
+    }
+
+    void writeFile(const std::string& relativePath, const std::string& content) {
+        auto filePath = root / relativePath;
+        std::filesystem::create_directories(filePath.parent_path());
+        std::ofstream ofs(filePath, std::ios::trunc);
+        ofs << content;
+    }
+
+    void removeFile(const std::string& relativePath) {
+        std::filesystem::remove(root / relativePath);
+    }
+};
+
+} // namespace
+
+TEST_CASE("NativeRepositoryGitOps and GitDiffService real Git diff extraction", "[git][diff][integration]") {
+    auto gitDiscovery = gf::infra::git::GitDiscovery::discover();
+    REQUIRE(gitDiscovery.has_value());
+    const auto gitExe = gitDiscovery->directBinaryPath.empty()
+                            ? gitDiscovery->discoveredInPath
+                            : gitDiscovery->directBinaryPath;
+
+    gf::infra::git::NativeGitCommandExecutor executor(gitExe);
+    gf::infra::git::NativeRepositoryGitOps gitOps(executor);
+    gf::git::bl::GitStagingService stagingService(gitOps);
+    gf::git::bl::GitDiffService diffService(gitOps);
+
+    DiffTestSandbox sandbox;
+
+    // Inizializza repository Git
+    gf::git::bo::GitCommand initCmd{
+        .args = {"init", "-b", "main"},
+        .workingDirectory = sandbox.root,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard
+    };
+    auto initRes = executor.execute(initCmd);
+    REQUIRE(initRes.has_value());
+    REQUIRE(initRes->exitCode == 0);
+
+    // Configura autore locale di test
+    gf::git::bo::GitCommand cfgNameCmd{
+        .args = {"config", "user.name", "Diff Bot"},
+        .workingDirectory = sandbox.root,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard
+    };
+    auto cfgNameRes = executor.execute(cfgNameCmd);
+    REQUIRE(cfgNameRes.has_value());
+
+    gf::git::bo::GitCommand cfgEmailCmd{
+        .args = {"config", "user.email", "diffbot@gitflux.local"},
+        .workingDirectory = sandbox.root,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard
+    };
+    auto cfgEmailRes = executor.execute(cfgEmailCmd);
+    REQUIRE(cfgEmailRes.has_value());
+
+    SECTION("Staged diff su nuovo file in repository con unborn HEAD") {
+        sandbox.writeFile("hello.txt", "Alpha\nBeta\nGamma\n");
+        REQUIRE(stagingService.stageFiles(sandbox.root, {"hello.txt"}).has_value());
+
+        auto diffRes = diffService.getStagedFileDiff(sandbox.root, "hello.txt");
+        REQUIRE(diffRes.has_value());
+        CHECK(diffRes->additionsCount == 3);
+        CHECK(diffRes->deletionsCount == 0);
+        REQUIRE_FALSE(diffRes->hunks.empty());
+        CHECK(diffRes->hunks[0].lines.size() == 3);
+        CHECK(diffRes->hunks[0].lines[0].content == "Alpha");
+        CHECK(diffRes->hunks[0].lines[0].newLineNumber == 1);
+    }
+
+    SECTION("Unstaged diff su file tracciato modificato") {
+        sandbox.writeFile("code.cpp", "int a = 1;\nint b = 2;\nint c = 3;\n");
+        REQUIRE(stagingService.stageAll(sandbox.root).has_value());
+        REQUIRE(stagingService.createCommit(sandbox.root, gf::git::bo::CommitOptions{.message = "c1"}).has_value());
+
+        // Modifica la seconda riga
+        sandbox.writeFile("code.cpp", "int a = 1;\nint b = 200;\nint c = 3;\n");
+
+        auto diffRes = diffService.getUnstagedFileDiff(sandbox.root, "code.cpp");
+        REQUIRE(diffRes.has_value());
+        CHECK(diffRes->additionsCount == 1);
+        CHECK(diffRes->deletionsCount == 1);
+        REQUIRE_FALSE(diffRes->hunks.empty());
+
+        const auto& lines = diffRes->hunks[0].lines;
+        bool foundDeletion = false;
+        bool foundAddition = false;
+        for (const auto& l : lines) {
+            if (l.kind == gf::git::bo::DiffLineKind::Deletion && l.content == "int b = 2;") {
+                foundDeletion = true;
+                CHECK(l.oldLineNumber == 2);
+            }
+            if (l.kind == gf::git::bo::DiffLineKind::Addition && l.content == "int b = 200;") {
+                foundAddition = true;
+                CHECK(l.newLineNumber == 2);
+            }
+        }
+        CHECK(foundDeletion);
+        CHECK(foundAddition);
+    }
+
+    SECTION("Untracked file diff") {
+        sandbox.writeFile("init.txt", "init");
+        REQUIRE(stagingService.stageAll(sandbox.root).has_value());
+        REQUIRE(stagingService.createCommit(sandbox.root, gf::git::bo::CommitOptions{.message = "init"}).has_value());
+
+        sandbox.writeFile("notes.md", "# Titolo\nTesto della nota\n");
+
+        auto diffRes = diffService.getUntrackedFileDiff(sandbox.root, "notes.md");
+        REQUIRE(diffRes.has_value());
+        CHECK(diffRes->additionsCount == 2);
+        CHECK(diffRes->deletionsCount == 0);
+        REQUIRE_FALSE(diffRes->hunks.empty());
+        CHECK(diffRes->hunks[0].lines[0].content == "# Titolo");
+    }
+
+    SECTION("Unstaged diff su file cancellato") {
+        sandbox.writeFile("temp.txt", "Eliminami\n");
+        REQUIRE(stagingService.stageAll(sandbox.root).has_value());
+        REQUIRE(stagingService.createCommit(sandbox.root, gf::git::bo::CommitOptions{.message = "c1"}).has_value());
+
+        sandbox.removeFile("temp.txt");
+
+        auto diffRes = diffService.getUnstagedFileDiff(sandbox.root, "temp.txt");
+        REQUIRE(diffRes.has_value());
+        CHECK(diffRes->deletionsCount == 1);
+        CHECK(diffRes->additionsCount == 0);
+    }
+
+    SECTION("getAllDiffs estrae tutti i diff presenti") {
+        sandbox.writeFile("f1.txt", "v1\n");
+        sandbox.writeFile("f2.txt", "v1\n");
+        REQUIRE(stagingService.stageAll(sandbox.root).has_value());
+        REQUIRE(stagingService.createCommit(sandbox.root, gf::git::bo::CommitOptions{.message = "c1"}).has_value());
+
+        sandbox.writeFile("f1.txt", "v1 modified\n");
+        sandbox.writeFile("f2.txt", "v1 modified\n");
+
+        auto allDiffs = diffService.getAllDiffs(sandbox.root, gf::git::bo::DiffScope::Unstaged);
+        REQUIRE(allDiffs.has_value());
+        CHECK(allDiffs->size() == 2);
+    }
+}

@@ -49,9 +49,11 @@ target_include_directories(gf_domain INTERFACE
 
 add_library(gf_application STATIC
     src/core/modules/git/bl/porcelain_status_parser.cpp
+    src/core/modules/git/bl/unified_diff_parser.cpp
     src/core/modules/git/bl/operation_coordinator.cpp
     src/core/modules/git/bl/git_working_tree_service.cpp
     src/core/modules/git/bl/git_staging_service.cpp
+    src/core/modules/git/bl/git_diff_service.cpp
     src/core/modules/repositories/bl/repository_service.cpp
     src/core/modules/groups/bl/group_service.cpp
     src/core/modules/workspaces/bl/workspace_service.cpp
@@ -253,6 +255,7 @@ if(GF_BUILD_TESTING)
         tests/unit/services_unit_tests.cpp
         tests/unit/working_tree_unit_tests.cpp
         tests/unit/staging_unit_tests.cpp
+        tests/unit/diff_unit_tests.cpp
     )
     target_link_libraries(gf_unit_tests PRIVATE
         gf_git_cli_native
@@ -268,6 +271,7 @@ if(GF_BUILD_TESTING)
         tests/integration/sqlite_stores_integration_tests.cpp
         tests/integration/working_tree_integration_tests.cpp
         tests/integration/staging_integration_tests.cpp
+        tests/integration/diff_integration_tests.cpp
     )
     target_link_libraries(gf_integration_tests PRIVATE
         gf_git_cli_native
