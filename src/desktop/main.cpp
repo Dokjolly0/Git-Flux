@@ -26,12 +26,12 @@ public:
 } // namespace
 
 int main(int argc, char* argv[]) {
+    QCoreApplication::setOrganizationName(QStringLiteral("GitFlux"));
+    QCoreApplication::setApplicationName(QStringLiteral("GitFlux"));
+    QCoreApplication::setApplicationVersion(QStringLiteral("0.1.0"));
+
     QGuiApplication app(argc, argv);
-    app.setApplicationName(QStringLiteral("git_flux"));
     app.setApplicationDisplayName(QStringLiteral("Git Flux"));
-    app.setDesktopFileName(QStringLiteral("git_flux"));
-    app.setOrganizationName(QStringLiteral("GitFlux"));
-    app.setApplicationVersion(QStringLiteral("0.1.0"));
 
     // Set application icon from assets
     QIcon appIcon(QStringLiteral(":/qt/qml/GitFlux/Desktop/assets/logo.png"));

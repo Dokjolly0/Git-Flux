@@ -6,4 +6,4 @@ Exec=/projects/GitFlux/build/qt-linux/git_flux %U
 Icon=/projects/GitFlux/assets/logo.png
 Terminal=false
 Categories=Development;RevisionControl;
-StartupWMClass=git_flux
+StartupWMClass=GitFlux

@@ -184,7 +184,30 @@ std::filesystem::path AppBootstrap::defaultDatabasePath() {
     const QString appData = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     if (!appData.isEmpty()) {
         const QDir dir(appData);
-        return (std::filesystem::path(dir.absolutePath().toStdString()) / "gitflux.db");
+        auto targetPath = std::filesystem::path(dir.absolutePath().toStdString()) / "gitflux.db";
+        std::error_code ec;
+        if (std::filesystem::exists(targetPath, ec) && std::filesystem::file_size(targetPath, ec) > 0) {
+            return targetPath;
+        }
+
+        // Automatic discovery and migration of existing database across folder name variations
+        const QString home = QDir::homePath();
+        const std::vector<std::filesystem::path> candidates = {
+            std::filesystem::path(home.toStdString()) / ".local/share/GitFlux/GitFlux/gitflux.db",
+            std::filesystem::path(home.toStdString()) / ".local/share/GitFlux/git_flux/gitflux.db",
+            std::filesystem::path(home.toStdString()) / ".local/share/GitFlux/gitflux.db"
+        };
+        for (const auto& candidate : candidates) {
+            if (candidate != targetPath && std::filesystem::exists(candidate, ec) && std::filesystem::file_size(candidate, ec) > 0) {
+                std::filesystem::create_directories(targetPath.parent_path(), ec);
+                std::filesystem::copy_file(candidate, targetPath, std::filesystem::copy_options::overwrite_existing, ec);
+                if (!ec) {
+                    return targetPath;
+                }
+                return candidate;
+            }
+        }
+        return targetPath;
     }
     return std::filesystem::path("gitflux.db");
 }

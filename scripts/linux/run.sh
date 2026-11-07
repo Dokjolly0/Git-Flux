@@ -104,9 +104,10 @@ Exec=${BIN_PATH} %U
 Icon=${ROOT_DIR}/assets/logo.png
 Terminal=false
 Categories=Development;RevisionControl;
-StartupWMClass=git_flux
+StartupWMClass=GitFlux
 EOF
-    chmod +x ~/.local/share/applications/git_flux.desktop 2>/dev/null || true
+    cp ~/.local/share/applications/git_flux.desktop ~/.local/share/applications/GitFlux.desktop 2>/dev/null || true
+    chmod +x ~/.local/share/applications/git_flux.desktop ~/.local/share/applications/GitFlux.desktop 2>/dev/null || true
     update-desktop-database ~/.local/share/applications/ 2>/dev/null || true
 fi
 
