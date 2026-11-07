@@ -943,7 +943,11 @@ NativeRepositoryGitOps::getFileBlame(const std::filesystem::path& repoPath,
                 long long epoch = std::stoll(line.substr(12));
                 std::time_t t = static_cast<std::time_t>(epoch);
                 std::tm tmBuf{};
+#if defined(_WIN32)
+                gmtime_s(&tmBuf, &t);
+#else
                 gmtime_r(&t, &tmBuf);
+#endif
                 char dateBuf[32];
                 std::strftime(dateBuf, sizeof(dateBuf), "%Y-%m-%d", &tmBuf);
                 currentDate = dateBuf;
