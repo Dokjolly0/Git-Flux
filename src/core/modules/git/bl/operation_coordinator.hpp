@@ -46,11 +46,11 @@ public:
                 TaskPriority priority,
                 Fn&& fn) -> std::future<std::invoke_result_t<Fn>> {
         using ReturnType = std::invoke_result_t<Fn>;
-        std::packaged_task<ReturnType()> task(std::forward<Fn>(fn));
-        auto future = task.get_future();
+        auto task = std::make_shared<std::packaged_task<ReturnType()>>(std::forward<Fn>(fn));
+        auto future = task->get_future();
 
         enqueueTask(std::move(repoId), kind, priority,
-                    [t = std::move(task)]() mutable { t(); });
+                    [task]() { (*task)(); });
         return future;
     }
 
@@ -66,7 +66,7 @@ private:
     struct QueuedTask {
         repositories::bo::RepositoryId repoId;
         OperationKind kind;
-        std::move_only_function<void()> work;
+        std::function<void()> work;
     };
 
     struct RepoConcurrencyState {
@@ -77,7 +77,7 @@ private:
     void enqueueTask(repositories::bo::RepositoryId repoId,
                      OperationKind kind,
                      TaskPriority priority,
-                     std::move_only_function<void()> work);
+                     std::function<void()> work);
 
     [[nodiscard]] bool canStartTaskLocked(const QueuedTask& task) const;
     [[nodiscard]] bool tryPopRunnableTaskLocked(QueuedTask& outTask);

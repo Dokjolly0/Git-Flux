@@ -24,7 +24,7 @@ OperationCoordinator::~OperationCoordinator() {
 void OperationCoordinator::enqueueTask(repositories::bo::RepositoryId repoId,
                                        OperationKind kind,
                                        TaskPriority priority,
-                                       std::move_only_function<void()> work) {
+                                       std::function<void()> work) {
     {
         std::scoped_lock lock(mutex_);
         QueuedTask entry{std::move(repoId), kind, std::move(work)};

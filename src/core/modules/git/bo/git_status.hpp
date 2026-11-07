@@ -13,6 +13,8 @@ struct GitBranchHead {
     int behind = 0;
     bool detached = false;
     bool unborn = false;
+
+    auto operator<=>(const GitBranchHead&) const = default;
 };
 
 struct GitFileStatusEntry {
