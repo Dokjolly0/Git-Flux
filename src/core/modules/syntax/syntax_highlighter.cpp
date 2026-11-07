@@ -214,6 +214,7 @@ std::vector<Token> SyntaxHighlighter::tokenize(std::string_view line, Language l
     char prevNonWhitespaceChar = '\0';
     std::string prevIdentifier;
     TokenType prevTokenType = TokenType::PlainText;
+    const bool isMarkup = (lang == Language::Xml || lang == Language::Xaml || lang == Language::Html);
 
     while (i < n) {
         char c = line[i];
@@ -225,6 +226,16 @@ std::vector<Token> SyntaxHighlighter::tokenize(std::string_view line, Language l
                 ++i;
             }
             tokens.push_back({ TokenType::Whitespace, std::string(line.substr(start, i - start)) });
+            continue;
+        }
+
+        // Text content between tags for markup (e.g. <Label>Hello World</Label>)
+        if (isMarkup && prevNonWhitespaceChar == '>' && c != '<') {
+            std::size_t endPos = line.find('<', i);
+            if (endPos == std::string_view::npos) endPos = n;
+            tokens.push_back({ TokenType::PlainText, std::string(line.substr(i, endPos - i)) });
+            i = endPos;
+            prevNonWhitespaceChar = '\0';
             continue;
         }
 
@@ -272,7 +283,32 @@ std::vector<Token> SyntaxHighlighter::tokenize(std::string_view line, Language l
             }
         }
 
-        // 4. Preprocessor / Decorator / Directive (#include, @decorator, [Attribute])
+        // 4. Preprocessor / Decorator / Directive (#include, @decorator, [Attribute], <?xml ... ?>, <!DOCTYPE ...>)
+        if (isMarkup && c == '<' && (line.substr(i).starts_with("<?") || line.substr(i).starts_with("<!")) &&
+            !line.substr(i).starts_with("<!--")) {
+            auto endPos = line.find('>', i);
+            if (endPos != std::string_view::npos) {
+                ++endPos;
+                tokens.push_back({ TokenType::Preprocessor, std::string(line.substr(i, endPos - i)) });
+                i = endPos;
+                prevNonWhitespaceChar = '>';
+                continue;
+            }
+        }
+        if (isMarkup) {
+            if (c == '<' && i + 1 < n && line[i + 1] == '/') {
+                tokens.push_back({ TokenType::Punctuation, "</" });
+                i += 2;
+                prevNonWhitespaceChar = '/';
+                continue;
+            }
+            if (c == '/' && i + 1 < n && line[i + 1] == '>') {
+                tokens.push_back({ TokenType::Punctuation, "/>" });
+                i += 2;
+                prevNonWhitespaceChar = '>';
+                continue;
+            }
+        }
         if (c == '#' && (lang == Language::Cpp || lang == Language::C || lang == Language::CSharp)) {
             std::size_t start = i++;
             while (i < n && isIdentChar(line[i])) {
@@ -345,14 +381,14 @@ std::vector<Token> SyntaxHighlighter::tokenize(std::string_view line, Language l
         }
 
         // 7. Identifiers (Keywords, Types, Functions, Properties, Classes, Enums)
-        if (isIdentStart(c)) {
+        if (isIdentStart(c) || (isMarkup && (c == ':' || isIdentChar(c)))) {
             std::size_t start = i;
-            while (i < n && isIdentChar(line[i])) {
+            while (i < n && (isIdentChar(line[i]) || (isMarkup && (line[i] == ':' || line[i] == '-' || line[i] == '.')))) {
                 ++i;
             }
             std::string ident = std::string(line.substr(start, i - start));
 
-            // Peek next non-whitespace character to see if it's a function call "("
+            // Peek next non-whitespace character to see if it's a function call "(" or attribute "="
             std::size_t nextIdx = i;
             while (nextIdx < n && std::isspace(static_cast<unsigned char>(line[nextIdx]))) {
                 ++nextIdx;
@@ -361,94 +397,105 @@ std::vector<Token> SyntaxHighlighter::tokenize(std::string_view line, Language l
 
             TokenType type = TokenType::PlainText;
 
-            // Check if member access (e.g. obj.member, ptr->member)
-            bool isProperty = (prevNonWhitespaceChar == '.' ||
-                              (prevNonWhitespaceChar == '>' && start >= 2 && line.substr(start - 2, 2) == "->"));
-
-            // Check keywords based on language
-            bool isKeyword = false;
-            bool isBuiltinType = false;
-
-            switch (lang) {
-            case Language::Cpp:
-            case Language::C:
-                isKeyword = kCppKeywords.contains(ident);
-                isBuiltinType = kCppBuiltinTypes.contains(ident);
-                break;
-            case Language::JavaScript:
-            case Language::TypeScript:
-                isKeyword = kJsTsKeywords.contains(ident);
-                break;
-            case Language::Python:
-                isKeyword = kPythonKeywords.contains(ident);
-                isBuiltinType = kPythonBuiltins.contains(ident);
-                break;
-            case Language::Rust:
-                isKeyword = kRustKeywords.contains(ident);
-                isBuiltinType = kRustBuiltinTypes.contains(ident);
-                break;
-            case Language::Go:
-                isKeyword = kGoKeywords.contains(ident);
-                isBuiltinType = kGoBuiltinTypes.contains(ident);
-                break;
-            case Language::Java:
-            case Language::CSharp:
-            case Language::Kotlin:
-            case Language::Swift:
-                isKeyword = kJavaCSharpKeywords.contains(ident);
-                break;
-            case Language::Qml:
-                isKeyword = kQmlKeywords.contains(ident) || kJsTsKeywords.contains(ident);
-                if (kQmlElements.contains(ident)) {
-                    isBuiltinType = true;
+            if (isMarkup) {
+                if (prevNonWhitespaceChar == '<' || prevNonWhitespaceChar == '/') {
+                    type = TokenType::Type; // Tag Name (e.g. Button, Grid, x:Key)
+                } else if (nextChar == '=') {
+                    type = TokenType::Property; // Attribute Name (e.g. Margin, x:Name, Click)
+                } else if (isPascalCase(ident)) {
+                    type = TokenType::Type;
+                } else {
+                    type = TokenType::Property;
                 }
-                break;
-            case Language::Sql: {
-                std::string lowerIdent;
-                lowerIdent.reserve(ident.size());
-                for (char ch : ident) lowerIdent.push_back(static_cast<char>(std::tolower(ch)));
-                isKeyword = kSqlKeywords.contains(lowerIdent);
-                break;
-            }
-            case Language::Shell:
-            case Language::PowerShell:
-                isKeyword = kShellKeywords.contains(ident);
-                break;
-            case Language::CMake:
-                isKeyword = kCMakeKeywords.contains(ident);
-                break;
-            default:
-                // Generic fallback keyword check
-                isKeyword = kCppKeywords.contains(ident) || kJsTsKeywords.contains(ident) || kPythonKeywords.contains(ident);
-                break;
-            }
-
-            if (isBuiltinType) {
-                type = TokenType::Type;
-            } else if (isKeyword) {
-                type = TokenType::Keyword;
-            } else if (prevIdentifier == "class" || prevIdentifier == "struct" ||
-                       prevIdentifier == "enum" || prevIdentifier == "interface" ||
-                       prevIdentifier == "type" || prevIdentifier == "extends" ||
-                       prevIdentifier == "implements") {
-                type = TokenType::Type; // Named class, struct, enum or interface declaration
-            } else if (isProperty) {
-                type = (nextChar == '(') ? TokenType::Function : TokenType::Property;
-            } else if (nextChar == '(') {
-                type = TokenType::Function; // Function / Method call
-            } else if (isPascalCase(ident)) {
-                type = TokenType::Type; // Class, Struct, Type, or Enum name by naming convention
-            } else if (isAllCapsConstant(ident)) {
-                type = TokenType::Constant; // ALL_CAPS constant or enum value
-            } else if (ident.starts_with('$') || ident.starts_with("m_") || ident.starts_with("s_") ||
-                       (ident.starts_with('_') && ident.size() > 1)) {
-                type = TokenType::Variable; // Member variable, Shell variable, or private field
-            } else if (prevTokenType == TokenType::Type || prevIdentifier == "let" ||
-                       prevIdentifier == "const" || prevIdentifier == "var" ||
-                       prevIdentifier == "auto" || prevIdentifier == "val") {
-                type = TokenType::Variable; // Variable declaration after type/specifier
             } else {
-                type = TokenType::PlainText;
+                // Check if member access (e.g. obj.member, ptr->member)
+                bool isProperty = (prevNonWhitespaceChar == '.' ||
+                                  (prevNonWhitespaceChar == '>' && start >= 2 && line.substr(start - 2, 2) == "->"));
+
+                // Check keywords based on language
+                bool isKeyword = false;
+                bool isBuiltinType = false;
+
+                switch (lang) {
+                case Language::Cpp:
+                case Language::C:
+                    isKeyword = kCppKeywords.contains(ident);
+                    isBuiltinType = kCppBuiltinTypes.contains(ident);
+                    break;
+                case Language::JavaScript:
+                case Language::TypeScript:
+                    isKeyword = kJsTsKeywords.contains(ident);
+                    break;
+                case Language::Python:
+                    isKeyword = kPythonKeywords.contains(ident);
+                    break;
+                case Language::Rust:
+                    isKeyword = kRustKeywords.contains(ident);
+                    isBuiltinType = kRustBuiltinTypes.contains(ident);
+                    break;
+                case Language::Go:
+                    isKeyword = kGoKeywords.contains(ident);
+                    isBuiltinType = kGoBuiltinTypes.contains(ident);
+                    break;
+                case Language::Java:
+                case Language::CSharp:
+                case Language::Kotlin:
+                case Language::Swift:
+                    isKeyword = kJavaCSharpKeywords.contains(ident);
+                    break;
+                case Language::Qml:
+                    isKeyword = kQmlKeywords.contains(ident) || kJsTsKeywords.contains(ident);
+                    if (kQmlElements.contains(ident)) {
+                        isBuiltinType = true;
+                    }
+                    break;
+                case Language::Sql: {
+                    std::string lowerIdent;
+                    lowerIdent.reserve(ident.size());
+                    for (char ch : ident) lowerIdent.push_back(static_cast<char>(std::tolower(ch)));
+                    isKeyword = kSqlKeywords.contains(lowerIdent);
+                    break;
+                }
+                case Language::Shell:
+                case Language::PowerShell:
+                    isKeyword = kShellKeywords.contains(ident);
+                    break;
+                case Language::CMake:
+                    isKeyword = kCMakeKeywords.contains(ident);
+                    break;
+                default:
+                    // Generic fallback keyword check
+                    isKeyword = kCppKeywords.contains(ident) || kJsTsKeywords.contains(ident) || kPythonKeywords.contains(ident);
+                    break;
+                }
+
+                if (isBuiltinType) {
+                    type = TokenType::Type;
+                } else if (isKeyword) {
+                    type = TokenType::Keyword;
+                } else if (prevIdentifier == "class" || prevIdentifier == "struct" ||
+                           prevIdentifier == "enum" || prevIdentifier == "interface" ||
+                           prevIdentifier == "type" || prevIdentifier == "extends" ||
+                           prevIdentifier == "implements") {
+                    type = TokenType::Type; // Named class, struct, enum or interface declaration
+                } else if (isProperty) {
+                    type = (nextChar == '(') ? TokenType::Function : TokenType::Property;
+                } else if (nextChar == '(') {
+                    type = TokenType::Function; // Function / Method call
+                } else if (isPascalCase(ident)) {
+                    type = TokenType::Type; // Class, Struct, Type, or Enum name by naming convention
+                } else if (isAllCapsConstant(ident)) {
+                    type = TokenType::Constant; // ALL_CAPS constant or enum value
+                } else if (ident.starts_with('$') || ident.starts_with("m_") || ident.starts_with("s_") ||
+                           (ident.starts_with('_') && ident.size() > 1)) {
+                    type = TokenType::Variable; // Member variable, Shell variable, or private field
+                } else if (prevTokenType == TokenType::Type || prevIdentifier == "let" ||
+                           prevIdentifier == "const" || prevIdentifier == "var" ||
+                           prevIdentifier == "auto" || prevIdentifier == "val") {
+                    type = TokenType::Variable; // Variable declaration after type/specifier
+                } else {
+                    type = TokenType::PlainText;
+                }
             }
 
             tokens.push_back({ type, ident });
@@ -460,7 +507,8 @@ std::vector<Token> SyntaxHighlighter::tokenize(std::string_view line, Language l
 
         // 8. Operators and Punctuation
         TokenType opType = TokenType::Operator;
-        if (c == ';' || c == ',' || c == '(' || c == ')' || c == '{' || c == '}' || c == '[' || c == ']') {
+        if (c == ';' || c == ',' || c == '(' || c == ')' || c == '{' || c == '}' || c == '[' || c == ']' ||
+            (isMarkup && (c == '<' || c == '>'))) {
             opType = TokenType::Punctuation;
         }
 

@@ -32,6 +32,10 @@ TEST_CASE("LanguageDetector rileva correttamente il linguaggio in base all'esten
         REQUIRE(LanguageDetector::detect("script.rb").language == Language::Ruby);
         REQUIRE(LanguageDetector::detect("index.php").language == Language::Php);
         REQUIRE(LanguageDetector::detect("manifest.xml").language == Language::Xml);
+        REQUIRE(LanguageDetector::detect("App.xaml").language == Language::Xaml);
+        REQUIRE(LanguageDetector::detect("MainWindow.axaml").language == Language::Xaml);
+        REQUIRE(LanguageDetector::detect("icon.svg").language == Language::Xml);
+        REQUIRE(LanguageDetector::detect("App.csproj").language == Language::Xml);
         REQUIRE(LanguageDetector::detect("script.ps1").language == Language::PowerShell);
     }
 
@@ -206,6 +210,60 @@ TEST_CASE("SyntaxHighlighter tokenizza correttamente i vari costrutti di codice"
         REQUIRE(foundFrom);
         REQUIRE(foundWhere);
     }
+
+    SECTION("XAML Tag, Attributi, Namespace, Stringhe e Testo") {
+        std::string line = R"(    <Button x:Name="SubmitBtn" Click="OnClick" Margin="10,20">Click Me</Button>)";
+        auto tokens = SyntaxHighlighter::tokenize(line, Language::Xaml);
+
+        bool foundTag = false;
+        bool foundNameAttr = false;
+        bool foundClickAttr = false;
+        bool foundStringVal = false;
+        bool foundTextContent = false;
+
+        for (const auto& t : tokens) {
+            if (t.type == TokenType::Type && t.text == "Button") foundTag = true;
+            if (t.type == TokenType::Property && t.text == "x:Name") foundNameAttr = true;
+            if (t.type == TokenType::Property && t.text == "Click") foundClickAttr = true;
+            if (t.type == TokenType::String && t.text == "\"SubmitBtn\"") foundStringVal = true;
+            if (t.type == TokenType::PlainText && t.text == "Click Me") foundTextContent = true;
+        }
+
+        REQUIRE(foundTag);
+        REQUIRE(foundNameAttr);
+        REQUIRE(foundClickAttr);
+        REQUIRE(foundStringVal);
+        REQUIRE(foundTextContent);
+    }
+
+    SECTION("XML Direttiva, Commenti e Tag con attributi") {
+        std::string xmlDecl = R"(<?xml version="1.0" encoding="utf-8"?>)";
+        auto declTokens = SyntaxHighlighter::tokenize(xmlDecl, Language::Xml);
+        REQUIRE_FALSE(declTokens.empty());
+        REQUIRE(declTokens[0].type == TokenType::Preprocessor);
+
+        std::string xmlComment = "<!-- Config settings -->";
+        auto commentTokens = SyntaxHighlighter::tokenize(xmlComment, Language::Xml);
+        REQUIRE_FALSE(commentTokens.empty());
+        REQUIRE(commentTokens[0].type == TokenType::Comment);
+
+        std::string xmlTag = R"(<User id="42" active="true" />)";
+        auto tagTokens = SyntaxHighlighter::tokenize(xmlTag, Language::Xml);
+
+        bool foundUser = false;
+        bool foundId = false;
+        bool foundActive = false;
+
+        for (const auto& t : tagTokens) {
+            if (t.type == TokenType::Type && t.text == "User") foundUser = true;
+            if (t.type == TokenType::Property && t.text == "id") foundId = true;
+            if (t.type == TokenType::Property && t.text == "active") foundActive = true;
+        }
+
+        REQUIRE(foundUser);
+        REQUIRE(foundId);
+        REQUIRE(foundActive);
+    }
 }
 
 TEST_CASE("SyntaxHighlighter genera HTML formattato con colori e preserva l'indentazione", "[unit][syntax][html]") {
@@ -226,6 +284,13 @@ TEST_CASE("SyntaxHighlighter genera HTML formattato con colori e preserva l'inde
         std::string highlighted = SyntaxHighlighter::highlightLine("int x = 42;", Language::Cpp);
 
         REQUIRE(highlighted.find("<span style=\"color:#D19A66;\">42</span>") != std::string::npos);
+    }
+
+    SECTION("highlightLine per XAML produce tag colorati e attributi") {
+        std::string highlighted = SyntaxHighlighter::highlightLine(R"(<Grid Background="#1E1E1E">)", Language::Xaml);
+        REQUIRE(highlighted.find("<span style=\"color:#E5C07B;font-weight:600;\">Grid</span>") != std::string::npos);
+        REQUIRE(highlighted.find("Background") != std::string::npos);
+        REQUIRE(highlighted.find("#98C379") != std::string::npos);
     }
 
     SECTION("highlightLine per commenti include font-style italic") {

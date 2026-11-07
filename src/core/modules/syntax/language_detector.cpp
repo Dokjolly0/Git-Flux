@@ -89,7 +89,8 @@ Language LanguageDetector::fromExtension(std::string_view ext) noexcept {
     // Data / Config
     if (lower == ".json" || lower == ".jsonc") return Language::Json;
     if (lower == ".yaml" || lower == ".yml") return Language::Yaml;
-    if (lower == ".xml" || lower == ".svg" || lower == ".xaml") return Language::Xml;
+    if (lower == ".xml" || lower == ".svg" || lower == ".plist" || lower == ".config" || lower == ".csproj" || lower == ".vcxproj") return Language::Xml;
+    if (lower == ".xaml" || lower == ".axaml") return Language::Xaml;
 
     // SQL
     if (lower == ".sql") return Language::Sql;
@@ -145,6 +146,7 @@ LanguageInfo LanguageDetector::detect(std::string_view filePath) noexcept {
     case Language::Json:       return { Language::Json, "JSON", "📋" };
     case Language::Yaml:       return { Language::Yaml, "YAML", "📜" };
     case Language::Xml:        return { Language::Xml, "XML", "📑" };
+    case Language::Xaml:       return { Language::Xaml, "XAML", "📐" };
     case Language::Sql:        return { Language::Sql, "SQL", "🗄️" };
     case Language::Shell:      return { Language::Shell, "Bash", "🐚" };
     case Language::PowerShell: return { Language::PowerShell, "PowerShell", "💻" };

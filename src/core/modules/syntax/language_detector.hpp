@@ -25,6 +25,7 @@ enum class Language {
     Json,
     Yaml,
     Xml,
+    Xaml,
     Sql,
     Shell,
     PowerShell,

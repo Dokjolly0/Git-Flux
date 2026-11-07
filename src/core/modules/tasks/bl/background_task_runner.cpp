@@ -218,15 +218,15 @@ void BackgroundTaskRunner::workerThreadLoop() {
 
         CompletionCallback onCompletedCopy = std::move(item.onCompleted);
 
+        if (onCompletedCopy) {
+            onCompletedCopy(report);
+        }
+
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             m_reports[item.taskId] = report;
             m_runningStopSources.erase(item.taskId);
             m_activeCount.fetch_sub(1);
-        }
-
-        if (onCompletedCopy) {
-            onCompletedCopy(report);
         }
 
         m_idleCv.notify_all();
