@@ -35,10 +35,23 @@ Dialog {
                 spacing: 8
 
                 Text {
-                    text: "Remote origin:"
+                    text: (root.branchManager && root.branchManager.remoteUrl) ? ("Remote: " + root.branchManager.remoteUrl) : "Remote origin:"
                     color: "#94A3B8"
                     font.bold: true
                     font.pixelSize: 11
+                    elide: Text.ElideMiddle
+                    Layout.maximumWidth: 260
+                }
+
+                Button {
+                    visible: root.branchManager && root.branchManager.remoteUrl && root.branchManager.remoteUrl.startsWith("http")
+                    text: "🔑 Passa a SSH"
+                    Layout.preferredHeight: 28
+                    ToolTip.text: "Converti l'URL in formato SSH (git@...) per autenticarti senza prompt di password"
+                    ToolTip.visible: hovered
+                    onClicked: {
+                        if (root.branchManager) root.branchManager.convertRemoteToSsh("origin");
+                    }
                 }
 
                 Button {

@@ -1167,6 +1167,18 @@ TEST_CASE("BranchManagerViewModel operations and signal propagation", "[viewmode
     bool merged = branchVm.mergeBranch("feature/test", false);
     CHECK(merged);
     CHECK(completedSpy.count() == 5);
+
+    // Remote operations
+    CHECK(branchVm.fetchRemote("origin"));
+    CHECK(branchVm.pullRemote("origin"));
+    CHECK(branchVm.pushRemote("origin", false));
+
+    // Remote URL manipulation and SSH conversion
+    CHECK(branchVm.setRemoteUrl("origin", "https://github.com/Dokjolly0/Git-Flux.git"));
+    CHECK(branchVm.remoteUrl() == "https://github.com/Dokjolly0/Git-Flux.git");
+
+    CHECK(branchVm.convertRemoteToSsh("origin"));
+    CHECK(branchVm.remoteUrl() == "git@github.com:Dokjolly0/Git-Flux.git");
 }
 
 TEST_CASE("StashListModel and StashManagerViewModel operations", "[viewmodel][stash]") {

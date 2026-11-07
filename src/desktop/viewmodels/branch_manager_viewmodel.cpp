@@ -17,10 +17,12 @@ void BranchManagerViewModel::setRepositoryPath(const QString& path) {
     if (path.isEmpty()) {
         m_repoPath.clear();
         m_currentBranch.clear();
+        m_remoteUrl.clear();
         m_isDetached = false;
         m_branchListModel.setBranches({});
         m_commitHistoryModel.setCommits({});
         emit currentBranchChanged();
+        emit remoteUrlChanged();
         return;
     }
 
@@ -79,6 +81,25 @@ void BranchManagerViewModel::refresh() {
     auto logRes = m_historyService.getCommitHistory(m_repoPath, logOpts);
     if (logRes) {
         m_commitHistoryModel.setCommits(std::move(*logRes));
+    }
+
+    // 3. Refresh remote URL
+    auto remotesRes = m_remoteMergeService.listRemotes(m_repoPath);
+    QString url;
+    if (remotesRes && !remotesRes->empty()) {
+        for (const auto& r : *remotesRes) {
+            if (r.name == "origin") {
+                url = QString::fromStdString(r.pushUrl.empty() ? r.fetchUrl : r.pushUrl);
+                break;
+            }
+        }
+        if (url.isEmpty()) {
+            url = QString::fromStdString((*remotesRes)[0].pushUrl.empty() ? (*remotesRes)[0].fetchUrl : (*remotesRes)[0].pushUrl);
+        }
+    }
+    if (m_remoteUrl != url) {
+        m_remoteUrl = url;
+        emit remoteUrlChanged();
     }
 
     setBusy(false);
@@ -306,6 +327,22 @@ bool BranchManagerViewModel::abortMerge() {
     return true;
 }
 
+static QString formatRemoteError(const std::string& rawMsg) {
+    const QString msg = QString::fromStdString(rawMsg);
+    if (msg.contains("could not read Username", Qt::CaseInsensitive) ||
+        msg.contains("terminal prompts disabled", Qt::CaseInsensitive)) {
+        return QStringLiteral("Autenticazione HTTPS non riuscita: i prompt da terminale sono disabilitati nell'app. "
+                              "Passa all'URL SSH del repository (es. git remote set-url origin git@github.com:...) "
+                              "oppure configura un credential helper (git config --global credential.helper store). "
+                              "Dettagli: %1").arg(msg.trimmed());
+    }
+    if (msg.contains("Permission denied (publickey)", Qt::CaseInsensitive)) {
+        return QStringLiteral("Autenticazione SSH fallita. Verifica che la chiave SSH sia caricata nell'agente (ssh-add) "
+                              "e configurata su GitHub/GitLab. Dettagli: %1").arg(msg.trimmed());
+    }
+    return msg;
+}
+
 bool BranchManagerViewModel::fetchRemote(const QString& remoteName) {
     if (m_repoPath.empty()) {
         return false;
@@ -322,8 +359,9 @@ bool BranchManagerViewModel::fetchRemote(const QString& remoteName) {
     setBusy(false);
 
     if (!res) {
-        setStatusMessage(QString::fromStdString(res.error().message));
-        emit operationCompleted(false, QString::fromStdString(res.error().message));
+        QString err = formatRemoteError(res.error().message);
+        setStatusMessage(err);
+        emit operationCompleted(false, err);
         return false;
     }
 
@@ -354,8 +392,9 @@ bool BranchManagerViewModel::pullRemote(const QString& remoteName) {
     setBusy(false);
 
     if (!res) {
-        setStatusMessage(QString::fromStdString(res.error().message));
-        emit operationCompleted(false, QString::fromStdString(res.error().message));
+        QString err = formatRemoteError(res.error().message);
+        setStatusMessage(err);
+        emit operationCompleted(false, err);
         return false;
     }
 
@@ -391,8 +430,9 @@ bool BranchManagerViewModel::pushRemote(const QString& remoteName, bool setUpstr
     setBusy(false);
 
     if (!res) {
-        setStatusMessage(QString::fromStdString(res.error().message));
-        emit operationCompleted(false, QString::fromStdString(res.error().message));
+        QString err = formatRemoteError(res.error().message);
+        setStatusMessage(err);
+        emit operationCompleted(false, err);
         return false;
     }
 
@@ -400,6 +440,55 @@ bool BranchManagerViewModel::pushRemote(const QString& remoteName, bool setUpstr
     refresh();
     emit operationCompleted(true, QStringLiteral("Push verso %1 completato con successo").arg(remoteName));
     return true;
+}
+
+bool BranchManagerViewModel::setRemoteUrl(const QString& remoteName, const QString& newUrl) {
+    if (m_repoPath.empty()) {
+        return false;
+    }
+
+    setBusy(true);
+    auto res = m_remoteMergeService.setRemoteUrl(m_repoPath, remoteName.toStdString(), newUrl.toStdString());
+    setBusy(false);
+
+    if (!res) {
+        QString err = QString::fromStdString(res.error().message);
+        setStatusMessage(err);
+        emit operationCompleted(false, err);
+        return false;
+    }
+
+    m_remoteUrl = newUrl;
+    emit remoteUrlChanged();
+    setStatusMessage(QStringLiteral("URL del remote %1 aggiornato").arg(remoteName));
+    emit operationCompleted(true, QStringLiteral("URL del remote %1 aggiornato con successo").arg(remoteName));
+    return true;
+}
+
+bool BranchManagerViewModel::convertRemoteToSsh(const QString& remoteName) {
+    if (m_remoteUrl.isEmpty()) {
+        emit operationCompleted(false, QStringLiteral("Nessun URL remoto configurato"));
+        return false;
+    }
+
+    QString url = m_remoteUrl.trimmed();
+    if (url.startsWith("https://", Qt::CaseInsensitive) || url.startsWith("http://", Qt::CaseInsensitive)) {
+        int slashSlash = url.indexOf("://");
+        QString withoutScheme = url.mid(slashSlash + 3);
+        int slashHost = withoutScheme.indexOf('/');
+        if (slashHost != -1) {
+            QString host = withoutScheme.left(slashHost);
+            QString path = withoutScheme.mid(slashHost + 1);
+            if (!path.endsWith(".git", Qt::CaseInsensitive)) {
+                path += ".git";
+            }
+            QString sshUrl = QStringLiteral("git@%1:%2").arg(host, path);
+            return setRemoteUrl(remoteName, sshUrl);
+        }
+    }
+
+    emit operationCompleted(false, QStringLiteral("L'URL remoto non è in formato HTTP/HTTPS valido da convertire: %1").arg(url));
+    return false;
 }
 
 } // namespace gf::desktop

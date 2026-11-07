@@ -188,6 +188,17 @@ public:
     removeRemote(const std::filesystem::path& repoPath,
                  const std::string& name) = 0;
 
+    /// Updates the URL of an existing remote (`git remote set-url <name> <url>`).
+    [[nodiscard]] virtual std::expected<void, GitOpsError>
+    setRemoteUrl(const std::filesystem::path& repoPath,
+                 const std::string& name,
+                 const std::string& url) {
+        (void)repoPath;
+        (void)name;
+        (void)url;
+        return {};
+    }
+
     /// Fetches updates from a remote (`git fetch`).
     [[nodiscard]] virtual std::expected<bo::RemoteOperationResult, GitOpsError>
     fetchRemote(const std::filesystem::path& repoPath,

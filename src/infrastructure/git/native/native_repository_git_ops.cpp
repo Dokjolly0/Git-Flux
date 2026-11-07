@@ -1743,6 +1743,39 @@ NativeRepositoryGitOps::removeRemote(const std::filesystem::path& repoPath,
     return {};
 }
 
+std::expected<void, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::setRemoteUrl(const std::filesystem::path& repoPath,
+                                     const std::string& name,
+                                     const std::string& url) {
+    gf::git::bo::GitCommand cmd{
+        .args = {"remote", "set-url", name, url},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile aggiornare l'URL del remote: " + execResult.error().message,
+            .command = "git remote set-url"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes,
+            .command = "git remote set-url"
+        });
+    }
+
+    return {};
+}
+
 std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
 NativeRepositoryGitOps::fetchRemote(const std::filesystem::path& repoPath,
                                     const gf::git::bo::RemoteOperationOptions& options) {

@@ -107,6 +107,36 @@ GitRemoteMergeService::removeRemote(const std::filesystem::path& repoPath,
     return m_gitOps.removeRemote(repoPath, name);
 }
 
+std::expected<void, ports::GitOpsError>
+GitRemoteMergeService::setRemoteUrl(const std::filesystem::path& repoPath,
+                                    const std::string& name,
+                                    const std::string& url) {
+    if (auto valid = validateRepoPath(repoPath); !valid) {
+        return std::unexpected(valid.error());
+    }
+
+    if (name.empty()) {
+        return std::unexpected(ports::GitOpsError{
+            .kind = ports::GitOpsError::Kind::InvalidOperation,
+            .exitCode = -1,
+            .message = "Il nome del remote non può essere vuoto",
+            .command = "remote set-url"
+        });
+    }
+
+    if (url.empty()) {
+        return std::unexpected(ports::GitOpsError{
+            .kind = ports::GitOpsError::Kind::InvalidOperation,
+            .exitCode = -1,
+            .message = "L'URL del remote non può essere vuoto",
+            .command = "remote set-url"
+        });
+    }
+
+    auto lock = RepositoryLockCoordinator::instance().acquire(repoPath);
+    return m_gitOps.setRemoteUrl(repoPath, name, url);
+}
+
 std::expected<bo::RemoteOperationResult, ports::GitOpsError>
 GitRemoteMergeService::fetchRemote(const std::filesystem::path& repoPath,
                                    const bo::RemoteOperationOptions& options) {

@@ -31,6 +31,10 @@ public:
     [[nodiscard]] std::expected<void, ports::GitOpsError>
     removeRemote(const std::filesystem::path& repoPath, const std::string& name);
 
+    /// Updates the URL of a configured remote.
+    [[nodiscard]] std::expected<void, ports::GitOpsError>
+    setRemoteUrl(const std::filesystem::path& repoPath, const std::string& name, const std::string& url);
+
     /// Fetches from a remote acquiring the per-repository lock.
     [[nodiscard]] std::expected<bo::RemoteOperationResult, ports::GitOpsError>
     fetchRemote(const std::filesystem::path& repoPath, const bo::RemoteOperationOptions& options = {});

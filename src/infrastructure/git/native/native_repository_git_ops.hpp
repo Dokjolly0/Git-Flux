@@ -102,6 +102,11 @@ public:
     removeRemote(const std::filesystem::path& repoPath,
                  const std::string& name) override;
 
+    [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+    setRemoteUrl(const std::filesystem::path& repoPath,
+                 const std::string& name,
+                 const std::string& url) override;
+
     [[nodiscard]] std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
     fetchRemote(const std::filesystem::path& repoPath,
                 const gf::git::bo::RemoteOperationOptions& options) override;

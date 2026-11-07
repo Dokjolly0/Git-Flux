@@ -20,6 +20,7 @@ class BranchManagerViewModel final : public QObject {
     Q_PROPERTY(bool isDetached READ isDetached NOTIFY currentBranchChanged)
     Q_PROPERTY(bool isBusy READ isBusy NOTIFY busyChanged)
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged)
+    Q_PROPERTY(QString remoteUrl READ remoteUrl NOTIFY remoteUrlChanged)
     Q_PROPERTY(bool hasConflicts READ hasConflicts NOTIFY conflictsChanged)
     Q_PROPERTY(QStringList conflictedFiles READ conflictedFiles NOTIFY conflictsChanged)
 
@@ -37,6 +38,7 @@ public:
     [[nodiscard]] bool isDetached() const noexcept { return m_isDetached; }
     [[nodiscard]] bool isBusy() const noexcept { return m_isBusy; }
     [[nodiscard]] QString statusMessage() const noexcept { return m_statusMessage; }
+    [[nodiscard]] QString remoteUrl() const noexcept { return m_remoteUrl; }
     [[nodiscard]] bool hasConflicts() const noexcept { return !m_conflictedFiles.isEmpty(); }
     [[nodiscard]] QStringList conflictedFiles() const noexcept { return m_conflictedFiles; }
 
@@ -57,6 +59,8 @@ public:
     Q_INVOKABLE bool fetchRemote(const QString& remoteName = "origin");
     Q_INVOKABLE bool pullRemote(const QString& remoteName = "origin");
     Q_INVOKABLE bool pushRemote(const QString& remoteName = "origin", bool setUpstream = false);
+    Q_INVOKABLE bool setRemoteUrl(const QString& remoteName, const QString& newUrl);
+    Q_INVOKABLE bool convertRemoteToSsh(const QString& remoteName = "origin");
 
     Q_INVOKABLE void setWipStatus(bool hasWip, int changedFilesCount = 0);
     Q_INVOKABLE QVariantList getCommitFiles(const QString& commitSha);
@@ -65,6 +69,7 @@ signals:
     void currentBranchChanged();
     void busyChanged();
     void statusMessageChanged();
+    void remoteUrlChanged();
     void conflictsChanged();
     void branchSwitched(const QString& newBranch);
     void operationCompleted(bool success, const QString& message);
@@ -85,6 +90,7 @@ private:
     bool m_isDetached = false;
     bool m_isBusy = false;
     QString m_statusMessage;
+    QString m_remoteUrl;
     QStringList m_conflictedFiles;
 };
 
