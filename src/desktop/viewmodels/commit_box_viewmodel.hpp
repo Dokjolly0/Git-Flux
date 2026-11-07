@@ -1,9 +1,11 @@
 #pragma once
 
-#include "core/modules/git/bl/git_staging_service.hpp"
-
 #include <QObject>
 #include <QString>
+
+namespace gf::git::bl {
+class GitStagingService;
+}
 
 namespace gf::desktop {
 

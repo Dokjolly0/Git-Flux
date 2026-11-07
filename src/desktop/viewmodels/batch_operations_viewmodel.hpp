@@ -1,12 +1,19 @@
 #pragma once
 
-#include "core/modules/git/bl/multi_repo_batch_coordinator.hpp"
-
 #include <QObject>
 #include <QString>
 #include <QStringList>
 #include <QVariantList>
 #include <memory>
+
+namespace gf::git::bl {
+class MultiRepoBatchCoordinator;
+}
+
+namespace gf::git::bo {
+struct BatchProgressUpdate;
+struct BatchOperationReport;
+}
 
 namespace gf::desktop {
 

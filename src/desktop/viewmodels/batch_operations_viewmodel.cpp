@@ -1,5 +1,7 @@
 #include "desktop/viewmodels/batch_operations_viewmodel.hpp"
 
+#include "core/modules/git/bl/multi_repo_batch_coordinator.hpp"
+
 #include <QMetaObject>
 #include <QVariantMap>
 

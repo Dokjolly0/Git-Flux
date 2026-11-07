@@ -1,10 +1,14 @@
 #pragma once
 
-#include "core/modules/git/bl/git_diff_service.hpp"
-#include "desktop/viewmodels/diff_line_list_model.hpp"
-
 #include <QObject>
 #include <QString>
+#include <QVariantList>
+
+#include "desktop/viewmodels/diff_line_list_model.hpp"
+
+namespace gf::git::bl {
+class GitDiffService;
+}
 
 namespace gf::desktop {
 

@@ -1,5 +1,10 @@
 #include "desktop/viewmodels/branch_manager_viewmodel.hpp"
 
+#include "core/modules/git/bl/git_branch_service.hpp"
+#include "core/modules/git/bl/git_history_service.hpp"
+#include "core/modules/git/bl/git_rebase_service.hpp"
+#include "core/modules/git/bl/git_remote_merge_service.hpp"
+
 #include <QClipboard>
 #include <QGuiApplication>
 #include <QUrl>

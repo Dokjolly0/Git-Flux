@@ -1,9 +1,16 @@
 #pragma once
 
-#include "core/modules/git/bo/conflict_models.hpp"
-
 #include <QAbstractListModel>
 #include <vector>
+
+#ifndef Q_MOC_RUN
+#include "core/modules/git/bo/conflict_models.hpp"
+#else
+namespace gf::git::bo {
+struct ConflictHunk;
+enum class ConflictSide;
+}
+#endif
 
 namespace gf::desktop {
 

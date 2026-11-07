@@ -1,11 +1,13 @@
 #pragma once
 
-#include "core/modules/repositories/bo/repository.hpp"
-
 #include <QAbstractListModel>
 #include <QString>
-#include <vector>
 #include <optional>
+#include <vector>
+
+namespace gf::repositories::bo {
+struct Repository;
+}
 
 namespace gf::desktop {
 

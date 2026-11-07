@@ -1,12 +1,18 @@
 #pragma once
 
-#include "core/modules/git/bo/history_models.hpp"
-
 #include <QAbstractListModel>
 #include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
 #include <vector>
+
+#ifndef Q_MOC_RUN
+#include "core/modules/git/bo/history_models.hpp"
+#else
+namespace gf::git::bo {
+struct GitCommitLogItem;
+}
+#endif
 
 namespace gf::desktop {
 

@@ -1,5 +1,7 @@
 #include "desktop/viewmodels/repository_list_model.hpp"
 
+#include "core/modules/repositories/bo/repository.hpp"
+
 #include <chrono>
 #include <ctime>
 #include <fstream>

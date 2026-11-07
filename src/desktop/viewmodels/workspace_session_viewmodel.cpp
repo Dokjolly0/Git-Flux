@@ -1,5 +1,18 @@
 #include "desktop/viewmodels/workspace_session_viewmodel.hpp"
 
+#include "core/modules/git/bl/git_conflict_service.hpp"
+#include "core/modules/git/bl/git_repository_watcher_service.hpp"
+#include "core/modules/git/bl/git_rebase_service.hpp"
+#include "core/modules/git/bl/git_stash_service.hpp"
+#include "core/modules/git/bl/git_working_tree_service.hpp"
+#include "core/modules/git/bl/git_staging_service.hpp"
+#include "core/modules/git/bl/git_diff_service.hpp"
+#include "core/modules/git/bl/git_branch_service.hpp"
+#include "core/modules/git/bl/git_history_service.hpp"
+#include "core/modules/git/bl/git_remote_merge_service.hpp"
+#include "core/modules/repositories/bl/repository_service.hpp"
+#include "core/modules/workspaces/bl/workspace_service.hpp"
+
 #include <QMetaObject>
 #include <algorithm>
 

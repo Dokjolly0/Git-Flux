@@ -1,5 +1,8 @@
 #include "desktop/viewmodels/working_tree_viewmodel.hpp"
 
+#include "core/modules/git/bl/git_working_tree_service.hpp"
+#include "core/modules/git/bl/git_staging_service.hpp"
+
 #include <filesystem>
 
 namespace gf::desktop {

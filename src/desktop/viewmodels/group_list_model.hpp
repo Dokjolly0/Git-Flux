@@ -1,12 +1,14 @@
 #pragma once
 
-#include "core/modules/groups/bo/group.hpp"
-
 #include <QAbstractListModel>
 #include <QString>
 #include <QStringList>
-#include <vector>
 #include <optional>
+#include <vector>
+
+namespace gf::groups::bo {
+struct Group;
+}
 
 namespace gf::repositories::bl {
 class RepositoryService;

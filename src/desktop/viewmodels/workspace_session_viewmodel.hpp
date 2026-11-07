@@ -1,18 +1,5 @@
 #pragma once
 
-#include "core/modules/git/bl/git_conflict_service.hpp"
-#include "core/modules/git/bl/git_repository_watcher_service.hpp"
-#include "core/modules/git/bl/git_rebase_service.hpp"
-#include "core/modules/git/bl/git_stash_service.hpp"
-#include "core/modules/repositories/bl/repository_service.hpp"
-#include "core/modules/workspaces/bl/workspace_service.hpp"
-#include "desktop/viewmodels/branch_manager_viewmodel.hpp"
-#include "desktop/viewmodels/commit_box_viewmodel.hpp"
-#include "desktop/viewmodels/conflict_resolver_viewmodel.hpp"
-#include "desktop/viewmodels/diff_viewmodel.hpp"
-#include "desktop/viewmodels/stash_manager_viewmodel.hpp"
-#include "desktop/viewmodels/working_tree_viewmodel.hpp"
-
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -20,6 +7,38 @@
 #include <QVariantMap>
 #include <memory>
 #include <vector>
+
+#include "desktop/viewmodels/branch_manager_viewmodel.hpp"
+#include "desktop/viewmodels/commit_box_viewmodel.hpp"
+#include "desktop/viewmodels/conflict_resolver_viewmodel.hpp"
+#include "desktop/viewmodels/diff_viewmodel.hpp"
+#include "desktop/viewmodels/stash_manager_viewmodel.hpp"
+#include "desktop/viewmodels/working_tree_viewmodel.hpp"
+
+namespace gf::repositories::bl {
+class RepositoryService;
+}
+
+namespace gf::workspaces::bl {
+class WorkspaceService;
+}
+
+namespace gf::git::bo {
+struct FsDebouncedBatch;
+}
+
+namespace gf::git::bl {
+class GitConflictService;
+class GitRepositoryWatcherService;
+class GitRebaseService;
+class GitStashService;
+class GitWorkingTreeService;
+class GitStagingService;
+class GitDiffService;
+class GitBranchService;
+class GitHistoryService;
+class GitRemoteMergeService;
+}
 
 namespace gf::desktop {
 

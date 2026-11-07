@@ -1,5 +1,7 @@
 #include "desktop/viewmodels/commit_box_viewmodel.hpp"
 
+#include "core/modules/git/bl/git_staging_service.hpp"
+
 #include <filesystem>
 
 namespace gf::desktop {

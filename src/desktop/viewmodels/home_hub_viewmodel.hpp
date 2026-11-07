@@ -1,13 +1,13 @@
 #pragma once
 
-#include "desktop/viewmodels/repository_list_model.hpp"
-#include "desktop/viewmodels/group_list_model.hpp"
-#include "desktop/viewmodels/workspace_list_model.hpp"
-
 #include <QObject>
 #include <QString>
 #include <QStringList>
 #include <memory>
+
+#include "desktop/viewmodels/group_list_model.hpp"
+#include "desktop/viewmodels/repository_list_model.hpp"
+#include "desktop/viewmodels/workspace_list_model.hpp"
 
 namespace gf::repositories::bl {
 class RepositoryService;

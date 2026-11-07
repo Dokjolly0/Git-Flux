@@ -1,11 +1,21 @@
 #pragma once
 
-#include "core/modules/git/bo/diff_models.hpp"
-#include "core/modules/syntax/language_detector.hpp"
-
 #include <QAbstractListModel>
 #include <string>
 #include <vector>
+
+#ifndef Q_MOC_RUN
+#include "core/modules/git/bo/diff_models.hpp"
+#include "core/modules/syntax/language_detector.hpp"
+#else
+namespace gf::git::bo {
+struct FileDiff;
+struct DiffLine;
+}
+namespace gf::core::syntax {
+enum class Language;
+}
+#endif
 
 namespace gf::desktop {
 

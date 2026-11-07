@@ -1,16 +1,19 @@
 #pragma once
 
-#include "core/modules/git/bl/git_branch_service.hpp"
-#include "core/modules/git/bl/git_history_service.hpp"
-#include "core/modules/git/bl/git_rebase_service.hpp"
-#include "core/modules/git/bl/git_remote_merge_service.hpp"
-#include "desktop/viewmodels/branch_list_model.hpp"
-#include "desktop/viewmodels/commit_history_list_model.hpp"
-
 #include <QObject>
 #include <QString>
 #include <QStringList>
 #include <filesystem>
+
+#include "desktop/viewmodels/branch_list_model.hpp"
+#include "desktop/viewmodels/commit_history_list_model.hpp"
+
+namespace gf::git::bl {
+class GitBranchService;
+class GitHistoryService;
+class GitRebaseService;
+class GitRemoteMergeService;
+}
 
 namespace gf::desktop {
 

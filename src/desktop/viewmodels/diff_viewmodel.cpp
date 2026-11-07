@@ -1,4 +1,6 @@
 #include "desktop/viewmodels/diff_viewmodel.hpp"
+
+#include "core/modules/git/bl/git_diff_service.hpp"
 #include "core/modules/syntax/language_detector.hpp"
 #include "core/modules/syntax/syntax_highlighter.hpp"
 

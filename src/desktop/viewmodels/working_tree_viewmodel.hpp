@@ -1,13 +1,16 @@
 #pragma once
 
-#include "core/modules/git/bl/git_working_tree_service.hpp"
-#include "core/modules/git/bl/git_staging_service.hpp"
-#include "desktop/viewmodels/working_tree_file_list_model.hpp"
-
 #include <QObject>
 #include <QString>
 #include <QVariantList>
 #include <QVariantMap>
+
+#include "desktop/viewmodels/working_tree_file_list_model.hpp"
+
+namespace gf::git::bl {
+class GitWorkingTreeService;
+class GitStagingService;
+}
 
 namespace gf::desktop {
 

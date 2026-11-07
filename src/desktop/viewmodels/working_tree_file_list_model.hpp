@@ -1,9 +1,15 @@
 #pragma once
 
-#include "core/modules/git/bo/repo_working_tree_status.hpp"
-
 #include <QAbstractListModel>
 #include <vector>
+
+#ifndef Q_MOC_RUN
+#include "core/modules/git/bo/repo_working_tree_status.hpp"
+#else
+namespace gf::git::bo {
+struct WorkingTreeFileItem;
+}
+#endif
 
 namespace gf::desktop {
 

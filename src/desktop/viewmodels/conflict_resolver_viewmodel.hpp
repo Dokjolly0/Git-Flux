@@ -1,12 +1,15 @@
 #pragma once
 
-#include "core/modules/git/bl/git_conflict_service.hpp"
-#include "desktop/viewmodels/conflict_hunk_list_model.hpp"
-
 #include <QObject>
 #include <QString>
 #include <filesystem>
 #include <memory>
+
+#include "desktop/viewmodels/conflict_hunk_list_model.hpp"
+
+namespace gf::git::bl {
+class GitConflictService;
+}
 
 namespace gf::desktop {
 

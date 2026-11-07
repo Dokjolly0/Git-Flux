@@ -1,12 +1,15 @@
 #pragma once
 
-#include "core/modules/git/bl/git_stash_service.hpp"
-#include "desktop/viewmodels/stash_list_model.hpp"
-
 #include <QObject>
 #include <QString>
 #include <filesystem>
 #include <memory>
+
+#include "desktop/viewmodels/stash_list_model.hpp"
+
+namespace gf::git::bl {
+class GitStashService;
+}
 
 namespace gf::desktop {
 

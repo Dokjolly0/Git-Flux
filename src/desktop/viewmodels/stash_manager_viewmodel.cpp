@@ -1,5 +1,7 @@
 #include "desktop/viewmodels/stash_manager_viewmodel.hpp"
 
+#include "core/modules/git/bl/git_stash_service.hpp"
+
 namespace gf::desktop {
 
 StashManagerViewModel::StashManagerViewModel(gf::git::bl::GitStashService& stashService,

@@ -1,11 +1,13 @@
 #pragma once
 
-#include "core/modules/workspaces/bo/workspace.hpp"
-
 #include <QAbstractListModel>
 #include <QString>
-#include <vector>
 #include <optional>
+#include <vector>
+
+namespace gf::workspaces::bo {
+struct Workspace;
+}
 
 namespace gf::workspaces::bl {
 class WorkspaceService;

@@ -1,5 +1,6 @@
 #include "desktop/viewmodels/group_list_model.hpp"
 
+#include "core/modules/groups/bo/group.hpp"
 #include "core/modules/repositories/bl/repository_service.hpp"
 
 namespace gf::desktop {

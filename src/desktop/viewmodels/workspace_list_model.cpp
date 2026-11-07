@@ -1,4 +1,5 @@
 #include "desktop/viewmodels/workspace_list_model.hpp"
+#include "core/modules/workspaces/bo/workspace.hpp"
 #include "core/modules/workspaces/bl/workspace_service.hpp"
 
 #include <chrono>

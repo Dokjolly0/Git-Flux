@@ -1,4 +1,6 @@
 #include "desktop/viewmodels/conflict_resolver_viewmodel.hpp"
+
+#include "core/modules/git/bl/git_conflict_service.hpp"
 #include "core/modules/git/bl/conflict_marker_parser.hpp"
 
 namespace gf::desktop {
