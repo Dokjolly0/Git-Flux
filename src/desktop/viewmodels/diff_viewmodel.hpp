@@ -70,7 +70,7 @@ private:
     QString m_oldPath;
     QString m_currentRepoPath;
     QString m_currentRevision;
-    QString m_viewMode = QStringLiteral("inline");
+    QString m_viewMode = QStringLiteral("split");
     int m_additionsCount = 0;
     int m_deletionsCount = 0;
     bool m_isBinary = false;

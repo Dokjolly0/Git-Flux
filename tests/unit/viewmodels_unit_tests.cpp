@@ -1597,7 +1597,7 @@ TEST_CASE("DiffViewModel - View mode switching and property invariants", "[deskt
 
     DiffViewModel diffVm(diffService);
 
-    CHECK(diffVm.viewMode() == "inline");
+    CHECK(diffVm.viewMode() == "split");
     CHECK(diffVm.isEmpty());
     CHECK_FALSE(diffVm.isBinary());
     CHECK(diffVm.splitLines().isEmpty());
@@ -1606,13 +1606,13 @@ TEST_CASE("DiffViewModel - View mode switching and property invariants", "[deskt
 
     QSignalSpy modeSpy(&diffVm, &DiffViewModel::viewModeChanged);
 
-    // Switch to split
-    diffVm.setViewMode("split");
-    CHECK(diffVm.viewMode() == "split");
+    // Switch to inline
+    diffVm.setViewMode("inline");
+    CHECK(diffVm.viewMode() == "inline");
     CHECK(modeSpy.count() == 1);
 
     // Redundant switch should not re-emit
-    diffVm.setViewMode("split");
+    diffVm.setViewMode("inline");
     CHECK(modeSpy.count() == 1);
 
     // Switch to hunk
@@ -1625,9 +1625,9 @@ TEST_CASE("DiffViewModel - View mode switching and property invariants", "[deskt
     CHECK(diffVm.viewMode() == "blame");
     CHECK(modeSpy.count() == 3);
 
-    // Switch back to inline
-    diffVm.setViewMode("inline");
-    CHECK(diffVm.viewMode() == "inline");
+    // Switch back to split
+    diffVm.setViewMode("split");
+    CHECK(diffVm.viewMode() == "split");
     CHECK(modeSpy.count() == 4);
 }
 

@@ -111,7 +111,7 @@ Rectangle {
                     Button {
                         id: inlineBtn
                         Layout.preferredHeight: 26
-                        readonly property bool isCurrent: root.diffViewer ? (root.diffViewer.viewMode === "inline" || root.diffViewer.viewMode === "") : true
+                        readonly property bool isCurrent: root.diffViewer ? root.diffViewer.viewMode === "inline" : false
                         background: Rectangle {
                             color: inlineBtn.isCurrent ? "#1E293B" : (inlineBtn.hovered ? "#161B22" : "transparent")
                             radius: 4
@@ -137,7 +137,7 @@ Rectangle {
                     Button {
                         id: splitBtn
                         Layout.preferredHeight: 26
-                        readonly property bool isCurrent: root.diffViewer ? root.diffViewer.viewMode === "split" : false
+                        readonly property bool isCurrent: root.diffViewer ? (root.diffViewer.viewMode === "split" || root.diffViewer.viewMode === "") : true
                         background: Rectangle {
                             color: splitBtn.isCurrent ? "#1E293B" : (splitBtn.hovered ? "#161B22" : "transparent")
                             radius: 4
@@ -264,7 +264,7 @@ Rectangle {
             // ------------------------------------------
             ScrollView {
                 anchors.fill: parent
-                visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && (root.diffViewer.viewMode === "inline" || root.diffViewer.viewMode === "")
+                visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "inline"
                 clip: true
 
                 ListView {
@@ -356,7 +356,7 @@ Rectangle {
             // ------------------------------------------
             ColumnLayout {
                 anchors.fill: parent
-                visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "split"
+                visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && (root.diffViewer.viewMode === "split" || root.diffViewer.viewMode === "")
                 spacing: 0
 
                 // Split Header (Original vs Modified)

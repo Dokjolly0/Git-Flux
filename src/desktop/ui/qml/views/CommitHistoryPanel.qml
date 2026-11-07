@@ -128,6 +128,10 @@ Rectangle {
     }
 
     function openFileDiff(file) {
+        if (root.isDiffOpen && root.selectedFile && file && root.selectedFile.path === file.path) {
+            root.closeFileDiff();
+            return;
+        }
         root.selectedFile = file;
         root.isDiffOpen = true;
         if (!file || !root.selectedCommit || !root.sessionVm) return;
