@@ -25,6 +25,28 @@ Rectangle {
         }
     }
 
+    // Auto-select when session active tab changes
+    Connections {
+        target: root.sessionVm
+        function onActiveTabChanged() {
+            root.autoSelectFirstCommit();
+        }
+    }
+
+    // Auto-select when active branch switches
+    Connections {
+        target: root.branchManager
+        function onCurrentBranchChanged() {
+            root.autoSelectFirstCommit();
+        }
+    }
+
+    onVisibleChanged: {
+        if (visible && !root.selectedCommit) {
+            root.autoSelectFirstCommit();
+        }
+    }
+
     function autoSelectFirstCommit() {
         if (!root.branchManager || !root.branchManager.commitHistory) {
             root.selectedCommit = null;

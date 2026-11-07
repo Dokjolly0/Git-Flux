@@ -526,8 +526,8 @@ Rectangle {
                     boundsBehavior: Flickable.StopAtBounds
 
                     delegate: Rectangle {
+                        x: 12
                         width: hunkListView.width - 24
-                        anchors.horizontalCenter: parent.horizontalCenter
                         implicitHeight: hunkCol.implicitHeight + 16
                         color: "#161B22"
                         radius: 6

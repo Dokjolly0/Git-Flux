@@ -7,7 +7,7 @@ Rectangle {
     color: "#0E1117"
 
     property var sessionVm: null
-    property string activeViewMode: "changes" // "changes" | "history"
+    property string activeViewMode: "history" // Default to history (GitKraken-grade commit view)
 
     signal returnToHomeRequested()
     signal quickOpenRequested()
@@ -383,32 +383,9 @@ Rectangle {
                     color: "#334155"
                 }
 
-                // View Toggle: "Changes" vs "History"
+                // View Toggle: "History" vs "Changes"
                 RowLayout {
                     spacing: 4
-
-                    Button {
-                        Layout.preferredHeight: 30
-                        checkable: true
-                        checked: root.activeViewMode === "changes"
-                        background: Rectangle {
-                            color: root.activeViewMode === "changes" ? "#2563EB" : (parent.hovered ? "#1E293B" : "#161B22")
-                            radius: 6
-                            border.color: root.activeViewMode === "changes" ? "#3B82F6" : "#334155"
-                            border.width: 1
-                        }
-                        contentItem: RowLayout {
-                            spacing: 5
-                            Text { text: "📝"; font.pixelSize: 11 }
-                            Text {
-                                text: "Changes"
-                                color: root.activeViewMode === "changes" ? "#FFFFFF" : "#94A3B8"
-                                font.bold: root.activeViewMode === "changes"
-                                font.pixelSize: 11
-                            }
-                        }
-                        onClicked: root.activeViewMode = "changes"
-                    }
 
                     Button {
                         Layout.preferredHeight: 30
@@ -424,13 +401,44 @@ Rectangle {
                             spacing: 5
                             Text { text: "📜"; font.pixelSize: 11 }
                             Text {
-                                text: "History"
+                                text: "Cronologia"
                                 color: root.activeViewMode === "history" ? "#FFFFFF" : "#94A3B8"
                                 font.bold: root.activeViewMode === "history"
                                 font.pixelSize: 11
                             }
                         }
                         onClicked: root.activeViewMode = "history"
+                    }
+
+                    Button {
+                        Layout.preferredHeight: 30
+                        checkable: true
+                        checked: root.activeViewMode === "changes"
+                        background: Rectangle {
+                            color: root.activeViewMode === "changes" ? "#2563EB" : (parent.hovered ? "#1E293B" : "#161B22")
+                            radius: 6
+                            border.color: root.activeViewMode === "changes" ? "#3B82F6" : "#334155"
+                            border.width: 1
+                        }
+                        contentItem: RowLayout {
+                            spacing: 5
+                            Text { text: "📝"; font.pixelSize: 11 }
+                            Text {
+                                text: "Modifiche"
+                                color: root.activeViewMode === "changes" ? "#FFFFFF" : "#94A3B8"
+                                font.bold: root.activeViewMode === "changes"
+                                font.pixelSize: 11
+                            }
+                            // Dirty badge if there are uncommitted working tree changes
+                            Rectangle {
+                                width: 8
+                                height: 8
+                                radius: 4
+                                color: "#F59E0B"
+                                visible: root.sessionVm && root.sessionVm.workingTree && !root.sessionVm.workingTree.isClean
+                            }
+                        }
+                        onClicked: root.activeViewMode = "changes"
                     }
                 }
 
