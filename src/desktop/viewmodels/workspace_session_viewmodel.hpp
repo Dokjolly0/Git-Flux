@@ -32,6 +32,7 @@ class WorkspaceSessionViewModel final : public QObject {
     Q_PROPERTY(QString activeRepoName READ activeRepoName NOTIFY activeTabChanged)
     Q_PROPERTY(QString activeRepoPath READ activeRepoPath NOTIFY activeTabChanged)
     Q_PROPERTY(bool hasOpenTabs READ hasOpenTabs NOTIFY tabsChanged)
+    Q_PROPERTY(QString currentGroupName READ currentGroupName NOTIFY currentGroupNameChanged)
 
     Q_PROPERTY(WorkingTreeViewModel* workingTree READ workingTree CONSTANT)
     Q_PROPERTY(CommitBoxViewModel* commitBox READ commitBox CONSTANT)
@@ -73,6 +74,7 @@ public:
     [[nodiscard]] QString activeRepoName() const;
     [[nodiscard]] QString activeRepoPath() const;
     [[nodiscard]] bool hasOpenTabs() const noexcept { return !m_tabs.empty(); }
+    [[nodiscard]] QString currentGroupName() const noexcept { return m_currentGroupName; }
     [[nodiscard]] bool isRebaseInProgress() const noexcept { return m_isRebaseInProgress; }
 
     [[nodiscard]] WorkingTreeViewModel* workingTree() noexcept { return &m_workingTree; }
@@ -84,6 +86,7 @@ public:
 
     Q_INVOKABLE void openRepository(const QString& repoId, const QString& name, const QString& path);
     Q_INVOKABLE void openRepositories(const QStringList& repoIds);
+    Q_INVOKABLE void openGroup(const QString& groupName, const QStringList& repoIds);
     Q_INVOKABLE void openWorkspace(const QString& workspaceId);
     Q_INVOKABLE void closeTab(int index);
     Q_INVOKABLE void closeAllTabs();
@@ -102,6 +105,7 @@ public:
 signals:
     void tabsChanged();
     void activeTabChanged();
+    void currentGroupNameChanged();
     void rebaseStatusChanged();
     void rebaseSucceeded(const QString& message);
     void rebaseConflictDetected();
@@ -125,6 +129,7 @@ private:
     std::vector<SessionTabItem> m_tabs;
     int m_activeTabIndex = -1;
     bool m_isRebaseInProgress{false};
+    QString m_currentGroupName;
 };
 
 } // namespace gf::desktop

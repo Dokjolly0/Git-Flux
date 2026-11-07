@@ -16,6 +16,7 @@ struct RepositoryItem {
     QString status;
     bool isMissing{false};
     QString lastAccessedAt;
+    QString branch;
 };
 
 class RepositoryListModel : public QAbstractListModel {
@@ -28,7 +29,8 @@ public:
         LocalPathRole,
         StatusRole,
         IsMissingRole,
-        LastAccessedAtRole
+        LastAccessedAtRole,
+        BranchRole
     };
 
     explicit RepositoryListModel(QObject* parent = nullptr);

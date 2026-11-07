@@ -62,11 +62,19 @@ public:
     Q_INVOKABLE void refreshAll();
     Q_INVOKABLE void clearFeedback();
 
+    Q_INVOKABLE void openInFileManager(const QString& path);
+    Q_INVOKABLE void openInTerminal(const QString& path);
+    Q_INVOKABLE void copyToClipboard(const QString& text);
+
     Q_INVOKABLE bool addRepository(const QString& path, const QString& displayName = QString());
     Q_INVOKABLE bool reconnectRepository(const QString& repoId, const QString& newPath);
+    Q_INVOKABLE bool renameRepository(const QString& repoId, const QString& newDisplayName);
     Q_INVOKABLE bool removeRepository(const QString& repoId);
 
     Q_INVOKABLE bool createGroup(const QString& name, const QStringList& repoIds = {});
+    Q_INVOKABLE bool renameGroup(const QString& groupId, const QString& newName);
+    Q_INVOKABLE bool addRepositoryToGroup(const QString& groupId, const QString& repoId);
+    Q_INVOKABLE bool removeRepositoryFromGroup(const QString& groupId, const QString& repoId);
     Q_INVOKABLE bool removeGroup(const QString& groupId);
 
     Q_INVOKABLE bool createWorkspace(const QString& name,
@@ -87,7 +95,7 @@ signals:
 
     void repositoryOpened(const QString& repoId, const QString& path);
     void repositoryAdded(const QString& repoName, const QString& path);
-    void groupOpened(const QString& groupId);
+    void groupOpened(const QString& groupId, const QString& groupName, const QStringList& repoIds);
     void workspaceOpened(const QString& workspaceId);
     void errorOccurred(const QString& message);
     void lastErrorChanged(const QString& error);

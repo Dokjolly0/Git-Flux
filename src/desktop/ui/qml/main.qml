@@ -38,8 +38,11 @@ ApplicationWindow {
             }
         }
 
-        onGroupOpened: function(groupId) {
-            console.log("Opening Group:", groupId);
+        onGroupOpened: function(groupId, groupName, repoIds) {
+            if (typeof workspaceSessionVm !== "undefined") {
+                workspaceSessionVm.openGroup(groupName, repoIds);
+                appWindow.currentView = "session";
+            }
         }
 
         onWorkspaceOpened: function(workspaceId) {

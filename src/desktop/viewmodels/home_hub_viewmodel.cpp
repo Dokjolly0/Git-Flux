@@ -5,6 +5,11 @@
 #include "core/modules/workspaces/bl/workspace_service.hpp"
 
 #include <QUrl>
+#include <QDesktopServices>
+#include <QProcess>
+#include <QClipboard>
+#include <QGuiApplication>
+#include <QStandardPaths>
 
 namespace gf::desktop {
 
@@ -143,7 +148,7 @@ void HomeHubViewModel::refreshAll() {
             }
         }
     }
-    m_groupModel->setGroups(filteredGroups);
+    m_groupModel->setGroups(filteredGroups, &m_repoService);
     emit groupsChanged();
 
     // 3. Workspaces
@@ -389,6 +394,167 @@ bool HomeHubViewModel::removeWorkspace(const QString& workspaceId) {
     return true;
 }
 
+void HomeHubViewModel::openInFileManager(const QString& path) {
+    if (path.isEmpty()) {
+        return;
+    }
+    const QUrl url = QUrl::fromLocalFile(path);
+    if (QDesktopServices::openUrl(url)) {
+        setLastSuccessMessage(QStringLiteral("Aperto nel gestore file: %1").arg(path));
+    } else {
+        const QString err = QStringLiteral("Impossibile aprire il gestore file per: %1").arg(path);
+        setLastError(err);
+        emit errorOccurred(err);
+    }
+}
+
+void HomeHubViewModel::openInTerminal(const QString& path) {
+    if (path.isEmpty()) {
+        return;
+    }
+
+    const QStringList terminals = {
+        QString::fromLocal8Bit(qgetenv("TERMINAL")),
+        QStringLiteral("x-terminal-emulator"),
+        QStringLiteral("gnome-terminal"),
+        QStringLiteral("konsole"),
+        QStringLiteral("xfce4-terminal"),
+        QStringLiteral("alacritty"),
+        QStringLiteral("kitty"),
+        QStringLiteral("wezterm"),
+        QStringLiteral("terminator"),
+        QStringLiteral("xterm")
+    };
+
+    for (const auto& term : terminals) {
+        if (term.isEmpty()) {
+            continue;
+        }
+        if (!QStandardPaths::findExecutable(term).isEmpty()) {
+            bool started = false;
+            if (term == QLatin1String("gnome-terminal") || term == QLatin1String("xfce4-terminal")) {
+                started = QProcess::startDetached(term, {QStringLiteral("--working-directory"), path});
+            } else if (term == QLatin1String("konsole")) {
+                started = QProcess::startDetached(term, {QStringLiteral("--workdir"), path});
+            } else {
+                started = QProcess::startDetached(term, {}, path);
+            }
+            if (started) {
+                setLastSuccessMessage(QStringLiteral("Terminale avviato in: %1").arg(path));
+                return;
+            }
+        }
+    }
+
+    const QString err = QStringLiteral("Nessun emulatore di terminale trovato nel sistema.");
+    setLastError(err);
+    emit errorOccurred(err);
+}
+
+void HomeHubViewModel::copyToClipboard(const QString& text) {
+    if (auto* cb = QGuiApplication::clipboard()) {
+        cb->setText(text);
+        setLastSuccessMessage(QStringLiteral("Copiato negli appunti: %1").arg(text));
+    }
+}
+
+bool HomeHubViewModel::renameRepository(const QString& repoId, const QString& newDisplayName) {
+    if (repoId.trimmed().isEmpty()) {
+        return false;
+    }
+    auto res = m_repoService.updateDisplayName(
+        gf::repositories::bo::RepositoryId{repoId.toStdString()},
+        newDisplayName.trimmed().toStdString()
+    );
+    if (!res) {
+        const QString err = QStringLiteral("Errore rinomina repository: ") + QString::fromStdString(res.error().message);
+        setLastError(err);
+        emit errorOccurred(err);
+        return false;
+    }
+
+    const QString successMsg = QStringLiteral("Repository rinominato in: %1").arg(QString::fromStdString(res->displayName));
+    setLastSuccessMessage(successMsg);
+    setStatus(successMsg);
+    refreshAll();
+    return true;
+}
+
+bool HomeHubViewModel::renameGroup(const QString& groupId, const QString& newName) {
+    if (groupId.trimmed().isEmpty() || newName.trimmed().isEmpty()) {
+        const QString err = QStringLiteral("Il nome del gruppo non può essere vuoto");
+        setLastError(err);
+        emit errorOccurred(err);
+        return false;
+    }
+
+    auto res = m_groupService.renameGroup(
+        gf::groups::bo::GroupId{groupId.toStdString()},
+        newName.trimmed().toStdString()
+    );
+    if (!res) {
+        QString err;
+        if (res.error().kind == gf::groups::bl::GroupServiceError::Kind::DuplicateName) {
+            err = QStringLiteral("Esiste già un gruppo con questo nome");
+        } else {
+            err = QStringLiteral("Errore rinomina gruppo: ") + QString::fromStdString(res.error().message);
+        }
+        setLastError(err);
+        emit errorOccurred(err);
+        return false;
+    }
+
+    const QString successMsg = QStringLiteral("Gruppo rinominato in: %1").arg(QString::fromStdString(res->name));
+    setLastSuccessMessage(successMsg);
+    setStatus(successMsg);
+    refreshAll();
+    return true;
+}
+
+bool HomeHubViewModel::addRepositoryToGroup(const QString& groupId, const QString& repoId) {
+    if (groupId.trimmed().isEmpty() || repoId.trimmed().isEmpty()) {
+        return false;
+    }
+
+    auto res = m_groupService.addRepositoryToGroup(
+        gf::groups::bo::GroupId{groupId.toStdString()},
+        gf::repositories::bo::RepositoryId{repoId.toStdString()}
+    );
+    if (!res) {
+        const QString err = QStringLiteral("Errore associazione repository al gruppo: ") +
+                            QString::fromStdString(res.error().message);
+        setLastError(err);
+        emit errorOccurred(err);
+        return false;
+    }
+
+    setLastSuccessMessage(QStringLiteral("Repository aggiunto al gruppo"));
+    refreshAll();
+    return true;
+}
+
+bool HomeHubViewModel::removeRepositoryFromGroup(const QString& groupId, const QString& repoId) {
+    if (groupId.trimmed().isEmpty() || repoId.trimmed().isEmpty()) {
+        return false;
+    }
+
+    auto res = m_groupService.removeRepositoryFromGroup(
+        gf::groups::bo::GroupId{groupId.toStdString()},
+        gf::repositories::bo::RepositoryId{repoId.toStdString()}
+    );
+    if (!res) {
+        const QString err = QStringLiteral("Errore rimozione repository dal gruppo: ") +
+                            QString::fromStdString(res.error().message);
+        setLastError(err);
+        emit errorOccurred(err);
+        return false;
+    }
+
+    setLastSuccessMessage(QStringLiteral("Repository rimosso dal gruppo"));
+    refreshAll();
+    return true;
+}
+
 void HomeHubViewModel::openRepository(const QString& repoId) {
     auto repoResult = m_repoService.getRepository(gf::repositories::bo::RepositoryId{repoId.toStdString()});
     if (!repoResult || !repoResult->has_value()) {
@@ -407,7 +573,14 @@ void HomeHubViewModel::openGroup(const QString& groupId) {
         emit errorOccurred(QStringLiteral("Gruppo non trovato"));
         return;
     }
-    emit groupOpened(groupId);
+    const auto& grp = **grpResult;
+    const QString groupName = QString::fromStdString(grp.name);
+    QStringList repoIds;
+    repoIds.reserve(static_cast<qsizetype>(grp.repositoryIds.size()));
+    for (const auto& rId : grp.repositoryIds) {
+        repoIds.append(QString::fromStdString(rId.value()));
+    }
+    emit groupOpened(groupId, groupName, repoIds);
 }
 
 void HomeHubViewModel::openWorkspace(const QString& workspaceId) {

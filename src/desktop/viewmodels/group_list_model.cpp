@@ -1,5 +1,7 @@
 #include "desktop/viewmodels/group_list_model.hpp"
 
+#include "core/modules/repositories/bl/repository_service.hpp"
+
 namespace gf::desktop {
 
 GroupListModel::GroupListModel(QObject* parent)
@@ -28,6 +30,8 @@ QVariant GroupListModel::data(const QModelIndex& index, int role) const {
         return item.repositoryCount;
     case RepositoryIdsRole:
         return item.repositoryIds;
+    case RepositoryNamesRole:
+        return item.repositoryNames;
     case Qt::DisplayRole:
         return item.name;
     default:
@@ -40,11 +44,13 @@ QHash<int, QByteArray> GroupListModel::roleNames() const {
         {IdRole, "id"},
         {NameRole, "name"},
         {RepositoryCountRole, "repositoryCount"},
-        {RepositoryIdsRole, "repositoryIds"}
+        {RepositoryIdsRole, "repositoryIds"},
+        {RepositoryNamesRole, "repositoryNames"}
     };
 }
 
-void GroupListModel::setGroups(const std::vector<gf::groups::bo::Group>& groups) {
+void GroupListModel::setGroups(const std::vector<gf::groups::bo::Group>& groups,
+                               gf::repositories::bl::RepositoryService* repoService) {
     beginResetModel();
     m_items.clear();
     m_items.reserve(groups.size());
@@ -57,6 +63,14 @@ void GroupListModel::setGroups(const std::vector<gf::groups::bo::Group>& groups)
         
         for (const auto& repoId : group.repositoryIds) {
             item.repositoryIds.append(QString::fromStdString(repoId.value()));
+            if (repoService) {
+                auto rRes = repoService->getRepository(repoId);
+                if (rRes && rRes->has_value()) {
+                    item.repositoryNames.append(QString::fromStdString((*rRes)->displayName));
+                } else {
+                    item.repositoryNames.append(QString::fromStdString(repoId.value()));
+                }
+            }
         }
 
         m_items.push_back(std::move(item));

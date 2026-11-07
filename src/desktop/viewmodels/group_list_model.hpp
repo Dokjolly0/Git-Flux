@@ -8,6 +8,10 @@
 #include <vector>
 #include <optional>
 
+namespace gf::repositories::bl {
+class RepositoryService;
+}
+
 namespace gf::desktop {
 
 struct GroupItem {
@@ -15,6 +19,7 @@ struct GroupItem {
     QString name;
     int repositoryCount{0};
     QStringList repositoryIds;
+    QStringList repositoryNames;
 };
 
 class GroupListModel : public QAbstractListModel {
@@ -25,7 +30,8 @@ public:
         IdRole = Qt::UserRole + 1,
         NameRole,
         RepositoryCountRole,
-        RepositoryIdsRole
+        RepositoryIdsRole,
+        RepositoryNamesRole
     };
 
     explicit GroupListModel(QObject* parent = nullptr);
@@ -35,7 +41,8 @@ public:
     [[nodiscard]] QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
     [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
 
-    void setGroups(const std::vector<gf::groups::bo::Group>& groups);
+    void setGroups(const std::vector<gf::groups::bo::Group>& groups,
+                   gf::repositories::bl::RepositoryService* repoService = nullptr);
     [[nodiscard]] const std::vector<GroupItem>& items() const noexcept;
     [[nodiscard]] std::optional<GroupItem> findById(const QString& id) const;
 

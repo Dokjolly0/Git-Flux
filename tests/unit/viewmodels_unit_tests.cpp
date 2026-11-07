@@ -359,6 +359,81 @@ TEST_CASE("HomeHubViewModel handles explorer paths, .git suffix, and comprehensi
     CHECK(vm.lastSuccessMessage().isEmpty());
 }
 
+TEST_CASE("HomeHubViewModel interactive operations: renaming, group repo association, and group opening", "[desktop][mvvm]") {
+    TestContext ctx;
+    HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService);
+
+    // 1. Add two repositories
+    REQUIRE(vm.addRepository(QString::fromStdString(ctx.repoAPath.string()), "Project Alpha"));
+    REQUIRE(vm.addRepository(QString::fromStdString(ctx.repoBPath.string()), "Project Beta"));
+
+    const auto repos = ctx.repoService->getAllRepositories();
+    REQUIRE(repos.has_value());
+    REQUIRE(repos->size() == 2);
+    const QString repoAId = QString::fromStdString((*repos)[0].id.value());
+    const QString repoBId = QString::fromStdString((*repos)[1].id.value());
+
+    // 2. Rename repository
+    bool renamed = vm.renameRepository(repoAId, "Alpha Engine");
+    CHECK(renamed);
+    auto repoAUpdated = ctx.repoService->getRepository((*repos)[0].id);
+    REQUIRE(repoAUpdated.has_value());
+    CHECK((*repoAUpdated)->displayName == "Alpha Engine");
+
+    // 3. Create Group with Project Alpha
+    bool grpCreated = vm.createGroup("Backend Team", {repoAId});
+    REQUIRE(grpCreated);
+    const auto groups = ctx.groupService->getAllGroups();
+    REQUIRE(groups.has_value());
+    REQUIRE(groups->size() == 1);
+    const QString grpId = QString::fromStdString((*groups)[0].id.value());
+
+    // 4. Rename Group
+    bool grpRenamed = vm.renameGroup(grpId, "Core Backend");
+    CHECK(grpRenamed);
+    auto grpUpdated = ctx.groupService->getGroup((*groups)[0].id);
+    REQUIRE(grpUpdated.has_value());
+    CHECK((*grpUpdated)->name == "Core Backend");
+
+    // 5. Add second repository to group
+    bool addedToGrp = vm.addRepositoryToGroup(grpId, repoBId);
+    CHECK(addedToGrp);
+    auto grpWithTwo = ctx.groupService->getGroup((*groups)[0].id);
+    REQUIRE(grpWithTwo.has_value());
+    CHECK((*grpWithTwo)->repositoryIds.size() == 2);
+
+    // Verify GroupListModel reflects the updated repositories and names
+    CHECK(vm.groupsCount() == 1);
+    QModelIndex grpIdx = vm.groupModel()->index(0, 0);
+    QVariant repoNamesVar = vm.groupModel()->data(grpIdx, GroupListModel::RepositoryNamesRole);
+    QStringList repoNamesList = repoNamesVar.toStringList();
+    CHECK(repoNamesList.size() == 2);
+
+    // 6. Open Group emits groupOpened with all repo IDs
+    QSignalSpy openGrpSpy(&vm, &HomeHubViewModel::groupOpened);
+    vm.openGroup(grpId);
+    REQUIRE(openGrpSpy.count() == 1);
+    QList<QVariant> args = openGrpSpy.takeFirst();
+    CHECK(args.at(0).toString() == grpId);
+    CHECK(args.at(1).toString() == "Core Backend");
+    QStringList openedRepoIds = args.at(2).toStringList();
+    CHECK(openedRepoIds.size() == 2);
+    CHECK(openedRepoIds.contains(repoAId));
+    CHECK(openedRepoIds.contains(repoBId));
+
+    // 7. Remove repository from group
+    bool removedFromGrp = vm.removeRepositoryFromGroup(grpId, repoAId);
+    CHECK(removedFromGrp);
+    auto grpWithOne = ctx.groupService->getGroup((*groups)[0].id);
+    REQUIRE(grpWithOne.has_value());
+    CHECK((*grpWithOne)->repositoryIds.size() == 1);
+    CHECK((*grpWithOne)->repositoryIds[0].value() == repoBId.toStdString());
+
+    // 8. Copy to clipboard
+    vm.copyToClipboard("/test/path");
+    CHECK(vm.lastSuccessMessage().contains("Copiato negli appunti"));
+}
+
 TEST_CASE("QuickOpenViewModel provides multi-group selection and deterministic deduplication", "[desktop][mvvm]") {
     TestContext ctx;
     auto repoA = *ctx.repoService->registerRepository(RegisterRepositoryRequest{.localPath = ctx.repoAPath, .displayName = "Repo A"});
@@ -895,6 +970,23 @@ TEST_CASE("WorkspaceSessionViewModel multi-tab orchestration", "[viewmodel][sess
     sessionVm.closeTab(0);
     CHECK_FALSE(sessionVm.hasOpenTabs());
     CHECK(sessionVm.activeTabIndex() == -1);
+
+    // Test openGroup orchestration: opens all repos in group, sets currentGroupName
+    QSignalSpy groupNameSpy(&sessionVm, &WorkspaceSessionViewModel::currentGroupNameChanged);
+    sessionVm.openGroup("Core Microservices", {
+        QString::fromStdString(r1Res->id.value()),
+        QString::fromStdString(r2Res->id.value())
+    });
+
+    CHECK(sessionVm.currentGroupName() == "Core Microservices");
+    CHECK(groupNameSpy.count() >= 1);
+    CHECK(sessionVm.tabs().size() == 2);
+    CHECK(sessionVm.hasOpenTabs());
+
+    // Closing all tabs clears group name
+    sessionVm.closeAllTabs();
+    CHECK_FALSE(sessionVm.hasOpenTabs());
+    CHECK(sessionVm.currentGroupName().isEmpty());
 }
 
 TEST_CASE("BranchListModel and CommitHistoryListModel MVVM representations", "[viewmodel][models][branch][history]") {

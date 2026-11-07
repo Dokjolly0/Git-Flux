@@ -54,6 +54,9 @@ public:
     [[nodiscard]] std::expected<std::optional<bo::Repository>, RepositoryServiceError>
     getRepository(const bo::RepositoryId& id);
 
+    [[nodiscard]] std::expected<bo::Repository, RepositoryServiceError>
+    updateDisplayName(const bo::RepositoryId& id, const std::string& newDisplayName);
+
     [[nodiscard]] static bool isGitRepositoryDir(const std::filesystem::path& path) noexcept;
 
 private:

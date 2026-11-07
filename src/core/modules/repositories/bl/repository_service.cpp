@@ -260,4 +260,32 @@ RepositoryService::getRepository(const RepositoryId& id) {
     return std::move(*res);
 }
 
+std::expected<Repository, RepositoryServiceError>
+RepositoryService::updateDisplayName(const RepositoryId& id, const std::string& newDisplayName) {
+    auto repoRes = store_.getById(id);
+    if (!repoRes) {
+        return std::unexpected(RepositoryServiceError{
+            .kind = RepositoryServiceError::Kind::StorageError,
+            .message = repoRes.error().message
+        });
+    }
+    if (!repoRes->has_value()) {
+        return std::unexpected(RepositoryServiceError{
+            .kind = RepositoryServiceError::Kind::NotFound,
+            .message = "Repository not found: " + id.value()
+        });
+    }
+
+    auto repo = std::move(**repoRes);
+    repo.displayName = newDisplayName.empty() ? repo.localPath.filename().string() : newDisplayName;
+    auto saveRes = store_.save(repo);
+    if (!saveRes) {
+        return std::unexpected(RepositoryServiceError{
+            .kind = RepositoryServiceError::Kind::StorageError,
+            .message = saveRes.error().message
+        });
+    }
+    return repo;
+}
+
 } // namespace gf::repositories::bl

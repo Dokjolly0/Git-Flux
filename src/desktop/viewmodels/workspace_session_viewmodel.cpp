@@ -152,6 +152,13 @@ void WorkspaceSessionViewModel::openRepositories(const QStringList& repoIds) {
     }
 }
 
+void WorkspaceSessionViewModel::openGroup(const QString& groupName, const QStringList& repoIds) {
+    closeAllTabs();
+    m_currentGroupName = groupName;
+    emit currentGroupNameChanged();
+    openRepositories(repoIds);
+}
+
 void WorkspaceSessionViewModel::openWorkspace(const QString& workspaceId) {
     auto reposRes = m_workspaceService.resolveWorkspaceRepositories(
         workspaces::bo::WorkspaceId{workspaceId.toStdString()});
@@ -180,6 +187,10 @@ void WorkspaceSessionViewModel::closeTab(int index) {
     emit tabsChanged();
 
     if (m_tabs.empty()) {
+        if (!m_currentGroupName.isEmpty()) {
+            m_currentGroupName.clear();
+            emit currentGroupNameChanged();
+        }
         m_activeTabIndex = -1;
         m_workingTree.refresh({});
         m_diffViewer.clear();
@@ -204,6 +215,10 @@ void WorkspaceSessionViewModel::closeAllTabs() {
 
     m_tabs.clear();
     m_activeTabIndex = -1;
+    if (!m_currentGroupName.isEmpty()) {
+        m_currentGroupName.clear();
+        emit currentGroupNameChanged();
+    }
     m_workingTree.refresh({});
     m_diffViewer.clear();
     m_branchManager.setRepositoryPath({});

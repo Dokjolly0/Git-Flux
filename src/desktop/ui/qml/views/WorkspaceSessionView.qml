@@ -55,6 +55,57 @@ Rectangle {
                     }
                 }
 
+                // Active Group Indicator Badge
+                Rectangle {
+                    visible: sessionVm && sessionVm.currentGroupName && sessionVm.currentGroupName.length > 0
+                    Layout.preferredHeight: 28
+                    implicitWidth: groupBadgeRow.implicitWidth + 16
+                    radius: 14
+                    color: "#2E1065"
+                    border.color: "#7C4DFF"
+                    border.width: 1
+
+                    RowLayout {
+                        id: groupBadgeRow
+                        anchors.centerIn: parent
+                        spacing: 6
+
+                        Text {
+                            text: "🗂️"
+                            font.pixelSize: 11
+                        }
+
+                        Text {
+                            text: sessionVm ? sessionVm.currentGroupName : ""
+                            color: "#E9D5FF"
+                            font.bold: true
+                            font.pixelSize: 11
+                        }
+
+                        MouseArea {
+                            width: 16
+                            height: 16
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            Text {
+                                anchors.centerIn: parent
+                                text: "×"
+                                color: parent.containsMouse ? "#EF4444" : "#C084FC"
+                                font.pixelSize: 12
+                                font.bold: true
+                            }
+                            ToolTip.visible: containsMouse
+                            ToolTip.text: "Chiudi gruppo e torna alla Home"
+                            onClicked: {
+                                if (sessionVm) {
+                                    sessionVm.closeAllTabs();
+                                }
+                                root.returnToHomeRequested();
+                            }
+                        }
+                    }
+                }
+
                 // Quick Open button
                 Button {
                     Layout.preferredHeight: 32
@@ -110,6 +161,18 @@ Rectangle {
                                 border.color: (sessionVm && sessionVm.activeTabIndex === index) ? "#3B82F6" : "transparent"
                                 border.width: 1
 
+                                MouseArea {
+                                    id: tabMouseArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (sessionVm) {
+                                            sessionVm.activeTabIndex = index;
+                                        }
+                                    }
+                                }
+
                                 RowLayout {
                                     id: tabRow
                                     anchors.centerIn: parent
@@ -137,6 +200,8 @@ Rectangle {
                                     }
 
                                     MouseArea {
+                                        id: closeTabBtn
+                                        z: 2
                                         width: 16
                                         height: 16
                                         hoverEnabled: true
@@ -160,18 +225,30 @@ Rectangle {
                                         }
                                     }
                                 }
+                            }
+                        }
 
-                                MouseArea {
-                                    id: tabMouseArea
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        if (sessionVm) {
-                                            sessionVm.activeTabIndex = index;
-                                        }
-                                    }
-                                }
+                        // Add Tab Button
+                        Button {
+                            Layout.preferredHeight: 28
+                            Layout.preferredWidth: 28
+                            background: Rectangle {
+                                color: parent.hovered ? "#1E293B" : "#161B22"
+                                radius: 6
+                                border.color: "#334155"
+                            }
+                            contentItem: Text {
+                                text: "+"
+                                color: "#94A3B8"
+                                font.pixelSize: 14
+                                font.bold: true
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Apri un altro repository in una nuova scheda"
+                            onClicked: {
+                                root.quickOpenRequested();
                             }
                         }
                     }

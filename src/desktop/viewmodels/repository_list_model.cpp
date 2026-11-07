@@ -2,6 +2,8 @@
 
 #include <chrono>
 #include <ctime>
+#include <fstream>
+#include <string_view>
 
 namespace gf::desktop {
 
@@ -24,6 +26,27 @@ QString formatTimestampMs(std::int64_t epochMs) {
                              tmBuffer.tm_mday,
                              tmBuffer.tm_hour,
                              tmBuffer.tm_min);
+}
+
+QString readCurrentBranch(const std::filesystem::path& repoPath) {
+    std::ifstream headFile(repoPath / ".git" / "HEAD");
+    if (!headFile.is_open()) {
+        return QStringLiteral("main");
+    }
+    std::string line;
+    if (std::getline(headFile, line)) {
+        while (!line.empty() && (line.back() == '\r' || line.back() == '\n' || line.back() == ' ')) {
+            line.pop_back();
+        }
+        constexpr std::string_view kRefPrefix = "ref: refs/heads/";
+        if (line.starts_with(kRefPrefix)) {
+            return QString::fromStdString(line.substr(kRefPrefix.size()));
+        }
+        if (line.size() >= 7) {
+            return QString::fromStdString(line.substr(0, 7));
+        }
+    }
+    return QStringLiteral("main");
 }
 
 } // namespace
@@ -58,6 +81,8 @@ QVariant RepositoryListModel::data(const QModelIndex& index, int role) const {
         return item.isMissing;
     case LastAccessedAtRole:
         return item.lastAccessedAt;
+    case BranchRole:
+        return item.branch;
     case Qt::DisplayRole:
         return item.displayName;
     default:
@@ -72,7 +97,8 @@ QHash<int, QByteArray> RepositoryListModel::roleNames() const {
         {LocalPathRole, "localPath"},
         {StatusRole, "status"},
         {IsMissingRole, "isMissing"},
-        {LastAccessedAtRole, "lastAccessedAt"}
+        {LastAccessedAtRole, "lastAccessedAt"},
+        {BranchRole, "branch"}
     };
 }
 
@@ -87,6 +113,7 @@ void RepositoryListModel::setRepositories(const std::vector<gf::repositories::bo
         item.displayName = QString::fromStdString(repo.displayName);
         item.localPath = QString::fromStdString(repo.localPath.string());
         item.isMissing = (repo.pathStatus == gf::repositories::bo::RepositoryPathStatus::Missing);
+        item.branch = item.isMissing ? QString() : readCurrentBranch(repo.localPath);
         
         switch (repo.pathStatus) {
         case gf::repositories::bo::RepositoryPathStatus::Valid:
