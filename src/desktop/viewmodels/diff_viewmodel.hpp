@@ -14,6 +14,8 @@ class DiffViewModel final : public QObject {
     Q_PROPERTY(DiffLineListModel* linesModel READ linesModel CONSTANT)
     Q_PROPERTY(QString filePath READ filePath NOTIFY diffLoaded)
     Q_PROPERTY(QString oldPath READ oldPath NOTIFY diffLoaded)
+    Q_PROPERTY(QString languageName READ languageName NOTIFY diffLoaded)
+    Q_PROPERTY(QString languageIcon READ languageIcon NOTIFY diffLoaded)
     Q_PROPERTY(int additionsCount READ additionsCount NOTIFY diffLoaded)
     Q_PROPERTY(int deletionsCount READ deletionsCount NOTIFY diffLoaded)
     Q_PROPERTY(bool isBinary READ isBinary NOTIFY diffLoaded)
@@ -34,6 +36,8 @@ public:
     [[nodiscard]] DiffLineListModel* linesModel() noexcept { return &m_linesModel; }
     [[nodiscard]] QString filePath() const noexcept { return m_filePath; }
     [[nodiscard]] QString oldPath() const noexcept { return m_oldPath; }
+    [[nodiscard]] QString languageName() const noexcept { return m_languageName; }
+    [[nodiscard]] QString languageIcon() const noexcept { return m_languageIcon; }
     [[nodiscard]] int additionsCount() const noexcept { return m_additionsCount; }
     [[nodiscard]] int deletionsCount() const noexcept { return m_deletionsCount; }
     [[nodiscard]] bool isBinary() const noexcept { return m_isBinary; }
@@ -68,6 +72,8 @@ private:
 
     QString m_filePath;
     QString m_oldPath;
+    QString m_languageName;
+    QString m_languageIcon;
     QString m_currentRepoPath;
     QString m_currentRevision;
     QString m_viewMode = QStringLiteral("split");

@@ -71,6 +71,8 @@ add_library(gf_application STATIC
     src/core/modules/repositories/bl/repository_service.cpp
     src/core/modules/groups/bl/group_service.cpp
     src/core/modules/workspaces/bl/workspace_service.cpp
+    src/core/modules/syntax/language_detector.cpp
+    src/core/modules/syntax/syntax_highlighter.cpp
 )
 target_include_directories(gf_application PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
@@ -323,6 +325,7 @@ if(GF_BUILD_TESTING)
         tests/unit/fs_watcher_unit_tests.cpp
         tests/unit/task_runner_unit_tests.cpp
         tests/unit/batch_coordinator_unit_tests.cpp
+        tests/unit/syntax_highlighter_unit_tests.cpp
     )
     target_link_libraries(gf_unit_tests PRIVATE
         gf_git_cli_native

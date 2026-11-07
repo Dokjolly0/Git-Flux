@@ -1,4 +1,5 @@
 #include "desktop/viewmodels/diff_line_list_model.hpp"
+#include "core/modules/syntax/syntax_highlighter.hpp"
 
 namespace gf::desktop {
 
@@ -18,7 +19,8 @@ QVariant DiffLineListModel::data(const QModelIndex& index, int role) const {
         return {};
     }
 
-    const auto& line = m_lines[static_cast<std::size_t>(index.row())];
+    std::size_t rowIdx = static_cast<std::size_t>(index.row());
+    const auto& line = m_lines[rowIdx];
 
     switch (role) {
     case LineKindRole:
@@ -43,6 +45,12 @@ QVariant DiffLineListModel::data(const QModelIndex& index, int role) const {
 
     case ContentRole:
     case Qt::DisplayRole:
+        return QString::fromStdString(line.content);
+
+    case RichContentRole:
+        if (rowIdx < m_richLines.size()) {
+            return QString::fromStdString(m_richLines[rowIdx]);
+        }
         return QString::fromStdString(line.content);
 
     case BgColorRole:
@@ -85,14 +93,16 @@ QHash<int, QByteArray> DiffLineListModel::roleNames() const {
         {OldLineNumberRole, "oldLineNumber"},
         {NewLineNumberRole, "newLineNumber"},
         {ContentRole, "content"},
+        {RichContentRole, "richContent"},
         {BgColorRole, "bgColor"},
         {FgColorRole, "fgColor"}
     };
 }
 
-void DiffLineListModel::setDiff(const gf::git::bo::FileDiff& diff) {
+void DiffLineListModel::setDiff(const gf::git::bo::FileDiff& diff, gf::core::syntax::Language lang) {
     beginResetModel();
     m_lines.clear();
+    m_richLines.clear();
 
     for (const auto& hunk : diff.hunks) {
         // Add hunk header line
@@ -102,10 +112,12 @@ void DiffLineListModel::setDiff(const gf::git::bo::FileDiff& diff) {
             .newLineNumber = std::nullopt,
             .content = hunk.header
         });
+        m_richLines.push_back(gf::core::syntax::SyntaxHighlighter::escapeHtml(hunk.header));
 
         // Add all lines of the hunk
         for (const auto& l : hunk.lines) {
             m_lines.push_back(l);
+            m_richLines.push_back(gf::core::syntax::SyntaxHighlighter::highlightLine(l.content, lang));
         }
     }
 
@@ -115,6 +127,7 @@ void DiffLineListModel::setDiff(const gf::git::bo::FileDiff& diff) {
 void DiffLineListModel::clear() {
     beginResetModel();
     m_lines.clear();
+    m_richLines.clear();
     endResetModel();
 }
 

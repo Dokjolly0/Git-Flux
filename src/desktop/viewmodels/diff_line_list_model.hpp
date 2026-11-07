@@ -1,8 +1,10 @@
 #pragma once
 
 #include "core/modules/git/bo/diff_models.hpp"
+#include "core/modules/syntax/language_detector.hpp"
 
 #include <QAbstractListModel>
+#include <string>
 #include <vector>
 
 namespace gf::desktop {
@@ -16,6 +18,7 @@ public:
         OldLineNumberRole,
         NewLineNumberRole,
         ContentRole,
+        RichContentRole,
         BgColorRole,
         FgColorRole
     };
@@ -28,7 +31,7 @@ public:
     [[nodiscard]] QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
     [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
 
-    void setDiff(const gf::git::bo::FileDiff& diff);
+    void setDiff(const gf::git::bo::FileDiff& diff, gf::core::syntax::Language lang = gf::core::syntax::Language::Unknown);
     void clear();
 
     [[nodiscard]] const std::vector<gf::git::bo::DiffLine>& flatLines() const noexcept {
@@ -37,6 +40,7 @@ public:
 
 private:
     std::vector<gf::git::bo::DiffLine> m_lines;
+    std::vector<std::string> m_richLines;
 };
 
 } // namespace gf::desktop

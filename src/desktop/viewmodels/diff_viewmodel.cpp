@@ -1,4 +1,6 @@
 #include "desktop/viewmodels/diff_viewmodel.hpp"
+#include "core/modules/syntax/language_detector.hpp"
+#include "core/modules/syntax/syntax_highlighter.hpp"
 
 #include <QCryptographicHash>
 #include <QHash>
@@ -87,7 +89,12 @@ void DiffViewModel::processFileDiff(const gf::git::bo::FileDiff& diff) {
     m_isRenamed = diff.isRenamed;
     m_isEmpty = diff.empty();
 
-    m_linesModel.setDiff(diff);
+    std::string pathForDetect = diff.displayPath();
+    auto langInfo = gf::core::syntax::LanguageDetector::detect(pathForDetect);
+    m_languageName = QString::fromStdString(langInfo.name);
+    m_languageIcon = QString::fromStdString(langInfo.icon);
+
+    m_linesModel.setDiff(diff, langInfo.language);
     m_blameLines.clear();
 
     // Compute Hunks
@@ -132,6 +139,7 @@ void DiffViewModel::processFileDiff(const gf::git::bo::FileDiff& diff) {
             lMap[QStringLiteral("oldLineNumber")] = line.oldLineNumber.has_value() ? QString::number(*line.oldLineNumber) : QString();
             lMap[QStringLiteral("newLineNumber")] = line.newLineNumber.has_value() ? QString::number(*line.newLineNumber) : QString();
             lMap[QStringLiteral("content")] = QString::fromStdString(line.content);
+            lMap[QStringLiteral("richContent")] = QString::fromStdString(gf::core::syntax::SyntaxHighlighter::highlightLine(line.content, langInfo.language));
             lMap[QStringLiteral("bgColor")] = bgCol;
             lMap[QStringLiteral("fgColor")] = fgCol;
             hLines.append(lMap);
@@ -152,7 +160,7 @@ void DiffViewModel::processFileDiff(const gf::git::bo::FileDiff& diff) {
         std::vector<gf::git::bo::DiffLine> pendingDeletions;
         std::vector<gf::git::bo::DiffLine> pendingAdditions;
 
-        auto flushPending = [this, &pendingDeletions, &pendingAdditions]() {
+        auto flushPending = [this, &pendingDeletions, &pendingAdditions, &langInfo]() {
             std::size_t maxLen = std::max(pendingDeletions.size(), pendingAdditions.size());
             for (std::size_t i = 0; i < maxLen; ++i) {
                 QVariantMap row;
@@ -162,12 +170,14 @@ void DiffViewModel::processFileDiff(const gf::git::bo::FileDiff& diff) {
                     const auto& del = pendingDeletions[i];
                     row[QStringLiteral("leftLine")] = del.oldLineNumber.has_value() ? QString::number(*del.oldLineNumber) : QString();
                     row[QStringLiteral("leftContent")] = QString::fromStdString(del.content);
+                    row[QStringLiteral("leftRichContent")] = QString::fromStdString(gf::core::syntax::SyntaxHighlighter::highlightLine(del.content, langInfo.language));
                     row[QStringLiteral("leftKind")] = QStringLiteral("deletion");
                     row[QStringLiteral("leftBgColor")] = QStringLiteral("#3B181E");
                     row[QStringLiteral("leftFgColor")] = QStringLiteral("#FFA198");
                 } else {
                     row[QStringLiteral("leftLine")] = QString();
                     row[QStringLiteral("leftContent")] = QString();
+                    row[QStringLiteral("leftRichContent")] = QString();
                     row[QStringLiteral("leftKind")] = QStringLiteral("empty");
                     row[QStringLiteral("leftBgColor")] = QStringLiteral("#0D1117");
                     row[QStringLiteral("leftFgColor")] = QStringLiteral("#484F58");
@@ -177,12 +187,14 @@ void DiffViewModel::processFileDiff(const gf::git::bo::FileDiff& diff) {
                     const auto& add = pendingAdditions[i];
                     row[QStringLiteral("rightLine")] = add.newLineNumber.has_value() ? QString::number(*add.newLineNumber) : QString();
                     row[QStringLiteral("rightContent")] = QString::fromStdString(add.content);
+                    row[QStringLiteral("rightRichContent")] = QString::fromStdString(gf::core::syntax::SyntaxHighlighter::highlightLine(add.content, langInfo.language));
                     row[QStringLiteral("rightKind")] = QStringLiteral("addition");
                     row[QStringLiteral("rightBgColor")] = QStringLiteral("#143220");
                     row[QStringLiteral("rightFgColor")] = QStringLiteral("#7EE787");
                 } else {
                     row[QStringLiteral("rightLine")] = QString();
                     row[QStringLiteral("rightContent")] = QString();
+                    row[QStringLiteral("rightRichContent")] = QString();
                     row[QStringLiteral("rightKind")] = QStringLiteral("empty");
                     row[QStringLiteral("rightBgColor")] = QStringLiteral("#0D1117");
                     row[QStringLiteral("rightFgColor")] = QStringLiteral("#484F58");
@@ -201,15 +213,18 @@ void DiffViewModel::processFileDiff(const gf::git::bo::FileDiff& diff) {
             } else if (line.kind == gf::git::bo::DiffLineKind::Context) {
                 flushPending();
                 QVariantMap row;
+                QString rich = QString::fromStdString(gf::core::syntax::SyntaxHighlighter::highlightLine(line.content, langInfo.language));
                 row[QStringLiteral("isHunkHeader")] = false;
                 row[QStringLiteral("leftLine")] = line.oldLineNumber.has_value() ? QString::number(*line.oldLineNumber) : QString();
                 row[QStringLiteral("leftContent")] = QString::fromStdString(line.content);
+                row[QStringLiteral("leftRichContent")] = rich;
                 row[QStringLiteral("leftKind")] = QStringLiteral("context");
                 row[QStringLiteral("leftBgColor")] = QStringLiteral("transparent");
                 row[QStringLiteral("leftFgColor")] = QStringLiteral("#E6EDF3");
 
                 row[QStringLiteral("rightLine")] = line.newLineNumber.has_value() ? QString::number(*line.newLineNumber) : QString();
                 row[QStringLiteral("rightContent")] = QString::fromStdString(line.content);
+                row[QStringLiteral("rightRichContent")] = rich;
                 row[QStringLiteral("rightKind")] = QStringLiteral("context");
                 row[QStringLiteral("rightBgColor")] = QStringLiteral("transparent");
                 row[QStringLiteral("rightFgColor")] = QStringLiteral("#E6EDF3");
@@ -303,6 +318,10 @@ bool DiffViewModel::loadBlame(const QString& repoPath, const QString& revision, 
         return false;
     }
 
+    auto langInfo = gf::core::syntax::LanguageDetector::detect(filePath.toStdString());
+    m_languageName = QString::fromStdString(langInfo.name);
+    m_languageIcon = QString::fromStdString(langInfo.icon);
+
     m_blameLines.clear();
     m_blameLines.reserve(static_cast<qsizetype>(result->size()));
     for (const auto& bl : *result) {
@@ -314,6 +333,7 @@ bool DiffViewModel::loadBlame(const QString& repoPath, const QString& revision, 
         map[QStringLiteral("date")] = QString::fromStdString(bl.date);
         map[QStringLiteral("lineNumber")] = bl.lineNumber;
         map[QStringLiteral("content")] = QString::fromStdString(bl.content);
+        map[QStringLiteral("richContent")] = QString::fromStdString(gf::core::syntax::SyntaxHighlighter::highlightLine(bl.content, langInfo.language));
         map[QStringLiteral("avatarUrl")] = computeBlameAvatar(QString::fromStdString(bl.authorEmail));
         map[QStringLiteral("initials")] = computeBlameInitials(QString::fromStdString(bl.author));
         map[QStringLiteral("color")] = computeBlameColor(QString::fromStdString(bl.author));
@@ -327,6 +347,8 @@ bool DiffViewModel::loadBlame(const QString& repoPath, const QString& revision, 
 void DiffViewModel::clear() {
     m_filePath.clear();
     m_oldPath.clear();
+    m_languageName.clear();
+    m_languageIcon.clear();
     m_currentRepoPath.clear();
     m_currentRevision.clear();
     m_additionsCount = 0;

@@ -100,6 +100,33 @@ Rectangle {
                     }
                 }
 
+                // Language Badge (e.g. ⚡ C++, 🐍 Python, ⚛ React / TSX)
+                Rectangle {
+                    visible: root.diffViewer && !root.diffViewer.isEmpty && root.diffViewer.languageName && root.diffViewer.languageName.length > 0
+                    Layout.preferredHeight: 20
+                    implicitWidth: langRow.implicitWidth + 12
+                    radius: 3
+                    color: "#1E293B"
+                    border.color: "#334155"
+                    border.width: 1
+
+                    RowLayout {
+                        id: langRow
+                        anchors.centerIn: parent
+                        spacing: 4
+                        Text {
+                            text: root.diffViewer ? root.diffViewer.languageIcon : "📄"
+                            font.pixelSize: 10
+                        }
+                        Text {
+                            text: root.diffViewer ? root.diffViewer.languageName : ""
+                            color: "#38BDF8"
+                            font.pixelSize: 10
+                            font.bold: true
+                        }
+                    }
+                }
+
                 Item { Layout.fillWidth: true }
 
                 // View Mode Switcher Buttons (Inline, Split, Hunk, Blame)
@@ -339,7 +366,8 @@ Rectangle {
                             Text {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                text: model.content || ""
+                                text: model.richContent || model.content || ""
+                                textFormat: Text.RichText
                                 color: model.fgColor
                                 font.family: "monospace"
                                 font.pixelSize: 12
@@ -478,7 +506,8 @@ Rectangle {
                                             Layout.fillWidth: true
                                             Layout.fillHeight: true
                                             anchors.leftMargin: 6
-                                            text: modelData.leftContent || ""
+                                            text: modelData.leftRichContent || modelData.leftContent || ""
+                                            textFormat: Text.RichText
                                             color: modelData.leftFgColor || "#CBD5E1"
                                             font.family: "monospace"
                                             font.pixelSize: 11
@@ -525,7 +554,8 @@ Rectangle {
                                             Layout.fillWidth: true
                                             Layout.fillHeight: true
                                             anchors.leftMargin: 6
-                                            text: modelData.rightContent || ""
+                                            text: modelData.rightRichContent || modelData.rightContent || ""
+                                            textFormat: Text.RichText
                                             color: modelData.rightFgColor || "#CBD5E1"
                                             font.family: "monospace"
                                             font.pixelSize: 11
@@ -641,7 +671,8 @@ Rectangle {
 
                                         Text {
                                             Layout.fillWidth: true
-                                            text: modelData.content || ""
+                                            text: modelData.richContent || modelData.content || ""
+                                            textFormat: Text.RichText
                                             color: modelData.fgColor || "#CBD5E1"
                                             font.family: "monospace"
                                             font.pixelSize: 11
@@ -758,7 +789,8 @@ Rectangle {
                             Text {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                text: modelData.content || ""
+                                text: modelData.richContent || modelData.content || ""
+                                textFormat: Text.RichText
                                 color: "#F1F5F9"
                                 font.family: "monospace"
                                 font.pixelSize: 11
