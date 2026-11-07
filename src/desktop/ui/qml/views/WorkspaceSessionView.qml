@@ -385,47 +385,52 @@ Rectangle {
 
                 // View Toggle: "Changes" vs "History"
                 RowLayout {
-                    spacing: 2
-                    Rectangle {
-                        Layout.preferredHeight: 28
-                        Layout.preferredWidth: 70
-                        radius: 4
-                        color: root.activeViewMode === "changes" ? "#2563EB" : "#1E293B"
+                    spacing: 4
 
-                        Text {
-                            anchors.centerIn: parent
-                            text: "Changes"
-                            color: root.activeViewMode === "changes" ? "#FFFFFF" : "#94A3B8"
-                            font.bold: root.activeViewMode === "changes"
-                            font.pixelSize: 11
+                    Button {
+                        Layout.preferredHeight: 30
+                        checkable: true
+                        checked: root.activeViewMode === "changes"
+                        background: Rectangle {
+                            color: root.activeViewMode === "changes" ? "#2563EB" : (parent.hovered ? "#1E293B" : "#161B22")
+                            radius: 6
+                            border.color: root.activeViewMode === "changes" ? "#3B82F6" : "#334155"
+                            border.width: 1
                         }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.activeViewMode = "changes"
+                        contentItem: RowLayout {
+                            spacing: 5
+                            Text { text: "📝"; font.pixelSize: 11 }
+                            Text {
+                                text: "Changes"
+                                color: root.activeViewMode === "changes" ? "#FFFFFF" : "#94A3B8"
+                                font.bold: root.activeViewMode === "changes"
+                                font.pixelSize: 11
+                            }
                         }
+                        onClicked: root.activeViewMode = "changes"
                     }
 
-                    Rectangle {
-                        Layout.preferredHeight: 28
-                        Layout.preferredWidth: 70
-                        radius: 4
-                        color: root.activeViewMode === "history" ? "#2563EB" : "#1E293B"
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "History"
-                            color: root.activeViewMode === "history" ? "#FFFFFF" : "#94A3B8"
-                            font.bold: root.activeViewMode === "history"
-                            font.pixelSize: 11
+                    Button {
+                        Layout.preferredHeight: 30
+                        checkable: true
+                        checked: root.activeViewMode === "history"
+                        background: Rectangle {
+                            color: root.activeViewMode === "history" ? "#2563EB" : (parent.hovered ? "#1E293B" : "#161B22")
+                            radius: 6
+                            border.color: root.activeViewMode === "history" ? "#3B82F6" : "#334155"
+                            border.width: 1
                         }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.activeViewMode = "history"
+                        contentItem: RowLayout {
+                            spacing: 5
+                            Text { text: "📜"; font.pixelSize: 11 }
+                            Text {
+                                text: "History"
+                                color: root.activeViewMode === "history" ? "#FFFFFF" : "#94A3B8"
+                                font.bold: root.activeViewMode === "history"
+                                font.pixelSize: 11
+                            }
                         }
+                        onClicked: root.activeViewMode = "history"
                     }
                 }
 
@@ -579,6 +584,9 @@ Rectangle {
                         SplitView.fillHeight: true
                         SplitView.minimumHeight: 200
                         sessionVm: root.sessionVm
+                        onViewHistoryRequested: {
+                            root.activeViewMode = "history";
+                        }
                         onConflictResolveRequested: function(filePath) {
                             conflictModal.open();
                         }
@@ -601,6 +609,8 @@ Rectangle {
 
             // View 1: History (Commit Graph / Log)
             CommitHistoryPanel {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
                 sessionVm: root.sessionVm
             }
         }

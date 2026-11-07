@@ -374,11 +374,20 @@ Item {
                             spacing: 8
 
                             delegate: Rectangle {
+                                id: repoCardRect
+                                required property string id
+                                required property string displayName
+                                required property string localPath
+                                required property string status
+                                required property bool isMissing
+                                required property string lastAccessedAt
+                                required property string branch
+
                                 width: repoListView.width
                                 implicitHeight: repoColLayout.implicitHeight + 16
                                 radius: 6
-                                color: model.isMissing ? "#22161A" : (repoHover.containsMouse ? "#21262D" : "#191E27")
-                                border.color: model.isMissing ? "#F85149" : (repoHover.containsMouse ? "#58A6FF" : "#30363D")
+                                color: repoCardRect.isMissing ? "#22161A" : (repoHover.containsMouse ? "#21262D" : "#191E27")
+                                border.color: repoCardRect.isMissing ? "#F85149" : (repoHover.containsMouse ? "#58A6FF" : "#30363D")
                                 border.width: 1
 
                                 ColumnLayout {
@@ -393,12 +402,12 @@ Item {
                                         spacing: 8
 
                                         Text {
-                                            text: model.isMissing ? "⚠️" : "📁"
+                                            text: repoCardRect.isMissing ? "⚠️" : "📁"
                                             font.pixelSize: 15
                                         }
 
                                         Text {
-                                            text: model.displayName
+                                            text: repoCardRect.displayName
                                             color: "#F0F6FC"
                                             font.pixelSize: 13
                                             font.bold: true
@@ -407,7 +416,7 @@ Item {
 
                                         // Branch Badge
                                         Rectangle {
-                                            visible: !model.isMissing && model.branch && model.branch.length > 0
+                                            visible: !repoCardRect.isMissing && repoCardRect.branch && repoCardRect.branch.length > 0
                                             height: 18
                                             implicitWidth: branchText.implicitWidth + 12
                                             radius: 9
@@ -425,7 +434,7 @@ Item {
                                                 }
                                                 Text {
                                                     id: branchText
-                                                    text: model.branch ? model.branch : ""
+                                                    text: repoCardRect.branch ? repoCardRect.branch : ""
                                                     color: "#38BDF8"
                                                     font.pixelSize: 10
                                                     font.bold: true
@@ -435,7 +444,7 @@ Item {
 
                                         // Missing Badge
                                         Rectangle {
-                                            visible: model.isMissing
+                                            visible: repoCardRect.isMissing
                                             height: 18
                                             implicitWidth: 60
                                             radius: 4
@@ -453,10 +462,10 @@ Item {
 
                                         // Reconnect button if missing
                                         Button {
-                                            visible: model.isMissing
+                                            visible: repoCardRect.isMissing
                                             Layout.preferredHeight: 26
                                             onClicked: {
-                                                reconnectFolderDialog.targetRepoId = model.id;
+                                                reconnectFolderDialog.targetRepoId = repoCardRect.id;
                                                 reconnectFolderDialog.open();
                                             }
                                             contentItem: Text {
@@ -474,11 +483,11 @@ Item {
 
                                         // Open Button
                                         Button {
-                                            visible: !model.isMissing
+                                            visible: !repoCardRect.isMissing
                                             Layout.preferredHeight: 26
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Apri progetto in una scheda della sessione"
-                                            onClicked: homeHubVm.openRepository(model.id)
+                                            onClicked: homeHubVm.openRepository(repoCardRect.id)
                                             contentItem: RowLayout {
                                                 spacing: 4
                                                 Text {
@@ -506,7 +515,7 @@ Item {
                                         spacing: 4
 
                                         Text {
-                                            text: model.localPath
+                                            text: repoCardRect.localPath
                                             color: "#8B949E"
                                             font.pixelSize: 11
                                             elide: Text.ElideMiddle
@@ -517,10 +526,10 @@ Item {
                                         Button {
                                             Layout.preferredWidth: 24
                                             Layout.preferredHeight: 24
-                                            visible: !model.isMissing
+                                            visible: !repoCardRect.isMissing
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Apri nel gestore file"
-                                            onClicked: homeHubVm.openInFileManager(model.localPath)
+                                            onClicked: homeHubVm.openInFileManager(repoCardRect.localPath)
                                             contentItem: Text { text: "📂"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter }
                                             background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
                                         }
@@ -529,10 +538,10 @@ Item {
                                         Button {
                                             Layout.preferredWidth: 24
                                             Layout.preferredHeight: 24
-                                            visible: !model.isMissing
+                                            visible: !repoCardRect.isMissing
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Apri nel terminale"
-                                            onClicked: homeHubVm.openInTerminal(model.localPath)
+                                            onClicked: homeHubVm.openInTerminal(repoCardRect.localPath)
                                             contentItem: Text { text: "💻"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter }
                                             background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
                                         }
@@ -543,7 +552,7 @@ Item {
                                             Layout.preferredHeight: 24
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Copia percorso negli appunti"
-                                            onClicked: homeHubVm.copyToClipboard(model.localPath)
+                                            onClicked: homeHubVm.copyToClipboard(repoCardRect.localPath)
                                             contentItem: Text { text: "📋"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter }
                                             background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
                                         }
@@ -555,8 +564,8 @@ Item {
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Rinomina nome visualizzato"
                                             onClicked: {
-                                                renameRepoDialog.repoId = model.id;
-                                                renameRepoDialog.initialName = model.displayName;
+                                                renameRepoDialog.repoId = repoCardRect.id;
+                                                renameRepoDialog.initialName = repoCardRect.displayName;
                                                 renameRepoDialog.open();
                                             }
                                             contentItem: Text { text: "✏️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter }
@@ -567,12 +576,12 @@ Item {
                                         Button {
                                             Layout.preferredWidth: 24
                                             Layout.preferredHeight: 24
-                                            visible: !model.isMissing
+                                            visible: !repoCardRect.isMissing
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Aggiungi a un gruppo"
                                             onClicked: {
-                                                addToGroupDialog.targetRepoId = model.id;
-                                                addToGroupDialog.targetRepoName = model.displayName;
+                                                addToGroupDialog.targetRepoId = repoCardRect.id;
+                                                addToGroupDialog.targetRepoName = repoCardRect.displayName;
                                                 addToGroupDialog.selectedGroupId = "";
                                                 addToGroupDialog.open();
                                             }
@@ -586,7 +595,7 @@ Item {
                                             Layout.preferredHeight: 24
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Rimuovi dal catalogo"
-                                            onClicked: homeHubVm.removeRepository(model.id)
+                                            onClicked: homeHubVm.removeRepository(repoCardRect.id)
                                             contentItem: Text { text: "✕"; color: parent.hovered ? "#EF4444" : "#8B949E"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter }
                                             background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
                                         }
@@ -598,7 +607,7 @@ Item {
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     z: -1
-                                    onDoubleClicked: homeHubVm.openRepository(model.id)
+                                    onDoubleClicked: homeHubVm.openRepository(repoCardRect.id)
                                 }
                             }
 
@@ -702,6 +711,13 @@ Item {
                             spacing: 8
 
                             delegate: Rectangle {
+                                id: grpCardRect
+                                required property string id
+                                required property string name
+                                required property int repositoryCount
+                                required property var repositoryIds
+                                required property var repositoryNames
+
                                 width: groupListView.width
                                 implicitHeight: grpColLayout.implicitHeight + 16
                                 radius: 6
@@ -726,7 +742,7 @@ Item {
                                         }
 
                                         Text {
-                                            text: model.name
+                                            text: grpCardRect.name
                                             color: "#F0F6FC"
                                             font.pixelSize: 13
                                             font.bold: true
@@ -744,7 +760,7 @@ Item {
                                             Text {
                                                 id: grpBadgeText
                                                 anchors.centerIn: parent
-                                                text: model.repositoryCount + (model.repositoryCount === 1 ? " progetto" : " progetti")
+                                                text: grpCardRect.repositoryCount + (grpCardRect.repositoryCount === 1 ? " progetto" : " progetti")
                                                 color: "#E9D5FF"
                                                 font.pixelSize: 10
                                                 font.bold: true
@@ -758,7 +774,7 @@ Item {
                                             Layout.preferredHeight: 26
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Apri tutti i progetti del gruppo (un progetto per scheda)"
-                                            onClicked: homeHubVm.openGroup(model.id)
+                                            onClicked: homeHubVm.openGroup(grpCardRect.id)
                                             contentItem: RowLayout {
                                                 spacing: 4
                                                 Text {
@@ -786,8 +802,8 @@ Item {
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Associa un repository a questo gruppo"
                                             onClicked: {
-                                                addRepoToGroupDialog.targetGroupId = model.id;
-                                                addRepoToGroupDialog.targetGroupName = model.name;
+                                                addRepoToGroupDialog.targetGroupId = grpCardRect.id;
+                                                addRepoToGroupDialog.targetGroupName = grpCardRect.name;
                                                 addRepoToGroupDialog.selectedRepoId = "";
                                                 addRepoToGroupDialog.open();
                                             }
@@ -802,8 +818,8 @@ Item {
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Rinomina gruppo"
                                             onClicked: {
-                                                renameGroupDialog.groupId = model.id;
-                                                renameGroupDialog.initialName = model.name;
+                                                renameGroupDialog.groupId = grpCardRect.id;
+                                                renameGroupDialog.initialName = grpCardRect.name;
                                                 renameGroupDialog.open();
                                             }
                                             contentItem: Text { text: "✏️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter }
@@ -814,11 +830,11 @@ Item {
                                         Button {
                                             Layout.preferredWidth: 24
                                             Layout.preferredHeight: 24
-                                            visible: model.repositoryCount > 0
+                                            visible: grpCardRect.repositoryCount > 0
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Esegui Fetch per tutti i repository del gruppo"
                                             onClicked: {
-                                                batchOperationsVm.fetchGroup(model.id);
+                                                batchOperationsVm.fetchGroup(grpCardRect.id);
                                                 batchProgressModal.open();
                                             }
                                             contentItem: Text { text: "⬇"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; color: "#58A6FF" }
@@ -831,7 +847,7 @@ Item {
                                             Layout.preferredHeight: 24
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Elimina gruppo"
-                                            onClicked: homeHubVm.removeGroup(model.id)
+                                            onClicked: homeHubVm.removeGroup(grpCardRect.id)
                                             contentItem: Text { text: "✕"; color: parent.hovered ? "#EF4444" : "#8B949E"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter }
                                             background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
                                         }
@@ -841,10 +857,10 @@ Item {
                                     Flow {
                                         Layout.fillWidth: true
                                         spacing: 4
-                                        visible: model.repositoryCount > 0
+                                        visible: grpCardRect.repositoryCount > 0
 
                                         Repeater {
-                                            model: model.repositoryNames
+                                            model: grpCardRect.repositoryNames || []
 
                                             delegate: Rectangle {
                                                 height: 22
@@ -884,8 +900,8 @@ Item {
                                                             font.bold: true
                                                         }
                                                         onClicked: {
-                                                            var repoId = model.repositoryIds[index];
-                                                            homeHubVm.removeRepositoryFromGroup(model.id, repoId);
+                                                            var repoId = grpCardRect.repositoryIds[index];
+                                                            homeHubVm.removeRepositoryFromGroup(grpCardRect.id, repoId);
                                                         }
                                                     }
                                                 }
@@ -894,7 +910,7 @@ Item {
                                     }
 
                                     Text {
-                                        visible: model.repositoryCount === 0
+                                        visible: grpCardRect.repositoryCount === 0
                                         text: "Nessun progetto associato. Clicca ➕ per associare repository."
                                         color: "#6E7681"
                                         font.pixelSize: 11
@@ -906,7 +922,7 @@ Item {
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     z: -1
-                                    onDoubleClicked: homeHubVm.openGroup(model.id)
+                                    onDoubleClicked: homeHubVm.openGroup(grpCardRect.id)
                                 }
                             }
 
@@ -982,6 +998,12 @@ Item {
                             spacing: 8
 
                             delegate: Rectangle {
+                                id: wsCardRect
+                                required property string id
+                                required property string name
+                                required property string summary
+                                required property string lastOpenedAt
+
                                 width: wsListView.width
                                 implicitHeight: wsColLayout.implicitHeight + 16
                                 radius: 6
@@ -1005,7 +1027,7 @@ Item {
                                         }
 
                                         Text {
-                                            text: model.name
+                                            text: wsCardRect.name
                                             color: "#F0F6FC"
                                             font.pixelSize: 13
                                             font.bold: true
@@ -1021,7 +1043,7 @@ Item {
                                             Text {
                                                 id: wsSummaryPill
                                                 anchors.centerIn: parent
-                                                text: model.summary
+                                                text: wsCardRect.summary
                                                 color: "#3FB950"
                                                 font.pixelSize: 10
                                             }
@@ -1034,7 +1056,7 @@ Item {
                                             Layout.preferredHeight: 26
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Apri tutti i progetti di questo workspace"
-                                            onClicked: homeHubVm.openWorkspace(model.id)
+                                            onClicked: homeHubVm.openWorkspace(wsCardRect.id)
                                             contentItem: RowLayout {
                                                 spacing: 4
                                                 Text {
@@ -1061,7 +1083,7 @@ Item {
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Esegui Fetch per tutti i repo del workspace"
                                             onClicked: {
-                                                batchOperationsVm.fetchWorkspace(model.id);
+                                                batchOperationsVm.fetchWorkspace(wsCardRect.id);
                                                 batchProgressModal.open();
                                             }
                                             contentItem: Text { text: "⬇"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; color: "#3FB950" }
@@ -1073,14 +1095,14 @@ Item {
                                             Layout.preferredHeight: 24
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Elimina workspace"
-                                            onClicked: homeHubVm.removeWorkspace(model.id)
+                                            onClicked: homeHubVm.removeWorkspace(wsCardRect.id)
                                             contentItem: Text { text: "✕"; color: parent.hovered ? "#EF4444" : "#8B949E"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter }
                                             background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
                                         }
                                     }
 
                                     Text {
-                                        text: "Ultimo accesso: " + model.lastOpenedAt
+                                        text: "Ultimo accesso: " + wsCardRect.lastOpenedAt
                                         color: "#8B949E"
                                         font.pixelSize: 11
                                     }
@@ -1091,7 +1113,7 @@ Item {
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     z: -1
-                                    onDoubleClicked: homeHubVm.openWorkspace(model.id)
+                                    onDoubleClicked: homeHubVm.openWorkspace(wsCardRect.id)
                                 }
                             }
 

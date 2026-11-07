@@ -13,6 +13,7 @@ Rectangle {
 
     signal fileSelected(string filePath, string scope)
     signal conflictResolveRequested(string filePath)
+    signal viewHistoryRequested()
 
     ColumnLayout {
         anchors.fill: parent
@@ -617,16 +618,39 @@ Rectangle {
                 }
 
                 // Empty placeholder if clean
-                Item {
+                Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 40
+                    Layout.preferredHeight: 70
                     visible: workingTree ? workingTree.isClean : false
+                    color: "transparent"
 
-                    Text {
+                    ColumnLayout {
                         anchors.centerIn: parent
-                        text: "✨ Working tree pulito"
-                        color: "#64748B"
-                        font.pixelSize: 12
+                        spacing: 6
+
+                        Text {
+                            text: "✨ Working tree pulito (nessuna modifica locale)"
+                            color: "#64748B"
+                            font.pixelSize: 12
+                            Layout.alignment: Qt.AlignHCenter
+                        }
+
+                        Button {
+                            Layout.alignment: Qt.AlignHCenter
+                            text: "📜 Vedi cronologia commit"
+                            contentItem: Text {
+                                text: "📜 Vedi cronologia commit"
+                                color: "#38BDF8"
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+                            background: Rectangle {
+                                color: parent.hovered ? "#1E293B" : "#0F172A"
+                                radius: 4
+                                border.color: "#334155"
+                            }
+                            onClicked: root.viewHistoryRequested()
+                        }
                     }
                 }
             }

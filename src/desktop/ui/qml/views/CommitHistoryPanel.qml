@@ -5,10 +5,51 @@ import QtQuick.Layouts
 Rectangle {
     id: root
     color: "#0E1117"
+    implicitWidth: 800
+    implicitHeight: 600
 
     property var sessionVm: null
-    property var branchManager: sessionVm ? sessionVm.branchManager : null
+    property var branchManager: (sessionVm && sessionVm.branchManager) ? sessionVm.branchManager : null
     property var selectedCommit: null
+
+    // Automatically select the first commit when commit history is loaded or updated
+    Connections {
+        target: (root.branchManager && root.branchManager.commitHistory) ? root.branchManager.commitHistory : null
+        function onModelReset() {
+            root.autoSelectFirstCommit();
+        }
+        function onRowsInserted() {
+            root.autoSelectFirstCommit();
+        }
+    }
+
+    function autoSelectFirstCommit() {
+        if (!root.branchManager || !root.branchManager.commitHistory) {
+            root.selectedCommit = null;
+            return;
+        }
+        var model = root.branchManager.commitHistory;
+        if (model.rowCount() > 0) {
+            var firstIdx = model.index(0, 0);
+            root.selectedCommit = {
+                sha: model.data(firstIdx, 257),         // ShaRole
+                shortSha: model.data(firstIdx, 258),    // ShortShaRole
+                subject: model.data(firstIdx, 259),     // SubjectRole
+                body: model.data(firstIdx, 260),        // BodyRole
+                authorName: model.data(firstIdx, 261),  // AuthorNameRole
+                authorEmail: model.data(firstIdx, 262), // AuthorEmailRole
+                authorDate: model.data(firstIdx, 263),  // AuthorDateRole
+                decorations: model.data(firstIdx, 264), // DecorationsRole
+                parents: model.data(firstIdx, 265)      // ParentsRole
+            };
+        } else {
+            root.selectedCommit = null;
+        }
+    }
+
+    Component.onCompleted: {
+        root.autoSelectFirstCommit();
+    }
 
     RowLayout {
         anchors.fill: parent
@@ -20,14 +61,14 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.minimumWidth: 350
+            Layout.minimumWidth: 380
             color: "#161B22"
 
             ColumnLayout {
                 anchors.fill: parent
                 spacing: 0
 
-                // Search header
+                // Search & Filter header
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 44
@@ -40,11 +81,17 @@ Rectangle {
                         anchors.margins: 6
                         spacing: 8
 
+                        Text {
+                            text: "🔍"
+                            font.pixelSize: 12
+                            color: "#94A3B8"
+                        }
+
                         TextField {
                             id: historySearchField
                             Layout.fillWidth: true
                             Layout.preferredHeight: 30
-                            placeholderText: "Filtra per messaggio o SHA..."
+                            placeholderText: "Filtra per messaggio, autore o SHA..."
                             placeholderTextColor: "#64748B"
                             color: "#F8FAFC"
                             font.pixelSize: 12
@@ -59,8 +106,20 @@ Rectangle {
                         Button {
                             text: "Aggiorna"
                             Layout.preferredHeight: 30
+                            contentItem: RowLayout {
+                                spacing: 4
+                                Text { text: "🔄"; font.pixelSize: 11 }
+                                Text { text: "Aggiorna"; color: "#CBD5E1"; font.pixelSize: 11; font.bold: true }
+                            }
+                            background: Rectangle {
+                                color: parent.hovered ? "#334155" : "#1E293B"
+                                radius: 4
+                                border.color: "#334155"
+                            }
                             onClicked: {
-                                if (root.branchManager) root.branchManager.refresh();
+                                if (root.branchManager) {
+                                    root.branchManager.refresh();
+                                }
                             }
                         }
                     }
@@ -75,16 +134,36 @@ Rectangle {
                     model: root.branchManager ? root.branchManager.commitHistory : null
 
                     delegate: Rectangle {
+                        id: commitRow
+                        required property string sha
+                        required property string shortSha
+                        required property string subject
+                        required property string body
+                        required property string authorName
+                        required property string authorEmail
+                        required property string authorDate
+                        required property var decorations
+                        required property var parents
+                        required property int index
+
                         width: commitListView.width
-                        height: 52
-                        color: (root.selectedCommit && root.selectedCommit.sha === model.sha)
+                        height: isMatchingFilter ? 52 : 0
+                        visible: isMatchingFilter
+
+                        property bool isMatchingFilter: {
+                            if (historySearchField.text.trim().length === 0) return true;
+                            var query = historySearchField.text.trim().toLowerCase();
+                            var subj = (commitRow.subject || "").toLowerCase();
+                            var sSha = (commitRow.shortSha || "").toLowerCase();
+                            var auth = (commitRow.authorName || "").toLowerCase();
+                            return subj.indexOf(query) !== -1 || sSha.indexOf(query) !== -1 || auth.indexOf(query) !== -1;
+                        }
+
+                        color: (root.selectedCommit && root.selectedCommit.sha === commitRow.sha)
                                ? "#1E293B"
                                : (itemMouse.containsMouse ? "#1E293B66" : "transparent")
-                        border.color: "#1E293B"
+                        border.color: (root.selectedCommit && root.selectedCommit.sha === commitRow.sha) ? "#3B82F6" : "#1E293B"
                         border.width: 1
-                        visible: historySearchField.text.length === 0 ||
-                                 model.subject.toLowerCase().includes(historySearchField.text.toLowerCase()) ||
-                                 model.shortSha.toLowerCase().includes(historySearchField.text.toLowerCase())
 
                         RowLayout {
                             anchors.fill: parent
@@ -113,19 +192,19 @@ Rectangle {
 
                                     // Ref Decorations Badge (Branches/Tags)
                                     Repeater {
-                                        model: model.decorations
+                                        model: commitRow.decorations || []
 
                                         delegate: Rectangle {
                                             height: 18
                                             implicitWidth: decText.implicitWidth + 8
                                             radius: 3
-                                            color: modelData.includes("tag:") ? "#854D0E" : "#1E3A8A"
+                                            color: (modelData && modelData.indexOf("tag:") !== -1) ? "#854D0E" : "#1E3A8A"
 
                                             Text {
                                                 id: decText
                                                 anchors.centerIn: parent
-                                                text: modelData
-                                                color: modelData.includes("tag:") ? "#FEF08A" : "#93C5FD"
+                                                text: modelData || ""
+                                                color: (modelData && modelData.indexOf("tag:") !== -1) ? "#FEF08A" : "#93C5FD"
                                                 font.pixelSize: 10
                                                 font.bold: true
                                             }
@@ -133,7 +212,7 @@ Rectangle {
                                     }
 
                                     Text {
-                                        text: model.subject
+                                        text: commitRow.subject || "(Nessun messaggio)"
                                         color: "#F8FAFC"
                                         font.bold: true
                                         font.pixelSize: 12
@@ -145,7 +224,7 @@ Rectangle {
                                 RowLayout {
                                     spacing: 8
                                     Text {
-                                        text: model.authorName
+                                        text: commitRow.authorName || ""
                                         color: "#94A3B8"
                                         font.pixelSize: 11
                                     }
@@ -153,9 +232,10 @@ Rectangle {
                                         text: "•"
                                         color: "#475569"
                                         font.pixelSize: 10
+                                        visible: (commitRow.authorName || "").length > 0
                                     }
                                     Text {
-                                        text: model.authorDate
+                                        text: commitRow.authorDate || ""
                                         color: "#64748B"
                                         font.pixelSize: 11
                                     }
@@ -173,7 +253,7 @@ Rectangle {
 
                                 Text {
                                     anchors.centerIn: parent
-                                    text: model.shortSha
+                                    text: commitRow.shortSha || ""
                                     color: "#38BDF8"
                                     font.family: "monospace"
                                     font.pixelSize: 10
@@ -188,16 +268,72 @@ Rectangle {
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 root.selectedCommit = {
-                                    sha: model.sha,
-                                    shortSha: model.shortSha,
-                                    subject: model.subject,
-                                    body: model.body,
-                                    authorName: model.authorName,
-                                    authorEmail: model.authorEmail,
-                                    authorDate: model.authorDate,
-                                    decorations: model.decorations,
-                                    parents: model.parents
+                                    sha: commitRow.sha,
+                                    shortSha: commitRow.shortSha,
+                                    subject: commitRow.subject,
+                                    body: commitRow.body,
+                                    authorName: commitRow.authorName,
+                                    authorEmail: commitRow.authorEmail,
+                                    authorDate: commitRow.authorDate,
+                                    decorations: commitRow.decorations,
+                                    parents: commitRow.parents
                                 };
+                            }
+                        }
+                    }
+
+                    // Empty state when repository has no commits or history is empty
+                    Rectangle {
+                        anchors.centerIn: parent
+                        visible: commitListView.count === 0
+                        color: "transparent"
+                        width: 320
+                        height: 140
+
+                        ColumnLayout {
+                            anchors.centerIn: parent
+                            spacing: 10
+
+                            Text {
+                                text: "📜"
+                                font.pixelSize: 32
+                                Layout.alignment: Qt.AlignHCenter
+                            }
+
+                            Text {
+                                text: "Nessun commit trovato per questo repository."
+                                color: "#F0F6FC"
+                                font.pixelSize: 13
+                                font.bold: true
+                                horizontalAlignment: Text.AlignHCenter
+                                Layout.alignment: Qt.AlignHCenter
+                            }
+
+                            Text {
+                                text: "Il repository potrebbe essere vuoto o inizializzato di recente."
+                                color: "#8B949E"
+                                font.pixelSize: 11
+                                horizontalAlignment: Text.AlignHCenter
+                                Layout.alignment: Qt.AlignHCenter
+                            }
+
+                            Button {
+                                Layout.alignment: Qt.AlignHCenter
+                                text: "🔄 Ricarica cronologia"
+                                contentItem: Text {
+                                    text: "🔄 Ricarica cronologia"
+                                    color: "#38BDF8"
+                                    font.pixelSize: 11
+                                    font.bold: true
+                                }
+                                background: Rectangle {
+                                    color: parent.hovered ? "#1E293B" : "#0F172A"
+                                    radius: 4
+                                    border.color: "#38BDF8"
+                                }
+                                onClicked: {
+                                    if (root.branchManager) root.branchManager.refresh();
+                                }
                             }
                         }
                     }
@@ -214,12 +350,13 @@ Rectangle {
             color: "#0F172A"
             border.color: "#1E293B"
             border.width: 1
-            visible: root.selectedCommit !== null
 
+            // Commit details view when a commit is selected
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 16
                 spacing: 12
+                visible: root.selectedCommit !== null
 
                 Text {
                     text: "Dettaglio Commit"
@@ -232,7 +369,7 @@ Rectangle {
                     text: root.selectedCommit ? root.selectedCommit.subject : ""
                     color: "#FFFFFF"
                     font.bold: true
-                    font.pixelSize: 15
+                    font.pixelSize: 14
                     wrapMode: Text.Wrap
                     Layout.fillWidth: true
                 }
@@ -255,6 +392,8 @@ Rectangle {
                         text: root.selectedCommit ? (root.selectedCommit.authorName + " <" + root.selectedCommit.authorEmail + ">") : ""
                         color: "#E2E8F0"
                         font.pixelSize: 12
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
                     }
                 }
 
@@ -291,7 +430,7 @@ Rectangle {
 
                 // Message body
                 Text {
-                    text: "Messaggio:"
+                    text: "Messaggio esteso:"
                     color: "#64748B"
                     font.pixelSize: 12
                 }
@@ -302,17 +441,47 @@ Rectangle {
 
                     TextArea {
                         readOnly: true
-                        text: root.selectedCommit && root.selectedCommit.body.length > 0
+                        text: (root.selectedCommit && root.selectedCommit.body && root.selectedCommit.body.length > 0)
                               ? root.selectedCommit.body
-                              : "(Nessun corpo aggiuntivo)"
+                              : "(Nessun corpo aggiuntivo nel commit)"
                         color: "#CBD5E1"
                         font.pixelSize: 12
+                        wrapMode: Text.Wrap
                         background: Rectangle {
                             color: "#161B22"
                             radius: 4
                             border.color: "#1E293B"
                             border.width: 1
                         }
+                    }
+                }
+            }
+
+            // Placeholder when no commit is selected
+            Rectangle {
+                anchors.centerIn: parent
+                visible: root.selectedCommit === null
+                color: "transparent"
+                width: 260
+                height: 120
+
+                ColumnLayout {
+                    anchors.centerIn: parent
+                    spacing: 8
+
+                    Text {
+                        text: "👆"
+                        font.pixelSize: 28
+                        Layout.alignment: Qt.AlignHCenter
+                    }
+
+                    Text {
+                        text: "Seleziona un commit dalla lista per visualizzarne i dettagli completi, autore, data e messaggio."
+                        color: "#64748B"
+                        font.pixelSize: 12
+                        wrapMode: Text.Wrap
+                        horizontalAlignment: Text.AlignHCenter
+                        Layout.fillWidth: true
                     }
                 }
             }
