@@ -126,6 +126,57 @@ TEST_CASE("RepositoryService gestisce validazione, registrazione e riconnessione
     REQUIRE(service.getAllRepositories()->empty());
 }
 
+TEST_CASE("RepositoryService resolves .git suffix and handles folder or .git selection seamlessly", "[unit][services][repository]") {
+    auto conn = createMemoryDb();
+    SqliteRepositoryStore store(conn);
+    RepositoryService service(store);
+
+    ScopedSandbox sandbox("gf_test_repo_service_dotgit");
+    const auto projectPath = sandbox.dir / "AwesomeApp";
+    makeFakeGitRepo(projectPath);
+
+    // 1. isGitRepositoryDir works with project root, .git folder, and trailing slash
+    CHECK(RepositoryService::isGitRepositoryDir(projectPath));
+    CHECK(RepositoryService::isGitRepositoryDir(projectPath / ".git"));
+    CHECK(RepositoryService::isGitRepositoryDir(projectPath / ".git/"));
+
+    // 2. Register repository pointing directly to .git
+    auto dotGitRes = service.registerRepository({
+        .localPath = projectPath / ".git",
+        .displayName = std::nullopt
+    });
+    REQUIRE(dotGitRes.has_value());
+    // localPath must be stripped of .git!
+    CHECK(dotGitRes->localPath == std::filesystem::weakly_canonical(projectPath));
+    // displayName must be derived from parent folder ("AwesomeApp"), NOT ".git"!
+    CHECK(dotGitRes->displayName == "AwesomeApp");
+
+    // 3. Attempting to register via normal path is recognized as duplicate
+    auto dupNormalRes = service.registerRepository({
+        .localPath = projectPath,
+        .displayName = std::nullopt
+    });
+    REQUIRE_FALSE(dupNormalRes.has_value());
+    CHECK(dupNormalRes.error().kind == RepositoryServiceError::Kind::AlreadyRegistered);
+
+    // 4. Attempting to register again via .git is also recognized as duplicate
+    auto dupDotGitRes = service.registerRepository({
+        .localPath = projectPath / ".git",
+        .displayName = std::nullopt
+    });
+    REQUIRE_FALSE(dupDotGitRes.has_value());
+    CHECK(dupDotGitRes.error().kind == RepositoryServiceError::Kind::AlreadyRegistered);
+
+    // 5. Reconnection pointing to .git also works and normalizes path
+    const auto movedPath = sandbox.dir / "AwesomeAppRelocated";
+    std::filesystem::rename(projectPath, movedPath);
+
+    auto reconnectRes = service.reconnectRepositoryPath(dotGitRes->id, movedPath / ".git");
+    REQUIRE(reconnectRes.has_value());
+    CHECK(reconnectRes->localPath == std::filesystem::weakly_canonical(movedPath));
+    CHECK(reconnectRes->pathStatus == RepositoryPathStatus::Valid);
+}
+
 TEST_CASE("GroupService gestisce membership e deduplicazione deterministica per Quick Open", "[unit][services][group]") {
     auto conn = createMemoryDb();
     SqliteRepositoryStore repoStore(conn);

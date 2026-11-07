@@ -155,10 +155,11 @@ if(GF_BUILD_DESKTOP)
             set(Qt6Qml_DIR "$ENV{HOME}/.local/qt6-declarative/usr/lib/x86_64-linux-gnu/cmake/Qt6Qml" CACHE PATH "Path to Qt6Qml")
             set(Qt6QmlTools_DIR "$ENV{HOME}/.local/qt6-declarative/usr/lib/x86_64-linux-gnu/cmake/Qt6QmlTools" CACHE PATH "Path to Qt6QmlTools")
             set(Qt6QuickControls2_DIR "$ENV{HOME}/.local/qt6-declarative/usr/lib/x86_64-linux-gnu/cmake/Qt6QuickControls2" CACHE PATH "Path to Qt6QuickControls2")
+            set(Qt6QuickDialogs2_DIR "$ENV{HOME}/.local/qt6-declarative/usr/lib/x86_64-linux-gnu/cmake/Qt6QuickDialogs2" CACHE PATH "Path to Qt6QuickDialogs2")
         endif()
     endif()
 
-    find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml QuickControls2)
+    find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml QuickControls2 QuickDialogs2)
     if(GF_BUILD_TESTING)
         find_package(Qt6 REQUIRED COMPONENTS Test)
     endif()
@@ -251,6 +252,7 @@ if(GF_BUILD_DESKTOP)
         Qt6::Quick
         Qt6::Qml
         Qt6::QuickControls2
+        Qt6::QuickDialogs2
     )
     gf_apply_compiler_warnings(git_flux)
     gf_deploy_runtime_dlls(git_flux)

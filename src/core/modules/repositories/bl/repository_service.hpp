@@ -54,9 +54,9 @@ public:
     [[nodiscard]] std::expected<std::optional<bo::Repository>, RepositoryServiceError>
     getRepository(const bo::RepositoryId& id);
 
-private:
     [[nodiscard]] static bool isGitRepositoryDir(const std::filesystem::path& path) noexcept;
 
+private:
     ports::IRepositoryStore& store_;
 };
 

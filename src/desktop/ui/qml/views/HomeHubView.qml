@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Dialogs
 
 Item {
     id: root
@@ -9,6 +10,23 @@ Item {
     signal repositoryOpened(string repoId, string path)
     signal groupOpened(string groupId)
     signal workspaceOpened(string workspaceId)
+
+    Connections {
+        target: (typeof homeHubVm !== "undefined") ? homeHubVm : null
+        function onErrorOccurred(message) {
+            errorFeedbackDialog.errorMessage = message;
+            errorFeedbackDialog.open();
+            feedbackBanner.showError(message);
+        }
+        function onRepositoryAdded(repoName, path) {
+            feedbackBanner.showSuccess("Repository '" + repoName + "' aggiunto con successo!");
+        }
+        function onLastSuccessMessageChanged(message) {
+            if (message && message.length > 0) {
+                feedbackBanner.showSuccess(message);
+            }
+        }
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -121,7 +139,7 @@ Item {
 
                     Button {
                         text: "+ Repo"
-                        onClicked: addRepoDialog.open()
+                        onClicked: repoFolderDialog.open()
                         contentItem: Text {
                             text: "+ Repository"
                             color: "#F0F6FC"
@@ -194,6 +212,88 @@ Item {
         }
 
         // =====================================================================
+        // FEEDBACK BANNER (Interactive Error / Success Notification)
+        // =====================================================================
+        Rectangle {
+            id: feedbackBanner
+            Layout.fillWidth: true
+            Layout.leftMargin: 16
+            Layout.rightMargin: 16
+            Layout.topMargin: visible ? 8 : 0
+            Layout.bottomMargin: visible ? 4 : 0
+            height: visible ? 48 : 0
+            visible: opacity > 0
+            opacity: 0
+            radius: 6
+            clip: true
+
+            property bool isError: true
+            property string messageText: ""
+
+            color: isError ? "#2D1517" : "#13231B"
+            border.color: isError ? "#F85149" : "#3FB950"
+            border.width: 1
+
+            Behavior on opacity { NumberAnimation { duration: 200 } }
+
+            function showError(msg) {
+                isError = true;
+                messageText = msg;
+                opacity = 1.0;
+                autoHideTimer.restart();
+            }
+
+            function showSuccess(msg) {
+                isError = false;
+                messageText = msg;
+                opacity = 1.0;
+                autoHideTimer.restart();
+            }
+
+            function dismiss() {
+                opacity = 0;
+                if (typeof homeHubVm !== "undefined") {
+                    homeHubVm.clearFeedback();
+                }
+            }
+
+            Timer {
+                id: autoHideTimer
+                interval: 8000
+                onTriggered: feedbackBanner.dismiss()
+            }
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
+                spacing: 10
+
+                Text {
+                    text: feedbackBanner.isError ? "⚠️" : "✔"
+                    font.pixelSize: 16
+                }
+
+                Text {
+                    text: feedbackBanner.messageText
+                    color: feedbackBanner.isError ? "#FF7B72" : "#7EE787"
+                    font.pixelSize: 12
+                    font.bold: true
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
+
+                Button {
+                    text: "✕"
+                    flat: true
+                    onClicked: feedbackBanner.dismiss()
+                    contentItem: Text { text: "✕"; color: "#8B949E"; font.pixelSize: 13 }
+                    background: Rectangle { color: "transparent" }
+                }
+            }
+        }
+
+        // =====================================================================
         // MAIN BODY: 3-Column Layout (Repositories, Groups, Workspaces)
         // =====================================================================
         Rectangle {
@@ -249,7 +349,7 @@ Item {
                             Button {
                                 text: "+"
                                 flat: true
-                                onClicked: addRepoDialog.open()
+                                onClicked: repoFolderDialog.open()
                                 contentItem: Text { text: "+"; color: "#8B949E"; font.pixelSize: 15 }
                                 background: Rectangle { color: "transparent" }
                             }
@@ -334,8 +434,8 @@ Item {
                                         visible: model.isMissing
                                         text: "Ricollega"
                                         onClicked: {
-                                            reconnectDialog.targetRepoId = model.id;
-                                            reconnectDialog.open();
+                                            reconnectFolderDialog.targetRepoId = model.id;
+                                            reconnectFolderDialog.open();
                                         }
                                         contentItem: Text {
                                             text: "Ricollega"
@@ -363,13 +463,41 @@ Item {
                             }
 
                             // Empty State
-                            Text {
+                            Rectangle {
                                 anchors.centerIn: parent
                                 visible: homeHubVm.repositoriesCount === 0
-                                text: "Nessun repository registrato.\nFai clic su '+ Repo' per aggiungerne uno."
-                                color: "#6E7681"
-                                font.pixelSize: 12
-                                horizontalAlignment: Text.AlignHCenter
+                                color: "transparent"
+                                width: 260
+                                height: 110
+
+                                ColumnLayout {
+                                    anchors.centerIn: parent
+                                    spacing: 10
+
+                                    Text {
+                                        text: "Nessun repository registrato."
+                                        color: "#8B949E"
+                                        font.pixelSize: 13
+                                        horizontalAlignment: Text.AlignHCenter
+                                        Layout.alignment: Qt.AlignHCenter
+                                    }
+
+                                    Button {
+                                        Layout.alignment: Qt.AlignHCenter
+                                        onClicked: repoFolderDialog.open()
+                                        contentItem: Text {
+                                            text: "📁 Sfoglia cartella..."
+                                            color: "#58A6FF"
+                                            font.pixelSize: 12
+                                            font.bold: true
+                                        }
+                                        background: Rectangle {
+                                            color: parent.hovered ? "#30363D" : "#21262D"
+                                            radius: 6
+                                            border.color: "#30363D"
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -709,73 +837,14 @@ Item {
     // QUICK CREATION DIALOGS
     // =========================================================================
 
-    // Dialog: Add Repository
-    Dialog {
-        id: addRepoDialog
-        anchors.centerIn: parent
-        width: 440
-        title: "Registra Repository Git"
-        standardButtons: Dialog.Ok | Dialog.Cancel
-
-        background: Rectangle {
-            color: "#161B22"
-            radius: 8
-            border.color: "#30363D"
-        }
-
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: 12
-
-            Text {
-                text: "Percorso cartella locale (con .git):"
-                color: "#F0F6FC"
-                font.pixelSize: 12
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                height: 34
-                color: "#0B0E14"
-                radius: 4
-                border.color: "#30363D"
-                TextInput {
-                    id: repoPathInput
-                    anchors.fill: parent
-                    anchors.margins: 6
-                    color: "#F0F6FC"
-                    font.pixelSize: 13
-                    clip: true
-                }
-            }
-
-            Text {
-                text: "Nome visualizzato (opzionale):"
-                color: "#F0F6FC"
-                font.pixelSize: 12
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                height: 34
-                color: "#0B0E14"
-                radius: 4
-                border.color: "#30363D"
-                TextInput {
-                    id: repoNameInput
-                    anchors.fill: parent
-                    anchors.margins: 6
-                    color: "#F0F6FC"
-                    font.pixelSize: 13
-                    clip: true
-                }
-            }
-        }
-
+    // Native Folder Dialog: Add Repository (Direct Explorer Navigation)
+    FolderDialog {
+        id: repoFolderDialog
+        title: "Seleziona cartella del progetto o cartella .git"
+        currentFolder: ""
         onAccepted: {
-            if (homeHubVm.addRepository(repoPathInput.text, repoNameInput.text)) {
-                repoPathInput.text = "";
-                repoNameInput.text = "";
+            if (selectedFolder) {
+                homeHubVm.addRepository(selectedFolder.toString());
             }
         }
     }
@@ -874,51 +943,67 @@ Item {
         }
     }
 
-    // Dialog: Reconnect Missing Repository
-    Dialog {
-        id: reconnectDialog
+    // Native Folder Dialog: Reconnect Missing Repository
+    FolderDialog {
+        id: reconnectFolderDialog
         property string targetRepoId: ""
+        title: "Seleziona nuova cartella per ricollegare il repository"
+        currentFolder: ""
+        onAccepted: {
+            if (selectedFolder && targetRepoId.length > 0) {
+                homeHubVm.reconnectRepository(targetRepoId, selectedFolder.toString());
+            }
+        }
+    }
+
+    // Modal Error Feedback Dialog
+    Dialog {
+        id: errorFeedbackDialog
         anchors.centerIn: parent
-        width: 440
-        title: "Ricollega Repository"
-        standardButtons: Dialog.Ok | Dialog.Cancel
+        width: 480
+        title: "Attenzione — Errore Operazione"
+        standardButtons: Dialog.Ok
+        property string errorMessage: ""
 
         background: Rectangle {
             color: "#161B22"
             radius: 8
-            border.color: "#30363D"
+            border.color: "#F85149"
+            border.width: 1
         }
 
         ColumnLayout {
             anchors.fill: parent
             spacing: 12
 
-            Text {
-                text: "Nuovo percorso cartella su disco:"
-                color: "#F0F6FC"
-                font.pixelSize: 12
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                height: 34
-                color: "#0B0E14"
-                radius: 4
-                border.color: "#30363D"
-                TextInput {
-                    id: reconnectPathInput
-                    anchors.fill: parent
-                    anchors.margins: 6
-                    color: "#F0F6FC"
-                    font.pixelSize: 13
-                    clip: true
+            RowLayout {
+                spacing: 10
+                Text {
+                    text: "⚠️"
+                    font.pixelSize: 22
+                }
+                Text {
+                    text: "Impossibile completare l'operazione"
+                    color: "#F85149"
+                    font.pixelSize: 14
+                    font.bold: true
                 }
             }
-        }
 
-        onAccepted: {
-            if (homeHubVm.reconnectRepository(reconnectDialog.targetRepoId, reconnectPathInput.text)) {
-                reconnectPathInput.text = "";
+            Text {
+                text: errorFeedbackDialog.errorMessage
+                color: "#F0F6FC"
+                font.pixelSize: 13
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
+
+            Text {
+                text: "Suggerimento: Seleziona la cartella radice del progetto Git oppure la cartella '.git' al suo interno tramite il selettore cartelle."
+                color: "#8B949E"
+                font.pixelSize: 11
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
             }
         }
     }

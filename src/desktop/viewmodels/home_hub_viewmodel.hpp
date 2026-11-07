@@ -35,6 +35,8 @@ class HomeHubViewModel : public QObject {
     Q_PROPERTY(int groupsCount READ groupsCount NOTIFY groupsChanged)
     Q_PROPERTY(int workspacesCount READ workspacesCount NOTIFY workspacesChanged)
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged)
+    Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
+    Q_PROPERTY(QString lastSuccessMessage READ lastSuccessMessage NOTIFY lastSuccessMessageChanged)
 
 public:
     explicit HomeHubViewModel(gf::repositories::bl::RepositoryService& repoService,
@@ -54,8 +56,11 @@ public:
     [[nodiscard]] int groupsCount() const noexcept;
     [[nodiscard]] int workspacesCount() const noexcept;
     [[nodiscard]] QString statusMessage() const noexcept;
+    [[nodiscard]] QString lastError() const noexcept;
+    [[nodiscard]] QString lastSuccessMessage() const noexcept;
 
     Q_INVOKABLE void refreshAll();
+    Q_INVOKABLE void clearFeedback();
 
     Q_INVOKABLE bool addRepository(const QString& path, const QString& displayName = QString());
     Q_INVOKABLE bool reconnectRepository(const QString& repoId, const QString& newPath);
@@ -81,12 +86,17 @@ signals:
     void statusMessageChanged(const QString& message);
 
     void repositoryOpened(const QString& repoId, const QString& path);
+    void repositoryAdded(const QString& repoName, const QString& path);
     void groupOpened(const QString& groupId);
     void workspaceOpened(const QString& workspaceId);
     void errorOccurred(const QString& message);
+    void lastErrorChanged(const QString& error);
+    void lastSuccessMessageChanged(const QString& message);
 
 private:
     void setStatus(const QString& msg);
+    void setLastError(const QString& error);
+    void setLastSuccessMessage(const QString& msg);
 
     gf::repositories::bl::RepositoryService& m_repoService;
     gf::groups::bl::GroupService& m_groupService;
@@ -98,6 +108,8 @@ private:
 
     QString m_searchFilter;
     QString m_statusMessage;
+    QString m_lastError;
+    QString m_lastSuccessMessage;
 };
 
 } // namespace gf::desktop

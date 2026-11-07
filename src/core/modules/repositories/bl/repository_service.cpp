@@ -24,11 +24,21 @@ RepositoryService::RepositoryService(ports::IRepositoryStore& store) noexcept
     : store_(store) {}
 
 bool RepositoryService::isGitRepositoryDir(const std::filesystem::path& path) noexcept {
-    std::error_code ec;
-    if (!std::filesystem::is_directory(path, ec)) {
+    if (path.empty()) {
         return false;
     }
-    const auto gitEntry = path / ".git";
+    std::error_code ec;
+    auto target = std::filesystem::weakly_canonical(path, ec);
+    if (ec) {
+        target = path.lexically_normal();
+    }
+    if (target.filename() == ".git") {
+        target = target.parent_path();
+    }
+    if (!std::filesystem::is_directory(target, ec)) {
+        return false;
+    }
+    const auto gitEntry = target / ".git";
     return std::filesystem::exists(gitEntry, ec);
 }
 
@@ -37,28 +47,32 @@ RepositoryService::registerRepository(const RegisterRepositoryRequest& req) {
     if (req.localPath.empty()) {
         return std::unexpected(RepositoryServiceError{
             .kind = RepositoryServiceError::Kind::InvalidPath,
-            .message = "Percorso specificato vuoto"
+            .message = "Specified path is empty"
         });
     }
 
     std::error_code ec;
-    const auto normalizedPath = std::filesystem::weakly_canonical(req.localPath, ec);
-    if (ec || !std::filesystem::exists(normalizedPath, ec)) {
+    auto targetRepoPath = std::filesystem::weakly_canonical(req.localPath, ec);
+    if (ec || !std::filesystem::exists(targetRepoPath, ec)) {
         return std::unexpected(RepositoryServiceError{
             .kind = RepositoryServiceError::Kind::PathNotFound,
-            .message = "La cartella indicata non esiste: " + gf::core::pathToUtf8(req.localPath)
+            .message = "Specified folder does not exist: " + gf::core::pathToUtf8(req.localPath)
         });
     }
 
-    if (!isGitRepositoryDir(normalizedPath)) {
+    if (targetRepoPath.filename() == ".git") {
+        targetRepoPath = targetRepoPath.parent_path();
+    }
+
+    if (!isGitRepositoryDir(targetRepoPath)) {
         return std::unexpected(RepositoryServiceError{
             .kind = RepositoryServiceError::Kind::NotAGitRepository,
-            .message = "La cartella non contiene un repository Git (.git non trovato): " + gf::core::pathToUtf8(normalizedPath)
+            .message = "Directory does not contain a valid Git repository (.git not found): " + gf::core::pathToUtf8(targetRepoPath)
         });
     }
 
     // Check if already registered by path
-    auto existingByPath = store_.getByPath(normalizedPath);
+    auto existingByPath = store_.getByPath(targetRepoPath);
     if (!existingByPath) {
         return std::unexpected(RepositoryServiceError{
             .kind = RepositoryServiceError::Kind::StorageError,
@@ -68,7 +82,7 @@ RepositoryService::registerRepository(const RegisterRepositoryRequest& req) {
     if (existingByPath->has_value()) {
         return std::unexpected(RepositoryServiceError{
             .kind = RepositoryServiceError::Kind::AlreadyRegistered,
-            .message = "Repository già presente nel catalogo con ID: " + (*existingByPath)->id.value()
+            .message = "Repository already registered in catalog with ID: " + (*existingByPath)->id.value()
         });
     }
 
@@ -77,7 +91,7 @@ RepositoryService::registerRepository(const RegisterRepositoryRequest& req) {
     if (req.displayName && !req.displayName->empty()) {
         displayName = *req.displayName;
     } else {
-        displayName = normalizedPath.filename().string();
+        displayName = targetRepoPath.filename().string();
         if (displayName.empty()) {
             displayName = "Repository";
         }
@@ -87,7 +101,7 @@ RepositoryService::registerRepository(const RegisterRepositoryRequest& req) {
     Repository repo{
         .id = RepositoryId(gf::core::generateUniqueId("repo")),
         .displayName = std::move(displayName),
-        .localPath = normalizedPath,
+        .localPath = targetRepoPath,
         .pathStatus = RepositoryPathStatus::Valid,
         .registeredAtUnixEpochMs = now,
         .lastAccessedAtUnixEpochMs = now
@@ -151,22 +165,26 @@ RepositoryService::reconnectRepositoryPath(const RepositoryId& id, const std::fi
     }
 
     std::error_code ec;
-    const auto normalizedPath = std::filesystem::weakly_canonical(newPath, ec);
-    if (ec || !std::filesystem::exists(normalizedPath, ec)) {
+    auto targetRepoPath = std::filesystem::weakly_canonical(newPath, ec);
+    if (ec || !std::filesystem::exists(targetRepoPath, ec)) {
         return std::unexpected(RepositoryServiceError{
             .kind = RepositoryServiceError::Kind::PathNotFound,
-            .message = "Il nuovo percorso non esiste: " + gf::core::pathToUtf8(newPath)
+            .message = "The new path does not exist: " + gf::core::pathToUtf8(newPath)
         });
     }
 
-    if (!isGitRepositoryDir(normalizedPath)) {
+    if (targetRepoPath.filename() == ".git") {
+        targetRepoPath = targetRepoPath.parent_path();
+    }
+
+    if (!isGitRepositoryDir(targetRepoPath)) {
         return std::unexpected(RepositoryServiceError{
             .kind = RepositoryServiceError::Kind::NotAGitRepository,
-            .message = "Il nuovo percorso non contiene una directory .git valida"
+            .message = "The new path does not contain a valid .git directory: " + gf::core::pathToUtf8(targetRepoPath)
         });
     }
 
-    auto updateRes = store_.updatePath(id, normalizedPath);
+    auto updateRes = store_.updatePath(id, targetRepoPath);
     if (!updateRes) {
         return std::unexpected(RepositoryServiceError{
             .kind = RepositoryServiceError::Kind::StorageError,

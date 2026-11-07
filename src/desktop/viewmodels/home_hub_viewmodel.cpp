@@ -4,6 +4,8 @@
 #include "core/modules/groups/bl/group_service.hpp"
 #include "core/modules/workspaces/bl/workspace_service.hpp"
 
+#include <QUrl>
+
 namespace gf::desktop {
 
 HomeHubViewModel::HomeHubViewModel(gf::repositories::bl::RepositoryService& repoService,
@@ -60,9 +62,36 @@ QString HomeHubViewModel::statusMessage() const noexcept {
     return m_statusMessage;
 }
 
+QString HomeHubViewModel::lastError() const noexcept {
+    return m_lastError;
+}
+
+QString HomeHubViewModel::lastSuccessMessage() const noexcept {
+    return m_lastSuccessMessage;
+}
+
+void HomeHubViewModel::clearFeedback() {
+    setLastError(QString());
+    setLastSuccessMessage(QString());
+}
+
 void HomeHubViewModel::setStatus(const QString& msg) {
     m_statusMessage = msg;
     emit statusMessageChanged(m_statusMessage);
+}
+
+void HomeHubViewModel::setLastError(const QString& error) {
+    if (m_lastError != error) {
+        m_lastError = error;
+        emit lastErrorChanged(m_lastError);
+    }
+}
+
+void HomeHubViewModel::setLastSuccessMessage(const QString& msg) {
+    if (m_lastSuccessMessage != msg) {
+        m_lastSuccessMessage = msg;
+        emit lastSuccessMessageChanged(m_lastSuccessMessage);
+    }
 }
 
 void HomeHubViewModel::refreshAll() {
@@ -141,13 +170,29 @@ void HomeHubViewModel::refreshAll() {
 }
 
 bool HomeHubViewModel::addRepository(const QString& path, const QString& displayName) {
-    if (path.trimmed().isEmpty()) {
-        emit errorOccurred(QStringLiteral("Il percorso del repository non può essere vuoto"));
+    QString cleanPath = path.trimmed();
+    if (cleanPath.isEmpty()) {
+        const QString err = QStringLiteral("Il percorso del repository non può essere vuoto");
+        setLastError(err);
+        setStatus(err);
+        emit errorOccurred(err);
         return false;
     }
 
+    // Convert QUrl if needed (e.g. from QML FolderDialog file:///path)
+    const QUrl url(cleanPath);
+    if (url.isLocalFile()) {
+        cleanPath = url.toLocalFile();
+    } else if (cleanPath.startsWith(QLatin1String("file://"))) {
+        cleanPath = cleanPath.sliced(7);
+    }
+
+    while (cleanPath.length() > 1 && (cleanPath.endsWith(QLatin1Char('/')) || cleanPath.endsWith(QLatin1Char('\\')))) {
+        cleanPath.chop(1);
+    }
+
     gf::repositories::bl::RegisterRepositoryRequest req;
-    req.localPath = std::filesystem::path(path.toStdString());
+    req.localPath = std::filesystem::path(cleanPath.toStdString());
     if (!displayName.trimmed().isEmpty()) {
         req.displayName = displayName.trimmed().toStdString();
     }
@@ -157,46 +202,89 @@ bool HomeHubViewModel::addRepository(const QString& path, const QString& display
         QString errStr;
         switch (result.error().kind) {
         case gf::repositories::bl::RepositoryServiceError::Kind::PathNotFound:
-            errStr = QStringLiteral("Percorso non trovato su filesystem");
+            errStr = QStringLiteral("Percorso non trovato: %1\nVerifica che la cartella esista su disco.")
+                         .arg(cleanPath);
             break;
         case gf::repositories::bl::RepositoryServiceError::Kind::NotAGitRepository:
-            errStr = QStringLiteral("La cartella specificata non contiene un repository Git valido");
+            errStr = QStringLiteral("La cartella specificata non contiene un repository Git valido: %1\nNessuna directory '.git' trovata.")
+                         .arg(cleanPath);
             break;
         case gf::repositories::bl::RepositoryServiceError::Kind::AlreadyRegistered:
-            errStr = QStringLiteral("Il repository è già registrato nel catalogo");
+            errStr = QStringLiteral("Questo repository è già registrato nel catalogo di Git Flux.");
             break;
         default:
             errStr = QStringLiteral("Errore durante la registrazione del repository: ") +
                      QString::fromStdString(result.error().message);
             break;
         }
+        setLastError(errStr);
+        setStatus(errStr);
         emit errorOccurred(errStr);
         return false;
     }
 
-    setStatus(QStringLiteral("Repository '%1' registrato con successo").arg(QString::fromStdString(result->displayName)));
+    const QString repoName = QString::fromStdString(result->displayName);
+    const QString repoSavedPath = QString::fromStdString(result->localPath.string());
+    const QString successMsg = QStringLiteral("Repository '%1' aggiunto con successo!").arg(repoName);
+
+    setLastSuccessMessage(successMsg);
+    setStatus(successMsg);
+    setLastError(QString());
+
+    emit repositoryAdded(repoName, repoSavedPath);
     refreshAll();
     return true;
 }
 
 bool HomeHubViewModel::reconnectRepository(const QString& repoId, const QString& newPath) {
     if (repoId.trimmed().isEmpty() || newPath.trimmed().isEmpty()) {
-        emit errorOccurred(QStringLiteral("Parametri non validi per la riconnessione"));
+        const QString err = QStringLiteral("Parametri non validi per la riconnessione");
+        setLastError(err);
+        setStatus(err);
+        emit errorOccurred(err);
         return false;
+    }
+
+    QString cleanPath = newPath.trimmed();
+    const QUrl url(cleanPath);
+    if (url.isLocalFile()) {
+        cleanPath = url.toLocalFile();
+    } else if (cleanPath.startsWith(QLatin1String("file://"))) {
+        cleanPath = cleanPath.sliced(7);
+    }
+    while (cleanPath.length() > 1 && (cleanPath.endsWith(QLatin1Char('/')) || cleanPath.endsWith(QLatin1Char('\\')))) {
+        cleanPath.chop(1);
     }
 
     auto result = m_repoService.reconnectRepositoryPath(
         gf::repositories::bo::RepositoryId{repoId.toStdString()},
-        std::filesystem::path(newPath.toStdString())
+        std::filesystem::path(cleanPath.toStdString())
     );
 
     if (!result) {
-        emit errorOccurred(QStringLiteral("Impossibile ricollegare il repository al percorso specificato: ") +
-                           QString::fromStdString(result.error().message));
+        QString errStr;
+        switch (result.error().kind) {
+        case gf::repositories::bl::RepositoryServiceError::Kind::PathNotFound:
+            errStr = QStringLiteral("Nuovo percorso non trovato sul filesystem: %1").arg(cleanPath);
+            break;
+        case gf::repositories::bl::RepositoryServiceError::Kind::NotAGitRepository:
+            errStr = QStringLiteral("Il nuovo percorso non contiene un repository Git valido: %1").arg(cleanPath);
+            break;
+        default:
+            errStr = QStringLiteral("Impossibile ricollegare il repository: ") +
+                     QString::fromStdString(result.error().message);
+            break;
+        }
+        setLastError(errStr);
+        setStatus(errStr);
+        emit errorOccurred(errStr);
         return false;
     }
 
-    setStatus(QStringLiteral("Repository ricollegato con successo al nuovo percorso"));
+    const QString successMsg = QStringLiteral("Repository '%1' ricollegato con successo!").arg(QString::fromStdString(result->displayName));
+    setLastSuccessMessage(successMsg);
+    setStatus(successMsg);
+    setLastError(QString());
     refreshAll();
     return true;
 }

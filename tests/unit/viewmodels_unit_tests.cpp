@@ -304,6 +304,61 @@ TEST_CASE("HomeHubViewModel orchestrates catalog operations and search filtering
     CHECK(vm.repositoriesCount() == 0);
 }
 
+TEST_CASE("HomeHubViewModel handles explorer paths, .git suffix, and comprehensive error feedback", "[desktop][mvvm]") {
+    TestContext ctx;
+    HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService);
+
+    // 1. Adding with .git suffix resolves correctly and clears error
+    QSignalSpy addedSpy(&vm, &HomeHubViewModel::repositoryAdded);
+    const QString dotGitPath = QString::fromStdString((ctx.repoAPath / ".git").string());
+    bool ok1 = vm.addRepository(dotGitPath);
+    REQUIRE(ok1);
+    CHECK(vm.repositoriesCount() == 1);
+    CHECK(vm.lastError().isEmpty());
+    CHECK(vm.lastSuccessMessage().contains("repo_alpha"));
+    CHECK(addedSpy.count() == 1);
+
+    // 2. Adding with file:// URL prefix (as produced by FolderDialog) resolves correctly
+    const QString fileUrlPath = "file://" + QString::fromStdString(ctx.repoBPath.string()) + "/.git/";
+    bool ok2 = vm.addRepository(fileUrlPath);
+    REQUIRE(ok2);
+    CHECK(vm.repositoriesCount() == 2);
+    CHECK(vm.lastError().isEmpty());
+    CHECK(vm.lastSuccessMessage().contains("repo_beta"));
+
+    // 3. Adding an empty path produces error feedback
+    QSignalSpy errorSpy(&vm, &HomeHubViewModel::errorOccurred);
+    bool errEmpty = vm.addRepository("");
+    CHECK_FALSE(errEmpty);
+    CHECK(errorSpy.count() == 1);
+    CHECK(!vm.lastError().isEmpty());
+
+    // 4. Adding a non-existent path produces error feedback
+    bool errGhost = vm.addRepository("/non_existent_folder_xyz/nowhere");
+    CHECK_FALSE(errGhost);
+    CHECK(errorSpy.count() == 2);
+    CHECK(vm.lastError().contains("Percorso non trovato"));
+
+    // 5. Adding a regular folder without .git produces clear feedback
+    const auto regularFolder = ctx.tempDir / "not_a_repo";
+    std::filesystem::create_directories(regularFolder);
+    bool errNotGit = vm.addRepository(QString::fromStdString(regularFolder.string()));
+    CHECK_FALSE(errNotGit);
+    CHECK(errorSpy.count() == 3);
+    CHECK(vm.lastError().contains("non contiene un repository Git valido"));
+
+    // 6. Adding already registered repository produces duplicate feedback
+    bool errDup = vm.addRepository(QString::fromStdString(ctx.repoAPath.string()));
+    CHECK_FALSE(errDup);
+    CHECK(errorSpy.count() == 4);
+    CHECK(vm.lastError().contains("già registrato"));
+
+    // 7. Clear feedback resets feedback properties
+    vm.clearFeedback();
+    CHECK(vm.lastError().isEmpty());
+    CHECK(vm.lastSuccessMessage().isEmpty());
+}
+
 TEST_CASE("QuickOpenViewModel provides multi-group selection and deterministic deduplication", "[desktop][mvvm]") {
     TestContext ctx;
     auto repoA = *ctx.repoService->registerRepository(RegisterRepositoryRequest{.localPath = ctx.repoAPath, .displayName = "Repo A"});
