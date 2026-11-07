@@ -274,10 +274,17 @@ Rectangle {
                         Layout.preferredHeight: 30
                         background: Rectangle {
                             color: parent.hovered ? "#1E293B" : "#161B22"
-                            topLeftRadius: 4
-                            bottomLeftRadius: 4
+                            radius: 4
                             border.color: "#30363D"
                             border.width: 1
+
+                            Rectangle {
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: 4
+                                color: parent.color
+                            }
                         }
                         contentItem: Text {
                             text: parent.text
@@ -300,10 +307,17 @@ Rectangle {
                         Layout.preferredWidth: 20
                         background: Rectangle {
                             color: parent.hovered ? "#334155" : "#161B22"
-                            topRightRadius: 4
-                            bottomRightRadius: 4
+                            radius: 4
                             border.color: "#30363D"
                             border.width: 1
+
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: 4
+                                color: parent.color
+                            }
                         }
                         contentItem: Text {
                             text: "▾"
@@ -370,10 +384,17 @@ Rectangle {
                         Layout.preferredHeight: 30
                         background: Rectangle {
                             color: parent.hovered ? "#1E293B" : "#161B22"
-                            topLeftRadius: 4
-                            bottomLeftRadius: 4
+                            radius: 4
                             border.color: "#30363D"
                             border.width: 1
+
+                            Rectangle {
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: 4
+                                color: parent.color
+                            }
                         }
                         contentItem: Text {
                             text: parent.text
@@ -396,10 +417,17 @@ Rectangle {
                         Layout.preferredWidth: 20
                         background: Rectangle {
                             color: parent.hovered ? "#334155" : "#161B22"
-                            topRightRadius: 4
-                            bottomRightRadius: 4
+                            radius: 4
                             border.color: "#30363D"
                             border.width: 1
+
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: 4
+                                color: parent.color
+                            }
                         }
                         contentItem: Text {
                             text: "▾"
@@ -488,10 +516,17 @@ Rectangle {
                         Layout.preferredHeight: 30
                         background: Rectangle {
                             color: parent.hovered ? "#1E293B" : "#161B22"
-                            topLeftRadius: 4
-                            bottomLeftRadius: 4
+                            radius: 4
                             border.color: "#30363D"
                             border.width: 1
+
+                            Rectangle {
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: 4
+                                color: parent.color
+                            }
                         }
                         contentItem: Text {
                             text: parent.text
@@ -515,10 +550,17 @@ Rectangle {
                         Layout.preferredWidth: 20
                         background: Rectangle {
                             color: parent.hovered ? "#334155" : "#161B22"
-                            topRightRadius: 4
-                            bottomRightRadius: 4
+                            radius: 4
                             border.color: "#30363D"
                             border.width: 1
+
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: 4
+                                color: parent.color
+                            }
                         }
                         contentItem: Text {
                             text: "▾"
