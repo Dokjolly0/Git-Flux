@@ -5,14 +5,16 @@ import QtQuick.Layouts
 Rectangle {
     id: root
     color: "#0E1117"
-    implicitWidth: 800
-    implicitHeight: 600
+    implicitWidth: 900
+    implicitHeight: 650
 
     property var sessionVm: null
     property var branchManager: (sessionVm && sessionVm.branchManager) ? sessionVm.branchManager : null
     property var selectedCommit: null
+    property var commitFiles: []
+    property var selectedFile: null
 
-    // Automatically select the first commit when commit history is loaded or updated
+    // Automatically select first commit on model load/update
     Connections {
         target: (root.branchManager && root.branchManager.commitHistory) ? root.branchManager.commitHistory : null
         function onModelReset() {
@@ -26,24 +28,63 @@ Rectangle {
     function autoSelectFirstCommit() {
         if (!root.branchManager || !root.branchManager.commitHistory) {
             root.selectedCommit = null;
+            root.commitFiles = [];
+            root.selectedFile = null;
             return;
         }
         var model = root.branchManager.commitHistory;
         if (model.rowCount() > 0) {
             var firstIdx = model.index(0, 0);
-            root.selectedCommit = {
-                sha: model.data(firstIdx, 257),         // ShaRole
-                shortSha: model.data(firstIdx, 258),    // ShortShaRole
-                subject: model.data(firstIdx, 259),     // SubjectRole
-                body: model.data(firstIdx, 260),        // BodyRole
-                authorName: model.data(firstIdx, 261),  // AuthorNameRole
-                authorEmail: model.data(firstIdx, 262), // AuthorEmailRole
-                authorDate: model.data(firstIdx, 263),  // AuthorDateRole
-                decorations: model.data(firstIdx, 264), // DecorationsRole
-                parents: model.data(firstIdx, 265)      // ParentsRole
-            };
+            root.selectCommit({
+                sha: model.data(firstIdx, 257),
+                shortSha: model.data(firstIdx, 258),
+                subject: model.data(firstIdx, 259),
+                body: model.data(firstIdx, 260),
+                authorName: model.data(firstIdx, 261),
+                authorEmail: model.data(firstIdx, 262),
+                authorDate: model.data(firstIdx, 263),
+                decorations: model.data(firstIdx, 264),
+                parents: model.data(firstIdx, 265),
+                authorAvatarUrl: model.data(firstIdx, 266),
+                authorInitials: model.data(firstIdx, 267),
+                authorColor: model.data(firstIdx, 268),
+                structuredDecorations: model.data(firstIdx, 269)
+            });
         } else {
             root.selectedCommit = null;
+            root.commitFiles = [];
+            root.selectedFile = null;
+        }
+    }
+
+    function selectCommit(commit) {
+        root.selectedCommit = commit;
+        root.selectedFile = null;
+        root.commitFiles = [];
+        if (!commit || !root.branchManager) {
+            if (root.sessionVm && root.sessionVm.commitDiffViewer) {
+                root.sessionVm.commitDiffViewer.clear();
+            }
+            return;
+        }
+
+        var files = root.branchManager.getCommitFiles(commit.sha);
+        root.commitFiles = files || [];
+        if (root.commitFiles.length > 0) {
+            root.selectFile(root.commitFiles[0]);
+        } else {
+            if (root.sessionVm && root.sessionVm.commitDiffViewer) {
+                root.sessionVm.commitDiffViewer.clear();
+            }
+        }
+    }
+
+    function selectFile(file) {
+        root.selectedFile = file;
+        if (!file || !root.selectedCommit || !root.sessionVm) return;
+        var repoPath = root.sessionVm.activeRepoPath;
+        if (root.sessionVm.commitDiffViewer) {
+            root.sessionVm.commitDiffViewer.loadCommitFileDiff(repoPath, root.selectedCommit.sha, file.path);
         }
     }
 
@@ -51,17 +92,18 @@ Rectangle {
         root.autoSelectFirstCommit();
     }
 
-    RowLayout {
+    // Main SplitView: Left (Commit List) vs Right (Commit Details + Files + Diff Viewer)
+    SplitView {
         anchors.fill: parent
-        spacing: 0
+        orientation: Qt.Horizontal
 
         // ==========================================
-        // 1. COMMIT LIST (Table / Graph)
+        // 1. LEFT PANE: COMMIT LIST / GRAPH
         // ==========================================
         Rectangle {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            Layout.minimumWidth: 380
+            SplitView.preferredWidth: 460
+            SplitView.minimumWidth: 340
+            SplitView.maximumWidth: 700
             color: "#161B22"
 
             ColumnLayout {
@@ -144,10 +186,14 @@ Rectangle {
                         required property string authorDate
                         required property var decorations
                         required property var parents
+                        required property string authorAvatarUrl
+                        required property string authorInitials
+                        required property string authorColor
+                        required property var structuredDecorations
                         required property int index
 
                         width: commitListView.width
-                        height: isMatchingFilter ? 52 : 0
+                        height: isMatchingFilter ? 56 : 0
                         visible: isMatchingFilter
 
                         property bool isMatchingFilter: {
@@ -167,50 +213,79 @@ Rectangle {
 
                         RowLayout {
                             anchors.fill: parent
-                            anchors.leftMargin: 12
-                            anchors.rightMargin: 12
+                            anchors.leftMargin: 10
+                            anchors.rightMargin: 10
                             spacing: 10
 
-                            // Commit dot in graph
+                            // Author Avatar (online profile pic with fallback initials)
                             Rectangle {
-                                width: 10
-                                height: 10
-                                radius: 5
-                                color: "#3B82F6"
-                                border.color: "#60A5FA"
-                                border.width: 2
+                                width: 26
+                                height: 26
+                                radius: 13
+                                color: commitRow.authorColor || "#6366F1"
+                                clip: true
+
+                                Image {
+                                    id: avatarImg
+                                    anchors.fill: parent
+                                    source: commitRow.authorAvatarUrl || ""
+                                    fillMode: Image.PreserveAspectCrop
+                                    smooth: true
+                                }
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: commitRow.authorInitials || "??"
+                                    color: "#FFFFFF"
+                                    font.pixelSize: 10
+                                    font.bold: true
+                                    visible: avatarImg.status !== Image.Ready
+                                }
                             }
 
-                            // Commit details
+                            // Commit details & GitKraken-styled branch badges
                             ColumnLayout {
                                 Layout.fillWidth: true
-                                spacing: 2
+                                spacing: 3
 
                                 RowLayout {
                                     spacing: 6
                                     Layout.fillWidth: true
 
-                                    // Ref Decorations Badge (Branches/Tags)
+                                    // GitKraken Ref Badges (Branches & Tags)
                                     Repeater {
-                                        model: commitRow.decorations || []
+                                        model: commitRow.structuredDecorations || []
 
                                         delegate: Rectangle {
                                             height: 18
-                                            implicitWidth: decText.implicitWidth + 8
+                                            implicitWidth: decRow.implicitWidth + 8
                                             radius: 3
-                                            color: (modelData && modelData.indexOf("tag:") !== -1) ? "#854D0E" : "#1E3A8A"
+                                            color: modelData.bgColor || "#1E3A8A"
+                                            border.color: modelData.borderColor || "#3B82F6"
+                                            border.width: 1
 
-                                            Text {
-                                                id: decText
+                                            RowLayout {
+                                                id: decRow
                                                 anchors.centerIn: parent
-                                                text: modelData || ""
-                                                color: (modelData && modelData.indexOf("tag:") !== -1) ? "#FEF08A" : "#93C5FD"
-                                                font.pixelSize: 10
-                                                font.bold: true
+                                                spacing: 3
+
+                                                Text {
+                                                    text: modelData.icon || ""
+                                                    color: modelData.fgColor || "#93C5FD"
+                                                    font.pixelSize: 9
+                                                }
+
+                                                Text {
+                                                    text: modelData.name || ""
+                                                    color: modelData.fgColor || "#93C5FD"
+                                                    font.pixelSize: 10
+                                                    font.bold: true
+                                                }
                                             }
                                         }
                                     }
 
+                                    // Commit subject
                                     Text {
                                         text: commitRow.subject || "(Nessun messaggio)"
                                         color: "#F8FAFC"
@@ -242,10 +317,10 @@ Rectangle {
                                 }
                             }
 
-                            // Short SHA monospace
+                            // Short SHA Monospace Badge
                             Rectangle {
                                 Layout.preferredHeight: 20
-                                Layout.preferredWidth: 64
+                                Layout.preferredWidth: 62
                                 radius: 3
                                 color: "#0F172A"
                                 border.color: "#334155"
@@ -267,7 +342,7 @@ Rectangle {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                root.selectedCommit = {
+                                root.selectCommit({
                                     sha: commitRow.sha,
                                     shortSha: commitRow.shortSha,
                                     subject: commitRow.subject,
@@ -276,13 +351,17 @@ Rectangle {
                                     authorEmail: commitRow.authorEmail,
                                     authorDate: commitRow.authorDate,
                                     decorations: commitRow.decorations,
-                                    parents: commitRow.parents
-                                };
+                                    parents: commitRow.parents,
+                                    authorAvatarUrl: commitRow.authorAvatarUrl,
+                                    authorInitials: commitRow.authorInitials,
+                                    authorColor: commitRow.authorColor,
+                                    structuredDecorations: commitRow.structuredDecorations
+                                });
                             }
                         }
                     }
 
-                    // Empty state when repository has no commits or history is empty
+                    // Empty state when repository has no commits
                     Rectangle {
                         anchors.centerIn: parent
                         visible: commitListView.count === 0
@@ -342,127 +421,19 @@ Rectangle {
         }
 
         // ==========================================
-        // 2. SELECTED COMMIT DETAILS PANEL
+        // 2. RIGHT PANE: COMMIT DETAILS, FILES & DIFF VIEWER
         // ==========================================
         Rectangle {
-            Layout.preferredWidth: 380
-            Layout.fillHeight: true
+            SplitView.fillWidth: true
+            SplitView.minimumWidth: 380
             color: "#0F172A"
-            border.color: "#1E293B"
-            border.width: 1
 
-            // Commit details view when a commit is selected
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 16
-                spacing: 12
-                visible: root.selectedCommit !== null
-
-                Text {
-                    text: "Dettaglio Commit"
-                    color: "#94A3B8"
-                    font.bold: true
-                    font.pixelSize: 11
-                }
-
-                Text {
-                    text: root.selectedCommit ? root.selectedCommit.subject : ""
-                    color: "#FFFFFF"
-                    font.bold: true
-                    font.pixelSize: 14
-                    wrapMode: Text.Wrap
-                    Layout.fillWidth: true
-                }
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 1
-                    color: "#334155"
-                }
-
-                // Author and date
-                RowLayout {
-                    spacing: 8
-                    Text {
-                        text: "Autore:"
-                        color: "#64748B"
-                        font.pixelSize: 12
-                    }
-                    Text {
-                        text: root.selectedCommit ? (root.selectedCommit.authorName + " <" + root.selectedCommit.authorEmail + ">") : ""
-                        color: "#E2E8F0"
-                        font.pixelSize: 12
-                        elide: Text.ElideRight
-                        Layout.fillWidth: true
-                    }
-                }
-
-                RowLayout {
-                    spacing: 8
-                    Text {
-                        text: "Data:"
-                        color: "#64748B"
-                        font.pixelSize: 12
-                    }
-                    Text {
-                        text: root.selectedCommit ? root.selectedCommit.authorDate : ""
-                        color: "#CBD5E1"
-                        font.pixelSize: 12
-                    }
-                }
-
-                RowLayout {
-                    spacing: 8
-                    Text {
-                        text: "SHA:"
-                        color: "#64748B"
-                        font.pixelSize: 12
-                    }
-                    Text {
-                        text: root.selectedCommit ? root.selectedCommit.sha : ""
-                        color: "#38BDF8"
-                        font.family: "monospace"
-                        font.pixelSize: 11
-                        elide: Text.ElideMiddle
-                        Layout.fillWidth: true
-                    }
-                }
-
-                // Message body
-                Text {
-                    text: "Messaggio esteso:"
-                    color: "#64748B"
-                    font.pixelSize: 12
-                }
-
-                ScrollView {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-
-                    TextArea {
-                        readOnly: true
-                        text: (root.selectedCommit && root.selectedCommit.body && root.selectedCommit.body.length > 0)
-                              ? root.selectedCommit.body
-                              : "(Nessun corpo aggiuntivo nel commit)"
-                        color: "#CBD5E1"
-                        font.pixelSize: 12
-                        wrapMode: Text.Wrap
-                        background: Rectangle {
-                            color: "#161B22"
-                            radius: 4
-                            border.color: "#1E293B"
-                            border.width: 1
-                        }
-                    }
-                }
-            }
-
-            // Placeholder when no commit is selected
+            // Empty selection notice
             Rectangle {
                 anchors.centerIn: parent
                 visible: root.selectedCommit === null
                 color: "transparent"
-                width: 260
+                width: 280
                 height: 120
 
                 ColumnLayout {
@@ -476,13 +447,296 @@ Rectangle {
                     }
 
                     Text {
-                        text: "Seleziona un commit dalla lista per visualizzarne i dettagli completi, autore, data e messaggio."
+                        text: "Seleziona un commit dalla lista per visualizzarne i dettagli completi, i file modificati e il diff interattivo."
                         color: "#64748B"
                         font.pixelSize: 12
                         wrapMode: Text.Wrap
                         horizontalAlignment: Text.AlignHCenter
                         Layout.fillWidth: true
                     }
+                }
+            }
+
+            // Selected Commit Layout (Vertical Split: Info+Files at Top, Diff Viewer at Bottom)
+            SplitView {
+                anchors.fill: parent
+                orientation: Qt.Vertical
+                visible: root.selectedCommit !== null
+
+                // Top: Commit Header Info + Modified Files List
+                Rectangle {
+                    SplitView.preferredHeight: 250
+                    SplitView.minimumHeight: 160
+                    SplitView.maximumHeight: 420
+                    color: "#0F172A"
+
+                    RowLayout {
+                        anchors.fill: parent
+                        spacing: 0
+
+                        // Commit Info Summary (Left)
+                        Rectangle {
+                            Layout.preferredWidth: 320
+                            Layout.fillHeight: true
+                            color: "#161B22"
+                            border.color: "#1E293B"
+                            border.width: 1
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 12
+                                spacing: 8
+
+                                // Author Avatar & Name Header
+                                RowLayout {
+                                    spacing: 10
+                                    Layout.fillWidth: true
+
+                                    Rectangle {
+                                        width: 32
+                                        height: 32
+                                        radius: 16
+                                        color: root.selectedCommit ? (root.selectedCommit.authorColor || "#6366F1") : "#6366F1"
+                                        clip: true
+
+                                        Image {
+                                            id: detailAvatarImg
+                                            anchors.fill: parent
+                                            source: root.selectedCommit ? (root.selectedCommit.authorAvatarUrl || "") : ""
+                                            fillMode: Image.PreserveAspectCrop
+                                            smooth: true
+                                        }
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: root.selectedCommit ? (root.selectedCommit.authorInitials || "??") : "??"
+                                            color: "#FFFFFF"
+                                            font.pixelSize: 12
+                                            font.bold: true
+                                            visible: detailAvatarImg.status !== Image.Ready
+                                        }
+                                    }
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 1
+                                        Text {
+                                            text: root.selectedCommit ? root.selectedCommit.authorName : ""
+                                            color: "#FFFFFF"
+                                            font.bold: true
+                                            font.pixelSize: 13
+                                            elide: Text.ElideRight
+                                        }
+                                        Text {
+                                            text: root.selectedCommit ? root.selectedCommit.authorDate : ""
+                                            color: "#64748B"
+                                            font.pixelSize: 11
+                                        }
+                                    }
+                                }
+
+                                // SHA Monospace
+                                RowLayout {
+                                    spacing: 6
+                                    Text {
+                                        text: "SHA:"
+                                        color: "#64748B"
+                                        font.pixelSize: 11
+                                    }
+                                    Text {
+                                        text: root.selectedCommit ? root.selectedCommit.sha : ""
+                                        color: "#38BDF8"
+                                        font.family: "monospace"
+                                        font.pixelSize: 10
+                                        elide: Text.ElideMiddle
+                                        Layout.fillWidth: true
+                                    }
+                                }
+
+                                // Subject
+                                Text {
+                                    text: root.selectedCommit ? root.selectedCommit.subject : ""
+                                    color: "#F8FAFC"
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                    wrapMode: Text.Wrap
+                                    Layout.fillWidth: true
+                                    maximumLineCount: 3
+                                    elide: Text.ElideRight
+                                }
+
+                                // Body
+                                ScrollView {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    clip: true
+                                    TextArea {
+                                        readOnly: true
+                                        text: (root.selectedCommit && root.selectedCommit.body && root.selectedCommit.body.length > 0)
+                                              ? root.selectedCommit.body
+                                              : ""
+                                        visible: text.length > 0
+                                        color: "#94A3B8"
+                                        font.pixelSize: 11
+                                        wrapMode: Text.Wrap
+                                        background: null
+                                    }
+                                }
+                            }
+                        }
+
+                        // Modified Files List (Right)
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            color: "#0D1117"
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                spacing: 0
+
+                                // Files Header
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 32
+                                    color: "#161B22"
+                                    border.color: "#1E293B"
+                                    border.width: 1
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 12
+                                        anchors.rightMargin: 12
+                                        spacing: 8
+
+                                        Text {
+                                            text: "File modificati (" + root.commitFiles.length + ")"
+                                            color: "#F1F5F9"
+                                            font.bold: true
+                                            font.pixelSize: 12
+                                        }
+
+                                        Item { Layout.fillWidth: true }
+
+                                        TextField {
+                                            id: fileSearchField
+                                            Layout.preferredWidth: 160
+                                            Layout.preferredHeight: 24
+                                            placeholderText: "Filtra file..."
+                                            placeholderTextColor: "#64748B"
+                                            color: "#F8FAFC"
+                                            font.pixelSize: 11
+                                            background: Rectangle {
+                                                color: "#0F172A"
+                                                radius: 4
+                                                border.color: "#334155"
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Files ListView
+                                ListView {
+                                    id: commitFilesListView
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    clip: true
+                                    model: root.commitFiles
+
+                                    delegate: Rectangle {
+                                        id: fileItemRow
+                                        width: commitFilesListView.width
+                                        height: isMatchingFilter ? 30 : 0
+                                        visible: isMatchingFilter
+
+                                        property bool isMatchingFilter: {
+                                            if (fileSearchField.text.trim().length === 0) return true;
+                                            var q = fileSearchField.text.trim().toLowerCase();
+                                            var p = (modelData.path || "").toLowerCase();
+                                            return p.indexOf(q) !== -1;
+                                        }
+
+                                        color: (root.selectedFile && root.selectedFile.path === modelData.path)
+                                               ? "#1E293B"
+                                               : (fileMouse.containsMouse ? "#1E293B44" : "transparent")
+
+                                        RowLayout {
+                                            anchors.fill: parent
+                                            anchors.leftMargin: 12
+                                            anchors.rightMargin: 12
+                                            spacing: 8
+
+                                            // Status Badge (M, A, D, R)
+                                            Rectangle {
+                                                width: 18
+                                                height: 18
+                                                radius: 3
+                                                color: {
+                                                    if (modelData.status === "A") return "#065F46";
+                                                    if (modelData.status === "D") return "#7F1D1D";
+                                                    if (modelData.status === "R") return "#1E3A8A";
+                                                    return "#78350F";
+                                                }
+
+                                                Text {
+                                                    anchors.centerIn: parent
+                                                    text: modelData.status || "M"
+                                                    color: "#FFFFFF"
+                                                    font.pixelSize: 10
+                                                    font.bold: true
+                                                }
+                                            }
+
+                                            // File Path
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: modelData.path || ""
+                                                color: (root.selectedFile && root.selectedFile.path === modelData.path) ? "#38BDF8" : "#E2E8F0"
+                                                font.pixelSize: 11
+                                                elide: Text.ElideMiddle
+                                            }
+
+                                            // Additions & Deletions
+                                            RowLayout {
+                                                spacing: 4
+                                                Text {
+                                                    text: "+" + (modelData.additions || 0)
+                                                    color: "#34D399"
+                                                    font.pixelSize: 10
+                                                    font.bold: true
+                                                    visible: (modelData.additions || 0) > 0
+                                                }
+                                                Text {
+                                                    text: "-" + (modelData.deletions || 0)
+                                                    color: "#F87171"
+                                                    font.pixelSize: 10
+                                                    font.bold: true
+                                                    visible: (modelData.deletions || 0) > 0
+                                                }
+                                            }
+                                        }
+
+                                        MouseArea {
+                                            id: fileMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                root.selectFile(modelData);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Bottom: Diff Viewer Panel (Inline, Split, Hunk, Blame for Commit File)
+                DiffViewerPanel {
+                    SplitView.fillHeight: true
+                    SplitView.minimumHeight: 200
+                    diffViewer: root.sessionVm ? root.sessionVm.commitDiffViewer : null
                 }
             }
         }

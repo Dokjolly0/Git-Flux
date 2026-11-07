@@ -74,12 +74,64 @@ void BranchManagerViewModel::refresh() {
     // 2. Refresh commit history
     git::bo::CommitLogOptions logOpts;
     logOpts.maxCount = 100;
+    logOpts.revisionRange = std::string("--all");
     auto logRes = m_historyService.getCommitHistory(m_repoPath, logOpts);
     if (logRes) {
         m_commitHistoryModel.setCommits(std::move(*logRes));
     }
 
     setBusy(false);
+}
+
+QVariantList BranchManagerViewModel::getCommitFiles(const QString& commitSha) {
+    if (m_repoPath.empty() || commitSha.isEmpty()) {
+        return {};
+    }
+
+    auto res = m_historyService.getCommitFiles(m_repoPath, commitSha.toStdString());
+    if (!res) {
+        return {};
+    }
+
+    QVariantList list;
+    list.reserve(static_cast<qsizetype>(res->size()));
+    for (const auto& item : *res) {
+        QVariantMap map;
+        map[QStringLiteral("path")] = QString::fromStdString(item.path);
+        map[QStringLiteral("oldPath")] = QString::fromStdString(item.oldPath);
+        map[QStringLiteral("additions")] = item.additions;
+        map[QStringLiteral("deletions")] = item.deletions;
+        map[QStringLiteral("isBinary")] = item.isBinary;
+
+        QString statusChar;
+        QString statusLabel;
+        switch (item.status) {
+        case git::bo::FileChangeStatus::Added:
+            statusChar = QStringLiteral("A");
+            statusLabel = QStringLiteral("Added");
+            break;
+        case git::bo::FileChangeStatus::Deleted:
+            statusChar = QStringLiteral("D");
+            statusLabel = QStringLiteral("Deleted");
+            break;
+        case git::bo::FileChangeStatus::Renamed:
+            statusChar = QStringLiteral("R");
+            statusLabel = QStringLiteral("Renamed");
+            break;
+        case git::bo::FileChangeStatus::Copied:
+            statusChar = QStringLiteral("C");
+            statusLabel = QStringLiteral("Copied");
+            break;
+        default:
+            statusChar = QStringLiteral("M");
+            statusLabel = QStringLiteral("Modified");
+            break;
+        }
+        map[QStringLiteral("status")] = statusChar;
+        map[QStringLiteral("statusLabel")] = statusLabel;
+        list.append(map);
+    }
+    return list;
 }
 
 bool BranchManagerViewModel::checkoutBranch(const QString& branchName) {

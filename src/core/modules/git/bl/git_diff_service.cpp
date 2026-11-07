@@ -89,4 +89,34 @@ GitDiffService::getAllDiffs(const std::filesystem::path& repoPath,
     return m_gitOps.getAllDiffs(repoPath, scope);
 }
 
+std::expected<bo::FileDiff, ports::GitOpsError>
+GitDiffService::getCommitFileDiff(const std::filesystem::path& repoPath,
+                                  const std::string& commitSha,
+                                  const std::string& filePath) {
+    if (auto validRepo = validateRepoPath(repoPath); !validRepo) {
+        return std::unexpected(validRepo.error());
+    }
+
+    if (auto validPath = validateRelativeFilePath(filePath); !validPath) {
+        return std::unexpected(validPath.error());
+    }
+
+    return m_gitOps.getCommitFileDiff(repoPath, commitSha, filePath);
+}
+
+std::expected<std::vector<bo::BlameLine>, ports::GitOpsError>
+GitDiffService::getFileBlame(const std::filesystem::path& repoPath,
+                             const std::string& revision,
+                             const std::string& filePath) {
+    if (auto validRepo = validateRepoPath(repoPath); !validRepo) {
+        return std::unexpected(validRepo.error());
+    }
+
+    if (auto validPath = validateRelativeFilePath(filePath); !validPath) {
+        return std::unexpected(validPath.error());
+    }
+
+    return m_gitOps.getFileBlame(repoPath, revision, filePath);
+}
+
 } // namespace gf::git::bl

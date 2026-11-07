@@ -43,6 +43,18 @@ public:
     [[nodiscard]] std::expected<std::vector<bo::FileDiff>, ports::GitOpsError>
     getAllDiffs(const std::filesystem::path& repoPath, bo::DiffScope scope);
 
+    /// Extracts the diff for a single file in a specific commit.
+    [[nodiscard]] std::expected<bo::FileDiff, ports::GitOpsError>
+    getCommitFileDiff(const std::filesystem::path& repoPath,
+                      const std::string& commitSha,
+                      const std::string& filePath);
+
+    /// Extracts blame line annotations for a file at a specific revision.
+    [[nodiscard]] std::expected<std::vector<bo::BlameLine>, ports::GitOpsError>
+    getFileBlame(const std::filesystem::path& repoPath,
+                 const std::string& revision,
+                 const std::string& filePath);
+
 private:
     [[nodiscard]] std::expected<void, ports::GitOpsError>
     validateRepoPath(const std::filesystem::path& repoPath) const;

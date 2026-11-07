@@ -93,7 +93,7 @@ signals:
     void workspacesChanged();
     void statusMessageChanged(const QString& message);
 
-    void repositoryOpened(const QString& repoId, const QString& path);
+    void repositoryOpened(const QString& repoId, const QString& name, const QString& path);
     void repositoryAdded(const QString& repoName, const QString& path);
     void groupOpened(const QString& groupId, const QString& groupName, const QStringList& repoIds);
     void workspaceOpened(const QString& workspaceId);

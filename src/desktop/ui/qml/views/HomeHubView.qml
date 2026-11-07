@@ -7,7 +7,7 @@ Item {
     id: root
 
     signal quickOpenRequested()
-    signal repositoryOpened(string repoId, string path)
+    signal repositoryOpened(string repoId, string name, string path)
     signal groupOpened(string groupId, string groupName, var repoIds)
     signal workspaceOpened(string workspaceId)
 
@@ -26,8 +26,8 @@ Item {
                 feedbackBanner.showSuccess(message);
             }
         }
-        function onRepositoryOpened(repoId, path) {
-            root.repositoryOpened(repoId, path);
+        function onRepositoryOpened(repoId, name, path) {
+            root.repositoryOpened(repoId, name, path);
         }
         function onGroupOpened(groupId, groupName, repoIds) {
             root.groupOpened(groupId, groupName, repoIds);

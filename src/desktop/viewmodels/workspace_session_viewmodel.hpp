@@ -37,6 +37,7 @@ class WorkspaceSessionViewModel final : public QObject {
     Q_PROPERTY(WorkingTreeViewModel* workingTree READ workingTree CONSTANT)
     Q_PROPERTY(CommitBoxViewModel* commitBox READ commitBox CONSTANT)
     Q_PROPERTY(DiffViewModel* diffViewer READ diffViewer CONSTANT)
+    Q_PROPERTY(DiffViewModel* commitDiffViewer READ commitDiffViewer CONSTANT)
     Q_PROPERTY(BranchManagerViewModel* branchManager READ branchManager CONSTANT)
     Q_PROPERTY(StashManagerViewModel* stashManager READ stashManager CONSTANT)
     Q_PROPERTY(ConflictResolverViewModel* conflictResolver READ conflictResolver CONSTANT)
@@ -80,6 +81,7 @@ public:
     [[nodiscard]] WorkingTreeViewModel* workingTree() noexcept { return &m_workingTree; }
     [[nodiscard]] CommitBoxViewModel* commitBox() noexcept { return &m_commitBox; }
     [[nodiscard]] DiffViewModel* diffViewer() noexcept { return &m_diffViewer; }
+    [[nodiscard]] DiffViewModel* commitDiffViewer() noexcept { return &m_commitDiffViewer; }
     [[nodiscard]] BranchManagerViewModel* branchManager() noexcept { return &m_branchManager; }
     [[nodiscard]] StashManagerViewModel* stashManager() noexcept { return &m_stashManager; }
     [[nodiscard]] ConflictResolverViewModel* conflictResolver() noexcept { return &m_conflictResolver; }
@@ -122,6 +124,7 @@ private:
     WorkingTreeViewModel m_workingTree;
     CommitBoxViewModel m_commitBox;
     DiffViewModel m_diffViewer;
+    DiffViewModel m_commitDiffViewer;
     BranchManagerViewModel m_branchManager;
     StashManagerViewModel m_stashManager;
     ConflictResolverViewModel m_conflictResolver;

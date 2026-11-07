@@ -686,6 +686,287 @@ NativeRepositoryGitOps::getAllDiffs(const std::filesystem::path& repoPath,
     return gf::git::bl::UnifiedDiffParser::parse(execResult->stdoutBytes);
 }
 
+std::expected<std::vector<gf::git::bo::CommitFileChange>, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::getCommitFiles(const std::filesystem::path& repoPath,
+                                       const std::string& commitSha) {
+    if (commitSha.empty()) {
+        return std::vector<gf::git::bo::CommitFileChange>{};
+    }
+
+    // 1. Run git diff-tree --no-commit-id --name-status -r --root <commitSha>
+    gf::git::bo::GitCommand diffTreeCmd{
+        .args = {"diff-tree", "--no-commit-id", "--name-status", "-r", "--root", commitSha},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto diffTreeRes = m_executor.execute(diffTreeCmd);
+    if (!diffTreeRes || diffTreeRes->exitCode != 0) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = diffTreeRes ? diffTreeRes->exitCode : -1,
+            .message = diffTreeRes ? diffTreeRes->stderrBytes : "Execution failed",
+            .command = "git diff-tree"
+        });
+    }
+
+    // 2. Run git show --numstat --format="" <commitSha>
+    gf::git::bo::GitCommand numstatCmd{
+        .args = {"show", "--numstat", "--format=", commitSha},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+    auto numstatRes = m_executor.execute(numstatCmd);
+
+    struct NumStatEntry {
+        int additions = 0;
+        int deletions = 0;
+        bool isBinary = false;
+    };
+    std::unordered_map<std::string, NumStatEntry> numstatMap;
+
+    if (numstatRes && numstatRes->exitCode == 0) {
+        std::istringstream nss(numstatRes->stdoutBytes);
+        std::string nline;
+        while (std::getline(nss, nline)) {
+            while (!nline.empty() && (nline.back() == '\r' || nline.back() == ' ')) {
+                nline.pop_back();
+            }
+            if (nline.empty()) continue;
+
+            auto tab1 = nline.find('\t');
+            if (tab1 == std::string::npos) continue;
+            auto tab2 = nline.find('\t', tab1 + 1);
+            if (tab2 == std::string::npos) continue;
+
+            std::string addStr = nline.substr(0, tab1);
+            std::string delStr = nline.substr(tab1 + 1, tab2 - tab1 - 1);
+            std::string pathStr = nline.substr(tab2 + 1);
+
+            NumStatEntry entry;
+            if (addStr == "-" || delStr == "-") {
+                entry.isBinary = true;
+            } else {
+                try {
+                    entry.additions = std::stoi(addStr);
+                    entry.deletions = std::stoi(delStr);
+                } catch (...) {
+                    entry.additions = 0;
+                    entry.deletions = 0;
+                }
+            }
+            numstatMap[pathStr] = entry;
+        }
+    }
+
+    // Parse diff-tree output
+    std::vector<gf::git::bo::CommitFileChange> changes;
+    std::istringstream dss(diffTreeRes->stdoutBytes);
+    std::string dline;
+    while (std::getline(dss, dline)) {
+        while (!dline.empty() && (dline.back() == '\r' || dline.back() == ' ')) {
+            dline.pop_back();
+        }
+        if (dline.empty()) continue;
+
+        auto tab1 = dline.find('\t');
+        if (tab1 == std::string::npos) continue;
+
+        std::string statusStr = dline.substr(0, tab1);
+        std::string rest = dline.substr(tab1 + 1);
+
+        gf::git::bo::CommitFileChange change;
+        char sChar = statusStr.empty() ? 'M' : statusStr.front();
+        switch (sChar) {
+        case 'A': change.status = gf::git::bo::FileChangeStatus::Added; break;
+        case 'D': change.status = gf::git::bo::FileChangeStatus::Deleted; break;
+        case 'R': change.status = gf::git::bo::FileChangeStatus::Renamed; break;
+        case 'C': change.status = gf::git::bo::FileChangeStatus::Copied; break;
+        default:  change.status = gf::git::bo::FileChangeStatus::Modified; break;
+        }
+
+        if (change.status == gf::git::bo::FileChangeStatus::Renamed ||
+            change.status == gf::git::bo::FileChangeStatus::Copied) {
+            auto tab2 = rest.find('\t');
+            if (tab2 != std::string::npos) {
+                change.oldPath = rest.substr(0, tab2);
+                change.path = rest.substr(tab2 + 1);
+            } else {
+                change.path = rest;
+            }
+        } else {
+            change.path = rest;
+        }
+
+        // Match numstat
+        auto it = numstatMap.find(change.path);
+        if (it != numstatMap.end()) {
+            change.additions = it->second.additions;
+            change.deletions = it->second.deletions;
+            change.isBinary = it->second.isBinary;
+        }
+
+        changes.push_back(std::move(change));
+    }
+
+    return changes;
+}
+
+std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::getCommitFileDiff(const std::filesystem::path& repoPath,
+                                          const std::string& commitSha,
+                                          const std::string& filePath) {
+    if (commitSha.empty() || filePath.empty()) {
+        return gf::git::bo::FileDiff{.oldPath = filePath, .newPath = filePath};
+    }
+
+    gf::git::bo::GitCommand cmd{
+        .args = {"show", "--format=", "--no-color", "-p", commitSha, "--", filePath},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult || execResult->exitCode != 0) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = execResult ? execResult->exitCode : -1,
+            .message = execResult ? execResult->stderrBytes : "Execution failed",
+            .command = "git show"
+        });
+    }
+
+    if (execResult->stdoutBytes.empty()) {
+        return gf::git::bo::FileDiff{
+            .oldPath = filePath,
+            .newPath = filePath
+        };
+    }
+
+    auto diffOpt = gf::git::bl::UnifiedDiffParser::parseSingle(execResult->stdoutBytes);
+    if (diffOpt.has_value()) {
+        if (diffOpt->newPath.empty()) {
+            diffOpt->newPath = filePath;
+        }
+        if (diffOpt->oldPath.empty()) {
+            diffOpt->oldPath = filePath;
+        }
+        return std::move(*diffOpt);
+    }
+
+    return gf::git::bo::FileDiff{
+        .oldPath = filePath,
+        .newPath = filePath
+    };
+}
+
+std::expected<std::vector<gf::git::bo::BlameLine>, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::getFileBlame(const std::filesystem::path& repoPath,
+                                     const std::string& revision,
+                                     const std::string& filePath) {
+    if (filePath.empty()) {
+        return std::vector<gf::git::bo::BlameLine>{};
+    }
+
+    std::vector<std::string> args = {"blame", "--line-porcelain"};
+    if (!revision.empty()) {
+        args.push_back(revision);
+    }
+    args.push_back("--");
+    args.push_back(filePath);
+
+    gf::git::bo::GitCommand cmd{
+        .args = std::move(args),
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult || execResult->exitCode != 0) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = execResult ? execResult->exitCode : -1,
+            .message = execResult ? execResult->stderrBytes : "Execution failed",
+            .command = "git blame"
+        });
+    }
+
+    std::vector<gf::git::bo::BlameLine> result;
+    std::istringstream stream(execResult->stdoutBytes);
+    std::string line;
+
+    std::string currentSha;
+    std::string currentAuthor;
+    std::string currentEmail;
+    std::string currentDate;
+    int currentLineNum = 1;
+
+    while (std::getline(stream, line)) {
+        while (!line.empty() && (line.back() == '\r')) {
+            line.pop_back();
+        }
+
+        if (line.starts_with('\t')) {
+            // Source content line ends the block
+            gf::git::bo::BlameLine bLine;
+            bLine.commitSha = currentSha;
+            bLine.shortSha = currentSha.size() >= 8 ? currentSha.substr(0, 8) : currentSha;
+            bLine.author = currentAuthor;
+            bLine.authorEmail = currentEmail;
+            bLine.date = currentDate;
+            bLine.lineNumber = currentLineNum;
+            bLine.content = line.substr(1);
+            result.push_back(std::move(bLine));
+            continue;
+        }
+
+        if (line.starts_with("author ")) {
+            currentAuthor = line.substr(7);
+        } else if (line.starts_with("author-mail ")) {
+            std::string mail = line.substr(12);
+            if (!mail.empty() && mail.front() == '<') mail = mail.substr(1);
+            if (!mail.empty() && mail.back() == '>') mail.pop_back();
+            currentEmail = std::move(mail);
+        } else if (line.starts_with("author-time ")) {
+            try {
+                long long epoch = std::stoll(line.substr(12));
+                std::time_t t = static_cast<std::time_t>(epoch);
+                std::tm tmBuf{};
+                gmtime_r(&t, &tmBuf);
+                char dateBuf[32];
+                std::strftime(dateBuf, sizeof(dateBuf), "%Y-%m-%d", &tmBuf);
+                currentDate = dateBuf;
+            } catch (...) {
+                currentDate.clear();
+            }
+        } else {
+            // Check for header line: "<sha> <orig-line> <final-line>"
+            auto firstSpace = line.find(' ');
+            if (firstSpace == 40) { // 40-character sha
+                currentSha = line.substr(0, 40);
+                auto secondSpace = line.find(' ', firstSpace + 1);
+                if (secondSpace != std::string::npos) {
+                    auto thirdSpace = line.find(' ', secondSpace + 1);
+                    std::string fLineStr = (thirdSpace != std::string::npos)
+                        ? line.substr(secondSpace + 1, thirdSpace - secondSpace - 1)
+                        : line.substr(secondSpace + 1);
+                    try {
+                        currentLineNum = std::stoi(fLineStr);
+                    } catch (...) {
+                        currentLineNum = 1;
+                    }
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
 std::expected<std::vector<gf::git::bo::GitBranch>, gf::git::ports::GitOpsError>
 NativeRepositoryGitOps::listBranches(const std::filesystem::path& repoPath) {
     gf::git::bo::GitCommand cmd{

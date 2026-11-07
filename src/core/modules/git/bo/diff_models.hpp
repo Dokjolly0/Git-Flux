@@ -56,4 +56,32 @@ struct FileDiff {
     }
 };
 
+enum class FileChangeStatus {
+    Modified,
+    Added,
+    Deleted,
+    Renamed,
+    Copied,
+    Unknown
+};
+
+struct CommitFileChange {
+    std::string path{};
+    std::string oldPath{};
+    FileChangeStatus status{FileChangeStatus::Modified};
+    int additions = 0;
+    int deletions = 0;
+    bool isBinary = false;
+};
+
+struct BlameLine {
+    std::string commitSha{};
+    std::string shortSha{};
+    std::string author{};
+    std::string authorEmail{};
+    std::string date{};
+    int lineNumber = 0;
+    std::string content{};
+};
+
 } // namespace gf::git::bo

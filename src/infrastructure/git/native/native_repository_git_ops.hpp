@@ -40,6 +40,20 @@ public:
     getAllDiffs(const std::filesystem::path& repoPath,
                 gf::git::bo::DiffScope scope) override;
 
+    [[nodiscard]] std::expected<std::vector<gf::git::bo::CommitFileChange>, gf::git::ports::GitOpsError>
+    getCommitFiles(const std::filesystem::path& repoPath,
+                   const std::string& commitSha) override;
+
+    [[nodiscard]] std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
+    getCommitFileDiff(const std::filesystem::path& repoPath,
+                      const std::string& commitSha,
+                      const std::string& filePath) override;
+
+    [[nodiscard]] std::expected<std::vector<gf::git::bo::BlameLine>, gf::git::ports::GitOpsError>
+    getFileBlame(const std::filesystem::path& repoPath,
+                 const std::string& revision,
+                 const std::string& filePath) override;
+
     [[nodiscard]] std::expected<std::vector<gf::git::bo::GitBranch>, gf::git::ports::GitOpsError>
     listBranches(const std::filesystem::path& repoPath) override;
 

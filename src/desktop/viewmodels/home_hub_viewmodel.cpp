@@ -564,7 +564,7 @@ void HomeHubViewModel::openRepository(const QString& repoId) {
 
     const auto& repo = **repoResult;
     (void)m_repoService.touchLastAccessed(repo.id);
-    emit repositoryOpened(repoId, QString::fromStdString(repo.localPath.string()));
+    emit repositoryOpened(repoId, QString::fromStdString(repo.displayName), QString::fromStdString(repo.localPath.string()));
 }
 
 void HomeHubViewModel::openGroup(const QString& groupId) {

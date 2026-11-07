@@ -31,9 +31,9 @@ ApplicationWindow {
             quickOpenModal.open();
         }
 
-        onRepositoryOpened: function(repoId, path) {
+        onRepositoryOpened: function(repoId, name, path) {
             if (typeof workspaceSessionVm !== "undefined") {
-                workspaceSessionVm.openRepository(repoId, "", path);
+                workspaceSessionVm.openRepository(repoId, name, path);
                 appWindow.currentView = "session";
             }
         }

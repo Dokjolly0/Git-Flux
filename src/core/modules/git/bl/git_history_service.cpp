@@ -111,6 +111,25 @@ GitHistoryService::getCommitDetails(const std::filesystem::path& repoPath,
     return logResult->front();
 }
 
+std::expected<std::vector<bo::CommitFileChange>, ports::GitOpsError>
+GitHistoryService::getCommitFiles(const std::filesystem::path& repoPath,
+                                  const std::string& commitSha) {
+    if (auto valid = validateRepoPath(repoPath); !valid) {
+        return std::unexpected(valid.error());
+    }
+
+    if (commitSha.empty()) {
+        return std::unexpected(ports::GitOpsError{
+            .kind = ports::GitOpsError::Kind::InvalidOperation,
+            .exitCode = -1,
+            .message = "L'hash del commit non può essere vuoto",
+            .command = "diff-tree"
+        });
+    }
+
+    return m_gitOps.getCommitFiles(repoPath, commitSha);
+}
+
 std::expected<std::vector<bo::GitTag>, ports::GitOpsError>
 GitHistoryService::listTags(const std::filesystem::path& repoPath) {
     if (auto valid = validateRepoPath(repoPath); !valid) {

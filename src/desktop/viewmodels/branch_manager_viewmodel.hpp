@@ -58,6 +58,8 @@ public:
     Q_INVOKABLE bool pullRemote(const QString& remoteName = "origin");
     Q_INVOKABLE bool pushRemote(const QString& remoteName = "origin", bool setUpstream = false);
 
+    Q_INVOKABLE QVariantList getCommitFiles(const QString& commitSha);
+
 signals:
     void currentBranchChanged();
     void busyChanged();

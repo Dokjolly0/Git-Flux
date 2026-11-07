@@ -26,6 +26,7 @@ WorkspaceSessionViewModel::WorkspaceSessionViewModel(repositories::bl::Repositor
     , m_workingTree(statusService, stagingService, this)
     , m_commitBox(stagingService, this)
     , m_diffViewer(diffService, this)
+    , m_commitDiffViewer(diffService, this)
     , m_branchManager(branchService, historyService, remoteMergeService, this)
     , m_stashManager(stashService, this)
     , m_conflictResolver(conflictService, this) {
@@ -103,16 +104,22 @@ QString WorkspaceSessionViewModel::activeRepoPath() const {
 void WorkspaceSessionViewModel::openRepository(const QString& repoId,
                                               const QString& name,
                                               const QString& path) {
-    // If the path is not provided, look it up in the repository service
+    // Look up display name or path if missing
     QString resolvedName = name;
     QString resolvedPath = path;
 
-    if (resolvedPath.isEmpty() && !repoId.isEmpty()) {
+    if (resolvedName.isEmpty() && !repoId.isEmpty()) {
         auto repoRes = m_repoService.getRepository(repositories::bo::RepositoryId{repoId.toStdString()});
         if (repoRes && repoRes->has_value()) {
             resolvedName = QString::fromStdString((*repoRes)->displayName);
-            resolvedPath = QString::fromStdString((*repoRes)->localPath.string());
+            if (resolvedPath.isEmpty()) {
+                resolvedPath = QString::fromStdString((*repoRes)->localPath.string());
+            }
         }
+    }
+
+    if (resolvedName.isEmpty() && !resolvedPath.isEmpty()) {
+        resolvedName = QString::fromStdString(std::filesystem::path(resolvedPath.toStdString()).filename().string());
     }
 
     // Check if repository is already open in an existing tab
@@ -221,6 +228,7 @@ void WorkspaceSessionViewModel::closeAllTabs() {
     }
     m_workingTree.refresh({});
     m_diffViewer.clear();
+    m_commitDiffViewer.clear();
     m_branchManager.setRepositoryPath({});
     m_stashManager.setRepoPath({});
     m_conflictResolver.setRepoPath({});
@@ -235,6 +243,7 @@ void WorkspaceSessionViewModel::refreshActiveTab() {
     if (path.isEmpty()) {
         m_workingTree.refresh({});
         m_diffViewer.clear();
+        m_commitDiffViewer.clear();
         m_branchManager.setRepositoryPath({});
         m_stashManager.setRepoPath({});
         m_conflictResolver.setRepoPath({});
@@ -245,6 +254,7 @@ void WorkspaceSessionViewModel::refreshActiveTab() {
 
     m_workingTree.refresh(path);
     m_diffViewer.clear();
+    m_commitDiffViewer.clear();
     m_branchManager.setRepositoryPath(path);
     m_stashManager.setRepoPath(path);
     m_conflictResolver.setRepoPath(path);

@@ -97,6 +97,37 @@ public:
     getAllDiffs(const std::filesystem::path& repoPath,
                 bo::DiffScope scope) = 0;
 
+    /// Retrieves the list of files modified, added, deleted or renamed by a commit.
+    [[nodiscard]] virtual std::expected<std::vector<bo::CommitFileChange>, GitOpsError>
+    getCommitFiles(const std::filesystem::path& repoPath,
+                   const std::string& commitSha) {
+        (void)repoPath;
+        (void)commitSha;
+        return std::vector<bo::CommitFileChange>{};
+    }
+
+    /// Retrieves the unified diff for a single file in a specific commit.
+    [[nodiscard]] virtual std::expected<bo::FileDiff, GitOpsError>
+    getCommitFileDiff(const std::filesystem::path& repoPath,
+                      const std::string& commitSha,
+                      const std::string& filePath) {
+        (void)repoPath;
+        (void)commitSha;
+        (void)filePath;
+        return bo::FileDiff{};
+    }
+
+    /// Retrieves the line-by-line blame annotation for a file at a specific revision (or HEAD if empty).
+    [[nodiscard]] virtual std::expected<std::vector<bo::BlameLine>, GitOpsError>
+    getFileBlame(const std::filesystem::path& repoPath,
+                 const std::string& revision,
+                 const std::string& filePath) {
+        (void)repoPath;
+        (void)revision;
+        (void)filePath;
+        return std::vector<bo::BlameLine>{};
+    }
+
     /// Returns the list of local and remote branches in the repository.
     [[nodiscard]] virtual std::expected<std::vector<bo::GitBranch>, GitOpsError>
     listBranches(const std::filesystem::path& repoPath) = 0;

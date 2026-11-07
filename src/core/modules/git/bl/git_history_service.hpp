@@ -28,6 +28,10 @@ public:
     [[nodiscard]] std::expected<std::optional<bo::GitCommitLogItem>, ports::GitOpsError>
     getCommitDetails(const std::filesystem::path& repoPath, const std::string& commitSha);
 
+    /// Returns the list of files modified, added, deleted, or renamed by a commit.
+    [[nodiscard]] std::expected<std::vector<bo::CommitFileChange>, ports::GitOpsError>
+    getCommitFiles(const std::filesystem::path& repoPath, const std::string& commitSha);
+
     /// Returns all repository tags (lightweight and annotated).
     [[nodiscard]] std::expected<std::vector<bo::GitTag>, ports::GitOpsError>
     listTags(const std::filesystem::path& repoPath);
