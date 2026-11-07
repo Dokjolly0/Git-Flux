@@ -106,10 +106,41 @@ bool WorkingTreeViewModel::unstageAll(const QString& repoPath) {
 
 bool WorkingTreeViewModel::discardFile(const QString& repoPath, const QString& filePath) {
     std::filesystem::path rPath(repoPath.toStdString());
-    auto res = m_stagingService.discardFiles(rPath, {filePath.toStdString()});
+    std::string pathStr = filePath.toStdString();
+    // 1. Unstage if staged
+    m_stagingService.unstageFiles(rPath, {pathStr});
+    // 2. Discard working tree changes
+    auto res = m_stagingService.discardFiles(rPath, {pathStr});
     if (!res) {
         emit operationFailed(QString::fromStdString(res.error().message));
         return false;
+    }
+    return refresh(repoPath);
+}
+
+bool WorkingTreeViewModel::discardAll(const QString& repoPath) {
+    std::filesystem::path rPath(repoPath.toStdString());
+    // 1. Unstage all staged files
+    m_stagingService.unstageAll(rPath);
+
+    // 2. Collect all modified/untracked files
+    std::vector<std::string> allFiles;
+    for (const auto& item : m_stagedModel.items()) {
+        allFiles.push_back(item.path);
+    }
+    for (const auto& item : m_unstagedModel.items()) {
+        allFiles.push_back(item.path);
+    }
+    for (const auto& item : m_untrackedModel.items()) {
+        allFiles.push_back(item.path);
+    }
+
+    if (!allFiles.empty()) {
+        auto res = m_stagingService.discardFiles(rPath, allFiles);
+        if (!res) {
+            emit operationFailed(QString::fromStdString(res.error().message));
+            return false;
+        }
     }
     return refresh(repoPath);
 }

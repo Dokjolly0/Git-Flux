@@ -16,11 +16,11 @@ Rectangle {
         spacing: 0
 
         // ==========================================
-        // 1. REPO TABS & BRANCH TOOLBAR HEADER
+        // 1. REPO TABS BAR (Upper Bar / Barra Superiore)
         // ==========================================
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 44
+            Layout.preferredHeight: 38
             color: "#090D13"
 
             RowLayout {
@@ -31,22 +31,22 @@ Rectangle {
 
                 // Back to Home Hub button
                 Button {
-                    Layout.preferredHeight: 32
+                    Layout.preferredHeight: 28
                     background: Rectangle {
                         color: parent.hovered ? "#1E293B" : "transparent"
-                        radius: 6
+                        radius: 5
                     }
                     contentItem: RowLayout {
-                        spacing: 6
+                        spacing: 5
                         Text {
                             text: "🏠"
-                            font.pixelSize: 14
+                            font.pixelSize: 13
                         }
                         Text {
                             text: "Home"
                             color: "#CBD5E1"
                             font.bold: true
-                            font.pixelSize: 12
+                            font.pixelSize: 11
                         }
                     }
                     onClicked: {
@@ -57,9 +57,9 @@ Rectangle {
                 // Active Group Indicator Badge
                 Rectangle {
                     visible: sessionVm && sessionVm.currentGroupName && sessionVm.currentGroupName.length > 0
-                    Layout.preferredHeight: 28
-                    implicitWidth: groupBadgeRow.implicitWidth + 16
-                    radius: 14
+                    Layout.preferredHeight: 26
+                    implicitWidth: groupBadgeRow.implicitWidth + 14
+                    radius: 13
                     color: "#2E1065"
                     border.color: "#7C4DFF"
                     border.width: 1
@@ -67,7 +67,7 @@ Rectangle {
                     RowLayout {
                         id: groupBadgeRow
                         anchors.centerIn: parent
-                        spacing: 6
+                        spacing: 5
 
                         Text {
                             text: "🗂️"
@@ -105,38 +105,11 @@ Rectangle {
                     }
                 }
 
-                // Quick Open button
-                Button {
-                    Layout.preferredHeight: 32
-                    background: Rectangle {
-                        color: parent.hovered ? "#1E293B" : "#161B22"
-                        radius: 6
-                        border.color: "#334155"
-                        border.width: 1
-                    }
-                    contentItem: RowLayout {
-                        spacing: 6
-                        Text {
-                            text: "⚡"
-                            font.pixelSize: 13
-                        }
-                        Text {
-                            text: "Quick Open"
-                            color: "#F8FAFC"
-                            font.bold: true
-                            font.pixelSize: 12
-                        }
-                    }
-                    onClicked: {
-                        root.quickOpenRequested();
-                    }
-                }
-
                 // Separator
                 Rectangle {
                     Layout.preferredWidth: 1
-                    Layout.preferredHeight: 22
-                    color: "#334155"
+                    Layout.preferredHeight: 20
+                    color: "#21262D"
                 }
 
                 // Scrollable Tab Bar for Open Repositories
@@ -153,9 +126,9 @@ Rectangle {
 
                             delegate: Rectangle {
                                 id: tabRect
-                                Layout.preferredHeight: 34
-                                implicitWidth: tabRow.implicitWidth + 24
-                                radius: 6
+                                Layout.preferredHeight: 30
+                                implicitWidth: tabRow.implicitWidth + 20
+                                radius: 5
                                 color: (sessionVm && sessionVm.activeTabIndex === index) ? "#1E293B" : (tabMouseArea.containsMouse ? "#161B22" : "transparent")
                                 border.color: (sessionVm && sessionVm.activeTabIndex === index) ? "#3B82F6" : "transparent"
                                 border.width: 1
@@ -175,27 +148,27 @@ Rectangle {
                                 RowLayout {
                                     id: tabRow
                                     anchors.centerIn: parent
-                                    spacing: 8
+                                    spacing: 6
 
                                     // Dirty Indicator
                                     Rectangle {
-                                        width: 8
-                                        height: 8
-                                        radius: 4
+                                        width: 7
+                                        height: 7
+                                        radius: 3.5
                                         color: modelData.isDirty ? "#F59E0B" : "transparent"
                                         visible: modelData.isDirty
                                     }
 
                                     Text {
                                         text: "📁"
-                                        font.pixelSize: 12
+                                        font.pixelSize: 11
                                     }
 
                                     Text {
                                         text: modelData.name
                                         color: (sessionVm && sessionVm.activeTabIndex === index) ? "#FFFFFF" : "#94A3B8"
                                         font.bold: (sessionVm && sessionVm.activeTabIndex === index)
-                                        font.pixelSize: 12
+                                        font.pixelSize: 11
                                     }
 
                                     MouseArea {
@@ -210,7 +183,7 @@ Rectangle {
                                             anchors.centerIn: parent
                                             text: "×"
                                             color: parent.containsMouse ? "#EF4444" : "#64748B"
-                                            font.pixelSize: 14
+                                            font.pixelSize: 13
                                             font.bold: true
                                         }
 
@@ -229,12 +202,12 @@ Rectangle {
 
                         // Add Tab Button
                         Button {
-                            Layout.preferredHeight: 28
-                            Layout.preferredWidth: 28
+                            Layout.preferredHeight: 26
+                            Layout.preferredWidth: 26
                             background: Rectangle {
                                 color: parent.hovered ? "#1E293B" : "#161B22"
-                                radius: 6
-                                border.color: "#334155"
+                                radius: 5
+                                border.color: "#30363D"
                             }
                             contentItem: Text {
                                 text: "+"
@@ -252,27 +225,350 @@ Rectangle {
                         }
                     }
                 }
+            }
+        }
 
-                // Separator
-                Rectangle {
-                    Layout.preferredWidth: 1
-                    Layout.preferredHeight: 22
-                    color: "#334155"
-                }
+        // ==========================================
+        // 1.1 MAIN GIT ACTIONS TOOLBAR (GitKraken style: Center-aligned actions)
+        // ==========================================
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 44
+            color: "#0D1117"
+            border.color: "#21262D"
+            border.width: 1
 
-                // Branch Selector Dropdown
+            // LEFT SIDE: Branch Selector Dropdown
+            RowLayout {
+                anchors.left: parent.left
+                anchors.leftMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 8
+
                 BranchSwitcherDropdown {
-                    Layout.preferredHeight: 32
+                    Layout.preferredHeight: 30
                     branchManager: (root.sessionVm && root.sessionVm.branchManager) ? root.sessionVm.branchManager : null
                 }
+            }
 
-                // Quick Remote Action Buttons
+            // CENTER: Git Operations Block (Pull, Push, Branch, Stash, Pop)
+            RowLayout {
+                anchors.centerIn: parent
+                spacing: 6
+
+                // 1. PULL BUTTON (Split button with dropdown menu)
+                RowLayout {
+                    spacing: 0
+
+                    Button {
+                        id: pullMainBtn
+                        text: (root.sessionVm && root.sessionVm.branchManager && root.sessionVm.branchManager.isBusy) ? "⏳ Pull..." : "⬇ Pull"
+                        enabled: !(root.sessionVm && root.sessionVm.branchManager && root.sessionVm.branchManager.isBusy)
+                        Layout.preferredHeight: 30
+                        background: Rectangle {
+                            color: parent.hovered ? "#1E293B" : "#161B22"
+                            topLeftRadius: 4
+                            bottomLeftRadius: 4
+                            border.color: "#30363D"
+                            border.width: 1
+                        }
+                        contentItem: Text {
+                            text: parent.text
+                            color: parent.enabled ? "#F1F5F9" : "#64748B"
+                            font.pixelSize: 11
+                            font.bold: true
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        onClicked: {
+                            if (root.sessionVm && root.sessionVm.branchManager) {
+                                root.sessionVm.branchManager.pullRemote("origin", "default");
+                            }
+                        }
+                    }
+
+                    Button {
+                        id: pullMenuBtn
+                        Layout.preferredHeight: 30
+                        Layout.preferredWidth: 20
+                        background: Rectangle {
+                            color: parent.hovered ? "#334155" : "#161B22"
+                            topRightRadius: 4
+                            bottomRightRadius: 4
+                            border.color: "#30363D"
+                            border.width: 1
+                        }
+                        contentItem: Text {
+                            text: "▾"
+                            color: "#94A3B8"
+                            font.pixelSize: 9
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        onClicked: pullMenu.open()
+
+                        Menu {
+                            id: pullMenu
+                            y: pullMenuBtn.height
+
+                            MenuItem {
+                                text: "⬇ Pull (Default: Fast-Forward)"
+                                font.pixelSize: 11
+                                onClicked: {
+                                    if (root.sessionVm && root.sessionVm.branchManager) {
+                                        root.sessionVm.branchManager.pullRemote("origin", "default");
+                                    }
+                                }
+                            }
+                            MenuItem {
+                                text: "⬇ Pull con Rebase (--rebase)"
+                                font.pixelSize: 11
+                                onClicked: {
+                                    if (root.sessionVm && root.sessionVm.branchManager) {
+                                        root.sessionVm.branchManager.pullRemote("origin", "rebase");
+                                    }
+                                }
+                            }
+                            MenuItem {
+                                text: "⬇ Pull Solo Fast-Forward (--ff-only)"
+                                font.pixelSize: 11
+                                onClicked: {
+                                    if (root.sessionVm && root.sessionVm.branchManager) {
+                                        root.sessionVm.branchManager.pullRemote("origin", "ff-only");
+                                    }
+                                }
+                            }
+                            MenuSeparator {}
+                            MenuItem {
+                                text: "⬇ Fetch da tutti i remote (--all)"
+                                font.pixelSize: 11
+                                onClicked: {
+                                    if (root.sessionVm && root.sessionVm.branchManager) {
+                                        root.sessionVm.branchManager.fetchRemote("origin", true);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 2. PUSH BUTTON (Split button with dropdown menu)
+                RowLayout {
+                    spacing: 0
+
+                    Button {
+                        id: pushMainBtn
+                        text: (root.sessionVm && root.sessionVm.branchManager && root.sessionVm.branchManager.isBusy) ? "⏳ Push..." : "⬆ Push"
+                        enabled: !(root.sessionVm && root.sessionVm.branchManager && root.sessionVm.branchManager.isBusy)
+                        Layout.preferredHeight: 30
+                        background: Rectangle {
+                            color: parent.hovered ? "#1E293B" : "#161B22"
+                            topLeftRadius: 4
+                            bottomLeftRadius: 4
+                            border.color: "#30363D"
+                            border.width: 1
+                        }
+                        contentItem: Text {
+                            text: parent.text
+                            color: parent.enabled ? "#F1F5F9" : "#64748B"
+                            font.pixelSize: 11
+                            font.bold: true
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        onClicked: {
+                            if (root.sessionVm && root.sessionVm.branchManager) {
+                                root.sessionVm.branchManager.pushRemote("origin", false, false, false);
+                            }
+                        }
+                    }
+
+                    Button {
+                        id: pushMenuBtn
+                        Layout.preferredHeight: 30
+                        Layout.preferredWidth: 20
+                        background: Rectangle {
+                            color: parent.hovered ? "#334155" : "#161B22"
+                            topRightRadius: 4
+                            bottomRightRadius: 4
+                            border.color: "#30363D"
+                            border.width: 1
+                        }
+                        contentItem: Text {
+                            text: "▾"
+                            color: "#94A3B8"
+                            font.pixelSize: 9
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        onClicked: pushMenu.open()
+
+                        Menu {
+                            id: pushMenu
+                            y: pushMenuBtn.height
+
+                            MenuItem {
+                                text: "⬆ Push (Default)"
+                                font.pixelSize: 11
+                                onClicked: {
+                                    if (root.sessionVm && root.sessionVm.branchManager) {
+                                        root.sessionVm.branchManager.pushRemote("origin", false, false, false);
+                                    }
+                                }
+                            }
+                            MenuItem {
+                                text: "⬆ Push & Imposta Upstream (-u)"
+                                font.pixelSize: 11
+                                onClicked: {
+                                    if (root.sessionVm && root.sessionVm.branchManager) {
+                                        root.sessionVm.branchManager.pushRemote("origin", true, false, false);
+                                    }
+                                }
+                            }
+                            MenuItem {
+                                text: "⬆ Push Sicuro con Force-With-Lease"
+                                font.pixelSize: 11
+                                onClicked: {
+                                    if (root.sessionVm && root.sessionVm.branchManager) {
+                                        root.sessionVm.branchManager.pushRemote("origin", false, true, false);
+                                    }
+                                }
+                            }
+                            MenuItem {
+                                text: "⬆ Push con Tutti i Tag (--tags)"
+                                font.pixelSize: 11
+                                onClicked: {
+                                    if (root.sessionVm && root.sessionVm.branchManager) {
+                                        root.sessionVm.branchManager.pushRemote("origin", false, false, true);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 3. BRANCH BUTTON (Creates branch at HEAD)
                 Button {
-                    text: "⬇ Fetch"
-                    Layout.preferredHeight: 32
+                    text: "🌿 Branch"
+                    Layout.preferredHeight: 30
                     background: Rectangle {
-                        color: parent.hovered ? "#1E293B" : "transparent"
+                        color: parent.hovered ? "#1E293B" : "#161B22"
                         radius: 4
+                        border.color: "#30363D"
+                        border.width: 1
+                    }
+                    contentItem: Text {
+                        text: parent.text
+                        color: "#E2E8F0"
+                        font.pixelSize: 11
+                        font.bold: true
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Crea un nuovo branch a partire dal branch attuale (HEAD)"
+                    onClicked: {
+                        createBranchModal.openWithStartPoint("");
+                    }
+                }
+
+                // 4. STASH BUTTON (with options menu)
+                RowLayout {
+                    spacing: 0
+
+                    Button {
+                        text: "📦 Stash"
+                        Layout.preferredHeight: 30
+                        background: Rectangle {
+                            color: parent.hovered ? "#1E293B" : "#161B22"
+                            topLeftRadius: 4
+                            bottomLeftRadius: 4
+                            border.color: "#30363D"
+                            border.width: 1
+                        }
+                        contentItem: Text {
+                            text: parent.text
+                            color: "#E2E8F0"
+                            font.pixelSize: 11
+                            font.bold: true
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        onClicked: {
+                            if (root.sessionVm && root.sessionVm.stashManager) {
+                                root.sessionVm.stashManager.refresh();
+                            }
+                            stashModal.open();
+                        }
+                    }
+
+                    Button {
+                        id: stashMenuBtn
+                        Layout.preferredHeight: 30
+                        Layout.preferredWidth: 20
+                        background: Rectangle {
+                            color: parent.hovered ? "#334155" : "#161B22"
+                            topRightRadius: 4
+                            bottomRightRadius: 4
+                            border.color: "#30363D"
+                            border.width: 1
+                        }
+                        contentItem: Text {
+                            text: "▾"
+                            color: "#94A3B8"
+                            font.pixelSize: 9
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        onClicked: stashMenu.open()
+
+                        Menu {
+                            id: stashMenu
+                            y: stashMenuBtn.height
+
+                            MenuItem {
+                                text: "📦 Nuovo Stash modifiche correnti..."
+                                font.pixelSize: 11
+                                onClicked: {
+                                    if (root.sessionVm && root.sessionVm.stashManager) {
+                                        root.sessionVm.stashManager.refresh();
+                                    }
+                                    stashModal.open();
+                                }
+                            }
+                            MenuItem {
+                                text: "↩ Pop ultimo stash (stash@{0})"
+                                font.pixelSize: 11
+                                onClicked: {
+                                    if (root.sessionVm && root.sessionVm.stashManager) {
+                                        root.sessionVm.stashManager.pop(0);
+                                    }
+                                }
+                            }
+                            MenuSeparator {}
+                            MenuItem {
+                                text: "⚙ Gestione completa Stash..."
+                                font.pixelSize: 11
+                                onClicked: {
+                                    if (root.sessionVm && root.sessionVm.stashManager) {
+                                        root.sessionVm.stashManager.refresh();
+                                    }
+                                    stashModal.open();
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 5. QUICK POP BUTTON
+                Button {
+                    text: "↩ Pop"
+                    Layout.preferredHeight: 30
+                    background: Rectangle {
+                        color: parent.hovered ? "#1E293B" : "#161B22"
+                        radius: 4
+                        border.color: "#30363D"
+                        border.width: 1
                     }
                     contentItem: Text {
                         text: parent.text
@@ -281,99 +577,41 @@ Rectangle {
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Applica e rimuovi il commit di stash più recente (pop stash@{0})"
                     onClicked: {
-                        if (root.sessionVm && root.sessionVm.branchManager) {
-                            root.sessionVm.branchManager.fetchRemote("origin");
+                        if (root.sessionVm && root.sessionVm.stashManager) {
+                            root.sessionVm.stashManager.pop(0);
                         }
                     }
                 }
+            }
+
+            // RIGHT SIDE: Branch & Remote modal + Background progress indicator
+            RowLayout {
+                anchors.right: parent.right
+                anchors.rightMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 8
 
                 Button {
-                    text: (root.sessionVm && root.sessionVm.branchManager && root.sessionVm.branchManager.isBusy) ? "⏳ Pull..." : "⬇ Pull"
-                    enabled: !(root.sessionVm && root.sessionVm.branchManager && root.sessionVm.branchManager.isBusy)
-                    Layout.preferredHeight: 32
-                    background: Rectangle {
-                        color: parent.hovered ? "#1E293B" : "transparent"
-                        radius: 4
-                    }
-                    contentItem: Text {
-                        text: parent.text
-                        color: parent.enabled ? "#94A3B8" : "#475569"
-                        font.pixelSize: 11
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    onClicked: {
-                        if (root.sessionVm && root.sessionVm.branchManager) {
-                            root.sessionVm.branchManager.pullRemote("origin");
-                        }
-                    }
-                }
-
-                Button {
-                    text: (root.sessionVm && root.sessionVm.branchManager && root.sessionVm.branchManager.isBusy) ? "⏳ Push..." : "⬆ Push"
-                    enabled: !(root.sessionVm && root.sessionVm.branchManager && root.sessionVm.branchManager.isBusy)
-                    Layout.preferredHeight: 32
-                    background: Rectangle {
-                        color: parent.hovered ? "#1E293B" : "transparent"
-                        radius: 4
-                    }
-                    contentItem: Text {
-                        text: parent.text
-                        color: parent.enabled ? "#94A3B8" : "#475569"
-                        font.pixelSize: 11
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    onClicked: {
-                        if (root.sessionVm && root.sessionVm.branchManager) {
-                            root.sessionVm.branchManager.pushRemote("origin", false);
-                        }
-                    }
-                }
-
-                Button {
-                    text: "⚙ Branch..."
-                    Layout.preferredHeight: 32
+                    text: "⚙ Branch & Sync..."
+                    Layout.preferredHeight: 30
                     background: Rectangle {
                         color: parent.hovered ? "#1E293B" : "#161B22"
                         radius: 4
-                        border.color: "#334155"
+                        border.color: "#30363D"
                         border.width: 1
                     }
                     contentItem: Text {
                         text: parent.text
-                        color: "#E2E8F0"
+                        color: "#CBD5E1"
                         font.pixelSize: 11
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
                     onClicked: {
                         branchModal.open();
-                    }
-                }
-
-                Button {
-                    text: "📦 Stash..."
-                    Layout.preferredHeight: 32
-                    background: Rectangle {
-                        color: parent.hovered ? "#1E293B" : "#161B22"
-                        radius: 4
-                        border.color: "#334155"
-                        border.width: 1
-                    }
-                    contentItem: Text {
-                        text: parent.text
-                        color: "#E2E8F0"
-                        font.pixelSize: 11
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    onClicked: {
-                        if (root.sessionVm && root.sessionVm.stashManager) {
-                            root.sessionVm.stashManager.refresh();
-                        }
-                        stashModal.open();
                     }
                 }
 
@@ -574,7 +812,15 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             sessionVm: root.sessionVm
+            onCreateBranchRequested: function(startPoint) {
+                createBranchModal.openWithStartPoint(startPoint);
+            }
         }
+    }
+
+    CreateBranchModal {
+        id: createBranchModal
+        branchManager: (root.sessionVm && root.sessionVm.branchManager) ? root.sessionVm.branchManager : null
     }
 
     BranchManagerModal {

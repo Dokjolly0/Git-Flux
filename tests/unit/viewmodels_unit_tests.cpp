@@ -870,6 +870,11 @@ TEST_CASE("WorkingTreeViewModel and CommitBoxViewModel reactive behavior", "[vie
         // Unstage file trigger
         CHECK(wtVm.unstageFile(QString::fromStdString(validTempDir.string()), "a.txt"));
         CHECK(mockOps.unstageCalled);
+
+        // Discard file and discard all triggers
+        CHECK(wtVm.discardFile(QString::fromStdString(validTempDir.string()), "a.txt"));
+        CHECK(mockOps.discardCalled);
+        CHECK(wtVm.discardAll(QString::fromStdString(validTempDir.string())));
     }
 
     SECTION("CommitBoxViewModel validates message and triggers commit") {
@@ -1168,10 +1173,19 @@ TEST_CASE("BranchManagerViewModel operations and signal propagation", "[viewmode
     CHECK(merged);
     CHECK(completedSpy.count() == 5);
 
-    // Remote operations
-    CHECK(branchVm.fetchRemote("origin"));
-    CHECK(branchVm.pullRemote("origin"));
-    CHECK(branchVm.pushRemote("origin", false));
+    // Remote operations with options
+    CHECK(branchVm.fetchRemote("origin", false));
+    CHECK(branchVm.fetchRemote("origin", true));
+    CHECK(branchVm.pullRemote("origin", "default"));
+    CHECK(branchVm.pullRemote("origin", "rebase"));
+    CHECK(branchVm.pullRemote("origin", "ff-only"));
+    CHECK(branchVm.pushRemote("origin", false, false, false));
+    CHECK(branchVm.pushRemote("origin", true, false, false));
+    CHECK(branchVm.pushRemote("origin", false, true, false));
+    CHECK(branchVm.pushRemote("origin", false, false, true));
+
+    // Branch creation with custom start point
+    CHECK(branchVm.createBranch("feature/from-commit", true, "a1b2c3d"));
 
     // Remote URL manipulation and SSH conversion
     CHECK(branchVm.setRemoteUrl("origin", "https://github.com/Dokjolly0/Git-Flux.git"));

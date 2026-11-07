@@ -1789,9 +1789,13 @@ NativeRepositoryGitOps::fetchRemote(const std::filesystem::path& repoPath,
     if (options.force) {
         args.emplace_back("--force");
     }
-    args.push_back(options.remoteName);
-    if (options.branchName.has_value() && !options.branchName->empty()) {
-        args.push_back(*options.branchName);
+    if (options.allRemotes) {
+        args.emplace_back("--all");
+    } else {
+        args.push_back(options.remoteName);
+        if (options.branchName.has_value() && !options.branchName->empty()) {
+            args.push_back(*options.branchName);
+        }
     }
 
     gf::git::bo::GitCommand cmd{
@@ -1840,6 +1844,12 @@ std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
 NativeRepositoryGitOps::pullRemote(const std::filesystem::path& repoPath,
                                    const gf::git::bo::RemoteOperationOptions& options) {
     std::vector<std::string> args{"pull"};
+    if (options.rebase) {
+        args.emplace_back("--rebase");
+    }
+    if (options.fastForwardOnly) {
+        args.emplace_back("--ff-only");
+    }
     args.push_back(options.remoteName);
     if (options.branchName.has_value() && !options.branchName->empty()) {
         args.push_back(*options.branchName);

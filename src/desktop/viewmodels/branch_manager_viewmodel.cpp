@@ -184,7 +184,7 @@ bool BranchManagerViewModel::checkoutBranch(const QString& branchName) {
     return true;
 }
 
-bool BranchManagerViewModel::createBranch(const QString& branchName, bool checkoutAfterCreate) {
+bool BranchManagerViewModel::createBranch(const QString& branchName, bool checkoutAfterCreate, const QString& startPoint) {
     if (m_repoPath.empty() || branchName.isEmpty()) {
         return false;
     }
@@ -194,6 +194,7 @@ bool BranchManagerViewModel::createBranch(const QString& branchName, bool checko
 
     git::bo::CreateBranchOptions opts{
         .name = branchName.toStdString(),
+        .startPoint = startPoint.isEmpty() ? std::nullopt : std::make_optional(startPoint.toStdString()),
         .checkoutAfterCreate = checkoutAfterCreate
     };
 
@@ -343,16 +344,18 @@ static QString formatRemoteError(const std::string& rawMsg) {
     return msg;
 }
 
-bool BranchManagerViewModel::fetchRemote(const QString& remoteName) {
+bool BranchManagerViewModel::fetchRemote(const QString& remoteName, bool allRemotes) {
     if (m_repoPath.empty()) {
         return false;
     }
 
     setBusy(true);
-    setStatusMessage(QStringLiteral("Fetch da %1...").arg(remoteName));
+    setStatusMessage(allRemotes ? QStringLiteral("Fetch da tutti i remote...") : QStringLiteral("Fetch da %1...").arg(remoteName));
 
     git::bo::RemoteOperationOptions opts{
-        .remoteName = remoteName.toStdString()
+        .remoteName = remoteName.toStdString(),
+        .prune = true,
+        .allRemotes = allRemotes
     };
 
     auto res = m_remoteMergeService.fetchRemote(m_repoPath, opts);
@@ -365,9 +368,10 @@ bool BranchManagerViewModel::fetchRemote(const QString& remoteName) {
         return false;
     }
 
-    setStatusMessage(QStringLiteral("Fetch da %1 completato").arg(remoteName));
+    QString successMsg = allRemotes ? QStringLiteral("Fetch da tutti i remote completato") : QStringLiteral("Fetch da %1 completato").arg(remoteName);
+    setStatusMessage(successMsg);
     refresh();
-    emit operationCompleted(true, QStringLiteral("Fetch completato"));
+    emit operationCompleted(true, successMsg);
     return true;
 }
 
@@ -375,17 +379,20 @@ void BranchManagerViewModel::setWipStatus(bool hasWip, int changedFilesCount) {
     m_commitHistoryModel.setWip(hasWip, changedFilesCount);
 }
 
-bool BranchManagerViewModel::pullRemote(const QString& remoteName) {
+bool BranchManagerViewModel::pullRemote(const QString& remoteName, const QString& strategy) {
     if (m_repoPath.empty()) {
         return false;
     }
 
     setBusy(true);
-    setStatusMessage(QStringLiteral("Pull da %1 in corso...").arg(remoteName));
+    QString stratLabel = (strategy == "rebase") ? " con rebase" : ((strategy == "ff-only") ? " (solo fast-forward)" : "");
+    setStatusMessage(QStringLiteral("Pull da %1%2 in corso...").arg(remoteName, stratLabel));
 
     git::bo::RemoteOperationOptions opts{
         .remoteName = remoteName.toStdString(),
-        .branchName = m_currentBranch.isEmpty() ? std::nullopt : std::make_optional(m_currentBranch.toStdString())
+        .branchName = m_currentBranch.isEmpty() ? std::nullopt : std::make_optional(m_currentBranch.toStdString()),
+        .rebase = (strategy == "rebase"),
+        .fastForwardOnly = (strategy == "ff-only")
     };
 
     auto res = m_remoteMergeService.pullRemote(m_repoPath, opts);
@@ -398,24 +405,28 @@ bool BranchManagerViewModel::pullRemote(const QString& remoteName) {
         return false;
     }
 
-    setStatusMessage(QStringLiteral("Pull da %1 completato con successo").arg(remoteName));
+    QString successMsg = QStringLiteral("Pull da %1 completato con successo%2").arg(remoteName, stratLabel);
+    setStatusMessage(successMsg);
     refresh();
-    emit operationCompleted(true, QStringLiteral("Pull da %1 completato con successo").arg(remoteName));
+    emit operationCompleted(true, successMsg);
     return true;
 }
 
-bool BranchManagerViewModel::pushRemote(const QString& remoteName, bool setUpstream) {
+bool BranchManagerViewModel::pushRemote(const QString& remoteName, bool setUpstream, bool force, bool tags) {
     if (m_repoPath.empty()) {
         return false;
     }
 
     setBusy(true);
-    setStatusMessage(QStringLiteral("Push verso %1 in corso...").arg(remoteName));
+    QString optsDesc = force ? " (force-with-lease)" : (tags ? " (con tag)" : (setUpstream ? " (set-upstream)" : ""));
+    setStatusMessage(QStringLiteral("Push verso %1%2 in corso...").arg(remoteName, optsDesc));
 
     git::bo::RemoteOperationOptions opts{
         .remoteName = remoteName.toStdString(),
         .branchName = m_currentBranch.isEmpty() ? std::nullopt : std::make_optional(m_currentBranch.toStdString()),
-        .setUpstream = setUpstream
+        .setUpstream = setUpstream,
+        .force = force,
+        .tags = tags
     };
 
     auto res = m_remoteMergeService.pushRemote(m_repoPath, opts);
@@ -436,9 +447,10 @@ bool BranchManagerViewModel::pushRemote(const QString& remoteName, bool setUpstr
         return false;
     }
 
-    setStatusMessage(QStringLiteral("Push verso %1 completato con successo").arg(remoteName));
+    QString successMsg = QStringLiteral("Push verso %1 completato con successo%2").arg(remoteName, optsDesc);
+    setStatusMessage(successMsg);
     refresh();
-    emit operationCompleted(true, QStringLiteral("Push verso %1 completato con successo").arg(remoteName));
+    emit operationCompleted(true, successMsg);
     return true;
 }
 

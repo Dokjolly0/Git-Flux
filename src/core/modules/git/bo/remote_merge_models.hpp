@@ -20,6 +20,9 @@ struct RemoteOperationOptions {
     bool setUpstream{false};
     bool force{false};
     bool tags{false};
+    bool rebase{false};
+    bool fastForwardOnly{false};
+    bool allRemotes{false};
 };
 
 struct RemoteOperationResult {

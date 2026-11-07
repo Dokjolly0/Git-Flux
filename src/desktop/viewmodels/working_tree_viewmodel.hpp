@@ -62,6 +62,7 @@ public:
     Q_INVOKABLE bool unstageFile(const QString& repoPath, const QString& filePath);
     Q_INVOKABLE bool unstageAll(const QString& repoPath);
     Q_INVOKABLE bool discardFile(const QString& repoPath, const QString& filePath);
+    Q_INVOKABLE bool discardAll(const QString& repoPath);
 
     [[nodiscard]] Q_INVOKABLE QVariantList getStagedFiles() const;
     [[nodiscard]] Q_INVOKABLE QVariantList getUnstagedFiles() const;

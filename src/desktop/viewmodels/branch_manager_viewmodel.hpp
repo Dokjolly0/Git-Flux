@@ -49,16 +49,16 @@ public:
     Q_INVOKABLE void refresh();
 
     Q_INVOKABLE bool checkoutBranch(const QString& branchName);
-    Q_INVOKABLE bool createBranch(const QString& branchName, bool checkoutAfterCreate = true);
+    Q_INVOKABLE bool createBranch(const QString& branchName, bool checkoutAfterCreate = true, const QString& startPoint = QString());
     Q_INVOKABLE bool deleteBranch(const QString& branchName, bool force = false);
     Q_INVOKABLE bool renameBranch(const QString& oldName, const QString& newName);
 
     Q_INVOKABLE bool mergeBranch(const QString& sourceBranch, bool noFf = false);
     Q_INVOKABLE bool abortMerge();
 
-    Q_INVOKABLE bool fetchRemote(const QString& remoteName = "origin");
-    Q_INVOKABLE bool pullRemote(const QString& remoteName = "origin");
-    Q_INVOKABLE bool pushRemote(const QString& remoteName = "origin", bool setUpstream = false);
+    Q_INVOKABLE bool fetchRemote(const QString& remoteName = "origin", bool allRemotes = false);
+    Q_INVOKABLE bool pullRemote(const QString& remoteName = "origin", const QString& strategy = "default");
+    Q_INVOKABLE bool pushRemote(const QString& remoteName = "origin", bool setUpstream = false, bool force = false, bool tags = false);
     Q_INVOKABLE bool setRemoteUrl(const QString& remoteName, const QString& newUrl);
     Q_INVOKABLE bool convertRemoteToSsh(const QString& remoteName = "origin");
 

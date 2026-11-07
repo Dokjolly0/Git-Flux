@@ -21,6 +21,8 @@ Rectangle {
     property var treeItems: []
     property var collapsedFolders: ({})
 
+    signal createBranchRequested(string startPoint)
+
     readonly property bool hasCollapsedFolders: {
         var keys = Object.keys(root.collapsedFolders);
         for (var i = 0; i < keys.length; ++i) {
@@ -1003,6 +1005,48 @@ Rectangle {
                             font.pixelSize: 12
                             font.bold: true
                         }
+
+                        Item { Layout.fillWidth: true }
+
+                        // Quick action: Create branch at this commit
+                        Rectangle {
+                            Layout.preferredHeight: 24
+                            implicitWidth: createBranchHereText.implicitWidth + 18
+                            radius: 4
+                            color: createBranchHereMouse.containsMouse ? "#1E293B" : "#161B22"
+                            border.color: "#3B82F6"
+                            border.width: 1
+
+                            RowLayout {
+                                anchors.centerIn: parent
+                                spacing: 4
+                                Text {
+                                    text: "🌿"
+                                    font.pixelSize: 11
+                                }
+                                Text {
+                                    id: createBranchHereText
+                                    text: "Crea branch qui"
+                                    color: "#60A5FA"
+                                    font.pixelSize: 11
+                                    font.bold: true
+                                }
+                            }
+
+                            MouseArea {
+                                id: createBranchHereMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: "Crea un nuovo branch a partire da questo commit"
+                                onClicked: {
+                                    if (root.selectedCommit) {
+                                        root.createBranchRequested(root.selectedCommit.sha);
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     // Commit Message (large bold title)
@@ -1455,6 +1499,40 @@ Rectangle {
                         }
                     }
 
+                    // WIP Action: Discard All Changes
+                    Rectangle {
+                        visible: root.isWipSelected && (root.sessionVm && root.sessionVm.workingTree && !root.sessionVm.workingTree.isClean)
+                        Layout.preferredHeight: 24
+                        implicitWidth: discardAllText.implicitWidth + 14
+                        radius: 4
+                        color: discardAllMouse.containsMouse ? "#B91C1C" : "#7F1D1D"
+                        border.color: "#EF4444"
+                        border.width: 1
+
+                        Text {
+                            id: discardAllText
+                            anchors.centerIn: parent
+                            text: "🗑️ Discard All"
+                            color: "#FFFFFF"
+                            font.pixelSize: 10
+                            font.bold: true
+                        }
+
+                        MouseArea {
+                            id: discardAllMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            ToolTip.visible: containsMouse
+                            ToolTip.text: "Scarta tutte le modifiche locali (ripristina tutti i file)"
+                            onClicked: {
+                                if (root.sessionVm && root.sessionVm.workingTree) {
+                                    root.sessionVm.workingTree.discardAll(root.sessionVm.activeRepoPath);
+                                }
+                            }
+                        }
+                    }
+
                     // Tree mode only: Expand/Collapse All toggle
                     Rectangle {
                         visible: root.fileViewMode === "tree" && root.treeItems.length > 0
@@ -1610,6 +1688,7 @@ Rectangle {
 
                                 // WIP Staging controls per file
                                 RowLayout {
+                                    z: 10
                                     visible: root.isWipSelected
                                     spacing: 4
 
@@ -1632,7 +1711,9 @@ Rectangle {
                                             anchors.fill: parent
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
-                                            onClicked: {
+                                            preventStealing: true
+                                            onClicked: function(mouse) {
+                                                mouse.accepted = true;
                                                 if (root.sessionVm && root.sessionVm.workingTree) {
                                                     root.sessionVm.workingTree.unstageFile(root.sessionVm.activeRepoPath, modelData.path);
                                                 }
@@ -1661,7 +1742,9 @@ Rectangle {
                                             anchors.fill: parent
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
-                                            onClicked: {
+                                            preventStealing: true
+                                            onClicked: function(mouse) {
+                                                mouse.accepted = true;
                                                 if (root.sessionVm && root.sessionVm.workingTree) {
                                                     root.sessionVm.workingTree.stageFile(root.sessionVm.activeRepoPath, modelData.path);
                                                 }
@@ -1686,7 +1769,11 @@ Rectangle {
                                             anchors.fill: parent
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
-                                            onClicked: {
+                                            preventStealing: true
+                                            ToolTip.visible: containsMouse
+                                            ToolTip.text: "Scarta modifiche (ripristina file)"
+                                            onClicked: function(mouse) {
+                                                mouse.accepted = true;
                                                 if (root.sessionVm && root.sessionVm.workingTree) {
                                                     root.sessionVm.workingTree.discardFile(root.sessionVm.activeRepoPath, modelData.path);
                                                 }
@@ -1698,6 +1785,7 @@ Rectangle {
 
                             MouseArea {
                                 id: fileRowMouse
+                                z: 0
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
@@ -1838,6 +1926,7 @@ Rectangle {
 
                                 // WIP Staging controls per file in Tree View
                                 RowLayout {
+                                    z: 10
                                     visible: !isFolder && root.isWipSelected
                                     spacing: 4
 
@@ -1860,7 +1949,9 @@ Rectangle {
                                             anchors.fill: parent
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
-                                            onClicked: {
+                                            preventStealing: true
+                                            onClicked: function(mouse) {
+                                                mouse.accepted = true;
                                                 if (root.sessionVm && root.sessionVm.workingTree) {
                                                     root.sessionVm.workingTree.unstageFile(root.sessionVm.activeRepoPath, modelData.path);
                                                 }
@@ -1889,7 +1980,9 @@ Rectangle {
                                             anchors.fill: parent
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
-                                            onClicked: {
+                                            preventStealing: true
+                                            onClicked: function(mouse) {
+                                                mouse.accepted = true;
                                                 if (root.sessionVm && root.sessionVm.workingTree) {
                                                     root.sessionVm.workingTree.stageFile(root.sessionVm.activeRepoPath, modelData.path);
                                                 }
@@ -1914,7 +2007,11 @@ Rectangle {
                                             anchors.fill: parent
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
-                                            onClicked: {
+                                            preventStealing: true
+                                            ToolTip.visible: containsMouse
+                                            ToolTip.text: "Scarta modifiche (ripristina file)"
+                                            onClicked: function(mouse) {
+                                                mouse.accepted = true;
                                                 if (root.sessionVm && root.sessionVm.workingTree) {
                                                     root.sessionVm.workingTree.discardFile(root.sessionVm.activeRepoPath, modelData.path);
                                                 }
@@ -1926,6 +2023,7 @@ Rectangle {
 
                             MouseArea {
                                 id: treeRowMouse
+                                z: 0
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor

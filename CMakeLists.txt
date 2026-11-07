@@ -237,6 +237,7 @@ if(GF_BUILD_DESKTOP)
             src/desktop/ui/qml/views/DiffViewerPanel.qml
             src/desktop/ui/qml/views/BranchSwitcherDropdown.qml
             src/desktop/ui/qml/views/BranchManagerModal.qml
+            src/desktop/ui/qml/views/CreateBranchModal.qml
             src/desktop/ui/qml/views/StashManagerModal.qml
             src/desktop/ui/qml/views/ConflictResolverModal.qml
             src/desktop/ui/qml/views/CommitHistoryPanel.qml
