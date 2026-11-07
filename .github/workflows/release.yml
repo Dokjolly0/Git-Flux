@@ -177,7 +177,7 @@ jobs:
   build-macos:
     name: 🍏 Package macOS (.dmg & .zip)
     needs: quality-gate-test
-    runs-on: macos-14
+    runs-on: macos-latest
 
     steps:
       - name: Checkout Code
