@@ -31,6 +31,31 @@ Rectangle {
     property string draggingBranchType: ""
     property string hoveredTargetBranch: ""
 
+    function findBranchAtRootPos(rootX, rootY) {
+        if (!root.branchManager || !root.branchManager.commitHistory) return "";
+        var listPt = root.mapToItem(commitTableListView, rootX, rootY);
+        if (listPt.x < 0 || listPt.x > commitTableListView.width || listPt.y < 0 || listPt.y > commitTableListView.height) {
+            return "";
+        }
+        var visualY = listPt.y + commitTableListView.contentY;
+        var rowIndex = Math.floor(visualY / 36);
+        var history = root.branchManager.commitHistory;
+        if (rowIndex < 0 || rowIndex >= history.length) return "";
+        var commit = history[rowIndex];
+        if (!commit || !commit.structuredDecorations) return "";
+
+        var decs = commit.structuredDecorations;
+        var remoteCandidate = "";
+        for (var i = 0; i < decs.length; ++i) {
+            var d = decs[i];
+            if (d && d.name) {
+                if (d.type === "local") return d.name;
+                if (d.type === "remote" && !remoteCandidate) remoteCandidate = d.name;
+            }
+        }
+        return remoteCandidate;
+    }
+
     readonly property bool hasCollapsedFolders: {
         var keys = Object.keys(root.collapsedFolders);
         for (var i = 0; i < keys.length; ++i) {
@@ -706,6 +731,27 @@ Rectangle {
                             visible: commitRow.isSelected
                         }
 
+                        MouseArea {
+                            id: rowMouse
+                            anchors.fill: parent
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: function(mouse) {
+                                commitTableListView.forceActiveFocus();
+                                root.selectCommitByIndex(commitRow.index);
+                                if (mouse.button === Qt.RightButton) {
+                                    if (commitRow.sha === "WIP") {
+                                        wipContextMenu.popup();
+                                    } else {
+                                        commitContextMenu.targetSha = commitRow.sha;
+                                        commitContextMenu.targetSubject = commitRow.subject;
+                                        commitContextMenu.popup();
+                                    }
+                                }
+                            }
+                        }
+
                         RowLayout {
                             anchors.fill: parent
                             spacing: 0
@@ -808,7 +854,7 @@ Rectangle {
                                                     if (pressed && (mouse.buttons & Qt.LeftButton) && (modelData.type === "local" || modelData.type === "remote")) {
                                                         var dx = mouse.x - startPos.x;
                                                         var dy = mouse.y - startPos.y;
-                                                        if (!isDraggingBadge && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+                                                        if (!isDraggingBadge && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
                                                             isDraggingBadge = true;
                                                             root.draggingBranchName = modelData.name;
                                                             root.draggingBranchType = modelData.type;
@@ -818,6 +864,13 @@ Rectangle {
                                                             dragGhostBadge.x = pt.x + 12;
                                                             dragGhostBadge.y = pt.y + 12;
                                                             dragGhostBadge.visible = true;
+
+                                                            var tgt = root.findBranchAtRootPos(pt.x, pt.y);
+                                                            if (tgt && tgt !== root.draggingBranchName) {
+                                                                root.hoveredTargetBranch = tgt;
+                                                            } else {
+                                                                root.hoveredTargetBranch = "";
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -1047,24 +1100,6 @@ Rectangle {
                                     color: "#94A3B8"
                                     font.pixelSize: 11
                                     elide: Text.ElideRight
-                                }
-                            }
-                        }
-
-                        MouseArea {
-                            id: rowMouse
-                            anchors.fill: parent
-                            acceptedButtons: Qt.LeftButton | Qt.RightButton
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: function(mouse) {
-                                commitTableListView.forceActiveFocus();
-                                root.selectCommitByIndex(commitRow.index);
-                                if (mouse.button === Qt.RightButton) {
-                                    commitContextMenu.targetSha = commitRow.sha;
-                                    commitContextMenu.targetSubject = commitRow.subject;
-                                    commitContextMenu.isWip = (commitRow.sha === "WIP");
-                                    commitContextMenu.popup();
                                 }
                             }
                         }
@@ -2365,11 +2400,9 @@ Rectangle {
         id: commitContextMenu
         property string targetSha: ""
         property string targetSubject: ""
-        property bool isWip: false
 
         MenuItem {
             text: "📌 Checkout commit (" + (commitContextMenu.targetSha ? commitContextMenu.targetSha.substring(0, 7) : "") + ")"
-            visible: !commitContextMenu.isWip && commitContextMenu.targetSha.length > 0
             font.pixelSize: 11
             onClicked: {
                 if (root.branchManager) root.branchManager.checkoutCommit(commitContextMenu.targetSha);
@@ -2378,7 +2411,6 @@ Rectangle {
 
         MenuItem {
             text: "🌿 Crea branch a questo commit..."
-            visible: !commitContextMenu.isWip && commitContextMenu.targetSha.length > 0
             font.pixelSize: 11
             onClicked: {
                 root.createBranchRequested(commitContextMenu.targetSha);
@@ -2387,47 +2419,44 @@ Rectangle {
 
         MenuItem {
             text: "🏷 Crea tag a questo commit..."
-            visible: !commitContextMenu.isWip && commitContextMenu.targetSha.length > 0
             font.pixelSize: 11
             onClicked: {
                 root.createTagRequested(commitContextMenu.targetSha);
             }
         }
 
-        MenuSeparator {
-            visible: !commitContextMenu.isWip
-        }
+        MenuSeparator {}
 
-        MenuItem {
-            text: "🔄 Reset a questo commit (Soft --soft)"
-            visible: !commitContextMenu.isWip && commitContextMenu.targetSha.length > 0
-            font.pixelSize: 11
-            onClicked: {
-                if (root.branchManager) root.branchManager.resetCommit(commitContextMenu.targetSha, "soft");
+        Menu {
+            title: "🔄 Reset branch corrente a questo commit"
+
+            MenuItem {
+                text: "🟡 Soft (--soft): mantieni file modificati in staging"
+                font.pixelSize: 11
+                onClicked: {
+                    if (root.branchManager) root.branchManager.resetCommit(commitContextMenu.targetSha, "soft");
+                }
+            }
+            MenuItem {
+                text: "🔵 Misto (--mixed): mantieni file nell'albero di lavoro"
+                font.pixelSize: 11
+                onClicked: {
+                    if (root.branchManager) root.branchManager.resetCommit(commitContextMenu.targetSha, "mixed");
+                }
+            }
+            MenuItem {
+                text: "🔴 Hard (--hard): scarta tutte le modifiche"
+                font.pixelSize: 11
+                onClicked: {
+                    if (root.branchManager) root.branchManager.resetCommit(commitContextMenu.targetSha, "hard");
+                }
             }
         }
 
-        MenuItem {
-            text: "🔄 Reset a questo commit (Misto --mixed)"
-            visible: !commitContextMenu.isWip && commitContextMenu.targetSha.length > 0
-            font.pixelSize: 11
-            onClicked: {
-                if (root.branchManager) root.branchManager.resetCommit(commitContextMenu.targetSha, "mixed");
-            }
-        }
-
-        MenuItem {
-            text: "⚠️ Reset a questo commit (Hard --hard)"
-            visible: !commitContextMenu.isWip && commitContextMenu.targetSha.length > 0
-            font.pixelSize: 11
-            onClicked: {
-                if (root.branchManager) root.branchManager.resetCommit(commitContextMenu.targetSha, "hard");
-            }
-        }
+        MenuSeparator {}
 
         MenuItem {
             text: "🍒 Cherry-pick di questo commit"
-            visible: !commitContextMenu.isWip && commitContextMenu.targetSha.length > 0
             font.pixelSize: 11
             onClicked: {
                 if (root.branchManager) root.branchManager.cherryPickCommit(commitContextMenu.targetSha);
@@ -2436,7 +2465,6 @@ Rectangle {
 
         MenuItem {
             text: "⏪ Revert di questo commit"
-            visible: !commitContextMenu.isWip && commitContextMenu.targetSha.length > 0
             font.pixelSize: 11
             onClicked: {
                 if (root.branchManager) root.branchManager.revertCommit(commitContextMenu.targetSha);
@@ -2445,20 +2473,16 @@ Rectangle {
 
         MenuItem {
             text: "📁 Crea Git Worktree a questo commit..."
-            visible: !commitContextMenu.isWip && commitContextMenu.targetSha.length > 0
             font.pixelSize: 11
             onClicked: {
                 root.createWorktreeRequested(commitContextMenu.targetSha);
             }
         }
 
-        MenuSeparator {
-            visible: !commitContextMenu.isWip
-        }
+        MenuSeparator {}
 
         MenuItem {
             text: "📋 Copia SHA (" + (commitContextMenu.targetSha ? commitContextMenu.targetSha.substring(0, 7) : "") + ")"
-            visible: !commitContextMenu.isWip && commitContextMenu.targetSha.length > 0
             font.pixelSize: 11
             onClicked: {
                 if (root.branchManager) root.branchManager.copyToClipboard(commitContextMenu.targetSha);
@@ -2467,17 +2491,21 @@ Rectangle {
 
         MenuItem {
             text: "📋 Copia messaggio del commit"
-            visible: !commitContextMenu.isWip && commitContextMenu.targetSubject.length > 0
             font.pixelSize: 11
             onClicked: {
                 if (root.branchManager) root.branchManager.copyToClipboard(commitContextMenu.targetSubject);
             }
         }
+    }
 
-        // WIP options
+    // ==========================================
+    // WIP ROW CONTEXT MENU
+    // ==========================================
+    Menu {
+        id: wipContextMenu
+
         MenuItem {
             text: "🧹 Scarta tutte le modifiche locali"
-            visible: commitContextMenu.isWip
             font.pixelSize: 11
             onClicked: {
                 if (root.sessionVm) root.sessionVm.discardAllWorkingTreeChanges();
@@ -2486,7 +2514,6 @@ Rectangle {
 
         MenuItem {
             text: "📦 Salva modifiche in Stash..."
-            visible: commitContextMenu.isWip
             font.pixelSize: 11
             onClicked: {
                 root.stashModalRequested();

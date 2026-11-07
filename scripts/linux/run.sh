@@ -91,6 +91,25 @@ done
 
 cd "${ROOT_DIR}"
 
+# Register Linux desktop icon and .desktop file for app bar / dock integration
+if [[ -f "${ROOT_DIR}/assets/logo.png" ]]; then
+    mkdir -p ~/.local/share/applications ~/.local/share/icons/hicolor/512x512/apps
+    cp -u "${ROOT_DIR}/assets/logo.png" ~/.local/share/icons/hicolor/512x512/apps/git_flux.png 2>/dev/null || true
+    cat << EOF > ~/.local/share/applications/git_flux.desktop
+[Desktop Entry]
+Type=Application
+Name=Git Flux
+Comment=Git Flux — Modern local-first desktop Git client
+Exec=${BIN_PATH} %U
+Icon=${ROOT_DIR}/assets/logo.png
+Terminal=false
+Categories=Development;RevisionControl;
+StartupWMClass=git_flux
+EOF
+    chmod +x ~/.local/share/applications/git_flux.desktop 2>/dev/null || true
+    update-desktop-database ~/.local/share/applications/ 2>/dev/null || true
+fi
+
 if [[ "${REBUILD_FIRST}" == true || ! -x "${BIN_PATH}" ]]; then
     echo -e "${CYAN}🔨 Building target git_flux...${NC}"
     "${SCRIPT_DIR}/build.sh" -t git_flux

@@ -61,8 +61,11 @@ Item {
                 RowLayout {
                     spacing: 10
                     Image {
-                        width: 28
-                        height: 28
+                        Layout.preferredWidth: 28
+                        Layout.preferredHeight: 28
+                        Layout.alignment: Qt.AlignVCenter
+                        sourceSize.width: 28
+                        sourceSize.height: 28
                         source: "qrc:/qt/qml/GitFlux/Desktop/assets/logo.png"
                         fillMode: Image.PreserveAspectFit
                         smooth: true

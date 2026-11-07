@@ -39,8 +39,11 @@ Rectangle {
                     contentItem: RowLayout {
                         spacing: 6
                         Image {
-                            width: 16
-                            height: 16
+                            Layout.preferredWidth: 16
+                            Layout.preferredHeight: 16
+                            Layout.alignment: Qt.AlignVCenter
+                            sourceSize.width: 16
+                            sourceSize.height: 16
                             source: "qrc:/qt/qml/GitFlux/Desktop/assets/logo.png"
                             fillMode: Image.PreserveAspectFit
                             smooth: true

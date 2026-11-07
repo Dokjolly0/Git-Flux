@@ -27,18 +27,22 @@ public:
 
 int main(int argc, char* argv[]) {
     QGuiApplication app(argc, argv);
-    app.setApplicationName(QStringLiteral("GitFlux"));
+    app.setApplicationName(QStringLiteral("git_flux"));
+    app.setApplicationDisplayName(QStringLiteral("Git Flux"));
+    app.setDesktopFileName(QStringLiteral("git_flux"));
     app.setOrganizationName(QStringLiteral("GitFlux"));
     app.setApplicationVersion(QStringLiteral("0.1.0"));
 
     // Set application icon from assets
-    QIcon appIcon;
-    if (QFileInfo::exists(QStringLiteral(":/qt/qml/GitFlux/Desktop/assets/logo.png"))) {
-        appIcon = QIcon(QStringLiteral(":/qt/qml/GitFlux/Desktop/assets/logo.png"));
-    } else if (QFileInfo::exists(QStringLiteral("assets/logo.png"))) {
+    QIcon appIcon(QStringLiteral(":/qt/qml/GitFlux/Desktop/assets/logo.png"));
+    if (appIcon.isNull()) {
         appIcon = QIcon(QStringLiteral("assets/logo.png"));
-    } else if (QFileInfo::exists(QStringLiteral("../assets/logo.png"))) {
+    }
+    if (appIcon.isNull()) {
         appIcon = QIcon(QStringLiteral("../assets/logo.png"));
+    }
+    if (appIcon.isNull()) {
+        appIcon = QIcon(QStringLiteral("/projects/GitFlux/assets/logo.png"));
     }
     if (!appIcon.isNull()) {
         app.setWindowIcon(appIcon);
