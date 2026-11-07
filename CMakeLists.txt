@@ -447,6 +447,7 @@ if(GF_BUILD_DESKTOP)
     set(CPACK_DEBIAN_PACKAGE_SECTION "devel")
     set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-templates, qml6-module-qtquick-window, qml6-module-qtquick-dialogs, qml6-module-qtquick-shapes, qml6-module-qtqml-workerscript, qml6-module-qtcore, qml6-module-qtqml, qml6-module-qtqml-models")
     set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "git")
     set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/dokjolly/GitFlux")
 

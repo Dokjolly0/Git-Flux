@@ -113,7 +113,7 @@ bool WorkingTreeViewModel::discardFile(const QString& repoPath, const QString& f
     std::filesystem::path rPath(repoPath.toStdString());
     std::string pathStr = filePath.toStdString();
     // 1. Unstage if staged
-    m_stagingService.unstageFiles(rPath, {pathStr});
+    (void)m_stagingService.unstageFiles(rPath, {pathStr});
     // 2. Discard working tree changes
     auto res = m_stagingService.discardFiles(rPath, {pathStr});
     if (!res) {
@@ -126,7 +126,7 @@ bool WorkingTreeViewModel::discardFile(const QString& repoPath, const QString& f
 bool WorkingTreeViewModel::discardAll(const QString& repoPath) {
     std::filesystem::path rPath(repoPath.toStdString());
     // 1. Unstage all staged files
-    m_stagingService.unstageAll(rPath);
+    (void)m_stagingService.unstageAll(rPath);
 
     // 2. Collect all modified/untracked files
     std::vector<std::string> allFiles;
