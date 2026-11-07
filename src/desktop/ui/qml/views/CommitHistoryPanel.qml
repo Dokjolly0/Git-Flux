@@ -16,6 +16,41 @@ Rectangle {
     property bool isDiffOpen: false
     property string fileViewMode: "path" // "path" | "tree"
 
+    // Statistics on commit touched files
+    readonly property int totalFilesCount: root.commitFiles ? root.commitFiles.length : 0
+    readonly property int addedFilesCount: {
+        if (!root.commitFiles) return 0;
+        var count = 0;
+        for (var i = 0; i < root.commitFiles.length; ++i) {
+            if (root.commitFiles[i].status === "A") count++;
+        }
+        return count;
+    }
+    readonly property int modifiedFilesCount: {
+        if (!root.commitFiles) return 0;
+        var count = 0;
+        for (var i = 0; i < root.commitFiles.length; ++i) {
+            if (root.commitFiles[i].status === "M") count++;
+        }
+        return count;
+    }
+    readonly property int deletedFilesCount: {
+        if (!root.commitFiles) return 0;
+        var count = 0;
+        for (var i = 0; i < root.commitFiles.length; ++i) {
+            if (root.commitFiles[i].status === "D") count++;
+        }
+        return count;
+    }
+    readonly property int renamedFilesCount: {
+        if (!root.commitFiles) return 0;
+        var count = 0;
+        for (var i = 0; i < root.commitFiles.length; ++i) {
+            if (root.commitFiles[i].status === "R" || root.commitFiles[i].status === "C") count++;
+        }
+        return count;
+    }
+
     // Helper to split path into directory and filename
     function getDirectory(path) {
         if (!path) return "";
@@ -818,24 +853,101 @@ Rectangle {
                     color: "#21262D"
                 }
 
-                // Modified Files Header Bar (matching GitKraken: "✏ 3 modified", sort, Path/Tree, View all)
+                // Files Header Bar (Total touched files + breakdown by category)
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 8
 
-                    // Count with pencil icon
+                    // Total files touched
                     RowLayout {
-                        spacing: 6
+                        spacing: 5
                         Text {
-                            text: "✏"
-                            color: "#F59E0B"
+                            text: "📁"
                             font.pixelSize: 12
                         }
                         Text {
-                            text: root.commitFiles.length + " modified"
+                            text: root.totalFilesCount + (root.totalFilesCount === 1 ? " file toccato" : " file toccati")
                             color: "#F1F5F9"
                             font.bold: true
                             font.pixelSize: 12
+                        }
+                    }
+
+                    // Divider dot
+                    Text {
+                        text: "•"
+                        color: "#475569"
+                        font.pixelSize: 10
+                        visible: root.totalFilesCount > 0
+                    }
+
+                    // Category breakdown badges
+                    RowLayout {
+                        spacing: 6
+                        visible: root.totalFilesCount > 0
+
+                        // Modified (✏️)
+                        RowLayout {
+                            spacing: 3
+                            visible: root.modifiedFilesCount > 0 || (root.addedFilesCount === 0 && root.deletedFilesCount === 0 && root.renamedFilesCount === 0)
+                            Text {
+                                text: "✏️"
+                                font.pixelSize: 10
+                            }
+                            Text {
+                                text: root.modifiedFilesCount + " mod"
+                                color: "#F59E0B"
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+                        }
+
+                        // Added / Created (➕)
+                        RowLayout {
+                            spacing: 3
+                            visible: root.addedFilesCount > 0
+                            Text {
+                                text: "➕"
+                                font.pixelSize: 10
+                            }
+                            Text {
+                                text: root.addedFilesCount + " creati"
+                                color: "#10B981"
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+                        }
+
+                        // Deleted (🗑️)
+                        RowLayout {
+                            spacing: 3
+                            visible: root.deletedFilesCount > 0
+                            Text {
+                                text: "🗑️"
+                                font.pixelSize: 10
+                            }
+                            Text {
+                                text: root.deletedFilesCount + " del"
+                                color: "#EF4444"
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+                        }
+
+                        // Renamed (⇄)
+                        RowLayout {
+                            spacing: 3
+                            visible: root.renamedFilesCount > 0
+                            Text {
+                                text: "⇄"
+                                font.pixelSize: 10
+                            }
+                            Text {
+                                text: root.renamedFilesCount + " rinominati"
+                                color: "#38BDF8"
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
                         }
                     }
 
