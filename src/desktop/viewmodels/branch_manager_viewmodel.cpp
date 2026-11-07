@@ -71,10 +71,11 @@ void BranchManagerViewModel::refresh() {
         }
     }
 
-    // 2. Refresh commit history
+    // 2. Refresh commit history across all branches with full topological graph ordering
     git::bo::CommitLogOptions logOpts;
-    logOpts.maxCount = 100;
+    logOpts.maxCount = 0; // 0 = unlimited (complete history)
     logOpts.revisionRange = std::string("--all");
+    logOpts.topoOrder = true;
     auto logRes = m_historyService.getCommitHistory(m_repoPath, logOpts);
     if (logRes) {
         m_commitHistoryModel.setCommits(std::move(*logRes));

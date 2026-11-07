@@ -5,6 +5,8 @@
 #include <QHash>
 #include <QRegularExpression>
 #include <QVariantMap>
+#include <algorithm>
+#include <unordered_set>
 
 namespace gf::desktop {
 
@@ -21,6 +23,17 @@ const QStringList kAuthorPalette = {
     QStringLiteral("#3B82F6"), // Blue
     QStringLiteral("#E11D48"), // Rose
     QStringLiteral("#84CC16")  // Lime
+};
+
+const QStringList kGraphPalette = {
+    QStringLiteral("#06B6D4"), // Cyan (main)
+    QStringLiteral("#A855F7"), // Purple
+    QStringLiteral("#F97316"), // Orange
+    QStringLiteral("#10B981"), // Emerald
+    QStringLiteral("#EC4899"), // Pink
+    QStringLiteral("#EAB308"), // Yellow
+    QStringLiteral("#38BDF8"), // Sky Blue
+    QStringLiteral("#8B5CF6")  // Violet
 };
 
 QString computeAvatarUrl(const QString& name, const QString& rawEmail) {
@@ -40,7 +53,7 @@ QString computeAvatarUrl(const QString& name, const QString& rawEmail) {
         }
     }
 
-    // 2. If author name is a single username token (e.g. "Dokjolly0")
+    // 2. If name is a single username token without spaces (e.g. "Dokjolly0")
     if (!cleanName.isEmpty() && !cleanName.contains(QLatin1Char(' '))) {
         return QStringLiteral("https://github.com/%1.png?size=64").arg(cleanName);
     }
@@ -48,6 +61,58 @@ QString computeAvatarUrl(const QString& name, const QString& rawEmail) {
     // 3. Fallback to Gravatar MD5
     if (!email.isEmpty()) {
         QByteArray hash = QCryptographicHash::hash(email.toUtf8(), QCryptographicHash::Md5).toHex();
+        return QStringLiteral("https://www.gravatar.com/avatar/%1?s=64&d=identicon").arg(QString::fromLatin1(hash));
+    }
+
+    return QStringLiteral("https://www.gravatar.com/avatar/?d=mp");
+}
+
+QString computeCommitAvatarUrl(const git::bo::GitCommitLogItem& c) {
+    QString authorName = QString::fromStdString(c.authorName).trimmed();
+    QString authorEmail = QString::fromStdString(c.authorEmail).trimmed().toLower();
+    QString committerName = QString::fromStdString(c.committerName).trimmed();
+    QString committerEmail = QString::fromStdString(c.committerEmail).trimmed().toLower();
+
+    // 1. Check if authorName is a single-word GitHub username (e.g. Dokjolly0)
+    if (!authorName.isEmpty() && !authorName.contains(QLatin1Char(' '))) {
+        return QStringLiteral("https://github.com/%1.png?size=64").arg(authorName);
+    }
+
+    // 2. Check if authorEmail is GitHub noreply
+    if (authorEmail.endsWith(QLatin1String("users.noreply.github.com"))) {
+        int atIdx = authorEmail.indexOf(QLatin1Char('@'));
+        if (atIdx > 0) {
+            QString userPart = authorEmail.left(atIdx);
+            int plusIdx = userPart.indexOf(QLatin1Char('+'));
+            if (plusIdx >= 0) userPart = userPart.mid(plusIdx + 1);
+            if (!userPart.isEmpty()) {
+                return QStringLiteral("https://github.com/%1.png?size=64").arg(userPart);
+            }
+        }
+    }
+
+    // 3. Check if committerName is a single-word GitHub username (e.g. Dokjolly0 when author has full real name)
+    if (!committerName.isEmpty() && !committerName.contains(QLatin1Char(' '))) {
+        return QStringLiteral("https://github.com/%1.png?size=64").arg(committerName);
+    }
+
+    // 4. Check if committerEmail is GitHub noreply
+    if (committerEmail.endsWith(QLatin1String("users.noreply.github.com"))) {
+        int atIdx = committerEmail.indexOf(QLatin1Char('@'));
+        if (atIdx > 0) {
+            QString userPart = committerEmail.left(atIdx);
+            int plusIdx = userPart.indexOf(QLatin1Char('+'));
+            if (plusIdx >= 0) userPart = userPart.mid(plusIdx + 1);
+            if (!userPart.isEmpty()) {
+                return QStringLiteral("https://github.com/%1.png?size=64").arg(userPart);
+            }
+        }
+    }
+
+    // 5. Fallback to Gravatar MD5
+    QString emailForGravatar = !authorEmail.isEmpty() ? authorEmail : committerEmail;
+    if (!emailForGravatar.isEmpty()) {
+        QByteArray hash = QCryptographicHash::hash(emailForGravatar.toUtf8(), QCryptographicHash::Md5).toHex();
         return QStringLiteral("https://www.gravatar.com/avatar/%1?s=64&d=identicon").arg(QString::fromLatin1(hash));
     }
 
@@ -220,7 +285,8 @@ QVariant CommitHistoryListModel::data(const QModelIndex& index, int role) const 
         return {};
     }
 
-    const auto& c = m_commits[static_cast<std::size_t>(index.row())];
+    std::size_t idx = static_cast<std::size_t>(index.row());
+    const auto& c = m_commits[idx];
 
     switch (role) {
     case Qt::DisplayRole:
@@ -255,13 +321,29 @@ QVariant CommitHistoryListModel::data(const QModelIndex& index, int role) const 
         return list;
     }
     case AuthorAvatarUrlRole:
-        return computeAvatarUrl(QString::fromStdString(c.authorName), QString::fromStdString(c.authorEmail));
+        return computeCommitAvatarUrl(c);
     case AuthorInitialsRole:
         return computeInitials(QString::fromStdString(c.authorName));
     case AuthorColorRole:
         return computeAuthorColor(QString::fromStdString(c.authorName), QString::fromStdString(c.authorEmail));
     case StructuredDecorationsRole:
         return computeStructuredDecorations(c.refDecorations);
+    case CommitterNameRole:
+        return QString::fromStdString(c.committerName);
+    case CommitterEmailRole:
+        return QString::fromStdString(c.committerEmail);
+    case CommitterDateFormattedRole:
+        return formatCommitDate(QString::fromStdString(c.committerDateIso));
+    case CommitterAvatarUrlRole:
+        return computeAvatarUrl(QString::fromStdString(c.committerName), QString::fromStdString(c.committerEmail));
+    case CommitterInitialsRole:
+        return computeInitials(QString::fromStdString(c.committerName));
+    case GraphLaneRole:
+        return (idx < m_graphItems.size()) ? m_graphItems[idx].lane : 0;
+    case GraphColorRole:
+        return (idx < m_graphItems.size()) ? m_graphItems[idx].color : QStringLiteral("#06B6D4");
+    case GraphRoutesRole:
+        return (idx < m_graphItems.size()) ? m_graphItems[idx].routes : QVariantList{};
     default:
         return {};
     }
@@ -282,13 +364,231 @@ QHash<int, QByteArray> CommitHistoryListModel::roleNames() const {
         {AuthorInitialsRole, "authorInitials"},
         {AuthorColorRole, "authorColor"},
         {StructuredDecorationsRole, "structuredDecorations"},
-        {AuthorDateFormattedRole, "authorDateFormatted"}
+        {AuthorDateFormattedRole, "authorDateFormatted"},
+        {CommitterNameRole, "committerName"},
+        {CommitterEmailRole, "committerEmail"},
+        {CommitterDateFormattedRole, "committerDateFormatted"},
+        {CommitterAvatarUrlRole, "committerAvatarUrl"},
+        {CommitterInitialsRole, "committerInitials"},
+        {GraphLaneRole, "graphLane"},
+        {GraphColorRole, "graphColor"},
+        {GraphRoutesRole, "graphRoutes"}
     };
+}
+
+QVariantMap CommitHistoryListModel::getCommit(int index) const {
+    if (index < 0 || static_cast<std::size_t>(index) >= m_commits.size()) {
+        return {};
+    }
+    std::size_t idx = static_cast<std::size_t>(index);
+    const auto& c = m_commits[idx];
+
+    QVariantMap map;
+    map[QStringLiteral("sha")] = QString::fromStdString(c.sha);
+    map[QStringLiteral("shortSha")] = QString::fromStdString(c.shortSha);
+    map[QStringLiteral("subject")] = QString::fromStdString(c.subject);
+    map[QStringLiteral("body")] = QString::fromStdString(c.body);
+    map[QStringLiteral("authorName")] = QString::fromStdString(c.authorName);
+    map[QStringLiteral("authorEmail")] = QString::fromStdString(c.authorEmail);
+    map[QStringLiteral("authorDate")] = QString::fromStdString(c.authorDateIso);
+    map[QStringLiteral("authorDateFormatted")] = formatCommitDate(QString::fromStdString(c.authorDateIso));
+    map[QStringLiteral("authorAvatarUrl")] = computeCommitAvatarUrl(c);
+    map[QStringLiteral("authorInitials")] = computeInitials(QString::fromStdString(c.authorName));
+    map[QStringLiteral("authorColor")] = computeAuthorColor(QString::fromStdString(c.authorName), QString::fromStdString(c.authorEmail));
+
+    map[QStringLiteral("committerName")] = QString::fromStdString(c.committerName);
+    map[QStringLiteral("committerEmail")] = QString::fromStdString(c.committerEmail);
+    map[QStringLiteral("committerDateFormatted")] = formatCommitDate(QString::fromStdString(c.committerDateIso));
+    map[QStringLiteral("committerAvatarUrl")] = computeAvatarUrl(QString::fromStdString(c.committerName), QString::fromStdString(c.committerEmail));
+    map[QStringLiteral("committerInitials")] = computeInitials(QString::fromStdString(c.committerName));
+
+    QStringList decList;
+    for (const auto& d : c.refDecorations) decList << QString::fromStdString(d);
+    map[QStringLiteral("decorations")] = decList;
+
+    QStringList pList;
+    for (const auto& p : c.parents) pList << QString::fromStdString(p);
+    map[QStringLiteral("parents")] = pList;
+
+    map[QStringLiteral("structuredDecorations")] = computeStructuredDecorations(c.refDecorations);
+
+    if (idx < m_graphItems.size()) {
+        map[QStringLiteral("graphLane")] = m_graphItems[idx].lane;
+        map[QStringLiteral("graphColor")] = m_graphItems[idx].color;
+        map[QStringLiteral("graphRoutes")] = m_graphItems[idx].routes;
+    }
+    return map;
+}
+
+void CommitHistoryListModel::rebuildGraph() {
+    m_graphItems.clear();
+    m_graphItems.resize(m_commits.size());
+    m_maxLanes = 1;
+
+    if (m_commits.empty()) {
+        emit maxLanesChanged();
+        return;
+    }
+
+    std::unordered_set<std::string> knownShas;
+    knownShas.reserve(m_commits.size());
+    for (const auto& c : m_commits) {
+        knownShas.insert(c.sha);
+    }
+
+    std::vector<std::string> activeLanes;
+    std::vector<QString> laneColors;
+
+    for (std::size_t i = 0; i < m_commits.size(); ++i) {
+        const auto& commit = m_commits[i];
+        int commitLane = -1;
+
+        // 1. Locate if commit is already expected in activeLanes
+        for (int l = 0; l < static_cast<int>(activeLanes.size()); ++l) {
+            if (activeLanes[l] == commit.sha) {
+                commitLane = l;
+                break;
+            }
+        }
+
+        bool wasExpectedFromAbove = (commitLane != -1);
+        if (commitLane == -1) {
+            for (int l = 0; l < static_cast<int>(activeLanes.size()); ++l) {
+                if (activeLanes[l].empty()) {
+                    commitLane = l;
+                    break;
+                }
+            }
+            if (commitLane == -1) {
+                commitLane = static_cast<int>(activeLanes.size());
+                activeLanes.push_back("");
+                laneColors.push_back(kGraphPalette[commitLane % kGraphPalette.size()]);
+            }
+        }
+
+        QString nodeColor = laneColors[commitLane];
+        QVariantList routes;
+
+        // 2. Pass-through routes for other active lanes
+        for (int l = 0; l < static_cast<int>(activeLanes.size()); ++l) {
+            if (l != commitLane && !activeLanes[l].empty()) {
+                QVariantMap r;
+                r[QStringLiteral("fromLane")] = l;
+                r[QStringLiteral("toLane")] = l;
+                r[QStringLiteral("color")] = laneColors[l];
+                r[QStringLiteral("type")] = 0; // pass-through
+                routes.append(r);
+            }
+        }
+
+        // 3. Inbound route from top into node
+        if (wasExpectedFromAbove) {
+            QVariantMap r;
+            r[QStringLiteral("fromLane")] = commitLane;
+            r[QStringLiteral("toLane")] = commitLane;
+            r[QStringLiteral("color")] = nodeColor;
+            r[QStringLiteral("type")] = 2; // inbound
+            routes.append(r);
+        }
+
+        // 4. Outbound routes to parents
+        activeLanes[commitLane] = "";
+
+        const auto& parents = commit.parents;
+        if (!parents.empty()) {
+            // First parent
+            const auto& p0 = parents[0];
+            if (knownShas.count(p0) > 0) {
+                int p0Lane = -1;
+                for (int l = 0; l < static_cast<int>(activeLanes.size()); ++l) {
+                    if (activeLanes[l] == p0) {
+                        p0Lane = l;
+                        break;
+                    }
+                }
+                if (p0Lane != -1) {
+                    QVariantMap r;
+                    r[QStringLiteral("fromLane")] = commitLane;
+                    r[QStringLiteral("toLane")] = p0Lane;
+                    r[QStringLiteral("color")] = nodeColor;
+                    r[QStringLiteral("type")] = 1;
+                    routes.append(r);
+                } else {
+                    activeLanes[commitLane] = p0;
+                    QVariantMap r;
+                    r[QStringLiteral("fromLane")] = commitLane;
+                    r[QStringLiteral("toLane")] = commitLane;
+                    r[QStringLiteral("color")] = nodeColor;
+                    r[QStringLiteral("type")] = 1;
+                    routes.append(r);
+                }
+            } else {
+                QVariantMap r;
+                r[QStringLiteral("fromLane")] = commitLane;
+                r[QStringLiteral("toLane")] = commitLane;
+                r[QStringLiteral("color")] = nodeColor;
+                r[QStringLiteral("type")] = 1;
+                routes.append(r);
+            }
+
+            // Secondary parents (merge commits)
+            for (std::size_t pIdx = 1; pIdx < parents.size(); ++pIdx) {
+                const auto& pOther = parents[pIdx];
+                if (knownShas.count(pOther) > 0) {
+                    int pOtherLane = -1;
+                    for (int l = 0; l < static_cast<int>(activeLanes.size()); ++l) {
+                        if (activeLanes[l] == pOther) {
+                            pOtherLane = l;
+                            break;
+                        }
+                    }
+                    if (pOtherLane == -1) {
+                        for (int l = 0; l < static_cast<int>(activeLanes.size()); ++l) {
+                            if (activeLanes[l].empty()) {
+                                pOtherLane = l;
+                                break;
+                            }
+                        }
+                        if (pOtherLane == -1) {
+                            pOtherLane = static_cast<int>(activeLanes.size());
+                            activeLanes.push_back("");
+                            laneColors.push_back(kGraphPalette[pOtherLane % kGraphPalette.size()]);
+                        }
+                        activeLanes[pOtherLane] = pOther;
+                    }
+
+                    QVariantMap r;
+                    r[QStringLiteral("fromLane")] = commitLane;
+                    r[QStringLiteral("toLane")] = pOtherLane;
+                    r[QStringLiteral("color")] = laneColors[pOtherLane];
+                    r[QStringLiteral("type")] = 1;
+                    routes.append(r);
+                }
+            }
+        }
+
+        // 5. Trim trailing empty lanes in activeLanes
+        while (!activeLanes.empty() && activeLanes.back().empty()) {
+            activeLanes.pop_back();
+        }
+
+        m_maxLanes = std::max(m_maxLanes, std::max(1, static_cast<int>(activeLanes.size())));
+        m_maxLanes = std::max(m_maxLanes, commitLane + 1);
+
+        m_graphItems[i] = GraphItem{
+            .lane = commitLane,
+            .color = nodeColor,
+            .routes = std::move(routes)
+        };
+    }
+
+    emit maxLanesChanged();
 }
 
 void CommitHistoryListModel::setCommits(std::vector<gf::git::bo::GitCommitLogItem> commits) {
     beginResetModel();
     m_commits = std::move(commits);
+    rebuildGraph();
     endResetModel();
 }
 

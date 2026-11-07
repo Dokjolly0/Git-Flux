@@ -1080,6 +1080,45 @@ TEST_CASE("BranchListModel and CommitHistoryListModel MVVM representations", "[v
         REQUIRE(parents.size() == 2);
         CHECK(parents[0] == "parent1");
         CHECK(parents[1] == "parent2");
+
+        CHECK(model.maxLanes() >= 1);
+        CHECK(model.data(idx0, CommitHistoryListModel::GraphLaneRole).toInt() == 0);
+        CHECK_FALSE(model.data(idx0, CommitHistoryListModel::GraphColorRole).toString().isEmpty());
+
+        auto commitMap = model.getCommit(0);
+        CHECK(commitMap["sha"].toString() == "1234567890abcdef");
+        CHECK(commitMap["subject"].toString() == "Commit Subject");
+    }
+
+    SECTION("CommitHistoryListModel avatar fallback to committer handle when author has full name") {
+        CommitHistoryListModel model;
+
+        std::vector<gf::git::bo::GitCommitLogItem> commits = {
+            gf::git::bo::GitCommitLogItem{
+                .sha = "24b15a77bd443e57d0442722d32b37afac24c01c",
+                .shortSha = "24b15a7",
+                .parents = {"parent1"},
+                .authorName = "Alex Violatto",
+                .authorEmail = "alexviolattolibero.it@gmail.com",
+                .authorDateIso = "2026-10-28T14:29:51+01:00",
+                .committerName = "Dokjolly0",
+                .committerEmail = "alexviolattolibero.it@gmail.com",
+                .committerDateIso = "2026-10-31T23:33:08+01:00",
+                .subject = "perf(transfer): pace data-channel sender",
+                .body = "benchmark details",
+                .refDecorations = {}
+            }
+        };
+
+        model.setCommits(commits);
+        REQUIRE(model.rowCount() == 1);
+
+        auto idx = model.index(0);
+        CHECK(model.data(idx, CommitHistoryListModel::AuthorNameRole).toString() == "Alex Violatto");
+        CHECK(model.data(idx, CommitHistoryListModel::CommitterNameRole).toString() == "Dokjolly0");
+        // Avatar should resolve to Dokjolly0's GitHub avatar because authorName has spaces while committerName is a GitHub handle
+        CHECK(model.data(idx, CommitHistoryListModel::AuthorAvatarUrlRole).toString() == "https://github.com/Dokjolly0.png?size=64");
+        CHECK(model.data(idx, CommitHistoryListModel::CommitterAvatarUrlRole).toString() == "https://github.com/Dokjolly0.png?size=64");
     }
 }
 

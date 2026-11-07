@@ -68,12 +68,39 @@ Rectangle {
         }
     }
 
-    // Escape shortcut to close diff view and return to graph
+    property int maxGraphLanes: (root.branchManager && root.branchManager.commitHistory) ? root.branchManager.commitHistory.maxLanes : 1
+    property int graphColWidth: Math.max(50, Math.min(260, 24 + root.maxGraphLanes * 22))
+
+    // Keyboard navigation and shortcut to close diff view
     focus: true
-    Keys.onEscapePressed: {
+    Keys.onEscapePressed: function(event) {
         if (root.isDiffOpen) {
             root.closeFileDiff();
+            event.accepted = true;
         }
+    }
+    Keys.onUpPressed: function(event) {
+        if (!root.isDiffOpen && commitTableListView.currentIndex > 0) {
+            root.selectCommitByIndex(commitTableListView.currentIndex - 1);
+            event.accepted = true;
+        }
+    }
+    Keys.onDownPressed: function(event) {
+        if (!root.isDiffOpen && commitTableListView.currentIndex < commitTableListView.count - 1) {
+            root.selectCommitByIndex(commitTableListView.currentIndex + 1);
+            event.accepted = true;
+        }
+    }
+
+    function selectCommitByIndex(idx) {
+        if (!root.branchManager || !root.branchManager.commitHistory) return;
+        var model = root.branchManager.commitHistory;
+        var count = model.rowCount();
+        if (idx < 0 || idx >= count) return;
+        commitTableListView.currentIndex = idx;
+        commitTableListView.positionViewAtIndex(idx, ListView.Contain);
+        var commit = model.getCommit(idx);
+        root.selectCommit(commit);
     }
 
     function autoSelectFirstCommit() {
@@ -86,23 +113,7 @@ Rectangle {
         }
         var model = root.branchManager.commitHistory;
         if (model.rowCount() > 0) {
-            var firstIdx = model.index(0, 0);
-            root.selectCommit({
-                sha: model.data(firstIdx, 257),
-                shortSha: model.data(firstIdx, 258),
-                subject: model.data(firstIdx, 259),
-                body: model.data(firstIdx, 260),
-                authorName: model.data(firstIdx, 261),
-                authorEmail: model.data(firstIdx, 262),
-                authorDate: model.data(firstIdx, 270) || model.data(firstIdx, 263),
-                authorDateFormatted: model.data(firstIdx, 270) || model.data(firstIdx, 263),
-                decorations: model.data(firstIdx, 264),
-                parents: model.data(firstIdx, 265),
-                authorAvatarUrl: model.data(firstIdx, 266),
-                authorInitials: model.data(firstIdx, 267),
-                authorColor: model.data(firstIdx, 268),
-                structuredDecorations: model.data(firstIdx, 269)
-            });
+            root.selectCommitByIndex(0);
         } else {
             root.selectedCommit = null;
             root.commitFiles = [];
@@ -203,7 +214,7 @@ Rectangle {
 
                         // Col 2: GRAPH
                         Rectangle {
-                            Layout.preferredWidth: 44
+                            Layout.preferredWidth: root.graphColWidth
                             Layout.fillHeight: true
                             color: "transparent"
                             Text {
@@ -282,6 +293,20 @@ Rectangle {
                     clip: true
                     model: root.branchManager ? root.branchManager.commitHistory : null
                     boundsBehavior: Flickable.StopAtBounds
+                    focus: true
+                    keyNavigationWraps: false
+                    Keys.onUpPressed: function(event) {
+                        if (commitTableListView.currentIndex > 0) {
+                            root.selectCommitByIndex(commitTableListView.currentIndex - 1);
+                        }
+                        event.accepted = true;
+                    }
+                    Keys.onDownPressed: function(event) {
+                        if (commitTableListView.currentIndex < commitTableListView.count - 1) {
+                            root.selectCommitByIndex(commitTableListView.currentIndex + 1);
+                        }
+                        event.accepted = true;
+                    }
 
                     delegate: Rectangle {
                         id: commitRow
@@ -299,6 +324,14 @@ Rectangle {
                         required property string authorInitials
                         required property string authorColor
                         required property var structuredDecorations
+                        required property string committerName
+                        required property string committerEmail
+                        required property string committerDateFormatted
+                        required property string committerAvatarUrl
+                        required property string committerInitials
+                        required property int graphLane
+                        required property string graphColor
+                        required property var graphRoutes
                         required property int index
 
                         width: commitTableListView.width
@@ -361,39 +394,87 @@ Rectangle {
 
                                     // Horizontal connecting line to graph node if row has decorations
                                     Rectangle {
-                                        width: 12
+                                        width: 14 + (commitRow.graphLane !== undefined ? commitRow.graphLane : 0) * 22
                                         height: 2
-                                        color: "#06B6D4"
+                                        color: commitRow.graphColor || "#06B6D4"
                                         visible: (commitRow.structuredDecorations && commitRow.structuredDecorations.length > 0)
                                     }
                                 }
                             }
 
                             // ------------------------------------------
-                            // COL 2: GRAPH (Vertical Line + Author Avatar Node)
+                            // COL 2: GRAPH (Multi-Lane Git DAG Graph)
                             // ------------------------------------------
                             Item {
-                                Layout.preferredWidth: 44
+                                Layout.preferredWidth: root.graphColWidth
                                 Layout.fillHeight: true
 
-                                // Continuous vertical graph line
-                                Rectangle {
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    anchors.top: parent.top
-                                    anchors.bottom: parent.bottom
-                                    width: 2
-                                    color: "#06B6D4"
+                                Canvas {
+                                    id: graphCanvas
+                                    anchors.fill: parent
+                                    property var routes: commitRow.graphRoutes || []
+                                    property int commitLane: commitRow.graphLane !== undefined ? commitRow.graphLane : 0
+
+                                    onPaint: {
+                                        var ctx = getContext("2d");
+                                        ctx.reset();
+                                        ctx.lineWidth = 2.5;
+                                        ctx.lineCap = "round";
+
+                                        var laneWidth = 22;
+                                        var leftOffset = 14;
+                                        function laneX(lane) {
+                                            return leftOffset + lane * laneWidth;
+                                        }
+
+                                        var centerY = height / 2;
+
+                                        for (var i = 0; i < routes.length; ++i) {
+                                            var r = routes[i];
+                                            ctx.strokeStyle = r.color || "#06B6D4";
+                                            ctx.beginPath();
+
+                                            var x1 = laneX(r.fromLane);
+                                            var x2 = laneX(r.toLane);
+
+                                            if (r.type === 0) {
+                                                // Straight pass-through
+                                                ctx.moveTo(x1, 0);
+                                                ctx.lineTo(x2, height);
+                                            } else if (r.type === 2) {
+                                                // Inbound from top into node
+                                                if (r.fromLane === r.toLane) {
+                                                    ctx.moveTo(x1, 0);
+                                                    ctx.lineTo(x1, centerY);
+                                                } else {
+                                                    ctx.moveTo(x1, 0);
+                                                    ctx.bezierCurveTo(x1, centerY * 0.5, x2, centerY * 0.5, x2, centerY);
+                                                }
+                                            } else if (r.type === 1) {
+                                                // Outbound from node down to parent
+                                                if (r.fromLane === r.toLane) {
+                                                    ctx.moveTo(x1, centerY);
+                                                    ctx.lineTo(x1, height);
+                                                } else {
+                                                    ctx.moveTo(x1, centerY);
+                                                    ctx.bezierCurveTo(x1, centerY + (height - centerY) * 0.5, x2, centerY + (height - centerY) * 0.5, x2, height);
+                                                }
+                                            }
+                                            ctx.stroke();
+                                        }
+                                    }
                                 }
 
-                                // Circular Avatar Node centered on the graph line
+                                // Circular Avatar Node centered on the commit's lane
                                 Rectangle {
-                                    anchors.centerIn: parent
+                                    x: (14 + (commitRow.graphLane !== undefined ? commitRow.graphLane : 0) * 22) - 11
+                                    anchors.verticalCenter: parent.verticalCenter
                                     width: 22
                                     height: 22
                                     radius: 11
-                                    color: commitRow.authorColor || "#6366F1"
-                                    border.color: commitRow.isSelected ? "#38BDF8" : "#1E293B"
-                                    border.width: 1
+                                    color: commitRow.graphColor || "#06B6D4"
+                                    border.color: commitRow.isSelected ? "#38BDF8" : (commitRow.graphColor || "#1E293B")
+                                    border.width: commitRow.isSelected ? 2 : 1.5
                                     clip: true
 
                                     Image {
@@ -481,22 +562,8 @@ Rectangle {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                root.selectCommit({
-                                    sha: commitRow.sha,
-                                    shortSha: commitRow.shortSha,
-                                    subject: commitRow.subject,
-                                    body: commitRow.body,
-                                    authorName: commitRow.authorName,
-                                    authorEmail: commitRow.authorEmail,
-                                    authorDate: commitRow.authorDateFormatted || commitRow.authorDate,
-                                    authorDateFormatted: commitRow.authorDateFormatted || commitRow.authorDate,
-                                    decorations: commitRow.decorations,
-                                    parents: commitRow.parents,
-                                    authorAvatarUrl: commitRow.authorAvatarUrl,
-                                    authorInitials: commitRow.authorInitials,
-                                    authorColor: commitRow.authorColor,
-                                    structuredDecorations: commitRow.structuredDecorations
-                                });
+                                commitTableListView.forceActiveFocus();
+                                root.selectCommitByIndex(commitRow.index);
                             }
                         }
                     }
@@ -696,7 +763,7 @@ Rectangle {
                             }
                         }
 
-                        // Author Name & Date
+                        // Author Name & Date & Committer
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 2
@@ -708,9 +775,17 @@ Rectangle {
                                 elide: Text.ElideRight
                             }
                             Text {
-                                text: "authored " + (root.selectedCommit ? root.selectedCommit.authorDate : "")
+                                text: {
+                                    if (!root.selectedCommit) return "";
+                                    var txt = "authored " + (root.selectedCommit.authorDateFormatted || root.selectedCommit.authorDate || "");
+                                    if (root.selectedCommit.committerName && root.selectedCommit.committerName !== root.selectedCommit.authorName) {
+                                        txt += " • committed by " + root.selectedCommit.committerName;
+                                    }
+                                    return txt;
+                                }
                                 color: "#8B949E"
                                 font.pixelSize: 11
+                                elide: Text.ElideRight
                             }
                         }
 
