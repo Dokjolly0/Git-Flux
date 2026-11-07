@@ -1,6 +1,7 @@
 #include "desktop/viewmodels/commit_history_list_model.hpp"
 
 #include <QCryptographicHash>
+#include <QDateTime>
 #include <QHash>
 #include <QRegularExpression>
 #include <QVariantMap>
@@ -22,30 +23,43 @@ const QStringList kAuthorPalette = {
     QStringLiteral("#84CC16")  // Lime
 };
 
-QString computeAvatarUrl(const QString& rawEmail) {
+QString computeAvatarUrl(const QString& name, const QString& rawEmail) {
     QString email = rawEmail.trimmed().toLower();
-    if (email.isEmpty()) {
-        return QStringLiteral("https://www.gravatar.com/avatar/?d=mp");
-    }
+    QString cleanName = name.trimmed();
 
-    // Check if it is a GitHub noreply address: e.g. "123456+username@users.noreply.github.com" or "username@users.noreply.github.com"
+    // 1. If email is a GitHub noreply address
     if (email.endsWith(QLatin1String("users.noreply.github.com"))) {
         int atIdx = email.indexOf(QLatin1Char('@'));
         if (atIdx > 0) {
             QString userPart = email.left(atIdx);
             int plusIdx = userPart.indexOf(QLatin1Char('+'));
-            if (plusIdx >= 0) {
-                userPart = userPart.mid(plusIdx + 1);
-            }
+            if (plusIdx >= 0) userPart = userPart.mid(plusIdx + 1);
             if (!userPart.isEmpty()) {
                 return QStringLiteral("https://github.com/%1.png?size=64").arg(userPart);
             }
         }
     }
 
-    // Standard Gravatar hash
-    QByteArray hash = QCryptographicHash::hash(email.toUtf8(), QCryptographicHash::Md5).toHex();
-    return QStringLiteral("https://www.gravatar.com/avatar/%1?s=64&d=identicon").arg(QString::fromLatin1(hash));
+    // 2. If author name is a single username token (e.g. "Dokjolly0")
+    if (!cleanName.isEmpty() && !cleanName.contains(QLatin1Char(' '))) {
+        return QStringLiteral("https://github.com/%1.png?size=64").arg(cleanName);
+    }
+
+    // 3. Fallback to Gravatar MD5
+    if (!email.isEmpty()) {
+        QByteArray hash = QCryptographicHash::hash(email.toUtf8(), QCryptographicHash::Md5).toHex();
+        return QStringLiteral("https://www.gravatar.com/avatar/%1?s=64&d=identicon").arg(QString::fromLatin1(hash));
+    }
+
+    return QStringLiteral("https://www.gravatar.com/avatar/?d=mp");
+}
+
+QString formatCommitDate(const QString& isoStr) {
+    QDateTime dt = QDateTime::fromString(isoStr, Qt::ISODate);
+    if (!dt.isValid()) {
+        return isoStr;
+    }
+    return dt.toString(QStringLiteral("dd/MM/yyyy @ HH:mm"));
 }
 
 QString computeInitials(const QString& name) {
@@ -145,10 +159,12 @@ QVariantList computeStructuredDecorations(const std::vector<std::string>& rawDec
             badge[QStringLiteral("name")] = lb.name;
             badge[QStringLiteral("type")] = QStringLiteral("local");
             badge[QStringLiteral("isHead")] = lb.isHead;
-            badge[QStringLiteral("icon")] = lb.isHead ? QStringLiteral("● ⎇") : QStringLiteral("⎇");
-            badge[QStringLiteral("bgColor")] = QStringLiteral("#064E3B"); // Emerald 900
-            badge[QStringLiteral("borderColor")] = QStringLiteral("#10B981"); // Emerald 500
-            badge[QStringLiteral("fgColor")] = QStringLiteral("#D1FAE5"); // Emerald 100
+            badge[QStringLiteral("label")] = lb.isHead
+                ? QStringLiteral("✓ %1 💻").arg(lb.name)
+                : QStringLiteral("%1 💻").arg(lb.name);
+            badge[QStringLiteral("bgColor")] = lb.isHead ? QStringLiteral("#0E7490") : QStringLiteral("#064E3B");
+            badge[QStringLiteral("borderColor")] = lb.isHead ? QStringLiteral("#06B6D4") : QStringLiteral("#10B981");
+            badge[QStringLiteral("fgColor")] = QStringLiteral("#FFFFFF");
             result.append(badge);
         }
     }
@@ -156,13 +172,17 @@ QVariantList computeStructuredDecorations(const std::vector<std::string>& rawDec
     // Process remote branches
     for (const auto& rb : remoteBranches) {
         QVariantMap badge;
+        QString cleanName = rb.name;
+        if (cleanName.startsWith(QLatin1String("origin/"))) {
+            cleanName = cleanName.mid(7);
+        }
         badge[QStringLiteral("name")] = rb.name;
         badge[QStringLiteral("type")] = QStringLiteral("remote");
         badge[QStringLiteral("isHead")] = rb.isHead;
-        badge[QStringLiteral("icon")] = rb.isHead ? QStringLiteral("● ☁") : QStringLiteral("☁");
-        badge[QStringLiteral("bgColor")] = QStringLiteral("#312E81"); // Indigo 900
-        badge[QStringLiteral("borderColor")] = QStringLiteral("#6366F1"); // Indigo 500
-        badge[QStringLiteral("fgColor")] = QStringLiteral("#E0E7FF"); // Indigo 100
+        badge[QStringLiteral("label")] = QStringLiteral("%1 ☁").arg(cleanName);
+        badge[QStringLiteral("bgColor")] = QStringLiteral("#1E293B"); // GitKraken dark slate blue
+        badge[QStringLiteral("borderColor")] = QStringLiteral("#3B82F6"); // Slate border
+        badge[QStringLiteral("fgColor")] = QStringLiteral("#93C5FD"); // Light blue text
         result.append(badge);
     }
 
@@ -172,7 +192,7 @@ QVariantList computeStructuredDecorations(const std::vector<std::string>& rawDec
         badge[QStringLiteral("name")] = tb.name;
         badge[QStringLiteral("type")] = QStringLiteral("tag");
         badge[QStringLiteral("isHead")] = false;
-        badge[QStringLiteral("icon")] = QStringLiteral("🏷");
+        badge[QStringLiteral("label")] = QStringLiteral("🏷 %1").arg(tb.name);
         badge[QStringLiteral("bgColor")] = QStringLiteral("#78350F"); // Amber 900
         badge[QStringLiteral("borderColor")] = QStringLiteral("#F59E0B"); // Amber 500
         badge[QStringLiteral("fgColor")] = QStringLiteral("#FEF3C7"); // Amber 100
@@ -218,6 +238,8 @@ QVariant CommitHistoryListModel::data(const QModelIndex& index, int role) const 
         return QString::fromStdString(c.authorEmail);
     case AuthorDateRole:
         return QString::fromStdString(c.authorDateIso);
+    case AuthorDateFormattedRole:
+        return formatCommitDate(QString::fromStdString(c.authorDateIso));
     case DecorationsRole: {
         QStringList list;
         for (const auto& dec : c.refDecorations) {
@@ -233,7 +255,7 @@ QVariant CommitHistoryListModel::data(const QModelIndex& index, int role) const 
         return list;
     }
     case AuthorAvatarUrlRole:
-        return computeAvatarUrl(QString::fromStdString(c.authorEmail));
+        return computeAvatarUrl(QString::fromStdString(c.authorName), QString::fromStdString(c.authorEmail));
     case AuthorInitialsRole:
         return computeInitials(QString::fromStdString(c.authorName));
     case AuthorColorRole:
@@ -259,11 +281,12 @@ QHash<int, QByteArray> CommitHistoryListModel::roleNames() const {
         {AuthorAvatarUrlRole, "authorAvatarUrl"},
         {AuthorInitialsRole, "authorInitials"},
         {AuthorColorRole, "authorColor"},
-        {StructuredDecorationsRole, "structuredDecorations"}
+        {StructuredDecorationsRole, "structuredDecorations"},
+        {AuthorDateFormattedRole, "authorDateFormatted"}
     };
 }
 
-void CommitHistoryListModel::setCommits(std::vector<git::bo::GitCommitLogItem> commits) {
+void CommitHistoryListModel::setCommits(std::vector<gf::git::bo::GitCommitLogItem> commits) {
     beginResetModel();
     m_commits = std::move(commits);
     endResetModel();

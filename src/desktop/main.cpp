@@ -2,9 +2,25 @@
 
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
+#include <QQmlNetworkAccessManagerFactory>
+#include <QNetworkAccessManager>
+#include <QNetworkRequest>
 #include <QCommandLineParser>
 #include <QCommandLineOption>
 #include <iostream>
+
+namespace {
+
+class RedirectNetworkAccessManagerFactory final : public QQmlNetworkAccessManagerFactory {
+public:
+    QNetworkAccessManager* create(QObject* parent) override {
+        auto* manager = new QNetworkAccessManager(parent);
+        manager->setRedirectPolicy(QNetworkRequest::NoLessSafeRedirectPolicy);
+        return manager;
+    }
+};
+
+} // namespace
 
 int main(int argc, char* argv[]) {
     QGuiApplication app(argc, argv);
@@ -46,6 +62,7 @@ int main(int argc, char* argv[]) {
         bootstrap.initialize();
 
         QQmlApplicationEngine engine;
+        engine.setNetworkAccessManagerFactory(new RedirectNetworkAccessManagerFactory());
         bootstrap.registerWithQml(engine);
 
         const QUrl url(QStringLiteral("qrc:/qt/qml/GitFlux/Desktop/src/desktop/ui/qml/main.qml"));

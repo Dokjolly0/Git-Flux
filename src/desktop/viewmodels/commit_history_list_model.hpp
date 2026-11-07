@@ -25,7 +25,8 @@ public:
         AuthorAvatarUrlRole,
         AuthorInitialsRole,
         AuthorColorRole,
-        StructuredDecorationsRole
+        StructuredDecorationsRole,
+        AuthorDateFormattedRole
     };
 
     explicit CommitHistoryListModel(QObject* parent = nullptr);

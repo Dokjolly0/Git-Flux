@@ -159,7 +159,7 @@ if(GF_BUILD_DESKTOP)
         endif()
     endif()
 
-    find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml QuickControls2 QuickDialogs2)
+    find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml QuickControls2 QuickDialogs2 Network)
     if(GF_BUILD_TESTING)
         find_package(Qt6 REQUIRED COMPONENTS Test)
     endif()
@@ -253,6 +253,7 @@ if(GF_BUILD_DESKTOP)
         Qt6::Qml
         Qt6::QuickControls2
         Qt6::QuickDialogs2
+        Qt6::Network
     )
     gf_apply_compiler_warnings(git_flux)
     gf_deploy_runtime_dlls(git_flux)
