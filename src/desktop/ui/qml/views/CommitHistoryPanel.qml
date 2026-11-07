@@ -871,7 +871,7 @@ Rectangle {
                                 anchors.fill: parent
                                 anchors.leftMargin: 8
                                 anchors.rightMargin: 8
-                                spacing: 8
+                                spacing: 6
 
                                 // Status icon (pencil for modified, plus for added, trash for deleted)
                                 Text {
@@ -884,27 +884,24 @@ Rectangle {
                                     font.pixelSize: 11
                                 }
 
-                                // Path: Directory dimmed + Filename highlighted
-                                RowLayout {
+                                // Directory dimmed
+                                Text {
+                                    text: root.getDirectory(modelData.path)
+                                    color: "#64748B"
+                                    font.pixelSize: 11
+                                    elide: Text.ElideMiddle
+                                    Layout.maximumWidth: Math.max(60, Math.floor(fDelegate.width * 0.5))
+                                    visible: text !== ""
+                                }
+
+                                // Filename highlighted
+                                Text {
+                                    text: root.getFilename(modelData.path)
+                                    color: fDelegate.isSelected ? "#38BDF8" : "#F1F5F9"
+                                    font.bold: true
+                                    font.pixelSize: 11
+                                    elide: Text.ElideRight
                                     Layout.fillWidth: true
-                                    spacing: 0
-
-                                    Text {
-                                        text: root.getDirectory(modelData.path)
-                                        color: "#64748B"
-                                        font.pixelSize: 11
-                                        elide: Text.ElideMiddle
-                                        Layout.maximumWidth: parent.width * 0.65
-                                    }
-
-                                    Text {
-                                        text: root.getFilename(modelData.path)
-                                        color: fDelegate.isSelected ? "#38BDF8" : "#F1F5F9"
-                                        font.bold: true
-                                        font.pixelSize: 11
-                                        elide: Text.ElideRight
-                                        Layout.fillWidth: true
-                                    }
                                 }
 
                                 // Additions & Deletions

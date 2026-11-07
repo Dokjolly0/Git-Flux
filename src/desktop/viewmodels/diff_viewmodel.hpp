@@ -47,7 +47,7 @@ public:
     [[nodiscard]] QVariantList blameLines() const noexcept { return m_blameLines; }
     [[nodiscard]] bool isBlameLoading() const noexcept { return m_isBlameLoading; }
 
-    void setViewMode(const QString& mode);
+    Q_INVOKABLE void setViewMode(const QString& mode);
 
     Q_INVOKABLE bool loadDiff(const QString& repoPath, const QString& filePath, const QString& scope);
     Q_INVOKABLE bool loadCommitFileDiff(const QString& repoPath, const QString& commitSha, const QString& filePath);

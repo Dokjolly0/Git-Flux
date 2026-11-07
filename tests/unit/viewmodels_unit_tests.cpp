@@ -1591,3 +1591,43 @@ TEST_CASE("BatchOperationsViewModel - Batch Execution & Status Reporting", "[des
     }
 }
 
+TEST_CASE("DiffViewModel - View mode switching and property invariants", "[desktop][viewmodels]") {
+    MockFullGitOps mockOps;
+    gf::git::bl::GitDiffService diffService(mockOps);
+
+    DiffViewModel diffVm(diffService);
+
+    CHECK(diffVm.viewMode() == "inline");
+    CHECK(diffVm.isEmpty());
+    CHECK_FALSE(diffVm.isBinary());
+    CHECK(diffVm.splitLines().isEmpty());
+    CHECK(diffVm.hunks().isEmpty());
+    CHECK(diffVm.blameLines().isEmpty());
+
+    QSignalSpy modeSpy(&diffVm, &DiffViewModel::viewModeChanged);
+
+    // Switch to split
+    diffVm.setViewMode("split");
+    CHECK(diffVm.viewMode() == "split");
+    CHECK(modeSpy.count() == 1);
+
+    // Redundant switch should not re-emit
+    diffVm.setViewMode("split");
+    CHECK(modeSpy.count() == 1);
+
+    // Switch to hunk
+    diffVm.setViewMode("hunk");
+    CHECK(diffVm.viewMode() == "hunk");
+    CHECK(modeSpy.count() == 2);
+
+    // Switch to blame
+    diffVm.setViewMode("blame");
+    CHECK(diffVm.viewMode() == "blame");
+    CHECK(modeSpy.count() == 3);
+
+    // Switch back to inline
+    diffVm.setViewMode("inline");
+    CHECK(diffVm.viewMode() == "inline");
+    CHECK(modeSpy.count() == 4);
+}
+

@@ -109,13 +109,13 @@ Rectangle {
 
                     // 1. Inline View
                     Button {
+                        id: inlineBtn
                         Layout.preferredHeight: 26
-                        checkable: true
-                        checked: root.diffViewer ? root.diffViewer.viewMode === "inline" : true
+                        readonly property bool isCurrent: root.diffViewer ? (root.diffViewer.viewMode === "inline" || root.diffViewer.viewMode === "") : true
                         background: Rectangle {
-                            color: parent.checked ? "#1E293B" : (parent.hovered ? "#161B22" : "transparent")
+                            color: inlineBtn.isCurrent ? "#1E293B" : (inlineBtn.hovered ? "#161B22" : "transparent")
                             radius: 4
-                            border.color: parent.checked ? "#38BDF8" : "#334155"
+                            border.color: inlineBtn.isCurrent ? "#38BDF8" : "#334155"
                             border.width: 1
                         }
                         contentItem: RowLayout {
@@ -123,9 +123,9 @@ Rectangle {
                             Text { text: "📄"; font.pixelSize: 10 }
                             Text {
                                 text: "Inline"
-                                color: parent.parent.checked ? "#38BDF8" : "#94A3B8"
+                                color: inlineBtn.isCurrent ? "#38BDF8" : "#94A3B8"
                                 font.pixelSize: 11
-                                font.bold: parent.parent.checked
+                                font.bold: inlineBtn.isCurrent
                             }
                         }
                         onClicked: {
@@ -135,13 +135,13 @@ Rectangle {
 
                     // 2. Split View (Side-by-side)
                     Button {
+                        id: splitBtn
                         Layout.preferredHeight: 26
-                        checkable: true
-                        checked: root.diffViewer ? root.diffViewer.viewMode === "split" : false
+                        readonly property bool isCurrent: root.diffViewer ? root.diffViewer.viewMode === "split" : false
                         background: Rectangle {
-                            color: parent.checked ? "#1E293B" : (parent.hovered ? "#161B22" : "transparent")
+                            color: splitBtn.isCurrent ? "#1E293B" : (splitBtn.hovered ? "#161B22" : "transparent")
                             radius: 4
-                            border.color: parent.checked ? "#38BDF8" : "#334155"
+                            border.color: splitBtn.isCurrent ? "#38BDF8" : "#334155"
                             border.width: 1
                         }
                         contentItem: RowLayout {
@@ -149,9 +149,9 @@ Rectangle {
                             Text { text: "📑"; font.pixelSize: 10 }
                             Text {
                                 text: "Split"
-                                color: parent.parent.checked ? "#38BDF8" : "#94A3B8"
+                                color: splitBtn.isCurrent ? "#38BDF8" : "#94A3B8"
                                 font.pixelSize: 11
-                                font.bold: parent.parent.checked
+                                font.bold: splitBtn.isCurrent
                             }
                         }
                         onClicked: {
@@ -161,13 +161,13 @@ Rectangle {
 
                     // 3. Hunk View
                     Button {
+                        id: hunkBtn
                         Layout.preferredHeight: 26
-                        checkable: true
-                        checked: root.diffViewer ? root.diffViewer.viewMode === "hunk" : false
+                        readonly property bool isCurrent: root.diffViewer ? root.diffViewer.viewMode === "hunk" : false
                         background: Rectangle {
-                            color: parent.checked ? "#1E293B" : (parent.hovered ? "#161B22" : "transparent")
+                            color: hunkBtn.isCurrent ? "#1E293B" : (hunkBtn.hovered ? "#161B22" : "transparent")
                             radius: 4
-                            border.color: parent.checked ? "#38BDF8" : "#334155"
+                            border.color: hunkBtn.isCurrent ? "#38BDF8" : "#334155"
                             border.width: 1
                         }
                         contentItem: RowLayout {
@@ -175,9 +175,9 @@ Rectangle {
                             Text { text: "🔍"; font.pixelSize: 10 }
                             Text {
                                 text: "Hunk"
-                                color: parent.parent.checked ? "#38BDF8" : "#94A3B8"
+                                color: hunkBtn.isCurrent ? "#38BDF8" : "#94A3B8"
                                 font.pixelSize: 11
-                                font.bold: parent.parent.checked
+                                font.bold: hunkBtn.isCurrent
                             }
                         }
                         onClicked: {
@@ -187,13 +187,13 @@ Rectangle {
 
                     // 4. Blame View
                     Button {
+                        id: blameBtn
                         Layout.preferredHeight: 26
-                        checkable: true
-                        checked: root.diffViewer ? root.diffViewer.viewMode === "blame" : false
+                        readonly property bool isCurrent: root.diffViewer ? root.diffViewer.viewMode === "blame" : false
                         background: Rectangle {
-                            color: parent.checked ? "#1E293B" : (parent.hovered ? "#161B22" : "transparent")
+                            color: blameBtn.isCurrent ? "#1E293B" : (blameBtn.hovered ? "#161B22" : "transparent")
                             radius: 4
-                            border.color: parent.checked ? "#38BDF8" : "#334155"
+                            border.color: blameBtn.isCurrent ? "#38BDF8" : "#334155"
                             border.width: 1
                         }
                         contentItem: RowLayout {
@@ -201,9 +201,9 @@ Rectangle {
                             Text { text: "👤"; font.pixelSize: 10 }
                             Text {
                                 text: "Blame"
-                                color: parent.parent.checked ? "#38BDF8" : "#94A3B8"
+                                color: blameBtn.isCurrent ? "#38BDF8" : "#94A3B8"
                                 font.pixelSize: 11
-                                font.bold: parent.parent.checked
+                                font.bold: blameBtn.isCurrent
                             }
                         }
                         onClicked: {

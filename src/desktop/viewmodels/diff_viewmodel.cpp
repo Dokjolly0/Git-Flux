@@ -88,6 +88,7 @@ void DiffViewModel::processFileDiff(const gf::git::bo::FileDiff& diff) {
     m_isEmpty = diff.empty();
 
     m_linesModel.setDiff(diff);
+    m_blameLines.clear();
 
     // Compute Hunks
     m_hunks.clear();
