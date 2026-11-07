@@ -2,13 +2,13 @@
 PackageIdentifier: GitFlux.GitFlux
 PackageVersion: 0.1.0
 PackageLocale: en-US
-Publisher: GitFlux
-PublisherUrl: https://github.com/dokjolly/GitFlux
-PublisherSupportUrl: https://github.com/dokjolly/GitFlux/issues
+Publisher: Dokjolly0
+PublisherUrl: https://github.com/Dokjolly0/Git-Flux
+PublisherSupportUrl: https://github.com/Dokjolly0/Git-Flux/issues
 PackageName: Git Flux
-PackageUrl: https://github.com/dokjolly/GitFlux
+PackageUrl: https://github.com/Dokjolly0/Git-Flux
 License: MIT
-LicenseUrl: https://github.com/dokjolly/GitFlux/blob/main/LICENSE
+LicenseUrl: https://github.com/Dokjolly0/Git-Flux/blob/main/LICENSE
 Copyright: Copyright (c) 2026 GitFlux Authors
 ShortDescription: Modern local-first desktop Git client engineered in C++23 and Qt Quick 6
 Description: |
@@ -23,6 +23,6 @@ Tags:
   - gui
   - desktop
   - source-control
-ReleaseNotesUrl: https://github.com/dokjolly/GitFlux/releases
+ReleaseNotesUrl: https://github.com/Dokjolly0/Git-Flux/releases/tag/v0.1.0
 ManifestType: defaultLocale
 ManifestVersion: 1.6.0
