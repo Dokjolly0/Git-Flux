@@ -31,24 +31,49 @@ Rectangle {
     property string draggingBranchType: ""
     property string hoveredTargetBranch: ""
 
+    function isSameBranchRef(a, b) {
+        if (!a || !b) return false;
+        if (a === b) return true;
+        var cleanA = a.startsWith("origin/") ? a.substring(7) : a;
+        var cleanB = b.startsWith("origin/") ? b.substring(7) : b;
+        return cleanA === cleanB;
+    }
+
+    function hasBranchDecoration(decs, branchName) {
+        if (!decs || !branchName) return false;
+        for (var i = 0; i < decs.length; ++i) {
+            var d = decs[i];
+            if (d && (d.name === branchName || isSameBranchRef(d.name, branchName))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     function findBranchAtRootPos(rootX, rootY) {
         if (!root.branchManager || !root.branchManager.commitHistory) return "";
         var listPt = root.mapToItem(commitTableListView, rootX, rootY);
-        if (listPt.x < 0 || listPt.x > commitTableListView.width || listPt.y < 0 || listPt.y > commitTableListView.height) {
+        if (listPt.y < 0 || listPt.y > commitTableListView.height) {
             return "";
         }
         var visualY = listPt.y + commitTableListView.contentY;
-        var rowIndex = Math.floor(visualY / 36);
-        var history = root.branchManager.commitHistory;
-        if (rowIndex < 0 || rowIndex >= history.length) return "";
-        var commit = history[rowIndex];
+        var rowIndex = commitTableListView.indexAt(listPt.x + commitTableListView.contentX, visualY);
+        if (rowIndex === -1) {
+            rowIndex = Math.floor(visualY / 36);
+        }
+        if (rowIndex < 0 || rowIndex >= commitTableListView.count) {
+            return "";
+        }
+
+        var model = root.branchManager.commitHistory;
+        var commit = model.getCommit(rowIndex);
         if (!commit || !commit.structuredDecorations) return "";
 
         var decs = commit.structuredDecorations;
         var remoteCandidate = "";
         for (var i = 0; i < decs.length; ++i) {
             var d = decs[i];
-            if (d && d.name) {
+            if (d && d.name && !isSameBranchRef(d.name, root.draggingBranchName)) {
                 if (d.type === "local") return d.name;
                 if (d.type === "remote" && !remoteCandidate) remoteCandidate = d.name;
             }
@@ -716,10 +741,15 @@ Rectangle {
                         height: 36
 
                         property bool isSelected: (root.selectedCommit && root.selectedCommit.sha === commitRow.sha)
+                        property bool isHoveredTargetRow: (root.draggingBranchName !== "" && root.hoveredTargetBranch !== "" && commitRow.structuredDecorations && root.hasBranchDecoration(commitRow.structuredDecorations, root.hoveredTargetBranch))
 
-                        color: isSelected
-                               ? "#1A2E4C" // GitKraken blue row selection
-                               : (rowMouse.containsMouse ? "#161B2288" : "transparent")
+                        color: commitRow.isHoveredTargetRow
+                               ? "#1E3A8A55"
+                               : (isSelected
+                                  ? "#1A2E4C" // GitKraken blue row selection
+                                  : (rowMouse.containsMouse ? "#161B2288" : "transparent"))
+                        border.color: commitRow.isHoveredTargetRow ? "#38BDF8" : "transparent"
+                        border.width: commitRow.isHoveredTargetRow ? 1.5 : 0
 
                         // Active left border accent on selection
                         Rectangle {
@@ -780,13 +810,16 @@ Rectangle {
                                             height: 22
                                             width: Math.min(branchTagCol.width - 24, decText.implicitWidth + 14)
                                             radius: 4
-                                            color: (root.hoveredTargetBranch === modelData.name && root.draggingBranchName !== "" && root.draggingBranchName !== modelData.name)
-                                                   ? "#1E3A8A"
+                                            property bool isHoveredTarget: (root.hoveredTargetBranch !== "" && root.draggingBranchName !== "" && root.isSameBranchRef(root.hoveredTargetBranch, modelData.name))
+                                            color: branchBadge.isHoveredTarget
+                                                   ? "#2563EB"
                                                    : (modelData.bgColor || "#0E7490")
-                                            border.color: (root.hoveredTargetBranch === modelData.name && root.draggingBranchName !== "" && root.draggingBranchName !== modelData.name)
-                                                   ? "#60A5FA"
+                                            border.color: branchBadge.isHoveredTarget
+                                                   ? "#93C5FD"
                                                    : (modelData.borderColor || "#06B6D4")
-                                            border.width: (root.hoveredTargetBranch === modelData.name && root.draggingBranchName !== "" && root.draggingBranchName !== modelData.name) ? 2 : 1
+                                            border.width: branchBadge.isHoveredTarget ? 2 : 1
+                                            scale: branchBadge.isHoveredTarget ? 1.08 : 1.0
+                                            Behavior on scale { NumberAnimation { duration: 100 } }
                                             z: 10
 
                                             property string badgeBranchName: modelData.name || ""
@@ -796,8 +829,8 @@ Rectangle {
                                                 id: decText
                                                 anchors.centerIn: parent
                                                 width: parent.width - 8
-                                                text: modelData.label || modelData.name || ""
-                                                color: modelData.fgColor || "#FFFFFF"
+                                                text: branchBadge.isHoveredTarget ? ("🔀 " + (modelData.name || "")) : (modelData.label || modelData.name || "")
+                                                color: branchBadge.isHoveredTarget ? "#FFFFFF" : (modelData.fgColor || "#FFFFFF")
                                                 font.pixelSize: 11
                                                 font.bold: true
                                                 elide: Text.ElideMiddle
@@ -866,7 +899,7 @@ Rectangle {
                                                             dragGhostBadge.visible = true;
 
                                                             var tgt = root.findBranchAtRootPos(pt.x, pt.y);
-                                                            if (tgt && tgt !== root.draggingBranchName) {
+                                                            if (tgt && !root.isSameBranchRef(tgt, root.draggingBranchName)) {
                                                                 root.hoveredTargetBranch = tgt;
                                                             } else {
                                                                 root.hoveredTargetBranch = "";
@@ -883,10 +916,11 @@ Rectangle {
                                                         var tgt = root.hoveredTargetBranch;
                                                         root.draggingBranchName = "";
                                                         root.hoveredTargetBranch = "";
-                                                        if (src && tgt && src !== tgt) {
+                                                        if (src && tgt && !root.isSameBranchRef(src, tgt)) {
                                                             branchDropMenu.sourceBranch = src;
                                                             branchDropMenu.targetBranch = tgt;
-                                                            branchDropMenu.popup();
+                                                            var rpt = mapToItem(root, mouse.x, mouse.y);
+                                                            branchDropMenu.popup(rpt.x, rpt.y);
                                                         }
                                                     } else if (mouse.button === Qt.RightButton) {
                                                         badgeContextMenu.targetName = modelData.name || "";
@@ -2362,32 +2396,37 @@ Rectangle {
         id: dragGhostBadge
         visible: false
         z: 99999
-        width: Math.max(120, dragGhostLabel.implicitWidth + 24)
-        height: 24
-        radius: 4
-        color: "#0E7490"
-        border.color: "#38BDF8"
-        border.width: 1.5
-        opacity: 0.92
+        width: Math.max(160, dragGhostLabel.implicitWidth + 32)
+        height: 28
+        radius: 6
+        color: (root.hoveredTargetBranch !== "") ? "#1E40AF" : "#0E7490"
+        border.color: (root.hoveredTargetBranch !== "") ? "#60A5FA" : "#38BDF8"
+        border.width: (root.hoveredTargetBranch !== "") ? 2 : 1.5
+        opacity: 0.95
+
+        Behavior on color { ColorAnimation { duration: 100 } }
+        Behavior on border.color { ColorAnimation { duration: 100 } }
 
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 8
-            anchors.rightMargin: 8
-            spacing: 6
+            anchors.leftMargin: 10
+            anchors.rightMargin: 10
+            spacing: 8
 
             Text {
-                text: "🌿"
-                font.pixelSize: 11
+                text: (root.hoveredTargetBranch !== "") ? "🔀" : "🌿"
+                font.pixelSize: 13
             }
 
             Text {
                 id: dragGhostLabel
-                text: root.draggingBranchName
+                text: (root.hoveredTargetBranch !== "")
+                      ? (root.draggingBranchName + " ➔ " + root.hoveredTargetBranch + " (Rilascia per unire)")
+                      : (root.draggingBranchName + " (Trascina su un altro branch)")
                 color: "#FFFFFF"
                 font.pixelSize: 11
                 font.bold: true
-                elide: Text.ElideMiddle
+                elide: Text.ElideRight
                 Layout.fillWidth: true
             }
         }

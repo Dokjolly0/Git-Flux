@@ -772,11 +772,16 @@ bool BranchManagerViewModel::mergeBranchInto(const QString& sourceBranch, const 
         return false;
     }
 
-    if (m_currentBranch == targetBranch) {
+    QString effectiveTarget = targetBranch;
+    if (effectiveTarget.startsWith(QLatin1String("origin/"))) {
+        effectiveTarget = effectiveTarget.mid(7);
+    }
+
+    if (m_currentBranch == effectiveTarget) {
         return mergeBranch(sourceBranch);
     }
 
-    if (!checkoutBranch(targetBranch)) {
+    if (!checkoutBranch(effectiveTarget)) {
         return false;
     }
 
