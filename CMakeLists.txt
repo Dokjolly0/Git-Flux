@@ -62,6 +62,9 @@ add_library(gf_application STATIC
     src/core/modules/git/bl/git_rebase_service.cpp
     src/core/modules/git/bl/conflict_marker_parser.cpp
     src/core/modules/git/bl/git_conflict_service.cpp
+    src/core/modules/git/bl/fs_event_classifier.cpp
+    src/core/modules/git/bl/fs_event_debouncer.cpp
+    src/core/modules/git/bl/git_repository_watcher_service.cpp
     src/core/modules/repositories/bl/repository_service.cpp
     src/core/modules/groups/bl/group_service.cpp
     src/core/modules/workspaces/bl/workspace_service.cpp
@@ -125,6 +128,15 @@ target_include_directories(gf_git_cli_native PUBLIC
 )
 target_link_libraries(gf_git_cli_native PUBLIC gf_application)
 gf_apply_compiler_warnings(gf_git_cli_native)
+
+add_library(gf_watcher_native STATIC
+    src/infrastructure/watcher/native_polling_fs_watcher.cpp
+)
+target_include_directories(gf_watcher_native PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
+target_link_libraries(gf_watcher_native PUBLIC gf_application)
+gf_apply_compiler_warnings(gf_watcher_native)
 
 if(GF_BUILD_DESKTOP)
     set(CMAKE_AUTOMOC ON)
@@ -293,9 +305,11 @@ if(GF_BUILD_TESTING)
         tests/unit/stash_unit_tests.cpp
         tests/unit/rebase_unit_tests.cpp
         tests/unit/conflict_unit_tests.cpp
+        tests/unit/fs_watcher_unit_tests.cpp
     )
     target_link_libraries(gf_unit_tests PRIVATE
         gf_git_cli_native
+        gf_watcher_native
         gf_persistence_sqlite
         Catch2::Catch2WithMain
     )
@@ -315,9 +329,11 @@ if(GF_BUILD_TESTING)
         tests/integration/stash_integration_tests.cpp
         tests/integration/rebase_integration_tests.cpp
         tests/integration/conflict_integration_tests.cpp
+        tests/integration/fs_watcher_integration_tests.cpp
     )
     target_link_libraries(gf_integration_tests PRIVATE
         gf_git_cli_native
+        gf_watcher_native
         gf_persistence_sqlite
         gf_fixture_gen_lib
         Catch2::Catch2WithMain
