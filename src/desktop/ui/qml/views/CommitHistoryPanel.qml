@@ -13,6 +13,7 @@ Rectangle {
     property var selectedCommit: null
     property var commitFiles: []
     property var selectedFile: null
+    property bool isDiffOpen: false
     property string fileViewMode: "path" // "path" | "tree"
 
     // Helper to split path into directory and filename
@@ -45,6 +46,8 @@ Rectangle {
     Connections {
         target: root.sessionVm
         function onActiveTabChanged() {
+            root.isDiffOpen = false;
+            root.selectedFile = null;
             root.autoSelectFirstCommit();
         }
     }
@@ -53,6 +56,8 @@ Rectangle {
     Connections {
         target: root.branchManager
         function onCurrentBranchChanged() {
+            root.isDiffOpen = false;
+            root.selectedFile = null;
             root.autoSelectFirstCommit();
         }
     }
@@ -63,11 +68,20 @@ Rectangle {
         }
     }
 
+    // Escape shortcut to close diff view and return to graph
+    focus: true
+    Keys.onEscapePressed: {
+        if (root.isDiffOpen) {
+            root.closeFileDiff();
+        }
+    }
+
     function autoSelectFirstCommit() {
         if (!root.branchManager || !root.branchManager.commitHistory) {
             root.selectedCommit = null;
             root.commitFiles = [];
             root.selectedFile = null;
+            root.isDiffOpen = false;
             return;
         }
         var model = root.branchManager.commitHistory;
@@ -93,12 +107,14 @@ Rectangle {
             root.selectedCommit = null;
             root.commitFiles = [];
             root.selectedFile = null;
+            root.isDiffOpen = false;
         }
     }
 
     function selectCommit(commit) {
         root.selectedCommit = commit;
         root.selectedFile = null;
+        root.isDiffOpen = false;
         root.commitFiles = [];
         if (!commit || !root.branchManager) {
             if (root.sessionVm && root.sessionVm.commitDiffViewer) {
@@ -109,17 +125,11 @@ Rectangle {
 
         var files = root.branchManager.getCommitFiles(commit.sha);
         root.commitFiles = files || [];
-        if (root.commitFiles.length > 0) {
-            root.selectFile(root.commitFiles[0]);
-        } else {
-            if (root.sessionVm && root.sessionVm.commitDiffViewer) {
-                root.sessionVm.commitDiffViewer.clear();
-            }
-        }
     }
 
-    function selectFile(file) {
+    function openFileDiff(file) {
         root.selectedFile = file;
+        root.isDiffOpen = true;
         if (!file || !root.selectedCommit || !root.sessionVm) return;
         var repoPath = root.sessionVm.activeRepoPath;
         if (root.sessionVm.commitDiffViewer) {
@@ -127,26 +137,37 @@ Rectangle {
         }
     }
 
+    function closeFileDiff() {
+        root.isDiffOpen = false;
+        root.selectedFile = null;
+    }
+
     Component.onCompleted: {
         root.autoSelectFirstCommit();
     }
 
-    // Main SplitView: Left Table/Graph (GitKraken layout) vs Right Commit Details
+    // Main SplitView: Left Pane (Graph OR Full Diff) vs Right Pane (GitKraken Commit Details & File List)
     SplitView {
         anchors.fill: parent
         orientation: Qt.Horizontal
 
         // ==========================================
-        // 1. LEFT PANE: GITKRAKEN MULTI-COLUMN GRAPH & COMMITS
+        // 1. LEFT / CENTER MAIN PANE
+        // Shows Commit Graph by default.
+        // Replaced by full-size Diff View when a modified file is touched!
         // ==========================================
         Rectangle {
             SplitView.fillWidth: true
             SplitView.minimumWidth: 480
             color: "#11141A"
 
+            // ------------------------------------------
+            // 1A. COMMIT GRAPH & TABLE (Visible when !root.isDiffOpen)
+            // ------------------------------------------
             ColumnLayout {
                 anchors.fill: parent
                 spacing: 0
+                visible: !root.isDiffOpen
 
                 // Table Header Bar (matching GitKraken header)
                 Rectangle {
@@ -507,10 +528,25 @@ Rectangle {
                     }
                 }
             }
+
+            // ------------------------------------------
+            // 1B. FULL-SIZE DIFF & BLAME VIEWER (Visible when root.isDiffOpen)
+            // Replaces the commit table in the main screen just like GitKraken!
+            // ------------------------------------------
+            DiffViewerPanel {
+                anchors.fill: parent
+                visible: root.isDiffOpen
+                showBackButton: true
+                diffViewer: root.sessionVm ? root.sessionVm.commitDiffViewer : null
+                onBackRequested: {
+                    root.closeFileDiff();
+                }
+            }
         }
 
         // ==========================================
         // 2. RIGHT PANE: GITKRAKEN COMMIT DETAIL PANEL
+        // Remains visible on the right, displaying commit info and the full file list!
         // ==========================================
         Rectangle {
             SplitView.preferredWidth: 420
@@ -540,384 +576,368 @@ Rectangle {
                 }
             }
 
-            // Commit Details View
-            SplitView {
+            // Commit Details View (occupies full height without bottom diff!)
+            ColumnLayout {
                 anchors.fill: parent
-                orientation: Qt.Vertical
+                anchors.margins: 16
+                spacing: 12
                 visible: root.selectedCommit !== null
 
-                // Top: Commit Info & Modified Files List
-                Rectangle {
-                    SplitView.fillHeight: true
-                    SplitView.minimumHeight: 280
-                    color: "#161B22"
+                // Top bar: commit sha & AI button
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
 
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        spacing: 12
+                    Text {
+                        text: "commit: "
+                        color: "#8B949E"
+                        font.pixelSize: 12
+                    }
+                    Text {
+                        text: root.selectedCommit ? root.selectedCommit.shortSha : ""
+                        color: "#E2E8F0"
+                        font.family: "monospace"
+                        font.pixelSize: 12
+                        font.bold: true
+                    }
 
-                        // Top bar: commit sha & AI button
+                    Item { Layout.fillWidth: true }
+
+                    // GitKraken AI button replica
+                    Rectangle {
+                        Layout.preferredHeight: 26
+                        implicitWidth: aiRow.implicitWidth + 14
+                        radius: 4
+                        color: "#6D28D9"
+                        border.color: "#8B5CF6"
+                        border.width: 1
+
                         RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-
+                            id: aiRow
+                            anchors.centerIn: parent
+                            spacing: 4
+                            Text { text: "✨"; font.pixelSize: 10 }
                             Text {
-                                text: "commit: "
-                                color: "#8B949E"
-                                font.pixelSize: 12
-                            }
-                            Text {
-                                text: root.selectedCommit ? root.selectedCommit.shortSha : ""
-                                color: "#E2E8F0"
-                                font.family: "monospace"
-                                font.pixelSize: 12
+                                text: "Recompose commit with AI ▾"
+                                color: "#FFFFFF"
+                                font.pixelSize: 10
                                 font.bold: true
-                            }
-
-                            Item { Layout.fillWidth: true }
-
-                            // GitKraken AI button replica
-                            Rectangle {
-                                Layout.preferredHeight: 26
-                                implicitWidth: aiRow.implicitWidth + 14
-                                radius: 4
-                                color: "#6D28D9"
-                                border.color: "#8B5CF6"
-                                border.width: 1
-
-                                RowLayout {
-                                    id: aiRow
-                                    anchors.centerIn: parent
-                                    spacing: 4
-                                    Text { text: "✨"; font.pixelSize: 10 }
-                                    Text {
-                                        text: "Recompose commit with AI ▾"
-                                        color: "#FFFFFF"
-                                        font.pixelSize: 10
-                                        font.bold: true
-                                    }
-                                }
-                            }
-                        }
-
-                        // Commit Message (large bold title)
-                        Text {
-                            text: root.selectedCommit ? root.selectedCommit.subject : ""
-                            color: "#FFFFFF"
-                            font.pixelSize: 14
-                            font.bold: true
-                            wrapMode: Text.Wrap
-                            Layout.fillWidth: true
-                            maximumLineCount: 3
-                            elide: Text.ElideRight
-                        }
-
-                        // Extended body (if present)
-                        Text {
-                            visible: root.selectedCommit && root.selectedCommit.body && root.selectedCommit.body.length > 0
-                            text: (root.selectedCommit && root.selectedCommit.body) ? root.selectedCommit.body : ""
-                            color: "#94A3B8"
-                            font.pixelSize: 11
-                            wrapMode: Text.Wrap
-                            Layout.fillWidth: true
-                            maximumLineCount: 3
-                            elide: Text.ElideRight
-                        }
-
-                        // Author Card (matching GitKraken author card with square rounded avatar)
-                        Rectangle {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 52
-                            radius: 6
-                            color: "#0D1117"
-                            border.color: "#21262D"
-                            border.width: 1
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.margins: 8
-                                spacing: 10
-
-                                // Square Author Avatar
-                                Rectangle {
-                                    width: 36
-                                    height: 36
-                                    radius: 6
-                                    color: root.selectedCommit ? (root.selectedCommit.authorColor || "#6366F1") : "#6366F1"
-                                    clip: true
-
-                                    Image {
-                                        id: cardAvatarImg
-                                        anchors.fill: parent
-                                        source: root.selectedCommit ? (root.selectedCommit.authorAvatarUrl || "") : ""
-                                        fillMode: Image.PreserveAspectCrop
-                                        smooth: true
-                                        mipmap: true
-                                    }
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: root.selectedCommit ? (root.selectedCommit.authorInitials || "??") : "??"
-                                        color: "#FFFFFF"
-                                        font.pixelSize: 12
-                                        font.bold: true
-                                        visible: cardAvatarImg.status !== Image.Ready
-                                    }
-                                }
-
-                                // Author Name & Date
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 2
-                                    Text {
-                                        text: root.selectedCommit ? root.selectedCommit.authorName : ""
-                                        color: "#FFFFFF"
-                                        font.bold: true
-                                        font.pixelSize: 13
-                                        elide: Text.ElideRight
-                                    }
-                                    Text {
-                                        text: "authored " + (root.selectedCommit ? root.selectedCommit.authorDate : "")
-                                        color: "#8B949E"
-                                        font.pixelSize: 11
-                                    }
-                                }
-
-                                // Parent Short SHA
-                                RowLayout {
-                                    spacing: 4
-                                    Text {
-                                        text: "parent:"
-                                        color: "#8B949E"
-                                        font.pixelSize: 11
-                                    }
-                                    Text {
-                                        text: {
-                                            if (!root.selectedCommit || !root.selectedCommit.parents || root.selectedCommit.parents.length === 0) return "--";
-                                            var p = root.selectedCommit.parents[0];
-                                            return p.length > 7 ? p.substring(0, 7) : p;
-                                        }
-                                        color: "#38BDF8"
-                                        font.family: "monospace"
-                                        font.pixelSize: 11
-                                    }
-                                }
-                            }
-                        }
-
-                        // Divider line
-                        Rectangle {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 1
-                            color: "#21262D"
-                        }
-
-                        // Modified Files Header Bar (matching GitKraken: "✏ 3 modified", sort, Path/Tree, View all)
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-
-                            // Count with pencil icon
-                            RowLayout {
-                                spacing: 6
-                                Text {
-                                    text: "✏"
-                                    color: "#F59E0B"
-                                    font.pixelSize: 12
-                                }
-                                Text {
-                                    text: root.commitFiles.length + " modified"
-                                    color: "#F1F5F9"
-                                    font.bold: true
-                                    font.pixelSize: 12
-                                }
-                            }
-
-                            Item { Layout.fillWidth: true }
-
-                            // Sort button
-                            Text {
-                                text: "⇅"
-                                color: "#8B949E"
-                                font.pixelSize: 13
-                            }
-
-                            // Path / Tree Segmented Control
-                            Rectangle {
-                                Layout.preferredHeight: 22
-                                Layout.preferredWidth: 100
-                                radius: 4
-                                color: "#0D1117"
-                                border.color: "#30363D"
-
-                                RowLayout {
-                                    anchors.fill: parent
-                                    spacing: 0
-
-                                    Rectangle {
-                                        Layout.fillWidth: true
-                                        Layout.fillHeight: true
-                                        radius: 4
-                                        color: root.fileViewMode === "path" ? "#2563EB" : "transparent"
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: "☰ Path"
-                                            color: root.fileViewMode === "path" ? "#FFFFFF" : "#8B949E"
-                                            font.pixelSize: 10
-                                            font.bold: true
-                                        }
-                                        MouseArea {
-                                            anchors.fill: parent
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: root.fileViewMode = "path"
-                                        }
-                                    }
-
-                                    Rectangle {
-                                        Layout.fillWidth: true
-                                        Layout.fillHeight: true
-                                        radius: 4
-                                        color: root.fileViewMode === "tree" ? "#2563EB" : "transparent"
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: "🌲 Tree"
-                                            color: root.fileViewMode === "tree" ? "#FFFFFF" : "#8B949E"
-                                            font.pixelSize: 10
-                                            font.bold: true
-                                        }
-                                        MouseArea {
-                                            anchors.fill: parent
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: root.fileViewMode = "tree"
-                                        }
-                                    }
-                                }
-                            }
-
-                            // View all files checkbox
-                            RowLayout {
-                                spacing: 4
-                                Rectangle {
-                                    width: 12
-                                    height: 12
-                                    radius: 2
-                                    color: "#0D1117"
-                                    border.color: "#30363D"
-                                }
-                                Text {
-                                    text: "View all files"
-                                    color: "#8B949E"
-                                    font.pixelSize: 10
-                                }
-                            }
-                        }
-
-                        // Modified Files List (GitKraken style: directory dimmed, filename bright)
-                        ScrollView {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            clip: true
-
-                            ListView {
-                                id: gitKrakenFilesList
-                                width: parent.width
-                                model: root.commitFiles
-                                spacing: 2
-                                boundsBehavior: Flickable.StopAtBounds
-
-                                delegate: Rectangle {
-                                    id: fDelegate
-                                    width: gitKrakenFilesList.width
-                                    height: 28
-                                    radius: 4
-
-                                    property bool isSelected: (root.selectedFile && root.selectedFile.path === modelData.path)
-
-                                    color: isSelected
-                                           ? "#1E3A8A55"
-                                           : (fileRowMouse.containsMouse ? "#1F242C" : "transparent")
-
-                                    RowLayout {
-                                        anchors.fill: parent
-                                        anchors.leftMargin: 8
-                                        anchors.rightMargin: 8
-                                        spacing: 8
-
-                                        // Status icon (pencil for modified, plus for added, trash for deleted)
-                                        Text {
-                                            text: {
-                                                if (modelData.status === "A") return "➕";
-                                                if (modelData.status === "D") return "🗑️";
-                                                if (modelData.status === "R") return "⇄";
-                                                return "✏️";
-                                            }
-                                            font.pixelSize: 11
-                                        }
-
-                                        // Path: Directory dimmed + Filename highlighted
-                                        RowLayout {
-                                            Layout.fillWidth: true
-                                            spacing: 0
-
-                                            Text {
-                                                text: root.getDirectory(modelData.path)
-                                                color: "#64748B"
-                                                font.pixelSize: 11
-                                                elide: Text.ElideMiddle
-                                                Layout.maximumWidth: parent.width * 0.65
-                                            }
-
-                                            Text {
-                                                text: root.getFilename(modelData.path)
-                                                color: fDelegate.isSelected ? "#38BDF8" : "#F1F5F9"
-                                                font.bold: true
-                                                font.pixelSize: 11
-                                                elide: Text.ElideRight
-                                                Layout.fillWidth: true
-                                            }
-                                        }
-
-                                        // Additions & Deletions
-                                        RowLayout {
-                                            spacing: 4
-                                            Text {
-                                                text: "+" + (modelData.additions || 0)
-                                                color: "#34D399"
-                                                font.pixelSize: 10
-                                                font.bold: true
-                                                visible: (modelData.additions || 0) > 0
-                                            }
-                                            Text {
-                                                text: "-" + (modelData.deletions || 0)
-                                                color: "#F87171"
-                                                font.pixelSize: 10
-                                                font.bold: true
-                                                visible: (modelData.deletions || 0) > 0
-                                            }
-                                        }
-                                    }
-
-                                    MouseArea {
-                                        id: fileRowMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            root.selectFile(modelData);
-                                        }
-                                    }
-                                }
                             }
                         }
                     }
                 }
 
-                // Bottom: Integrated Diff & Blame Viewer (for selected file)
-                DiffViewerPanel {
-                    SplitView.preferredHeight: 280
-                    SplitView.minimumHeight: 180
-                    diffViewer: root.sessionVm ? root.sessionVm.commitDiffViewer : null
+                // Commit Message (large bold title)
+                Text {
+                    text: root.selectedCommit ? root.selectedCommit.subject : ""
+                    color: "#FFFFFF"
+                    font.pixelSize: 14
+                    font.bold: true
+                    wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                    maximumLineCount: 3
+                    elide: Text.ElideRight
+                }
+
+                // Extended body (if present)
+                Text {
+                    visible: root.selectedCommit && root.selectedCommit.body && root.selectedCommit.body.length > 0
+                    text: (root.selectedCommit && root.selectedCommit.body) ? root.selectedCommit.body : ""
+                    color: "#94A3B8"
+                    font.pixelSize: 11
+                    wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                    maximumLineCount: 3
+                    elide: Text.ElideRight
+                }
+
+                // Author Card (matching GitKraken author card with square rounded avatar)
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 52
+                    radius: 6
+                    color: "#0D1117"
+                    border.color: "#21262D"
+                    border.width: 1
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        spacing: 10
+
+                        // Square Author Avatar
+                        Rectangle {
+                            width: 36
+                            height: 36
+                            radius: 6
+                            color: root.selectedCommit ? (root.selectedCommit.authorColor || "#6366F1") : "#6366F1"
+                            clip: true
+
+                            Image {
+                                id: cardAvatarImg
+                                anchors.fill: parent
+                                source: root.selectedCommit ? (root.selectedCommit.authorAvatarUrl || "") : ""
+                                fillMode: Image.PreserveAspectCrop
+                                smooth: true
+                                mipmap: true
+                            }
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: root.selectedCommit ? (root.selectedCommit.authorInitials || "??") : "??"
+                                color: "#FFFFFF"
+                                font.pixelSize: 12
+                                font.bold: true
+                                visible: cardAvatarImg.status !== Image.Ready
+                            }
+                        }
+
+                        // Author Name & Date
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: root.selectedCommit ? root.selectedCommit.authorName : ""
+                                color: "#FFFFFF"
+                                font.bold: true
+                                font.pixelSize: 13
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                text: "authored " + (root.selectedCommit ? root.selectedCommit.authorDate : "")
+                                color: "#8B949E"
+                                font.pixelSize: 11
+                            }
+                        }
+
+                        // Parent Short SHA
+                        RowLayout {
+                            spacing: 4
+                            Text {
+                                text: "parent:"
+                                color: "#8B949E"
+                                font.pixelSize: 11
+                            }
+                            Text {
+                                text: {
+                                    if (!root.selectedCommit || !root.selectedCommit.parents || root.selectedCommit.parents.length === 0) return "--";
+                                    var p = root.selectedCommit.parents[0];
+                                    return p.length > 7 ? p.substring(0, 7) : p;
+                                }
+                                color: "#38BDF8"
+                                font.family: "monospace"
+                                font.pixelSize: 11
+                            }
+                        }
+                    }
+                }
+
+                // Divider line
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 1
+                    color: "#21262D"
+                }
+
+                // Modified Files Header Bar (matching GitKraken: "✏ 3 modified", sort, Path/Tree, View all)
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    // Count with pencil icon
+                    RowLayout {
+                        spacing: 6
+                        Text {
+                            text: "✏"
+                            color: "#F59E0B"
+                            font.pixelSize: 12
+                        }
+                        Text {
+                            text: root.commitFiles.length + " modified"
+                            color: "#F1F5F9"
+                            font.bold: true
+                            font.pixelSize: 12
+                        }
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    // Sort button
+                    Text {
+                        text: "⇅"
+                        color: "#8B949E"
+                        font.pixelSize: 13
+                    }
+
+                    // Path / Tree Segmented Control
+                    Rectangle {
+                        Layout.preferredHeight: 22
+                        Layout.preferredWidth: 100
+                        radius: 4
+                        color: "#0D1117"
+                        border.color: "#30363D"
+
+                        RowLayout {
+                            anchors.fill: parent
+                            spacing: 0
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                radius: 4
+                                color: root.fileViewMode === "path" ? "#2563EB" : "transparent"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "☰ Path"
+                                    color: root.fileViewMode === "path" ? "#FFFFFF" : "#8B949E"
+                                    font.pixelSize: 10
+                                    font.bold: true
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.fileViewMode = "path"
+                                }
+                            }
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                radius: 4
+                                color: root.fileViewMode === "tree" ? "#2563EB" : "transparent"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "🌲 Tree"
+                                    color: root.fileViewMode === "tree" ? "#FFFFFF" : "#8B949E"
+                                    font.pixelSize: 10
+                                    font.bold: true
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.fileViewMode = "tree"
+                                }
+                            }
+                        }
+                    }
+
+                    // View all files checkbox
+                    RowLayout {
+                        spacing: 4
+                        Rectangle {
+                            width: 12
+                            height: 12
+                            radius: 2
+                            color: "#0D1117"
+                            border.color: "#30363D"
+                        }
+                        Text {
+                            text: "View all files"
+                            color: "#8B949E"
+                            font.pixelSize: 10
+                        }
+                    }
+                }
+
+                // Modified Files List (GitKraken style: directory dimmed, filename bright)
+                ScrollView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+
+                    ListView {
+                        id: gitKrakenFilesList
+                        width: parent.width
+                        model: root.commitFiles
+                        spacing: 2
+                        boundsBehavior: Flickable.StopAtBounds
+
+                        delegate: Rectangle {
+                            id: fDelegate
+                            width: gitKrakenFilesList.width
+                            height: 28
+                            radius: 4
+
+                            property bool isSelected: (root.selectedFile && root.selectedFile.path === modelData.path)
+
+                            color: isSelected
+                                   ? "#1E3A8A55"
+                                   : (fileRowMouse.containsMouse ? "#1F242C" : "transparent")
+
+                            border.color: isSelected ? "#38BDF8" : "transparent"
+                            border.width: 1
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 8
+                                anchors.rightMargin: 8
+                                spacing: 8
+
+                                // Status icon (pencil for modified, plus for added, trash for deleted)
+                                Text {
+                                    text: {
+                                        if (modelData.status === "A") return "➕";
+                                        if (modelData.status === "D") return "🗑️";
+                                        if (modelData.status === "R") return "⇄";
+                                        return "✏️";
+                                    }
+                                    font.pixelSize: 11
+                                }
+
+                                // Path: Directory dimmed + Filename highlighted
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 0
+
+                                    Text {
+                                        text: root.getDirectory(modelData.path)
+                                        color: "#64748B"
+                                        font.pixelSize: 11
+                                        elide: Text.ElideMiddle
+                                        Layout.maximumWidth: parent.width * 0.65
+                                    }
+
+                                    Text {
+                                        text: root.getFilename(modelData.path)
+                                        color: fDelegate.isSelected ? "#38BDF8" : "#F1F5F9"
+                                        font.bold: true
+                                        font.pixelSize: 11
+                                        elide: Text.ElideRight
+                                        Layout.fillWidth: true
+                                    }
+                                }
+
+                                // Additions & Deletions
+                                RowLayout {
+                                    spacing: 4
+                                    Text {
+                                        text: "+" + (modelData.additions || 0)
+                                        color: "#34D399"
+                                        font.pixelSize: 10
+                                        font.bold: true
+                                        visible: (modelData.additions || 0) > 0
+                                    }
+                                    Text {
+                                        text: "-" + (modelData.deletions || 0)
+                                        color: "#F87171"
+                                        font.pixelSize: 10
+                                        font.bold: true
+                                        visible: (modelData.deletions || 0) > 0
+                                    }
+                                }
+                            }
+
+                            MouseArea {
+                                id: fileRowMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    root.openFileDiff(modelData);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -8,6 +8,8 @@ Rectangle {
 
     property var sessionVm: null
     property var diffViewer: (sessionVm && sessionVm.diffViewer) ? sessionVm.diffViewer : null
+    property bool showBackButton: false
+    signal backRequested()
 
     ColumnLayout {
         anchors.fill: parent
@@ -28,6 +30,34 @@ Rectangle {
                 anchors.leftMargin: 14
                 anchors.rightMargin: 14
                 spacing: 10
+
+                // Back Button (shown when diff view replaces the graph in GitKraken mode)
+                Button {
+                    visible: root.showBackButton
+                    Layout.preferredHeight: 28
+                    background: Rectangle {
+                        color: parent.hovered ? "#334155" : "#1E293B"
+                        radius: 4
+                        border.color: "#475569"
+                        border.width: 1
+                    }
+                    contentItem: RowLayout {
+                        spacing: 6
+                        Text {
+                            text: "←"
+                            color: "#38BDF8"
+                            font.bold: true
+                            font.pixelSize: 13
+                        }
+                        Text {
+                            text: "Torna al grafo"
+                            color: "#F1F5F9"
+                            font.bold: true
+                            font.pixelSize: 11
+                        }
+                    }
+                    onClicked: root.backRequested()
+                }
 
                 Text {
                     text: (root.diffViewer && root.diffViewer.filePath !== "") ? root.diffViewer.filePath : "Nessun file selezionato"
