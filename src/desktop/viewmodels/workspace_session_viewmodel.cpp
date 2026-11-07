@@ -277,6 +277,26 @@ void WorkspaceSessionViewModel::refreshActiveTab() {
     }
 }
 
+void WorkspaceSessionViewModel::checkWorkingTreeUpdates() {
+    QString path = activeRepoPath();
+    if (path.isEmpty()) {
+        return;
+    }
+
+    m_workingTree.refresh(path);
+    bool hasWip = !m_workingTree.isClean();
+    int count = m_workingTree.stagedCount() + m_workingTree.unstagedCount() + m_workingTree.untrackedCount();
+    m_branchManager.setWipStatus(hasWip, count);
+
+    if (m_activeTabIndex >= 0 && m_activeTabIndex < static_cast<int>(m_tabs.size())) {
+        bool dirty = !m_workingTree.isClean();
+        if (m_tabs[static_cast<std::size_t>(m_activeTabIndex)].isDirty != dirty) {
+            m_tabs[static_cast<std::size_t>(m_activeTabIndex)].isDirty = dirty;
+            emit tabsChanged();
+        }
+    }
+}
+
 void WorkspaceSessionViewModel::checkRebaseStatus() {
     QString path = activeRepoPath();
     if (path.isEmpty()) {

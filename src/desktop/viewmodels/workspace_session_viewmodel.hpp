@@ -93,6 +93,7 @@ public:
     Q_INVOKABLE void closeTab(int index);
     Q_INVOKABLE void closeAllTabs();
     Q_INVOKABLE void refreshActiveTab();
+    Q_INVOKABLE void checkWorkingTreeUpdates();
 
     // Rebase
     Q_INVOKABLE bool startRebase(const QString& upstream, const QString& onto = {});

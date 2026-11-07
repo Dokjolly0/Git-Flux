@@ -1562,6 +1562,11 @@ TEST_CASE("WorkspaceSessionViewModel - Watcher Integration & Auto-Refresh", "[de
 
     CHECK(mockOps.getStatusCalled);
 
+    // Test checkWorkingTreeUpdates
+    mockOps.getStatusCalled = false;
+    sessionVm.checkWorkingTreeUpdates();
+    CHECK(mockOps.getStatusCalled);
+
     // Closing repository tab stops watching
     sessionVm.closeTab(0);
     CHECK_FALSE(watcherPort.isWatching(ctx.repoAPath));

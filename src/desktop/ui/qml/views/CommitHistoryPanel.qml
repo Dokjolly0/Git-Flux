@@ -123,14 +123,14 @@ Rectangle {
         return path.substring(lastSlash + 1);
     }
 
-    // Automatically select first commit on model load/update
+    // Automatically select first commit or preserve selection on model load/update
     Connections {
         target: (root.branchManager && root.branchManager.commitHistory) ? root.branchManager.commitHistory : null
         function onModelReset() {
-            root.autoSelectFirstCommit();
+            root.preserveOrAutoSelect();
         }
         function onRowsInserted() {
-            root.autoSelectFirstCommit();
+            root.preserveOrAutoSelect();
         }
     }
 
@@ -227,6 +227,49 @@ Rectangle {
         }
     }
 
+    function preserveOrAutoSelect() {
+        if (!root.branchManager || !root.branchManager.commitHistory) {
+            root.selectedCommit = null;
+            root.commitFiles = [];
+            root.selectedFile = null;
+            root.isDiffOpen = false;
+            root.updateTreeItems();
+            return;
+        }
+        var model = root.branchManager.commitHistory;
+        var rowCount = model.rowCount();
+        if (rowCount === 0) {
+            root.selectedCommit = null;
+            root.commitFiles = [];
+            root.selectedFile = null;
+            root.isDiffOpen = false;
+            root.updateTreeItems();
+            return;
+        }
+
+        if (root.selectedCommit) {
+            var prevSha = root.selectedCommit.sha;
+            if (prevSha === "WIP") {
+                var firstCommit = model.getCommit(0);
+                if (firstCommit && firstCommit.sha === "WIP") {
+                    root.selectCommitByIndex(0);
+                    return;
+                }
+            } else {
+                for (var i = 0; i < rowCount; ++i) {
+                    var c = model.getCommit(i);
+                    if (c && c.sha === prevSha) {
+                        commitTableListView.currentIndex = i;
+                        root.selectedCommit = c;
+                        return;
+                    }
+                }
+            }
+        }
+
+        root.autoSelectFirstCommit();
+    }
+
     function selectCommit(commit) {
         root.selectedCommit = commit;
         root.selectedFile = null;
@@ -257,6 +300,23 @@ Rectangle {
         var files = root.sessionVm.workingTree.getAllWorkingFiles();
         root.commitFiles = files || [];
         root.updateTreeItems();
+
+        if (root.isDiffOpen && root.selectedFile) {
+            var found = false;
+            for (var i = 0; i < root.commitFiles.length; ++i) {
+                if (root.commitFiles[i].path === root.selectedFile.path) {
+                    root.selectedFile = root.commitFiles[i];
+                    found = true;
+                    break;
+                }
+            }
+            if (found && root.sessionVm.commitDiffViewer) {
+                var repoPath = root.sessionVm.activeRepoPath;
+                root.sessionVm.commitDiffViewer.loadDiff(repoPath, root.selectedFile.path, root.selectedFile.isStaged ? "staged" : "unstaged");
+            } else if (!found) {
+                root.closeFileDiff();
+            }
+        }
     }
 
     function updateTreeItems() {

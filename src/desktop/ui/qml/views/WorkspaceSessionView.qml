@@ -850,4 +850,28 @@ Rectangle {
             }
         }
     }
+
+    // ==========================================
+    // LIVE WORKING TREE REACTIVITY (Auto-polling & Window Focus)
+    // ==========================================
+    Timer {
+        id: workingTreeWatcherTimer
+        interval: 1500
+        repeat: true
+        running: root.visible && root.sessionVm && root.sessionVm.hasOpenTabs
+        onTriggered: {
+            if (root.sessionVm) {
+                root.sessionVm.checkWorkingTreeUpdates();
+            }
+        }
+    }
+
+    Connections {
+        target: Qt.application
+        function onStateChanged() {
+            if (Qt.application.state === Qt.ApplicationActive && root.sessionVm && root.sessionVm.hasOpenTabs) {
+                root.sessionVm.checkWorkingTreeUpdates();
+            }
+        }
+    }
 }

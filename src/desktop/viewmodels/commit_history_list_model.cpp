@@ -604,7 +604,7 @@ void CommitHistoryListModel::rebuildGraph() {
 
 void CommitHistoryListModel::applyWipAndRebuild() {
     m_commits = m_rawCommits;
-    if (m_hasWip && !m_commits.empty()) {
+    if (m_hasWip) {
         git::bo::GitCommitLogItem wip;
         wip.sha = "WIP";
         wip.shortSha = "WIP";
@@ -618,7 +618,9 @@ void CommitHistoryListModel::applyWipAndRebuild() {
         wip.committerName = "Modifiche locali";
         wip.committerEmail = "";
         wip.committerDateIso = wip.authorDateIso;
-        wip.parents = {m_commits[0].sha};
+        if (!m_commits.empty()) {
+            wip.parents = {m_commits[0].sha};
+        }
         m_commits.insert(m_commits.begin(), std::move(wip));
     }
     rebuildGraph();
