@@ -61,6 +61,21 @@ public:
                  const std::string& oldName,
                  const std::string& newName) override;
 
+    [[nodiscard]] std::expected<std::vector<gf::git::bo::GitCommitLogItem>, gf::git::ports::GitOpsError>
+    getCommitLog(const std::filesystem::path& repoPath,
+                 const gf::git::bo::CommitLogOptions& options) override;
+
+    [[nodiscard]] std::expected<std::vector<gf::git::bo::GitTag>, gf::git::ports::GitOpsError>
+    listTags(const std::filesystem::path& repoPath) override;
+
+    [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+    createTag(const std::filesystem::path& repoPath,
+              const gf::git::bo::CreateTagOptions& options) override;
+
+    [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+    deleteTag(const std::filesystem::path& repoPath,
+              const std::string& tagName) override;
+
 private:
     gf::git::ports::IGitCommandExecutor& m_executor;
 };

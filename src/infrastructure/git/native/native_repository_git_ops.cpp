@@ -1,4 +1,5 @@
 #include "infrastructure/git/native/native_repository_git_ops.hpp"
+#include "core/modules/git/bl/commit_log_parser.hpp"
 #include "core/modules/git/bl/porcelain_status_parser.hpp"
 #include "core/modules/git/bl/unified_diff_parser.hpp"
 #include "core/modules/git/bo/git_command.hpp"
@@ -941,6 +942,264 @@ NativeRepositoryGitOps::renameBranch(const std::filesystem::path& repoPath,
             .exitCode = execResult->exitCode,
             .message = execResult->stderrBytes,
             .command = "git branch -m"
+        });
+    }
+
+    return {};
+}
+
+std::expected<std::vector<gf::git::bo::GitCommitLogItem>, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::getCommitLog(const std::filesystem::path& repoPath,
+                                     const gf::git::bo::CommitLogOptions& options) {
+    std::vector<std::string> args{
+        "log",
+        "--format=%H%x00%h%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%D%x00%s%x00%b%x1e"
+    };
+
+    if (options.topoOrder) {
+        args.emplace_back("--topo-order");
+    }
+
+    if (options.maxCount > 0) {
+        args.emplace_back("-n");
+        args.push_back(std::to_string(options.maxCount));
+    }
+
+    if (options.skip > 0) {
+        args.push_back("--skip=" + std::to_string(options.skip));
+    }
+
+    if (options.followRenames && options.pathFilter.has_value() && !options.pathFilter->empty()) {
+        args.emplace_back("--follow");
+    }
+
+    if (options.revisionRange.has_value() && !options.revisionRange->empty()) {
+        args.push_back(*options.revisionRange);
+    }
+
+    if (options.pathFilter.has_value() && !options.pathFilter->empty()) {
+        args.emplace_back("--");
+        args.push_back(*options.pathFilter);
+    }
+
+    gf::git::bo::GitCommand cmd{
+        .args = std::move(args),
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile recuperare la cronologia commit: " + execResult.error().message,
+            .command = "git log"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        if (execResult->stderrBytes.find("does not have any commits yet") != std::string::npos ||
+            execResult->stderrBytes.find("non ha ancora alcun commit") != std::string::npos ||
+            execResult->stderrBytes.find("unknown revision or path not in the working tree") != std::string::npos) {
+            return std::vector<gf::git::bo::GitCommitLogItem>{};
+        }
+
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes,
+            .command = "git log"
+        });
+    }
+
+    return gf::git::bl::CommitLogParser::parse(execResult->stdoutBytes);
+}
+
+std::expected<std::vector<gf::git::bo::GitTag>, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::listTags(const std::filesystem::path& repoPath) {
+    gf::git::bo::GitCommand cmd{
+        .args = {
+            "tag",
+            "-l",
+            "--format=%(refname:strip=2)%09%(objectname)%09%(*objectname)%09%(taggername)%09%(taggeremail)%09%(taggerdate:iso-strict)%09%(contents:subject)"
+        },
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile recuperare i tag: " + execResult.error().message,
+            .command = "git tag -l"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes,
+            .command = "git tag -l"
+        });
+    }
+
+    std::vector<gf::git::bo::GitTag> tags;
+    std::string_view out(execResult->stdoutBytes);
+
+    while (!out.empty()) {
+        auto nextLine = out.find('\n');
+        std::string_view line = (nextLine == std::string_view::npos) ? out : out.substr(0, nextLine);
+        out = (nextLine == std::string_view::npos) ? std::string_view{} : out.substr(nextLine + 1);
+
+        if (!line.empty() && line.back() == '\r') {
+            line.remove_suffix(1);
+        }
+        if (line.empty()) {
+            continue;
+        }
+
+        std::vector<std::string_view> fields;
+        std::size_t start = 0;
+        while (start <= line.size()) {
+            auto tab = line.find('\t', start);
+            if (tab == std::string_view::npos) {
+                fields.push_back(line.substr(start));
+                break;
+            }
+            fields.push_back(line.substr(start, tab - start));
+            start = tab + 1;
+        }
+
+        if (fields.size() < 7) {
+            continue;
+        }
+
+        gf::git::bo::GitTag tag;
+        tag.name = std::string(fields[0]);
+        auto objName = fields[1];
+        auto peeledObj = fields[2];
+        tag.taggerName = std::string(fields[3]);
+
+        auto emailStr = std::string(fields[4]);
+        if (emailStr.starts_with('<') && emailStr.ends_with('>') && emailStr.size() >= 2) {
+            emailStr = emailStr.substr(1, emailStr.size() - 2);
+        }
+        tag.taggerEmail = std::move(emailStr);
+
+        tag.tagDateIso = std::string(fields[5]);
+        tag.message = std::string(fields[6]);
+
+        if (!peeledObj.empty()) {
+            tag.type = gf::git::bo::TagType::Annotated;
+            tag.targetSha = std::string(peeledObj);
+        } else {
+            tag.type = gf::git::bo::TagType::Lightweight;
+            tag.targetSha = std::string(objName);
+        }
+
+        tags.push_back(std::move(tag));
+    }
+
+    return tags;
+}
+
+std::expected<void, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::createTag(const std::filesystem::path& repoPath,
+                                  const gf::git::bo::CreateTagOptions& options) {
+    std::vector<std::string> args{"tag"};
+    if (options.force) {
+        args.emplace_back("-f");
+    }
+
+    if (options.message.has_value()) {
+        args.emplace_back("-a");
+        args.push_back(options.name);
+        args.emplace_back("-m");
+        args.push_back(*options.message);
+    } else {
+        args.push_back(options.name);
+    }
+
+    if (options.targetCommit.has_value() && !options.targetCommit->empty()) {
+        args.push_back(*options.targetCommit);
+    }
+
+    gf::git::bo::GitCommand cmd{
+        .args = std::move(args),
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile creare il tag: " + execResult.error().message,
+            .command = "git tag"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+        if (execResult->stderrBytes.find("already exists") != std::string::npos ||
+            execResult->stderrBytes.find("esiste già") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::TagAlreadyExists;
+        } else if (execResult->stderrBytes.find("not a valid object name") != std::string::npos ||
+                   execResult->stderrBytes.find("non è un nome di oggetto valido") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::BranchNotFound;
+        }
+
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = kind,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes,
+            .command = "git tag"
+        });
+    }
+
+    return {};
+}
+
+std::expected<void, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::deleteTag(const std::filesystem::path& repoPath,
+                                  const std::string& tagName) {
+    gf::git::bo::GitCommand cmd{
+        .args = {"tag", "-d", tagName},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile eliminare il tag: " + execResult.error().message,
+            .command = "git tag -d"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+        if (execResult->stderrBytes.find("not found") != std::string::npos ||
+            execResult->stderrBytes.find("non trovato") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::TagNotFound;
+        }
+
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = kind,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes,
+            .command = "git tag -d"
         });
     }
 

@@ -3,6 +3,7 @@
 #include "core/modules/git/bo/branch_models.hpp"
 #include "core/modules/git/bo/commit_options.hpp"
 #include "core/modules/git/bo/diff_models.hpp"
+#include "core/modules/git/bo/history_models.hpp"
 #include "core/modules/git/bo/repo_working_tree_status.hpp"
 
 #include <expected>
@@ -26,6 +27,9 @@ struct GitOpsError {
         InvalidBranchName,
         DirtyWorkingTree,
         InvalidOperation,
+        TagAlreadyExists,
+        TagNotFound,
+        InvalidTagName,
         StorageError
     };
 
@@ -103,6 +107,25 @@ public:
     renameBranch(const std::filesystem::path& repoPath,
                  const std::string& oldName,
                  const std::string& newName) = 0;
+
+    /// Ritorna la cronologia dei commit (git log) con filtri avanzati e ordinamento topologico.
+    [[nodiscard]] virtual std::expected<std::vector<bo::GitCommitLogItem>, GitOpsError>
+    getCommitLog(const std::filesystem::path& repoPath,
+                 const bo::CommitLogOptions& options) = 0;
+
+    /// Ritorna l'elenco dei tag locali (lightweight e annotated).
+    [[nodiscard]] virtual std::expected<std::vector<bo::GitTag>, GitOpsError>
+    listTags(const std::filesystem::path& repoPath) = 0;
+
+    /// Crea un nuovo tag (lightweight se message è vuoto/nullo, annotated se fornito).
+    [[nodiscard]] virtual std::expected<void, GitOpsError>
+    createTag(const std::filesystem::path& repoPath,
+              const bo::CreateTagOptions& options) = 0;
+
+    /// Elimina un tag locale.
+    [[nodiscard]] virtual std::expected<void, GitOpsError>
+    deleteTag(const std::filesystem::path& repoPath,
+              const std::string& tagName) = 0;
 };
 
 } // namespace gf::git::ports

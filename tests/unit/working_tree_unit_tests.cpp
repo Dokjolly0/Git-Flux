@@ -125,6 +125,26 @@ public:
                  const std::string&) override {
         return {};
     }
+
+    [[nodiscard]] std::expected<std::vector<gf::git::bo::GitCommitLogItem>, GitOpsError>
+    getCommitLog(const std::filesystem::path&, const gf::git::bo::CommitLogOptions&) override {
+        return std::vector<gf::git::bo::GitCommitLogItem>{};
+    }
+
+    [[nodiscard]] std::expected<std::vector<gf::git::bo::GitTag>, GitOpsError>
+    listTags(const std::filesystem::path&) override {
+        return std::vector<gf::git::bo::GitTag>{};
+    }
+
+    [[nodiscard]] std::expected<void, GitOpsError>
+    createTag(const std::filesystem::path&, const gf::git::bo::CreateTagOptions&) override {
+        return {};
+    }
+
+    [[nodiscard]] std::expected<void, GitOpsError>
+    deleteTag(const std::filesystem::path&, const std::string&) override {
+        return {};
+    }
 };
 
 } // namespace
