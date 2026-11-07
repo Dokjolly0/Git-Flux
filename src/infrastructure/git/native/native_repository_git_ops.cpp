@@ -1,5 +1,6 @@
 #include "infrastructure/git/native/native_repository_git_ops.hpp"
 #include "core/modules/git/bl/commit_log_parser.hpp"
+#include "core/modules/git/bl/conflict_marker_parser.hpp"
 #include "core/modules/git/bl/porcelain_status_parser.hpp"
 #include "core/modules/git/bl/unified_diff_parser.hpp"
 #include "core/modules/git/bo/git_command.hpp"
@@ -2497,6 +2498,157 @@ NativeRepositoryGitOps::abortCherryPick(const std::filesystem::path& repoPath) {
             .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
             .command = "git cherry-pick --abort"
         });
+    }
+
+    return {};
+}
+
+std::expected<std::string, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::getFileStageContent(const std::filesystem::path& repoPath,
+                                            const std::string& filePath,
+                                            int stage) {
+    gf::git::bo::GitCommand cmd{
+        .args = {"show", ":" + std::to_string(stage) + ":" + filePath},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
+        .timeout = std::chrono::milliseconds{15'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile recuperare stage " + std::to_string(stage) + ": " + execResult.error().message,
+            .command = "git show"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        const std::string err = execResult->stderrBytes;
+        if (err.find("does not exist") != std::string::npos ||
+            err.find("non esiste") != std::string::npos ||
+            err.find("Path '") != std::string::npos ||
+            err.find("fatal:") != std::string::npos) {
+            return std::string{};
+        }
+
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes,
+            .command = "git show"
+        });
+    }
+
+    return execResult->stdoutBytes;
+}
+
+std::expected<gf::git::bo::ConflictFile, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::getConflictFile(const std::filesystem::path& repoPath,
+                                        const std::string& filePath) {
+    gf::git::bo::ConflictFile file;
+    file.filePath = filePath;
+
+    auto fullPath = repoPath / filePath;
+    std::error_code ec;
+    if (!std::filesystem::exists(fullPath, ec)) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::PathNotFound,
+            .exitCode = -1,
+            .message = "File non trovato: " + fullPath.string(),
+            .command = "conflict"
+        });
+    }
+
+    std::ifstream ifs(fullPath, std::ios::binary);
+    if (!ifs) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::StorageError,
+            .exitCode = -1,
+            .message = "Impossibile aprire il file in conflitto: " + fullPath.string(),
+            .command = "conflict"
+        });
+    }
+
+    std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+    file.fullContentWithMarkers = content;
+
+    if (content.find('\0') != std::string::npos) {
+        file.isBinary = true;
+        return file;
+    }
+
+    file.isBinary = false;
+    file.hunks = gf::git::bl::ConflictMarkerParser::parseHunks(content);
+
+    bool hasMissingBase = false;
+    for (const auto& h : file.hunks) {
+        if (h.baseContent.empty()) {
+            hasMissingBase = true;
+            break;
+        }
+    }
+    if (hasMissingBase) {
+        auto stage1 = getFileStageContent(repoPath, filePath, 1);
+        if (stage1 && !stage1->empty()) {
+            for (auto& h : file.hunks) {
+                if (h.baseContent.empty()) {
+                    h.baseContent = *stage1;
+                }
+            }
+        }
+    }
+
+    return file;
+}
+
+std::expected<void, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::applyConflictResolution(const std::filesystem::path& repoPath,
+                                                const gf::git::bo::ApplyConflictResolutionOptions& options) {
+    auto fullPath = repoPath / options.filePath;
+    std::error_code ec;
+    std::filesystem::create_directories(fullPath.parent_path(), ec);
+
+    {
+        std::ofstream ofs(fullPath, std::ios::binary | std::ios::trunc);
+        if (!ofs) {
+            return std::unexpected(gf::git::ports::GitOpsError{
+                .kind = gf::git::ports::GitOpsError::Kind::StorageError,
+                .exitCode = -1,
+                .message = "Impossibile salvare la risoluzione nel file: " + fullPath.string(),
+                .command = "conflict-resolve"
+            });
+        }
+        ofs << options.resolvedContent;
+    }
+
+    if (options.autoStage) {
+        gf::git::bo::GitCommand cmd{
+            .args = {"add", "--", options.filePath},
+            .workingDirectory = repoPath,
+            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+            .timeout = std::chrono::milliseconds{15'000}
+        };
+
+        auto execResult = m_executor.execute(cmd);
+        if (!execResult) {
+            return std::unexpected(gf::git::ports::GitOpsError{
+                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+                .exitCode = -1,
+                .message = "Impossibile eseguire stage del file risolto: " + execResult.error().message,
+                .command = "git add"
+            });
+        }
+
+        if (execResult->exitCode != 0) {
+            return std::unexpected(gf::git::ports::GitOpsError{
+                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+                .exitCode = execResult->exitCode,
+                .message = execResult->stderrBytes,
+                .command = "git add"
+            });
+        }
     }
 
     return {};

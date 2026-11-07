@@ -250,6 +250,21 @@ public:
     abortCherryPick(const std::filesystem::path&) override {
         return {};
     }
+
+    [[nodiscard]] std::expected<gf::git::bo::ConflictFile, GitOpsError>
+    getConflictFile(const std::filesystem::path&, const std::string&) override {
+        return gf::git::bo::ConflictFile{};
+    }
+
+    [[nodiscard]] std::expected<std::string, GitOpsError>
+    getFileStageContent(const std::filesystem::path&, const std::string&, int) override {
+        return std::string{};
+    }
+
+    [[nodiscard]] std::expected<void, GitOpsError>
+    applyConflictResolution(const std::filesystem::path&, const gf::git::bo::ApplyConflictResolutionOptions&) override {
+        return {};
+    }
 };
 
 } // namespace

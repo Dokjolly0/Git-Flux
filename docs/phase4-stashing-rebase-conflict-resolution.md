@@ -1,6 +1,6 @@
 # Git Flux — Specifica e Stato di Avanzamento Fase 4 (Stashing, Rebase & Advanced Conflict Resolution)
 
-> **Stato:** Completato Task 4.2 — Rebase & Cherry-Pick Engine | Prossimo: Task 4.3 — 3-Way Conflict Resolver Engine  
+> **Stato:** Completato Task 4.3 — 3-Way Conflict Resolver Engine | Prossimo: Task 4.4 — Stash Manager & 3-Way Conflict Resolver UI  
 > **Architettura di riferimento:** [plan.md](plan.md) (Sezioni 2.1, 7, 8, 15)  
 > **Wireframe UI di riferimento:** [`docs/ui/git-flux-ui-v2.drawio`](ui/git-flux-ui-v2.drawio) (Pagine 05, 07)  
 
@@ -14,7 +14,7 @@ La Fase 4 completa le capacità avanzate di gestione dell'albero di lavoro, risc
 | :--- | :--- | :--- | :---: |
 | **4.1** | **Stashing Engine** | Domain BO (`GitStashItem`, `StashPushOptions`), port `IRepositoryGitOps`, service `GitStashService` (validazione, per-repo locking), esecuzione nativa `git stash list/push/pop/apply/drop/clear` con parser formattato deterministico. | **Completato** |
 | **4.2** | **Rebase & Cherry-Pick Engine** | Domain BO (`RebaseOptions`, `RebaseResult`, `RebaseStatus`, `CherryPickOptions`), port `IRepositoryGitOps`, service `GitRebaseService` con gestione stati in-progress (`rebase --continue/abort/skip`) e cherry-pick atomico. | **Completato** |
-| **4.3** | **3-Way Conflict Resolver Engine** | Domain BO (`ConflictFile`, `ConflictHunk`, `ConflictSide`, `ConflictResolution`), estrazione precisa degli stage 1 (base), 2 (ours), 3 (theirs) tramite `git show :stage:path` o marker di conflitto, applicazione risoluzioni e staging atomico. | *In coda* |
+| **4.3** | **3-Way Conflict Resolver Engine** | Domain BO (`ConflictFile`, `ConflictHunk`, `ConflictSide`, `ApplyConflictResolutionOptions`), estrazione precisa degli stage 1 (base), 2 (ours), 3 (theirs) tramite `git show :stage:path` o marker di conflitto, applicazione risoluzioni e staging atomico. | **Completato** |
 | **4.4** | **Stash Manager & 3-Way Conflict Resolver UI** | ViewModels MVVM (`StashListModel`, `ConflictResolverViewModel`) e viste QML (`StashManagerModal`, `ConflictResolverModal`). | *In coda* |
 
 ---
@@ -98,5 +98,41 @@ La Fase 4 completa le capacità avanzate di gestione dell'albero di lavoro, risc
   - `src/infrastructure/git/qt/qt_git_executor.cpp`: allineamento variabili ambiente.
   - `CMakeLists.txt`: registrazione di `git_rebase_service.cpp`, `rebase_unit_tests.cpp`, `rebase_integration_tests.cpp`.
 - **Metriche Test:** 135 asserzioni superate (52 unitari + 83 integrazione). Zero errori, zero warning con `-Werror`.
+
+---
+
+## 4. Dettaglio Task 4.3 — 3-Way Conflict Resolver Engine
+
+### Obiettivi e Principi Architetturali
+- **Zero-Qt nel Core:** Modelli BO puri (`ConflictSide`, `ConflictHunk`, `ConflictFile`, `ApplyConflictResolutionOptions`), parser marker `ConflictMarkerParser` e service `GitConflictService` rigorosamente separati da Qt.
+- **Parser Marker Robusto e Flessibile:**
+  - Parsing a stati per rilevare marker `<<<<<<<`, `|||||||` (diff3 style), `=======`, `>>>>>>>`.
+  - Estrazione multilinea preservando il contesto intermedio e i terminatori di riga.
+  - Ricostruzione deterministica del file finale sostituendo ogni hunk con la relativa risoluzione (Base, Ours, Theirs o Custom).
+- **Estrazione Granulare degli Stage di Git:**
+  - `git show :1:<path>`: comune antenato (Base).
+  - `git show :2:<path>`: ramo corrente (Ours).
+  - `git show :3:<path>`: ramo in arrivo (Theirs).
+  - Fallback automatico per file senza diff3 nel working tree arricchendo i blocchi mancanti.
+- **Applicazione Risoluzione Atomica:**
+  - Scrittura del contenuto unificato sul filesystem.
+  - Staging automatico opzionale (`git add -- <path>`) per marcare il conflitto come risolto.
+  - Validazione che lo status del working tree passi da `Conflicted` a staged `Modified`.
+- **Protezione Concorrenza:**
+  Mutazioni protette con lock mutex per-repository via `RepositoryLockCoordinator`.
+
+### Risultati del Task 4.3
+- **File Creati:**
+  - `src/core/modules/git/bo/conflict_models.hpp`: modelli di dominio per conflitti, hunk e opzioni di risoluzione.
+  - `src/core/modules/git/bl/conflict_marker_parser.hpp` e `.cpp`: parser a stati puri e ricostruttore di file risolti.
+  - `src/core/modules/git/bl/git_conflict_service.hpp` e `.cpp`: service applicativo di risoluzione conflitti.
+  - `tests/unit/conflict_unit_tests.cpp`: test unitari del parser e del service con mock (55 asserzioni Catch2).
+  - `tests/integration/conflict_integration_tests.cpp`: test di integrazione su repository Git reale con merge divergente in conflitto (38 asserzioni Catch2).
+- **File Modificati:**
+  - `src/core/modules/git/ports/repository_git_ops.hpp`: estensione port con i metodi `getConflictFile`, `getFileStageContent`, `applyConflictResolution`.
+  - `src/infrastructure/git/native/native_repository_git_ops.hpp` e `.cpp`: implementazione comandi nativi `git show :stage:path`, estrazione file conflitto e salvataggio/staging atomico.
+  - `CMakeLists.txt`: registrazione di `conflict_marker_parser.cpp`, `git_conflict_service.cpp`, `conflict_unit_tests.cpp`, `conflict_integration_tests.cpp`.
+- **Metriche Test:** 93 asserzioni superate (55 unitari + 38 integrazione). Zero errori, zero warning con `-Werror`.
+
 
 

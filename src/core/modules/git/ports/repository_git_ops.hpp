@@ -8,6 +8,7 @@
 #include "core/modules/git/bo/repo_working_tree_status.hpp"
 #include "core/modules/git/bo/stash_models.hpp"
 #include "core/modules/git/bo/rebase_models.hpp"
+#include "core/modules/git/bo/conflict_models.hpp"
 
 #include <expected>
 #include <filesystem>
@@ -237,6 +238,22 @@ public:
     /// Annulla un cherry-pick in corso (`git cherry-pick --abort`).
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     abortCherryPick(const std::filesystem::path& repoPath) = 0;
+
+    /// Ispeziona un file in conflitto ed estrae gli hunk con marker e stages.
+    [[nodiscard]] virtual std::expected<bo::ConflictFile, GitOpsError>
+    getConflictFile(const std::filesystem::path& repoPath,
+                    const std::string& filePath) = 0;
+
+    /// Estrae il contenuto di uno stage specifico per un file (1=base, 2=ours, 3=theirs) via `git show :<stage>:<path>`.
+    [[nodiscard]] virtual std::expected<std::string, GitOpsError>
+    getFileStageContent(const std::filesystem::path& repoPath,
+                        const std::string& filePath,
+                        int stage) = 0;
+
+    /// Salva il contenuto risolto di un file ed esegue facoltativamente lo staging (`git add`).
+    [[nodiscard]] virtual std::expected<void, GitOpsError>
+    applyConflictResolution(const std::filesystem::path& repoPath,
+                            const bo::ApplyConflictResolutionOptions& options) = 0;
 };
 
 } // namespace gf::git::ports

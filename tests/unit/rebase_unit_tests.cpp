@@ -161,6 +161,9 @@ public:
     std::expected<void, gf::git::ports::GitOpsError> stashApply(const std::filesystem::path&, const gf::git::bo::StashApplyOptions&) override { return {}; }
     std::expected<void, gf::git::ports::GitOpsError> stashDrop(const std::filesystem::path&, std::size_t) override { return {}; }
     std::expected<void, gf::git::ports::GitOpsError> stashClear(const std::filesystem::path&) override { return {}; }
+    std::expected<gf::git::bo::ConflictFile, gf::git::ports::GitOpsError> getConflictFile(const std::filesystem::path&, const std::string&) override { return gf::git::bo::ConflictFile{}; }
+    std::expected<std::string, gf::git::ports::GitOpsError> getFileStageContent(const std::filesystem::path&, const std::string&, int) override { return std::string{}; }
+    std::expected<void, gf::git::ports::GitOpsError> applyConflictResolution(const std::filesystem::path&, const gf::git::bo::ApplyConflictResolutionOptions&) override { return {}; }
 };
 
 } // namespace

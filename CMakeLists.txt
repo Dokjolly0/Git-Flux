@@ -60,6 +60,8 @@ add_library(gf_application STATIC
     src/core/modules/git/bl/git_remote_merge_service.cpp
     src/core/modules/git/bl/git_stash_service.cpp
     src/core/modules/git/bl/git_rebase_service.cpp
+    src/core/modules/git/bl/conflict_marker_parser.cpp
+    src/core/modules/git/bl/git_conflict_service.cpp
     src/core/modules/repositories/bl/repository_service.cpp
     src/core/modules/groups/bl/group_service.cpp
     src/core/modules/workspaces/bl/workspace_service.cpp
@@ -284,6 +286,7 @@ if(GF_BUILD_TESTING)
         tests/unit/remote_merge_unit_tests.cpp
         tests/unit/stash_unit_tests.cpp
         tests/unit/rebase_unit_tests.cpp
+        tests/unit/conflict_unit_tests.cpp
     )
     target_link_libraries(gf_unit_tests PRIVATE
         gf_git_cli_native
@@ -305,6 +308,7 @@ if(GF_BUILD_TESTING)
         tests/integration/remote_merge_integration_tests.cpp
         tests/integration/stash_integration_tests.cpp
         tests/integration/rebase_integration_tests.cpp
+        tests/integration/conflict_integration_tests.cpp
     )
     target_link_libraries(gf_integration_tests PRIVATE
         gf_git_cli_native

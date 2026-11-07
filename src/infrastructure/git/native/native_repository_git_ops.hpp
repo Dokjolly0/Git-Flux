@@ -152,6 +152,19 @@ public:
     [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
     abortCherryPick(const std::filesystem::path& repoPath) override;
 
+    [[nodiscard]] std::expected<gf::git::bo::ConflictFile, gf::git::ports::GitOpsError>
+    getConflictFile(const std::filesystem::path& repoPath,
+                    const std::string& filePath) override;
+
+    [[nodiscard]] std::expected<std::string, gf::git::ports::GitOpsError>
+    getFileStageContent(const std::filesystem::path& repoPath,
+                        const std::string& filePath,
+                        int stage) override;
+
+    [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+    applyConflictResolution(const std::filesystem::path& repoPath,
+                            const gf::git::bo::ApplyConflictResolutionOptions& options) override;
+
 private:
     gf::git::ports::IGitCommandExecutor& m_executor;
 };

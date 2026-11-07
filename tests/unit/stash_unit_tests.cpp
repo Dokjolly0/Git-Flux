@@ -177,6 +177,9 @@ public:
     std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError> pushRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions&) override { return gf::git::bo::RemoteOperationResult{.success = true}; }
     std::expected<gf::git::bo::MergeResult, gf::git::ports::GitOpsError> mergeBranch(const std::filesystem::path&, const gf::git::bo::MergeOptions&) override { return gf::git::bo::MergeResult{.status = gf::git::bo::MergeStatus::Merged}; }
     std::expected<void, gf::git::ports::GitOpsError> abortMerge(const std::filesystem::path&) override { return {}; }
+    std::expected<gf::git::bo::ConflictFile, gf::git::ports::GitOpsError> getConflictFile(const std::filesystem::path&, const std::string&) override { return gf::git::bo::ConflictFile{}; }
+    std::expected<std::string, gf::git::ports::GitOpsError> getFileStageContent(const std::filesystem::path&, const std::string&, int) override { return std::string{}; }
+    std::expected<void, gf::git::ports::GitOpsError> applyConflictResolution(const std::filesystem::path&, const gf::git::bo::ApplyConflictResolutionOptions&) override { return {}; }
 };
 
 } // namespace
