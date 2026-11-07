@@ -65,6 +65,8 @@ add_library(gf_application STATIC
     src/core/modules/git/bl/fs_event_classifier.cpp
     src/core/modules/git/bl/fs_event_debouncer.cpp
     src/core/modules/git/bl/git_repository_watcher_service.cpp
+    src/core/modules/git/bl/async_git_service.cpp
+    src/core/modules/tasks/bl/background_task_runner.cpp
     src/core/modules/repositories/bl/repository_service.cpp
     src/core/modules/groups/bl/group_service.cpp
     src/core/modules/workspaces/bl/workspace_service.cpp
@@ -306,6 +308,7 @@ if(GF_BUILD_TESTING)
         tests/unit/rebase_unit_tests.cpp
         tests/unit/conflict_unit_tests.cpp
         tests/unit/fs_watcher_unit_tests.cpp
+        tests/unit/task_runner_unit_tests.cpp
     )
     target_link_libraries(gf_unit_tests PRIVATE
         gf_git_cli_native
@@ -330,6 +333,7 @@ if(GF_BUILD_TESTING)
         tests/integration/rebase_integration_tests.cpp
         tests/integration/conflict_integration_tests.cpp
         tests/integration/fs_watcher_integration_tests.cpp
+        tests/integration/async_git_integration_tests.cpp
     )
     target_link_libraries(gf_integration_tests PRIVATE
         gf_git_cli_native

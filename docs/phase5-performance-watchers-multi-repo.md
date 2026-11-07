@@ -1,6 +1,6 @@
 # Git Flux — Specifica e Stato di Avanzamento Fase 5 (Performance, Background Workers, Watchers & Multi-Repo Automation)
 
-> **Stato:** Completato Task 5.1 — File System Watcher & Debouncing Engine | Prossimo: Task 5.2 — Background Task Runner & Async Git Execution  
+> **Stato:** Completato Task 5.2 — Background Task Runner & Async Git Execution | Prossimo: Task 5.3 — Multi-Repository Batch Coordinator  
 > **Architettura di riferimento:** [plan.md](plan.md) (Sezioni 9.3, 9.4, 10, 11)  
 > **Wireframe UI di riferimento:** [`docs/ui/git-flux-ui-v2.drawio`](ui/git-flux-ui-v2.drawio) (Pagine 01, 02, 05)  
 
@@ -13,7 +13,7 @@ La Fase 5 implementa la reattività ad alte prestazioni, il monitoraggio del fil
 | Task | Area / Modulo | Descrizione | Stato |
 | :--- | :--- | :--- | :---: |
 | **5.1** | **File System Watcher & Debouncing Engine** | Domain BO (`FsChangeEvent`, `FsDebouncedBatch`, `FsChangeClassification`), port `IFsWatcherPort`, classificazione eventi `.git` vs working tree, debouncer temporale a finestra di quiete e `GitRepositoryWatcherService`. | **Completato** |
-| **5.2** | **Background Task Runner & Async Git Execution** | Worker pool e task runner asincrono con `std::stop_token` per cancellazione, telemetria progressi thread-safe e coordinamento lock non bloccante. | *In coda* |
+| **5.2** | **Background Task Runner & Async Git Execution** | Worker pool e task runner asincrono con `std::stop_token` per cancellazione, telemetria progressi thread-safe e coordinamento lock non bloccante. | **Completato** |
 | **5.3** | **Multi-Repository Batch Coordinator** | Operazioni aggregate su gruppi/workspace (Fetch All, Pull All, Bulk Status) con limitatore di parallelismo (concurrency limiter/semaforo) e report atomico per-repository. | *In coda* |
 | **5.4** | **Reactivity & Multi-Repo UI Integration** | Auto-refresh reattivo nei ViewModels e UI su eventi filesystem, pannello di controllo batch e indicatori di operazione in background. | *In coda* |
 
@@ -46,6 +46,37 @@ La Fase 5 implementa la reattività ad alte prestazioni, il monitoraggio del fil
   - `tests/integration/fs_watcher_integration_tests.cpp`: test di integrazione su repository Git reale con modifiche esterne a file, branch e index.
 - **File Modificati:**
   - `CMakeLists.txt`: aggiunta dei sorgenti a `gf_application`, definizione libreria `gf_watcher_native` e registrazione test unitari e di integrazione.
+- **Metriche Test:** Suite completa passata con successo (3/3 test suite su `linux-qt-release`, 2/2 su `linux-core-release`, zero warning con `-Werror`).
+
+---
+
+## 3. Dettaglio Task 5.2 — Background Task Runner & Async Git Execution
+
+### Obiettivi e Principi Architetturali
+- **Zero-Qt nel Core:** Worker pool e logica asincrona scritti interamente con thread nativi C++20 (`std::jthread`), `std::stop_token` per cancellazione cooperativa e synchronization primitives standard (`std::mutex`, `std::condition_variable`).
+- **Modelli di Dominio dei Task (`TaskReport`, `TaskProgress`, `TaskState`):**
+  - Tracciamento esaustivo degli stati (`Pending`, `Running`, `Completed`, `Failed`, `Cancelled`).
+  - Streaming dei progressi (percentuale numerica e stringa di stato descrittiva).
+  - Telemetria precisa della durata di esecuzione in millisecondi.
+- **Task Runner a Priorità con Prevenzione Starvation:**
+  - Coda con priorità (`High`, `Normal`, `Low`) con ordinamento FIFO a parità di priorità.
+  - Cancellazione sia dei task già in esecuzione che di quelli ancora in attesa in coda.
+  - Metodi di sincronizzazione e coordinamento (`waitForAll`, `shutdown`).
+- **Integrazione con Git (`AsyncGitService`):**
+  - Esecuzione asincrona di comandi potenzialmente pesanti o legati alla rete (`fetchRemoteAsync`, `pullRemoteAsync`, `pushRemoteAsync`, `refreshWorkingTreeAsync`).
+  - Callback atomici di completamento con `std::expected` e streaming progressi.
+  - Cancellazione cooperativa dell'operazione Git.
+
+### Risultati del Task 5.2
+- **File Creati:**
+  - `src/core/modules/tasks/bo/task_models.hpp`: modelli di stato, progresso e report dei task.
+  - `src/core/modules/tasks/ports/task_progress_sink.hpp`: interfaccia port per il reporting dei progressi e l'interrogazione dello stop token.
+  - `src/core/modules/tasks/bl/background_task_runner.hpp` e `.cpp`: worker pool nativo multi-thread a priorità con cancellazione cooperativa.
+  - `src/core/modules/git/bl/async_git_service.hpp` e `.cpp`: service Git asincrono per fetch, pull, push e refresh status non bloccanti.
+  - `tests/unit/task_runner_unit_tests.cpp`: test unitari del runner (esecuzione, fallimento, progress streaming, cancellazione cooperativa, priorità e stress test concorrente).
+  - `tests/integration/async_git_integration_tests.cpp`: test di integrazione su repository Git reale per scansione asincrona, fetch e cancellazione.
+- **File Modificati:**
+  - `CMakeLists.txt`: aggiunta dei sorgenti a `gf_application` e registrazione delle nuove suite di test.
 - **Metriche Test:** Suite completa passata con successo (3/3 test suite su `linux-qt-release`, 2/2 su `linux-core-release`, zero warning con `-Werror`).
 
 ---
