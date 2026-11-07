@@ -50,6 +50,7 @@ target_include_directories(gf_domain INTERFACE
 add_library(gf_application STATIC
     src/core/modules/git/bl/porcelain_status_parser.cpp
     src/core/modules/git/bl/operation_coordinator.cpp
+    src/core/modules/git/bl/git_working_tree_service.cpp
     src/core/modules/repositories/bl/repository_service.cpp
     src/core/modules/groups/bl/group_service.cpp
     src/core/modules/workspaces/bl/workspace_service.cpp
@@ -106,6 +107,7 @@ add_library(gf_git_cli_native STATIC
     src/infrastructure/git/git_discovery.cpp
     src/infrastructure/git/native/native_git_executor.cpp
     src/infrastructure/git/native/native_git_batch_session.cpp
+    src/infrastructure/git/native/native_repository_git_ops.cpp
 )
 target_include_directories(gf_git_cli_native PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
@@ -248,6 +250,7 @@ if(GF_BUILD_TESTING)
         tests/unit/core_git_unit_tests.cpp
         tests/unit/domain_entities_unit_tests.cpp
         tests/unit/services_unit_tests.cpp
+        tests/unit/working_tree_unit_tests.cpp
     )
     target_link_libraries(gf_unit_tests PRIVATE
         gf_git_cli_native
@@ -261,6 +264,7 @@ if(GF_BUILD_TESTING)
     add_executable(gf_integration_tests
         tests/integration/suite_a_git_integration_tests.cpp
         tests/integration/sqlite_stores_integration_tests.cpp
+        tests/integration/working_tree_integration_tests.cpp
     )
     target_link_libraries(gf_integration_tests PRIVATE
         gf_git_cli_native
