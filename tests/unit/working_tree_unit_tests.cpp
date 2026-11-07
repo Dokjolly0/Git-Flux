@@ -145,6 +145,46 @@ public:
     deleteTag(const std::filesystem::path&, const std::string&) override {
         return {};
     }
+
+    [[nodiscard]] std::expected<std::vector<gf::git::bo::GitRemote>, GitOpsError>
+    listRemotes(const std::filesystem::path&) override {
+        return std::vector<gf::git::bo::GitRemote>{};
+    }
+
+    [[nodiscard]] std::expected<void, GitOpsError>
+    addRemote(const std::filesystem::path&, const std::string&, const std::string&) override {
+        return {};
+    }
+
+    [[nodiscard]] std::expected<void, GitOpsError>
+    removeRemote(const std::filesystem::path&, const std::string&) override {
+        return {};
+    }
+
+    [[nodiscard]] std::expected<gf::git::bo::RemoteOperationResult, GitOpsError>
+    fetchRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions&) override {
+        return gf::git::bo::RemoteOperationResult{.success = true};
+    }
+
+    [[nodiscard]] std::expected<gf::git::bo::RemoteOperationResult, GitOpsError>
+    pullRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions&) override {
+        return gf::git::bo::RemoteOperationResult{.success = true};
+    }
+
+    [[nodiscard]] std::expected<gf::git::bo::RemoteOperationResult, GitOpsError>
+    pushRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions&) override {
+        return gf::git::bo::RemoteOperationResult{.success = true};
+    }
+
+    [[nodiscard]] std::expected<gf::git::bo::MergeResult, GitOpsError>
+    mergeBranch(const std::filesystem::path&, const gf::git::bo::MergeOptions&) override {
+        return gf::git::bo::MergeResult{.status = gf::git::bo::MergeStatus::Merged};
+    }
+
+    [[nodiscard]] std::expected<void, GitOpsError>
+    abortMerge(const std::filesystem::path&) override {
+        return {};
+    }
 };
 
 } // namespace

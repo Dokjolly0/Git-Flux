@@ -1,6 +1,6 @@
 # Git Flux — Specifica e Stato di Avanzamento Fase 3 (Branching, Merging & Remote Operations)
 
-> **Stato:** Task 3.1 & 3.2 Completati | In avvio Task 3.3 — Remote Operations & Merge Engine  
+> **Stato:** Task 3.1, 3.2 & 3.3 Completati | In avvio Task 3.4 — Branch Manager & Commit Graph UI  
 > **Architettura di riferimento:** [plan.md](plan.md) (Sezioni 2.1, 7, 8, 15)  
 > **Wireframe UI di riferimento:** [`docs/ui/git-flux-ui-v2.drawio`](ui/git-flux-ui-v2.drawio) (Pagine 07, 08)  
 
@@ -14,8 +14,8 @@ La Fase 3 estende Git Flux per gestire la topologia del repository (branch, tag,
 | :--- | :--- | :--- | :---: |
 | **3.1** | **Branching & Checkout Engine** | Domain BO (`GitBranch`, `BranchType`, `CreateBranchOptions`, `CheckoutOptions`), port `IRepositoryGitOps`, service `GitBranchService` (con validatore `git-check-ref-format` e locking atomico), implementazione nativa `for-each-ref` e `checkout`. | **Completato** |
 | **3.2** | **Tagging & Commit History / Log Engine** | Domain BO (`GitCommitLogItem`, `GitTag`, `TagType`), parser deterministico record separator (`\x1e`/`\0`), service `GitHistoryService` con validazione tag, filtri e paginazione `git log`, supporto tag lightweight e annotated. | **Completato** |
-| **3.3** | **Remote Operations & Merge Engine** | Gestione remotes (`listRemotes`, `fetch`, `pull`, `push`), rilevamento conflitti di merge a 3 vie e marker di conflitto. | **In corso** |
-| **3.4** | **Branch Manager & Commit Graph UI** | ViewModels MVVM (`BranchListModel`, `BranchManagerViewModel`, `CommitHistoryViewModel`) e viste QML (`BranchSwitcherDropdown`, `BranchManagerModal`, `CommitHistoryGraphView`). | *In coda* |
+| **3.3** | **Remote Operations & Merge Engine** | Gestione remotes (`listRemotes`, `addRemote`, `removeRemote`, `fetch`, `pull`, `push`), merge automatico (FF e 3-way no-ff), rilevamento conflitti di merge e abort merge atomico. | **Completato** |
+| **3.4** | **Branch Manager & Commit Graph UI** | ViewModels MVVM (`BranchListModel`, `BranchManagerViewModel`, `CommitHistoryViewModel`) e viste QML (`BranchSwitcherDropdown`, `BranchManagerModal`, `CommitHistoryGraphView`). | **In corso** |
 
 ---
 
@@ -56,7 +56,32 @@ La Fase 3 estende Git Flux per gestire la topologia del repository (branch, tag,
 - `tests/unit/history_unit_tests.cpp`: Unit test su parsing log, merge commit, validazione tag e deleghe (37 asserzioni).
 - `tests/integration/history_integration_tests.cpp`: Test di integrazione su repository Git reale con merge commit a 2 genitori, paginazione, filtri su file, tag lightweight e annotated (115 asserzioni).
 
+---
+
+## 4. Dettaglio Task 3.3 — Remote Operations & Merge Engine (Completato)
+
+### Obiettivi e Principi Architetturali
+- **Gestione Flessibile dei Remotes:** Lettura e separazione automatica delle URL di fetch e push via `git remote -v`, validazione dei nomi dei remote, aggiunta e rimozione sicura.
+- **Sincronizzazione di Rete Robusta (Fetch, Pull, Push):**
+  - `fetchRemote`: supporto opzioni `--prune`, `--tags`, `--force`.
+  - `pullRemote`: rilevamento conflitti di merge concorrenti (`MergeConflict`) ed errori di autenticazione (`NetworkAuthenticationFailed`).
+  - `pushRemote`: supporto `--set-upstream` (`-u`), `--force-with-lease`, rilevamento rigetti remoti (`RemoteRejected`).
+- **Merge Engine Completo con Rilevamento Conflitti:**
+  - Classificazione accurata dello stato: `UpToDate`, `FastForward`, `Merged`, `Conflict`, `Failed`.
+  - Supporto per merge con `--no-ff` e `--squash`.
+  - In caso di conflitto, estrazione atomica dei file bloccati tramite `git diff --name-only --diff-filter=U`.
+  - Possibilità di annullamento immediato tramite `abortMerge` (`git merge --abort`) con ripristino verificato dell'albero di lavoro allo stato pre-merge.
+- **Concorrenza Thread-Safe:** Tutte le mutazioni remote e di merge sono serializzate su ciascun repository tramite `RepositoryLockCoordinator`.
+
+### File Introdotti / Modificati
+- `src/core/modules/git/bo/remote_merge_models.hpp`: Modelli puri `GitRemote`, `RemoteOperationOptions`, `RemoteOperationResult`, `MergeStatus`, `MergeOptions`, `MergeResult`.
+- `src/core/modules/git/ports/repository_git_ops.hpp`: Metodi virtuali `listRemotes`, `addRemote`, `removeRemote`, `fetchRemote`, `pullRemote`, `pushRemote`, `mergeBranch`, `abortMerge` ed errori tipizzati `RemoteNotFound`, `RemoteAlreadyExists`, `NetworkAuthenticationFailed`, `RemoteRejected`, `MergeConflict`.
+- `src/core/modules/git/bl/git_remote_merge_service.hpp` & `.cpp`: Logica applicativa, validatore `isValidRemoteName`, locking coordinate e deleghe sicure.
+- `src/infrastructure/git/native/native_repository_git_ops.hpp` & `.cpp`: Esecuzione CLI nativa di `remote -v/add/remove`, `fetch`, `pull`, `push`, `merge`, `merge --abort` e `diff --diff-filter=U`.
+- `tests/unit/remote_merge_unit_tests.cpp`: Unit test su validazione nomi remote, opzioni e deleghe (34 asserzioni).
+- `tests/integration/remote_merge_integration_tests.cpp`: Test di integrazione su bare remote reale + 2 repository locali sincronizzati, fast-forward, 3-way merge, rilevamento conflitti e `abortMerge` (99 asserzioni).
+
 ### Risultati di Verifica
 - **Unit Tests:** `gf_unit_tests` 100% passed.
-- **Integration Tests:** `gf_integration_tests` 100% passed.
+- **Integration Tests:** `gf_integration_tests` 100% passed (99 asserzioni nel caso remote/merge).
 - **Compilazione Clean:** Compilazione con `-Werror` su GCC 14/Ninja senza warning sia su preset `linux-core-release` (Zero-Qt) che su preset `linux-qt-release`.

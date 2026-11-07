@@ -76,6 +76,37 @@ public:
     deleteTag(const std::filesystem::path& repoPath,
               const std::string& tagName) override;
 
+    [[nodiscard]] std::expected<std::vector<gf::git::bo::GitRemote>, gf::git::ports::GitOpsError>
+    listRemotes(const std::filesystem::path& repoPath) override;
+
+    [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+    addRemote(const std::filesystem::path& repoPath,
+              const std::string& name,
+              const std::string& url) override;
+
+    [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+    removeRemote(const std::filesystem::path& repoPath,
+                 const std::string& name) override;
+
+    [[nodiscard]] std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
+    fetchRemote(const std::filesystem::path& repoPath,
+                const gf::git::bo::RemoteOperationOptions& options) override;
+
+    [[nodiscard]] std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
+    pullRemote(const std::filesystem::path& repoPath,
+               const gf::git::bo::RemoteOperationOptions& options) override;
+
+    [[nodiscard]] std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
+    pushRemote(const std::filesystem::path& repoPath,
+               const gf::git::bo::RemoteOperationOptions& options) override;
+
+    [[nodiscard]] std::expected<gf::git::bo::MergeResult, gf::git::ports::GitOpsError>
+    mergeBranch(const std::filesystem::path& repoPath,
+                const gf::git::bo::MergeOptions& options) override;
+
+    [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+    abortMerge(const std::filesystem::path& repoPath) override;
+
 private:
     gf::git::ports::IGitCommandExecutor& m_executor;
 };

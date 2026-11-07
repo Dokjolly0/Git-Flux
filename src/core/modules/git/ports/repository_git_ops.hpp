@@ -4,6 +4,7 @@
 #include "core/modules/git/bo/commit_options.hpp"
 #include "core/modules/git/bo/diff_models.hpp"
 #include "core/modules/git/bo/history_models.hpp"
+#include "core/modules/git/bo/remote_merge_models.hpp"
 #include "core/modules/git/bo/repo_working_tree_status.hpp"
 
 #include <expected>
@@ -30,6 +31,11 @@ struct GitOpsError {
         TagAlreadyExists,
         TagNotFound,
         InvalidTagName,
+        RemoteNotFound,
+        RemoteAlreadyExists,
+        NetworkAuthenticationFailed,
+        RemoteRejected,
+        MergeConflict,
         StorageError
     };
 
@@ -126,6 +132,45 @@ public:
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     deleteTag(const std::filesystem::path& repoPath,
               const std::string& tagName) = 0;
+
+    /// Ritorna l'elenco dei remote configurati (`git remote -v`).
+    [[nodiscard]] virtual std::expected<std::vector<bo::GitRemote>, GitOpsError>
+    listRemotes(const std::filesystem::path& repoPath) = 0;
+
+    /// Aggiunge un nuovo remote (`git remote add <name> <url>`).
+    [[nodiscard]] virtual std::expected<void, GitOpsError>
+    addRemote(const std::filesystem::path& repoPath,
+              const std::string& name,
+              const std::string& url) = 0;
+
+    /// Rimuove un remote configurato (`git remote remove <name>`).
+    [[nodiscard]] virtual std::expected<void, GitOpsError>
+    removeRemote(const std::filesystem::path& repoPath,
+                 const std::string& name) = 0;
+
+    /// Esegue il fetch da un remote (`git fetch`).
+    [[nodiscard]] virtual std::expected<bo::RemoteOperationResult, GitOpsError>
+    fetchRemote(const std::filesystem::path& repoPath,
+                const bo::RemoteOperationOptions& options) = 0;
+
+    /// Esegue il pull da un remote (`git pull`).
+    [[nodiscard]] virtual std::expected<bo::RemoteOperationResult, GitOpsError>
+    pullRemote(const std::filesystem::path& repoPath,
+               const bo::RemoteOperationOptions& options) = 0;
+
+    /// Esegue il push verso un remote (`git push`).
+    [[nodiscard]] virtual std::expected<bo::RemoteOperationResult, GitOpsError>
+    pushRemote(const std::filesystem::path& repoPath,
+               const bo::RemoteOperationOptions& options) = 0;
+
+    /// Esegue il merge di un branch o commit nel branch attivo (`git merge`).
+    [[nodiscard]] virtual std::expected<bo::MergeResult, GitOpsError>
+    mergeBranch(const std::filesystem::path& repoPath,
+                const bo::MergeOptions& options) = 0;
+
+    /// Annulla un merge in corso (`git merge --abort`).
+    [[nodiscard]] virtual std::expected<void, GitOpsError>
+    abortMerge(const std::filesystem::path& repoPath) = 0;
 };
 
 } // namespace gf::git::ports

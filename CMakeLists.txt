@@ -57,6 +57,7 @@ add_library(gf_application STATIC
     src/core/modules/git/bl/git_branch_service.cpp
     src/core/modules/git/bl/commit_log_parser.cpp
     src/core/modules/git/bl/git_history_service.cpp
+    src/core/modules/git/bl/git_remote_merge_service.cpp
     src/core/modules/repositories/bl/repository_service.cpp
     src/core/modules/groups/bl/group_service.cpp
     src/core/modules/workspaces/bl/workspace_service.cpp
@@ -272,6 +273,7 @@ if(GF_BUILD_TESTING)
         tests/unit/diff_unit_tests.cpp
         tests/unit/branch_unit_tests.cpp
         tests/unit/history_unit_tests.cpp
+        tests/unit/remote_merge_unit_tests.cpp
     )
     target_link_libraries(gf_unit_tests PRIVATE
         gf_git_cli_native
@@ -290,6 +292,7 @@ if(GF_BUILD_TESTING)
         tests/integration/diff_integration_tests.cpp
         tests/integration/branch_integration_tests.cpp
         tests/integration/history_integration_tests.cpp
+        tests/integration/remote_merge_integration_tests.cpp
     )
     target_link_libraries(gf_integration_tests PRIVATE
         gf_git_cli_native

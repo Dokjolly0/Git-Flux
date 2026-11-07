@@ -5,6 +5,7 @@
 #include "core/modules/git/bo/git_command.hpp"
 
 #include <algorithm>
+#include <unordered_map>
 
 namespace gf::infra::git {
 
@@ -1200,6 +1201,486 @@ NativeRepositoryGitOps::deleteTag(const std::filesystem::path& repoPath,
             .exitCode = execResult->exitCode,
             .message = execResult->stderrBytes,
             .command = "git tag -d"
+        });
+    }
+
+    return {};
+}
+
+std::expected<std::vector<gf::git::bo::GitRemote>, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::listRemotes(const std::filesystem::path& repoPath) {
+    gf::git::bo::GitCommand cmd{
+        .args = {"remote", "-v"},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile recuperare i remote: " + execResult.error().message,
+            .command = "git remote -v"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes,
+            .command = "git remote -v"
+        });
+    }
+
+    std::unordered_map<std::string, gf::git::bo::GitRemote> remotesMap;
+    std::string_view out(execResult->stdoutBytes);
+
+    while (!out.empty()) {
+        auto nextLine = out.find('\n');
+        std::string_view line = (nextLine == std::string_view::npos) ? out : out.substr(0, nextLine);
+        out = (nextLine == std::string_view::npos) ? std::string_view{} : out.substr(nextLine + 1);
+
+        if (!line.empty() && line.back() == '\r') {
+            line.remove_suffix(1);
+        }
+        if (line.empty()) {
+            continue;
+        }
+
+        auto firstSep = line.find_first_of(" \t");
+        if (firstSep == std::string_view::npos) {
+            continue;
+        }
+
+        auto name = std::string(line.substr(0, firstSep));
+        auto rest = line.substr(firstSep);
+        while (!rest.empty() && (rest.front() == ' ' || rest.front() == '\t')) {
+            rest.remove_prefix(1);
+        }
+
+        auto lastSep = rest.rfind(" (");
+        std::string url;
+        bool isPush = false;
+        if (lastSep != std::string_view::npos) {
+            url = std::string(rest.substr(0, lastSep));
+            if (rest.find("(push)") != std::string_view::npos) {
+                isPush = true;
+            }
+        } else {
+            url = std::string(rest);
+        }
+
+        auto& remote = remotesMap[name];
+        remote.name = name;
+        if (isPush) {
+            remote.pushUrl = url;
+            if (remote.fetchUrl.empty()) {
+                remote.fetchUrl = url;
+            }
+        } else {
+            remote.fetchUrl = url;
+            if (remote.pushUrl.empty()) {
+                remote.pushUrl = url;
+            }
+        }
+    }
+
+    std::vector<gf::git::bo::GitRemote> remotes;
+    remotes.reserve(remotesMap.size());
+    for (auto& [_, r] : remotesMap) {
+        remotes.push_back(std::move(r));
+    }
+    std::sort(remotes.begin(), remotes.end(), [](const auto& a, const auto& b) {
+        return a.name < b.name;
+    });
+
+    return remotes;
+}
+
+std::expected<void, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::addRemote(const std::filesystem::path& repoPath,
+                                  const std::string& name,
+                                  const std::string& url) {
+    gf::git::bo::GitCommand cmd{
+        .args = {"remote", "add", name, url},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile aggiungere il remote: " + execResult.error().message,
+            .command = "git remote add"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+        if (execResult->stderrBytes.find("already exists") != std::string::npos ||
+            execResult->stderrBytes.find("esiste già") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::RemoteAlreadyExists;
+        }
+
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = kind,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes,
+            .command = "git remote add"
+        });
+    }
+
+    return {};
+}
+
+std::expected<void, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::removeRemote(const std::filesystem::path& repoPath,
+                                     const std::string& name) {
+    gf::git::bo::GitCommand cmd{
+        .args = {"remote", "remove", name},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile rimuovere il remote: " + execResult.error().message,
+            .command = "git remote remove"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+        if (execResult->stderrBytes.find("No such remote") != std::string::npos ||
+            execResult->stderrBytes.find("non trovato") != std::string::npos ||
+            execResult->stderrBytes.find("non esiste") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::RemoteNotFound;
+        }
+
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = kind,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes,
+            .command = "git remote remove"
+        });
+    }
+
+    return {};
+}
+
+std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::fetchRemote(const std::filesystem::path& repoPath,
+                                    const gf::git::bo::RemoteOperationOptions& options) {
+    std::vector<std::string> args{"fetch"};
+    if (options.prune) {
+        args.emplace_back("--prune");
+    }
+    if (options.tags) {
+        args.emplace_back("--tags");
+    }
+    if (options.force) {
+        args.emplace_back("--force");
+    }
+    args.push_back(options.remoteName);
+    if (options.branchName.has_value() && !options.branchName->empty()) {
+        args.push_back(*options.branchName);
+    }
+
+    gf::git::bo::GitCommand cmd{
+        .args = std::move(args),
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{60'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile eseguire il fetch: " + execResult.error().message,
+            .command = "git fetch"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+        if (execResult->stderrBytes.find("Could not resolve host") != std::string::npos ||
+            execResult->stderrBytes.find("Authentication failed") != std::string::npos ||
+            execResult->stderrBytes.find("Permission denied") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::NetworkAuthenticationFailed;
+        } else if (execResult->stderrBytes.find("does not appear to be a git repository") != std::string::npos ||
+                   execResult->stderrBytes.find("not found") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::RemoteNotFound;
+        }
+
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = kind,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes,
+            .command = "git fetch"
+        });
+    }
+
+    gf::git::bo::RemoteOperationResult result;
+    result.success = true;
+    result.output = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes;
+    return result;
+}
+
+std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::pullRemote(const std::filesystem::path& repoPath,
+                                   const gf::git::bo::RemoteOperationOptions& options) {
+    std::vector<std::string> args{"pull"};
+    args.push_back(options.remoteName);
+    if (options.branchName.has_value() && !options.branchName->empty()) {
+        args.push_back(*options.branchName);
+    }
+
+    gf::git::bo::GitCommand cmd{
+        .args = std::move(args),
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{60'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile eseguire il pull: " + execResult.error().message,
+            .command = "git pull"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+        if (execResult->stderrBytes.find("Automatic merge failed") != std::string::npos ||
+            execResult->stdoutBytes.find("Automatic merge failed") != std::string::npos ||
+            execResult->stdoutBytes.find("CONFLICT") != std::string::npos ||
+            execResult->stderrBytes.find("conflitti") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::MergeConflict;
+        } else if (execResult->stderrBytes.find("Authentication failed") != std::string::npos ||
+                   execResult->stderrBytes.find("Permission denied") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::NetworkAuthenticationFailed;
+        }
+
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = kind,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
+            .command = "git pull"
+        });
+    }
+
+    gf::git::bo::RemoteOperationResult result;
+    result.success = true;
+    result.output = execResult->stdoutBytes;
+    return result;
+}
+
+std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::pushRemote(const std::filesystem::path& repoPath,
+                                   const gf::git::bo::RemoteOperationOptions& options) {
+    std::vector<std::string> args{"push"};
+    if (options.setUpstream) {
+        args.emplace_back("-u");
+    }
+    if (options.force) {
+        args.emplace_back("--force-with-lease");
+    }
+    if (options.tags) {
+        args.emplace_back("--tags");
+    }
+    args.push_back(options.remoteName);
+    if (options.branchName.has_value() && !options.branchName->empty()) {
+        args.push_back(*options.branchName);
+    }
+
+    gf::git::bo::GitCommand cmd{
+        .args = std::move(args),
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{60'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile eseguire il push: " + execResult.error().message,
+            .command = "git push"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+        if (execResult->stderrBytes.find("rejected") != std::string::npos ||
+            execResult->stderrBytes.find("non-fast-forward") != std::string::npos ||
+            execResult->stderrBytes.find("fetch first") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::RemoteRejected;
+        } else if (execResult->stderrBytes.find("Authentication failed") != std::string::npos ||
+                   execResult->stderrBytes.find("Permission denied") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::NetworkAuthenticationFailed;
+        }
+
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = kind,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes,
+            .command = "git push"
+        });
+    }
+
+    gf::git::bo::RemoteOperationResult result;
+    result.success = true;
+    result.output = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes;
+    return result;
+}
+
+std::expected<gf::git::bo::MergeResult, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::mergeBranch(const std::filesystem::path& repoPath,
+                                    const gf::git::bo::MergeOptions& options) {
+    std::vector<std::string> args{"merge"};
+    if (options.noFastForward) {
+        args.emplace_back("--no-ff");
+    }
+    if (options.squash) {
+        args.emplace_back("--squash");
+    }
+    if (options.message.has_value() && !options.message->empty()) {
+        args.emplace_back("-m");
+        args.push_back(*options.message);
+    }
+    args.push_back(options.sourceBranchOrCommit);
+
+    gf::git::bo::GitCommand cmd{
+        .args = std::move(args),
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile eseguire il merge: " + execResult.error().message,
+            .command = "git merge"
+        });
+    }
+
+    gf::git::bo::MergeResult result;
+    const auto combinedOutput = execResult->stdoutBytes + "\n" + execResult->stderrBytes;
+
+    if (execResult->exitCode == 0) {
+        result.summaryMessage = execResult->stdoutBytes;
+        if (combinedOutput.find("Already up to date") != std::string::npos ||
+            combinedOutput.find("È già aggiornato") != std::string::npos) {
+            result.status = gf::git::bo::MergeStatus::UpToDate;
+        } else if (combinedOutput.find("Fast-forward") != std::string::npos) {
+            result.status = gf::git::bo::MergeStatus::FastForward;
+        } else {
+            result.status = gf::git::bo::MergeStatus::Merged;
+        }
+
+        auto revCmd = m_executor.execute(gf::git::bo::GitCommand{
+            .args = {"rev-parse", "HEAD"},
+            .workingDirectory = repoPath,
+            .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
+            .timeout = std::chrono::milliseconds{5'000}
+        });
+        if (revCmd && revCmd->exitCode == 0) {
+            result.targetCommitSha = trimString(revCmd->stdoutBytes);
+        }
+
+        return result;
+    }
+
+    if (combinedOutput.find("CONFLICT") != std::string::npos ||
+        combinedOutput.find("Automatic merge failed") != std::string::npos ||
+        combinedOutput.find("conflitti") != std::string::npos) {
+        result.status = gf::git::bo::MergeStatus::Conflict;
+        result.summaryMessage = execResult->stdoutBytes;
+
+        auto diffUCmd = m_executor.execute(gf::git::bo::GitCommand{
+            .args = {"diff", "--name-only", "--diff-filter=U"},
+            .workingDirectory = repoPath,
+            .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
+            .timeout = std::chrono::milliseconds{10'000}
+        });
+
+        if (diffUCmd && diffUCmd->exitCode == 0) {
+            std::string_view out(diffUCmd->stdoutBytes);
+            while (!out.empty()) {
+                auto nl = out.find('\n');
+                std::string_view line = (nl == std::string_view::npos) ? out : out.substr(0, nl);
+                out = (nl == std::string_view::npos) ? std::string_view{} : out.substr(nl + 1);
+                if (!line.empty() && line.back() == '\r') {
+                    line.remove_suffix(1);
+                }
+                if (!line.empty()) {
+                    result.conflictedFiles.emplace_back(line);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    return std::unexpected(gf::git::ports::GitOpsError{
+        .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+        .exitCode = execResult->exitCode,
+        .message = execResult->stderrBytes,
+        .command = "git merge"
+    });
+}
+
+std::expected<void, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::abortMerge(const std::filesystem::path& repoPath) {
+    gf::git::bo::GitCommand cmd{
+        .args = {"merge", "--abort"},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile annullare il merge: " + execResult.error().message,
+            .command = "git merge --abort"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+        if (execResult->stderrBytes.find("no merge to abort") != std::string::npos ||
+            execResult->stderrBytes.find("nessun merge da annullare") != std::string::npos ||
+            execResult->stderrBytes.find("MERGE_HEAD missing") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::InvalidOperation;
+        }
+
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = kind,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes,
+            .command = "git merge --abort"
         });
     }
 
