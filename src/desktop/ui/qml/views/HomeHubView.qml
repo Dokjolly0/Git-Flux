@@ -480,6 +480,18 @@ Item {
 
                                     Button {
                                         visible: grpHover.containsMouse
+                                        text: "⬇ Fetch"
+                                        flat: true
+                                        onClicked: {
+                                            batchOperationsVm.fetchGroup(model.id)
+                                            batchProgressModal.open()
+                                        }
+                                        contentItem: Text { text: "⬇ Fetch"; color: "#58A6FF"; font.pixelSize: 11; font.bold: true }
+                                        background: Rectangle { color: "#21262D"; radius: 4 }
+                                    }
+
+                                    Button {
+                                        visible: grpHover.containsMouse
                                         text: "✕"
                                         flat: true
                                         onClicked: homeHubVm.removeGroup(model.id)
@@ -621,6 +633,18 @@ Item {
                                             color: "#8B949E"
                                             font.pixelSize: 11
                                         }
+                                    }
+
+                                    Button {
+                                        visible: wsHover.containsMouse
+                                        text: "⬇ Fetch"
+                                        flat: true
+                                        onClicked: {
+                                            batchOperationsVm.fetchWorkspace(model.id)
+                                            batchProgressModal.open()
+                                        }
+                                        contentItem: Text { text: "⬇ Fetch"; color: "#3FB950"; font.pixelSize: 11; font.bold: true }
+                                        background: Rectangle { color: "#21262D"; radius: 4 }
                                     }
 
                                     Button {
@@ -897,5 +921,9 @@ Item {
                 reconnectPathInput.text = "";
             }
         }
+    }
+
+    BatchProgressModal {
+        id: batchProgressModal
     }
 }

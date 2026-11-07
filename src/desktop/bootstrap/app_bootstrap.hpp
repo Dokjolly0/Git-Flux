@@ -16,8 +16,14 @@
 #include "core/modules/git/bl/git_stash_service.hpp"
 #include "core/modules/git/bl/git_rebase_service.hpp"
 #include "core/modules/git/bl/git_conflict_service.hpp"
+#include "core/modules/git/bl/git_repository_watcher_service.hpp"
+#include "core/modules/git/bl/async_git_service.hpp"
+#include "core/modules/git/bl/multi_repo_batch_coordinator.hpp"
+#include "core/modules/tasks/bl/background_task_runner.hpp"
+#include "infrastructure/watcher/native_polling_fs_watcher.hpp"
 #include "infrastructure/git/native/native_git_executor.hpp"
 #include "infrastructure/git/native/native_repository_git_ops.hpp"
+#include "desktop/viewmodels/batch_operations_viewmodel.hpp"
 #include "desktop/viewmodels/home_hub_viewmodel.hpp"
 #include "desktop/viewmodels/quick_open_viewmodel.hpp"
 #include "desktop/viewmodels/workspace_session_viewmodel.hpp"
@@ -45,6 +51,9 @@ public:
     [[nodiscard]] HomeHubViewModel& homeHubViewModel() noexcept;
     [[nodiscard]] QuickOpenViewModel& quickOpenViewModel() noexcept;
     [[nodiscard]] WorkspaceSessionViewModel& workspaceSessionViewModel() noexcept;
+    [[nodiscard]] BatchOperationsViewModel& batchOperationsViewModel() noexcept;
+    [[nodiscard]] git::bl::GitRepositoryWatcherService& watcherService() noexcept;
+    [[nodiscard]] git::bl::MultiRepoBatchCoordinator& batchCoordinator() noexcept;
     [[nodiscard]] repositories::bl::RepositoryService& repositoryService() noexcept;
     [[nodiscard]] groups::bl::GroupService& groupService() noexcept;
     [[nodiscard]] workspaces::bl::WorkspaceService& workspaceService() noexcept;
@@ -75,9 +84,16 @@ private:
     std::unique_ptr<git::bl::GitRebaseService> m_rebaseService;
     std::unique_ptr<git::bl::GitConflictService> m_conflictService;
 
+    std::unique_ptr<infra::watcher::NativePollingFsWatcher> m_watcherPort;
+    std::unique_ptr<git::bl::GitRepositoryWatcherService> m_watcherService;
+    std::unique_ptr<tasks::bl::BackgroundTaskRunner> m_taskRunner;
+    std::unique_ptr<git::bl::AsyncGitService> m_asyncGitService;
+    std::unique_ptr<git::bl::MultiRepoBatchCoordinator> m_batchCoordinator;
+
     std::unique_ptr<HomeHubViewModel> m_homeHubVm;
     std::unique_ptr<QuickOpenViewModel> m_quickOpenVm;
     std::unique_ptr<WorkspaceSessionViewModel> m_workspaceSessionVm;
+    std::unique_ptr<BatchOperationsViewModel> m_batchOperationsVm;
 };
 
 } // namespace gf::desktop

@@ -64,6 +64,19 @@ void AppBootstrap::initialize() {
     m_rebaseService = std::make_unique<git::bl::GitRebaseService>(*m_gitOps);
     m_conflictService = std::make_unique<git::bl::GitConflictService>(*m_gitOps);
 
+    m_watcherPort = std::make_unique<infra::watcher::NativePollingFsWatcher>();
+    m_watcherPort->start();
+
+    m_watcherService = std::make_unique<git::bl::GitRepositoryWatcherService>(*m_watcherPort);
+    m_watcherService->startAutoFlush();
+
+    m_taskRunner = std::make_unique<tasks::bl::BackgroundTaskRunner>(4);
+    m_asyncGitService = std::make_unique<git::bl::AsyncGitService>(*m_taskRunner, *m_remoteMergeService, *m_workingTreeService);
+    m_batchCoordinator = std::make_unique<git::bl::MultiRepoBatchCoordinator>(
+        *m_repoService, *m_groupService, *m_workspaceService,
+        *m_remoteMergeService, *m_workingTreeService, *m_taskRunner
+    );
+
     m_homeHubVm = std::make_unique<HomeHubViewModel>(*m_repoService, *m_groupService, *m_workspaceService);
     m_quickOpenVm = std::make_unique<QuickOpenViewModel>(*m_groupService, *m_repoService);
     m_workspaceSessionVm = std::make_unique<WorkspaceSessionViewModel>(
@@ -77,8 +90,10 @@ void AppBootstrap::initialize() {
         *m_remoteMergeService,
         *m_stashService,
         *m_rebaseService,
-        *m_conflictService
+        *m_conflictService,
+        m_watcherService.get()
     );
+    m_batchOperationsVm = std::make_unique<BatchOperationsViewModel>(*m_batchCoordinator);
 }
 
 void AppBootstrap::registerWithQml(QQmlApplicationEngine& engine) {
@@ -119,11 +134,14 @@ void AppBootstrap::registerWithQml(QQmlApplicationEngine& engine) {
         "ViewModel gestito da WorkspaceSessionViewModel");
     qmlRegisterUncreatableType<WorkspaceSessionViewModel>("GitFlux.Desktop", 1, 0, "WorkspaceSessionViewModel",
         "ViewModel gestito dal bootstrap");
+    qmlRegisterUncreatableType<BatchOperationsViewModel>("GitFlux.Desktop", 1, 0, "BatchOperationsViewModel",
+        "ViewModel gestito dal bootstrap");
 
     auto* rootCtx = engine.rootContext();
     rootCtx->setContextProperty(QStringLiteral("homeHubVm"), m_homeHubVm.get());
     rootCtx->setContextProperty(QStringLiteral("quickOpenVm"), m_quickOpenVm.get());
     rootCtx->setContextProperty(QStringLiteral("workspaceSessionVm"), m_workspaceSessionVm.get());
+    rootCtx->setContextProperty(QStringLiteral("batchOperationsVm"), m_batchOperationsVm.get());
 }
 
 HomeHubViewModel& AppBootstrap::homeHubViewModel() noexcept {
@@ -136,6 +154,18 @@ QuickOpenViewModel& AppBootstrap::quickOpenViewModel() noexcept {
 
 WorkspaceSessionViewModel& AppBootstrap::workspaceSessionViewModel() noexcept {
     return *m_workspaceSessionVm;
+}
+
+BatchOperationsViewModel& AppBootstrap::batchOperationsViewModel() noexcept {
+    return *m_batchOperationsVm;
+}
+
+git::bl::GitRepositoryWatcherService& AppBootstrap::watcherService() noexcept {
+    return *m_watcherService;
+}
+
+git::bl::MultiRepoBatchCoordinator& AppBootstrap::batchCoordinator() noexcept {
+    return *m_batchCoordinator;
 }
 
 repositories::bl::RepositoryService& AppBootstrap::repositoryService() noexcept {

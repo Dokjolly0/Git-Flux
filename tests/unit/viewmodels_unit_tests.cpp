@@ -18,7 +18,9 @@
 #include "desktop/viewmodels/conflict_hunk_list_model.hpp"
 #include "desktop/viewmodels/conflict_resolver_viewmodel.hpp"
 #include "desktop/viewmodels/workspace_session_viewmodel.hpp"
+#include "desktop/viewmodels/batch_operations_viewmodel.hpp"
 #include "core/modules/git/ports/repository_git_ops.hpp"
+#include "core/modules/git/ports/fs_watcher_port.hpp"
 #include "core/modules/git/bl/git_working_tree_service.hpp"
 #include "core/modules/git/bl/git_staging_service.hpp"
 #include "core/modules/git/bl/git_diff_service.hpp"
@@ -28,6 +30,12 @@
 #include "core/modules/git/bl/git_stash_service.hpp"
 #include "core/modules/git/bl/git_rebase_service.hpp"
 #include "core/modules/git/bl/git_conflict_service.hpp"
+#include "core/modules/git/bl/git_repository_watcher_service.hpp"
+#include "core/modules/git/bl/async_git_service.hpp"
+#include "core/modules/git/bl/multi_repo_batch_coordinator.hpp"
+#include "core/modules/tasks/bl/background_task_runner.hpp"
+
+#include <set>
 
 #include "infrastructure/persistence/sqlite/connection/sqlite_connection.hpp"
 #include "infrastructure/persistence/sqlite/migrations/schema_migrator.hpp"
@@ -361,6 +369,7 @@ class MockFullGitOps final : public gf::git::ports::IRepositoryGitOps {
 public:
     gf::git::bo::RepoWorkingTreeStatus statusToReturn;
     gf::git::bo::FileDiff diffToReturn;
+    bool getStatusCalled = false;
     bool stageCalled = false;
     bool unstageCalled = false;
     bool discardCalled = false;
@@ -368,6 +377,7 @@ public:
 
     std::expected<gf::git::bo::RepoWorkingTreeStatus, gf::git::ports::GitOpsError>
     getWorkingTreeStatus(const std::filesystem::path&) override {
+        getStatusCalled = true;
         return statusToReturn;
     }
 
@@ -1256,3 +1266,181 @@ TEST_CASE("WorkspaceSessionViewModel Rebase operations and state tracking", "[vi
     CHECK(sessionVm.conflictResolver() != nullptr);
     CHECK(sessionVm.workingTree()->conflictedModel() != nullptr);
 }
+
+class MockFsWatcherPort final : public gf::git::ports::IFsWatcherPort {
+public:
+    std::set<std::filesystem::path> watchedPaths;
+    gf::git::ports::FsRawEventCallback eventCb;
+
+    std::expected<void, gf::git::ports::FsWatcherError> watchRepository(const std::filesystem::path& repoPath) override {
+        watchedPaths.insert(repoPath);
+        return {};
+    }
+
+    std::expected<void, gf::git::ports::FsWatcherError> unwatchRepository(const std::filesystem::path& repoPath) override {
+        watchedPaths.erase(repoPath);
+        return {};
+    }
+
+    bool isWatching(const std::filesystem::path& repoPath) const override {
+        return watchedPaths.contains(repoPath);
+    }
+
+    void setEventCallback(gf::git::ports::FsRawEventCallback cb) override {
+        eventCb = std::move(cb);
+    }
+};
+
+TEST_CASE("WorkspaceSessionViewModel - Watcher Integration & Auto-Refresh", "[desktop][viewmodels][watcher]") {
+    TestContext ctx;
+    auto r1Res = ctx.repoService->registerRepository({
+        .localPath = ctx.repoAPath,
+        .displayName = "Repo Auto-Refresh"
+    });
+    REQUIRE(r1Res.has_value());
+
+    MockFullGitOps mockOps;
+    gf::git::bl::GitWorkingTreeService statusService(mockOps);
+    gf::git::bl::GitStagingService stagingService(mockOps);
+    gf::git::bl::GitDiffService diffService(mockOps);
+    gf::git::bl::GitBranchService branchService(mockOps);
+    gf::git::bl::GitHistoryService historyService(mockOps);
+    gf::git::bl::GitRemoteMergeService remoteMergeService(mockOps);
+    gf::git::bl::GitStashService stashService(mockOps);
+    gf::git::bl::GitRebaseService rebaseService(mockOps);
+    gf::git::bl::GitConflictService conflictService(mockOps);
+
+    MockFsWatcherPort watcherPort;
+    gf::git::bl::GitRepositoryWatcherService watcherService(watcherPort);
+
+    WorkspaceSessionViewModel sessionVm(
+        *ctx.repoService,
+        *ctx.workspaceService,
+        statusService,
+        stagingService,
+        diffService,
+        branchService,
+        historyService,
+        remoteMergeService,
+        stashService,
+        rebaseService,
+        conflictService,
+        &watcherService
+    );
+
+    // Opening repository starts watching
+    sessionVm.openRepository(QString::fromStdString(r1Res->id.value()), "Repo Auto-Refresh", QString::fromStdString(ctx.repoAPath.string()));
+    CHECK(sessionVm.hasOpenTabs());
+    CHECK(watcherPort.isWatching(ctx.repoAPath));
+
+    // Simulate an event arriving from file system
+    gf::git::bo::FsRawEvent event{
+        .repositoryPath = ctx.repoAPath,
+        .changedPath = ctx.repoAPath / ".git" / "HEAD",
+        .changeType = gf::git::bo::FsChangeType::Modified
+    };
+    watcherService.onRawEvent(event);
+    watcherService.flushAll();
+
+    // Process queued Qt events (QMetaObject::invokeMethod)
+    QCoreApplication::processEvents();
+
+    CHECK(mockOps.getStatusCalled);
+
+    // Closing repository tab stops watching
+    sessionVm.closeTab(0);
+    CHECK_FALSE(watcherPort.isWatching(ctx.repoAPath));
+}
+
+TEST_CASE("BatchOperationsViewModel - Batch Execution & Status Reporting", "[desktop][viewmodels][batch]") {
+    TestContext ctx;
+    auto r1Res = ctx.repoService->registerRepository({
+        .localPath = ctx.repoAPath,
+        .displayName = "Repo Batch 1"
+    });
+    REQUIRE(r1Res.has_value());
+
+    auto r2Res = ctx.repoService->registerRepository({
+        .localPath = ctx.repoBPath,
+        .displayName = "Repo Batch 2"
+    });
+    REQUIRE(r2Res.has_value());
+
+    auto gRes = ctx.groupService->createGroup("Batch Group", {r1Res->id, r2Res->id});
+    REQUIRE(gRes.has_value());
+
+    MockFullGitOps mockOps;
+    gf::git::bl::GitWorkingTreeService statusService(mockOps);
+    gf::git::bl::GitStagingService stagingService(mockOps);
+    gf::git::bl::GitDiffService diffService(mockOps);
+    gf::git::bl::GitBranchService branchService(mockOps);
+    gf::git::bl::GitHistoryService historyService(mockOps);
+    gf::git::bl::GitRemoteMergeService remoteMergeService(mockOps);
+    gf::git::bl::GitStashService stashService(mockOps);
+    gf::git::bl::GitRebaseService rebaseService(mockOps);
+    gf::git::bl::GitConflictService conflictService(mockOps);
+
+    gf::tasks::bl::BackgroundTaskRunner runner(2);
+    gf::git::bl::MultiRepoBatchCoordinator coordinator(
+        *ctx.repoService,
+        *ctx.groupService,
+        *ctx.workspaceService,
+        remoteMergeService,
+        statusService,
+        runner
+    );
+
+    BatchOperationsViewModel batchVm(coordinator);
+
+    CHECK_FALSE(batchVm.isRunning());
+    CHECK(batchVm.progressPercentage() == 0);
+    CHECK(batchVm.succeededCount() == 0);
+    CHECK(batchVm.failedCount() == 0);
+
+    QSignalSpy completedSpy(&batchVm, &BatchOperationsViewModel::operationCompleted);
+    QSignalSpy isRunningSpy(&batchVm, &BatchOperationsViewModel::isRunningChanged);
+
+    // 1. Fetch Group
+    batchVm.fetchGroup(QString::fromStdString(gRes->id.value()), "origin");
+    CHECK(batchVm.isRunning());
+    CHECK(batchVm.currentOperationName() == "Fetch Gruppo");
+
+    // Wait for completion (with timeout)
+    for (int i = 0; i < 50 && batchVm.isRunning(); ++i) {
+        QCoreApplication::processEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+
+    CHECK_FALSE(batchVm.isRunning());
+    CHECK(batchVm.progressPercentage() == 100);
+    CHECK(batchVm.succeededCount() == 2);
+    CHECK(batchVm.failedCount() == 0);
+    CHECK(batchVm.lastReportItems().size() == 2);
+    CHECK(completedSpy.count() >= 1);
+
+    // 2. Status Repositories
+    QStringList statusList;
+    statusList << QString::fromStdString(r1Res->id.value())
+               << QString::fromStdString(r2Res->id.value());
+    batchVm.checkStatusRepositories(statusList);
+
+    for (int i = 0; i < 50 && batchVm.isRunning(); ++i) {
+        QCoreApplication::processEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+
+    CHECK_FALSE(batchVm.isRunning());
+    CHECK(batchVm.succeededCount() == 2);
+
+    // 3. Cancel batch operation test
+    QStringList fetchList;
+    fetchList << QString::fromStdString(r1Res->id.value())
+              << QString::fromStdString(r2Res->id.value());
+    batchVm.fetchRepositories(fetchList, "origin");
+
+    if (batchVm.isRunning()) {
+        bool canceled = batchVm.cancelCurrentOperation();
+        CHECK(canceled);
+    }
+}
+

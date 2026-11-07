@@ -196,6 +196,7 @@ if(GF_BUILD_DESKTOP)
         src/desktop/viewmodels/conflict_hunk_list_model.cpp
         src/desktop/viewmodels/conflict_resolver_viewmodel.cpp
         src/desktop/viewmodels/workspace_session_viewmodel.cpp
+        src/desktop/viewmodels/batch_operations_viewmodel.cpp
         src/desktop/viewmodels/home_hub_viewmodel.cpp
         src/desktop/viewmodels/quick_open_viewmodel.cpp
         src/desktop/bootstrap/app_bootstrap.cpp
@@ -207,6 +208,7 @@ if(GF_BUILD_DESKTOP)
         gf_application
         gf_persistence_sqlite
         gf_git_cli_native
+        gf_watcher_native
         Qt6::Core
         Qt6::Gui
         Qt6::Quick
@@ -237,6 +239,7 @@ if(GF_BUILD_DESKTOP)
             src/desktop/ui/qml/views/StashManagerModal.qml
             src/desktop/ui/qml/views/ConflictResolverModal.qml
             src/desktop/ui/qml/views/CommitHistoryPanel.qml
+            src/desktop/ui/qml/views/BatchProgressModal.qml
     )
     target_include_directories(git_flux PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"

@@ -1,5 +1,6 @@
 #include "desktop/viewmodels/workspace_session_viewmodel.hpp"
 
+#include <QMetaObject>
 #include <algorithm>
 
 namespace gf::desktop {
@@ -15,11 +16,13 @@ WorkspaceSessionViewModel::WorkspaceSessionViewModel(repositories::bl::Repositor
                                                      gf::git::bl::GitStashService& stashService,
                                                      gf::git::bl::GitRebaseService& rebaseService,
                                                      gf::git::bl::GitConflictService& conflictService,
+                                                     gf::git::bl::GitRepositoryWatcherService* watcherService,
                                                      QObject* parent)
     : QObject(parent)
     , m_repoService(repoService)
     , m_workspaceService(workspaceService)
     , m_rebaseService(rebaseService)
+    , m_watcherService(watcherService)
     , m_workingTree(statusService, stagingService, this)
     , m_commitBox(stagingService, this)
     , m_diffViewer(diffService, this)
@@ -35,6 +38,12 @@ WorkspaceSessionViewModel::WorkspaceSessionViewModel(repositories::bl::Repositor
 
     connect(&m_conflictResolver, &ConflictResolverViewModel::resolutionApplied,
             this, [this](const QString&) { refreshActiveTab(); });
+
+    if (m_watcherService) {
+        m_watcherService->setBatchCallback([this](const gf::git::bo::FsDebouncedBatch& batch) {
+            onFsDebouncedBatch(batch);
+        });
+    }
 }
 
 QVariantList WorkspaceSessionViewModel::tabs() const {
@@ -125,6 +134,10 @@ void WorkspaceSessionViewModel::openRepository(const QString& repoId,
     m_tabs.push_back(std::move(newItem));
     emit tabsChanged();
 
+    if (m_watcherService && !resolvedPath.isEmpty()) {
+        [[maybe_unused]] auto res = m_watcherService->startWatching(std::filesystem::path(resolvedPath.toStdString()));
+    }
+
     setActiveTabIndex(static_cast<int>(m_tabs.size() - 1));
 }
 
@@ -158,6 +171,11 @@ void WorkspaceSessionViewModel::closeTab(int index) {
         return;
     }
 
+    QString closedPath = m_tabs[static_cast<std::size_t>(index)].path;
+    if (m_watcherService && !closedPath.isEmpty()) {
+        [[maybe_unused]] auto res = m_watcherService->stopWatching(std::filesystem::path(closedPath.toStdString()));
+    }
+
     m_tabs.erase(m_tabs.begin() + index);
     emit tabsChanged();
 
@@ -176,6 +194,14 @@ void WorkspaceSessionViewModel::closeTab(int index) {
 }
 
 void WorkspaceSessionViewModel::closeAllTabs() {
+    if (m_watcherService) {
+        for (const auto& tab : m_tabs) {
+            if (!tab.path.isEmpty()) {
+                [[maybe_unused]] auto res = m_watcherService->stopWatching(std::filesystem::path(tab.path.toStdString()));
+            }
+        }
+    }
+
     m_tabs.clear();
     m_activeTabIndex = -1;
     m_workingTree.refresh({});
@@ -328,6 +354,30 @@ bool WorkspaceSessionViewModel::openConflictResolver(const QString& relativePath
 
 void WorkspaceSessionViewModel::onCommitSucceeded(const QString& /*sha*/, const QString& /*summary*/) {
     refreshActiveTab();
+}
+
+void WorkspaceSessionViewModel::onFsDebouncedBatch(const gf::git::bo::FsDebouncedBatch& batch) {
+    QMetaObject::invokeMethod(this, [this, batch]() {
+        QString currentActive = activeRepoPath();
+        if (currentActive.isEmpty()) {
+            return;
+        }
+
+        if (std::filesystem::path(currentActive.toStdString()) == batch.repositoryPath) {
+            if (batch.requiresWorkingTreeRefresh()) {
+                m_workingTree.refresh(currentActive);
+                checkRebaseStatus();
+            }
+            if (batch.requiresBranchRefresh()) {
+                m_branchManager.setRepositoryPath(currentActive);
+                if (m_activeTabIndex >= 0 && m_activeTabIndex < static_cast<int>(m_tabs.size())) {
+                    m_tabs[static_cast<std::size_t>(m_activeTabIndex)].branch = m_workingTree.branchName();
+                    m_tabs[static_cast<std::size_t>(m_activeTabIndex)].isDirty = !m_workingTree.isClean();
+                    emit tabsChanged();
+                }
+            }
+        }
+    }, Qt::QueuedConnection);
 }
 
 } // namespace gf::desktop

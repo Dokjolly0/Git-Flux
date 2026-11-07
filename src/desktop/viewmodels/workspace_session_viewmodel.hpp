@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/modules/git/bl/git_conflict_service.hpp"
+#include "core/modules/git/bl/git_repository_watcher_service.hpp"
 #include "core/modules/git/bl/git_rebase_service.hpp"
 #include "core/modules/git/bl/git_stash_service.hpp"
 #include "core/modules/repositories/bl/repository_service.hpp"
@@ -60,6 +61,7 @@ public:
                                        gf::git::bl::GitStashService& stashService,
                                        gf::git::bl::GitRebaseService& rebaseService,
                                        gf::git::bl::GitConflictService& conflictService,
+                                       gf::git::bl::GitRepositoryWatcherService* watcherService = nullptr,
                                        QObject* parent = nullptr);
     ~WorkspaceSessionViewModel() override = default;
 
@@ -106,10 +108,12 @@ signals:
 
 private:
     void onCommitSucceeded(const QString& sha, const QString& summary);
+    void onFsDebouncedBatch(const gf::git::bo::FsDebouncedBatch& batch);
 
     repositories::bl::RepositoryService& m_repoService;
     workspaces::bl::WorkspaceService& m_workspaceService;
     gf::git::bl::GitRebaseService& m_rebaseService;
+    gf::git::bl::GitRepositoryWatcherService* m_watcherService{nullptr};
 
     WorkingTreeViewModel m_workingTree;
     CommitBoxViewModel m_commitBox;

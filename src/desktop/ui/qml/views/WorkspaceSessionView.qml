@@ -351,6 +351,41 @@ Rectangle {
                         }
                     }
                 }
+
+                // Indicatore Attività Background / Batch Runner
+                Rectangle {
+                    visible: batchOperationsVm && batchOperationsVm.isRunning
+                    Layout.preferredHeight: 28
+                    Layout.preferredWidth: batchIndicatorRow.implicitWidth + 16
+                    radius: 14
+                    color: "#0F2B48"
+                    border.color: "#38BDF8"
+                    border.width: 1
+
+                    RowLayout {
+                        id: batchIndicatorRow
+                        anchors.centerIn: parent
+                        spacing: 6
+
+                        Text {
+                            text: "⚡"
+                            font.pixelSize: 12
+                        }
+
+                        Text {
+                            text: (batchOperationsVm ? batchOperationsVm.progressPercentage : 0) + "% " + (batchOperationsVm ? batchOperationsVm.currentRepoName : "")
+                            color: "#38BDF8"
+                            font.bold: true
+                            font.pixelSize: 11
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: batchProgressModal.open()
+                    }
+                }
             }
         }
 
@@ -507,6 +542,10 @@ Rectangle {
     ConflictResolverModal {
         id: conflictModal
         conflictResolver: (root.sessionVm && root.sessionVm.conflictResolver) ? root.sessionVm.conflictResolver : null
+    }
+
+    BatchProgressModal {
+        id: batchProgressModal
     }
 
     Connections {
