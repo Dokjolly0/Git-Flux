@@ -781,8 +781,7 @@ Rectangle {
                                                     if (src && tgt && src !== tgt) {
                                                         branchDropMenu.sourceBranch = src;
                                                         branchDropMenu.targetBranch = tgt;
-                                                        var pt = mapToItem(root, drop.x, drop.y);
-                                                        branchDropMenu.popup(root, pt.x, pt.y);
+                                                        branchDropMenu.popup();
                                                     }
                                                 }
                                             }
@@ -834,16 +833,14 @@ Rectangle {
                                                         if (src && tgt && src !== tgt) {
                                                             branchDropMenu.sourceBranch = src;
                                                             branchDropMenu.targetBranch = tgt;
-                                                            var dpt = mapToItem(root, mouse.x, mouse.y);
-                                                            branchDropMenu.popup(root, dpt.x, dpt.y);
+                                                            branchDropMenu.popup();
                                                         }
                                                     } else if (mouse.button === Qt.RightButton) {
                                                         badgeContextMenu.targetName = modelData.name || "";
                                                         badgeContextMenu.badgeType = modelData.type || "local";
                                                         badgeContextMenu.isCurrentHead = modelData.isHead || false;
                                                         badgeContextMenu.targetCommitSha = commitRow.sha;
-                                                        var bpt = mapToItem(root, mouse.x, mouse.y);
-                                                        badgeContextMenu.popup(root, bpt.x, bpt.y);
+                                                        badgeContextMenu.popup();
                                                     } else if (mouse.button === Qt.LeftButton) {
                                                         commitTableListView.forceActiveFocus();
                                                         root.selectCommitByIndex(commitRow.index);
@@ -1067,8 +1064,7 @@ Rectangle {
                                     commitContextMenu.targetSha = commitRow.sha;
                                     commitContextMenu.targetSubject = commitRow.subject;
                                     commitContextMenu.isWip = (commitRow.sha === "WIP");
-                                    var pt = mapToItem(root, mouse.x, mouse.y);
-                                    commitContextMenu.popup(root, pt.x, pt.y);
+                                    commitContextMenu.popup();
                                 }
                             }
                         }
@@ -2402,30 +2398,30 @@ Rectangle {
             visible: !commitContextMenu.isWip
         }
 
-        Menu {
-            title: "🔄 Reset branch corrente a questo commit"
+        MenuItem {
+            text: "🔄 Reset a questo commit (Soft --soft)"
             visible: !commitContextMenu.isWip && commitContextMenu.targetSha.length > 0
+            font.pixelSize: 11
+            onClicked: {
+                if (root.branchManager) root.branchManager.resetCommit(commitContextMenu.targetSha, "soft");
+            }
+        }
 
-            MenuItem {
-                text: "🟡 Soft (--soft): mantieni file modificati in staging"
-                font.pixelSize: 11
-                onClicked: {
-                    if (root.branchManager) root.branchManager.resetCommit(commitContextMenu.targetSha, "soft");
-                }
+        MenuItem {
+            text: "🔄 Reset a questo commit (Misto --mixed)"
+            visible: !commitContextMenu.isWip && commitContextMenu.targetSha.length > 0
+            font.pixelSize: 11
+            onClicked: {
+                if (root.branchManager) root.branchManager.resetCommit(commitContextMenu.targetSha, "mixed");
             }
-            MenuItem {
-                text: "🔵 Misto (--mixed): mantieni file nell'albero di lavoro"
-                font.pixelSize: 11
-                onClicked: {
-                    if (root.branchManager) root.branchManager.resetCommit(commitContextMenu.targetSha, "mixed");
-                }
-            }
-            MenuItem {
-                text: "🔴 Hard (--hard): scarta tutte le modifiche"
-                font.pixelSize: 11
-                onClicked: {
-                    if (root.branchManager) root.branchManager.resetCommit(commitContextMenu.targetSha, "hard");
-                }
+        }
+
+        MenuItem {
+            text: "⚠️ Reset a questo commit (Hard --hard)"
+            visible: !commitContextMenu.isWip && commitContextMenu.targetSha.length > 0
+            font.pixelSize: 11
+            onClicked: {
+                if (root.branchManager) root.branchManager.resetCommit(commitContextMenu.targetSha, "hard");
             }
         }
 

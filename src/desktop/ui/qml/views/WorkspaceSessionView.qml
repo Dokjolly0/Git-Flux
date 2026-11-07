@@ -60,7 +60,7 @@ Rectangle {
 
                 // Active Group Indicator Badge
                 Rectangle {
-                    visible: sessionVm && sessionVm.currentGroupName && sessionVm.currentGroupName.length > 0
+                    visible: root.sessionVm && root.sessionVm.currentGroupName && root.sessionVm.currentGroupName.length > 0
                     Layout.preferredHeight: 26
                     implicitWidth: groupBadgeRow.implicitWidth + 14
                     radius: 13
@@ -79,7 +79,7 @@ Rectangle {
                         }
 
                         Text {
-                            text: sessionVm ? sessionVm.currentGroupName : ""
+                            text: root.sessionVm ? root.sessionVm.currentGroupName : ""
                             color: "#E9D5FF"
                             font.bold: true
                             font.pixelSize: 11
@@ -100,8 +100,8 @@ Rectangle {
                             ToolTip.visible: containsMouse
                             ToolTip.text: "Chiudi gruppo e torna alla Home"
                             onClicked: {
-                                if (sessionVm) {
-                                    sessionVm.closeAllTabs();
+                                if (root.sessionVm) {
+                                    root.sessionVm.closeAllTabs();
                                 }
                                 root.returnToHomeRequested();
                             }
@@ -126,15 +126,15 @@ Rectangle {
                         spacing: 4
 
                         Repeater {
-                            model: sessionVm ? sessionVm.tabs : null
+                            model: root.sessionVm ? root.sessionVm.tabs : null
 
                             delegate: Rectangle {
                                 id: tabRect
                                 Layout.preferredHeight: 30
                                 implicitWidth: tabRow.implicitWidth + 20
                                 radius: 5
-                                color: (sessionVm && sessionVm.activeTabIndex === index) ? "#1E293B" : (tabMouseArea.containsMouse ? "#161B22" : "transparent")
-                                border.color: (sessionVm && sessionVm.activeTabIndex === index) ? "#3B82F6" : "transparent"
+                                color: (root.sessionVm && root.sessionVm.activeTabIndex === index) ? "#1E293B" : (tabMouseArea.containsMouse ? "#161B22" : "transparent")
+                                border.color: (root.sessionVm && root.sessionVm.activeTabIndex === index) ? "#3B82F6" : "transparent"
                                 border.width: 1
 
                                 MouseArea {
@@ -143,8 +143,8 @@ Rectangle {
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: {
-                                        if (sessionVm) {
-                                            sessionVm.activeTabIndex = index;
+                                        if (root.sessionVm) {
+                                            root.sessionVm.activeTabIndex = index;
                                         }
                                     }
                                 }
@@ -170,8 +170,8 @@ Rectangle {
 
                                     Text {
                                         text: modelData.name
-                                        color: (sessionVm && sessionVm.activeTabIndex === index) ? "#FFFFFF" : "#94A3B8"
-                                        font.bold: (sessionVm && sessionVm.activeTabIndex === index)
+                                        color: (root.sessionVm && root.sessionVm.activeTabIndex === index) ? "#FFFFFF" : "#94A3B8"
+                                        font.bold: (root.sessionVm && root.sessionVm.activeTabIndex === index)
                                         font.pixelSize: 11
                                     }
 
@@ -192,9 +192,9 @@ Rectangle {
                                         }
 
                                         onClicked: {
-                                            if (sessionVm) {
-                                                sessionVm.closeTab(index);
-                                                if (!sessionVm.hasOpenTabs) {
+                                            if (root.sessionVm) {
+                                                root.sessionVm.closeTab(index);
+                                                if (!root.sessionVm.hasOpenTabs) {
                                                     root.returnToHomeRequested();
                                                 }
                                             }
