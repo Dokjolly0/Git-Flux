@@ -274,22 +274,46 @@ jobs:
   publish-winget:
     name: 🪟 Publish to WinGet (Windows Package Manager)
     needs: publish-release
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check WINGET_TOKEN Secret
-        id: check_token
+      - name: Evaluate Publication Conditions
+        id: check_conditions
         run: |
-          if [ -z "${{ secrets.WINGET_TOKEN }}" ]; then
-            echo "::warning::WINGET_TOKEN secret is not set. Skipping WinGet package publication. See packaging/winget/README.md for instructions."
-            echo "has_token=false" >> $GITHUB_OUTPUT
+          IS_TAG="false"
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            IS_TAG="true"
+          fi
+
+          IS_DISPATCH="false"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            IS_DISPATCH="true"
+          fi
+
+          HAS_TOKEN="false"
+          if [ -n "${{ secrets.WINGET_TOKEN }}" ]; then
+            HAS_TOKEN="true"
+          fi
+
+          echo "is_tag=${IS_TAG}" >> $GITHUB_OUTPUT
+          echo "is_dispatch=${IS_DISPATCH}" >> $GITHUB_OUTPUT
+          echo "has_token=${HAS_TOKEN}" >> $GITHUB_OUTPUT
+
+          if [ "$IS_TAG" != "true" ] && [ "$IS_DISPATCH" != "true" ]; then
+            echo "ℹ️ Push su branch '${{ github.ref_name }}' rilevato (non un tag di release)."
+            echo "ℹ️ La pubblicazione su WinGet (microsoft/winget-pkgs) è attiva per i tag ufficiali (es: 'git tag v0.1.0 && git push origin v0.1.0') oppure tramite avvio manuale con 'Run workflow' dalla tab Actions."
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+          elif [ "$HAS_TOKEN" != "true" ]; then
+            echo "::warning::Il secret WINGET_TOKEN non è ancora configurato nei Secret di GitHub."
+            echo "::notice::Per abilitare la pubblicazione automatica su WinGet, configura WINGET_TOKEN seguendo le istruzioni in packaging/winget/README.md."
+            echo "should_publish=false" >> $GITHUB_OUTPUT
           else
-            echo "has_token=true" >> $GITHUB_OUTPUT
+            echo "✔ Condizioni soddisfatte: avvio pubblicazione WinGet per tag '${{ needs.publish-release.outputs.tag_name }}'."
+            echo "should_publish=true" >> $GITHUB_OUTPUT
           fi
 
       - name: Publish to microsoft/winget-pkgs via winget-releaser
-        if: steps.check_token.outputs.has_token == 'true'
+        if: steps.check_conditions.outputs.should_publish == 'true'
         uses: vedantmgoyal9/winget-releaser@v2
         with:
           identifier: GitFlux.GitFlux
