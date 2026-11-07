@@ -12,19 +12,28 @@ WorkspaceSessionViewModel::WorkspaceSessionViewModel(repositories::bl::Repositor
                                                      gf::git::bl::GitBranchService& branchService,
                                                      gf::git::bl::GitHistoryService& historyService,
                                                      gf::git::bl::GitRemoteMergeService& remoteMergeService,
+                                                     gf::git::bl::GitStashService& stashService,
+                                                     gf::git::bl::GitRebaseService& rebaseService,
+                                                     gf::git::bl::GitConflictService& conflictService,
                                                      QObject* parent)
     : QObject(parent)
     , m_repoService(repoService)
     , m_workspaceService(workspaceService)
+    , m_rebaseService(rebaseService)
     , m_workingTree(statusService, stagingService, this)
     , m_commitBox(stagingService, this)
     , m_diffViewer(diffService, this)
-    , m_branchManager(branchService, historyService, remoteMergeService, this) {
+    , m_branchManager(branchService, historyService, remoteMergeService, this)
+    , m_stashManager(stashService, this)
+    , m_conflictResolver(conflictService, this) {
 
     connect(&m_commitBox, &CommitBoxViewModel::commitSucceeded,
             this, &WorkspaceSessionViewModel::onCommitSucceeded);
 
     connect(&m_branchManager, &BranchManagerViewModel::branchSwitched,
+            this, [this](const QString&) { refreshActiveTab(); });
+
+    connect(&m_conflictResolver, &ConflictResolverViewModel::resolutionApplied,
             this, [this](const QString&) { refreshActiveTab(); });
 }
 
@@ -172,6 +181,10 @@ void WorkspaceSessionViewModel::closeAllTabs() {
     m_workingTree.refresh({});
     m_diffViewer.clear();
     m_branchManager.setRepositoryPath({});
+    m_stashManager.setRepoPath({});
+    m_conflictResolver.setRepoPath({});
+    m_isRebaseInProgress = false;
+    emit rebaseStatusChanged();
     emit tabsChanged();
     emit activeTabChanged();
 }
@@ -182,18 +195,135 @@ void WorkspaceSessionViewModel::refreshActiveTab() {
         m_workingTree.refresh({});
         m_diffViewer.clear();
         m_branchManager.setRepositoryPath({});
+        m_stashManager.setRepoPath({});
+        m_conflictResolver.setRepoPath({});
+        m_isRebaseInProgress = false;
+        emit rebaseStatusChanged();
         return;
     }
 
     m_workingTree.refresh(path);
     m_diffViewer.clear();
     m_branchManager.setRepositoryPath(path);
+    m_stashManager.setRepoPath(path);
+    m_conflictResolver.setRepoPath(path);
+    checkRebaseStatus();
 
     if (m_activeTabIndex >= 0 && m_activeTabIndex < static_cast<int>(m_tabs.size())) {
         m_tabs[static_cast<std::size_t>(m_activeTabIndex)].branch = m_workingTree.branchName();
         m_tabs[static_cast<std::size_t>(m_activeTabIndex)].isDirty = !m_workingTree.isClean();
         emit tabsChanged();
     }
+}
+
+void WorkspaceSessionViewModel::checkRebaseStatus() {
+    QString path = activeRepoPath();
+    if (path.isEmpty()) {
+        if (m_isRebaseInProgress) {
+            m_isRebaseInProgress = false;
+            emit rebaseStatusChanged();
+        }
+        return;
+    }
+
+    auto inProg = m_rebaseService.isRebaseInProgress(std::filesystem::path(path.toStdString()));
+    bool status = inProg ? *inProg : false;
+    if (m_isRebaseInProgress != status) {
+        m_isRebaseInProgress = status;
+        emit rebaseStatusChanged();
+    }
+}
+
+bool WorkspaceSessionViewModel::startRebase(const QString& upstream, const QString& onto) {
+    QString path = activeRepoPath();
+    if (path.isEmpty() || upstream.trimmed().isEmpty()) {
+        return false;
+    }
+
+    gf::git::bo::RebaseOptions opts{
+        .upstream = upstream.trimmed().toStdString()
+    };
+    if (!onto.trimmed().isEmpty()) {
+        opts.onto = onto.trimmed().toStdString();
+    }
+
+    auto res = m_rebaseService.startRebase(std::filesystem::path(path.toStdString()), opts);
+    if (!res) {
+        return false;
+    }
+
+    refreshActiveTab();
+    if (res->status == gf::git::bo::RebaseStatus::Conflict) {
+        emit rebaseConflictDetected();
+    } else {
+        emit rebaseSucceeded(QString::fromStdString(res->message));
+    }
+    return true;
+}
+
+bool WorkspaceSessionViewModel::continueRebase() {
+    QString path = activeRepoPath();
+    if (path.isEmpty()) {
+        return false;
+    }
+
+    auto res = m_rebaseService.continueRebase(std::filesystem::path(path.toStdString()));
+    if (!res) {
+        return false;
+    }
+
+    refreshActiveTab();
+    if (res->status == gf::git::bo::RebaseStatus::Conflict) {
+        emit rebaseConflictDetected();
+    } else {
+        emit rebaseSucceeded(QString::fromStdString(res->message));
+    }
+    return true;
+}
+
+bool WorkspaceSessionViewModel::skipRebase() {
+    QString path = activeRepoPath();
+    if (path.isEmpty()) {
+        return false;
+    }
+
+    auto res = m_rebaseService.skipRebase(std::filesystem::path(path.toStdString()));
+    if (!res) {
+        return false;
+    }
+
+    refreshActiveTab();
+    if (res->status == gf::git::bo::RebaseStatus::Conflict) {
+        emit rebaseConflictDetected();
+    } else {
+        emit rebaseSucceeded(QString::fromStdString(res->message));
+    }
+    return true;
+}
+
+bool WorkspaceSessionViewModel::abortRebase() {
+    QString path = activeRepoPath();
+    if (path.isEmpty()) {
+        return false;
+    }
+
+    auto res = m_rebaseService.abortRebase(std::filesystem::path(path.toStdString()));
+    if (!res) {
+        return false;
+    }
+
+    refreshActiveTab();
+    return true;
+}
+
+bool WorkspaceSessionViewModel::openConflictResolver(const QString& relativePath) {
+    QString path = activeRepoPath();
+    if (path.isEmpty() || relativePath.isEmpty()) {
+        return false;
+    }
+
+    m_conflictResolver.setRepoPath(path);
+    return m_conflictResolver.loadFile(relativePath);
 }
 
 void WorkspaceSessionViewModel::onCommitSucceeded(const QString& /*sha*/, const QString& /*summary*/) {

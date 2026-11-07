@@ -275,6 +275,30 @@ Rectangle {
                     }
                 }
 
+                Button {
+                    text: "📦 Stash..."
+                    Layout.preferredHeight: 32
+                    background: Rectangle {
+                        color: parent.hovered ? "#1E293B" : "#161B22"
+                        radius: 4
+                        border.color: "#334155"
+                        border.width: 1
+                    }
+                    contentItem: Text {
+                        text: parent.text
+                        color: "#E2E8F0"
+                        font.pixelSize: 11
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: {
+                        if (root.sessionVm && root.sessionVm.stashManager) {
+                            root.sessionVm.stashManager.refresh();
+                        }
+                        stashModal.open();
+                    }
+                }
+
                 // Separatore
                 Rectangle {
                     Layout.preferredWidth: 1
@@ -331,6 +355,97 @@ Rectangle {
         }
 
         // ==========================================
+        // 1.1. REBASE INTERACTIVE STATUS BANNER
+        // ==========================================
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: (root.sessionVm && root.sessionVm.isRebaseInProgress) ? 40 : 0
+            visible: root.sessionVm && root.sessionVm.isRebaseInProgress
+            color: "#B45309"
+            clip: true
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 12
+
+                Text {
+                    text: "⚠ OPERAZIONE DI REBASE IN CORSO"
+                    color: "#FEF3C7"
+                    font.bold: true
+                    font.pixelSize: 12
+                }
+
+                Text {
+                    text: "Risolvi i conflitti pendenti oppure prosegui con l'applicazione dei commit."
+                    color: "#FDE68A"
+                    font.pixelSize: 11
+                    Layout.fillWidth: true
+                }
+
+                Button {
+                    text: "✓ Continua Rebase"
+                    Layout.preferredHeight: 26
+                    background: Rectangle {
+                        color: parent.hovered ? "#047857" : "#059669"
+                        radius: 4
+                    }
+                    contentItem: Text {
+                        text: parent.text
+                        color: "#FFFFFF"
+                        font.bold: true
+                        font.pixelSize: 11
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: {
+                        if (root.sessionVm) root.sessionVm.continueRebase();
+                    }
+                }
+
+                Button {
+                    text: "⏭ Salta Commit"
+                    Layout.preferredHeight: 26
+                    background: Rectangle {
+                        color: parent.hovered ? "#475569" : "#334155"
+                        radius: 4
+                    }
+                    contentItem: Text {
+                        text: parent.text
+                        color: "#F1F5F9"
+                        font.pixelSize: 11
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: {
+                        if (root.sessionVm) root.sessionVm.skipRebase();
+                    }
+                }
+
+                Button {
+                    text: "✕ Annulla (Abort)"
+                    Layout.preferredHeight: 26
+                    background: Rectangle {
+                        color: parent.hovered ? "#B91C1C" : "#991B1B"
+                        radius: 4
+                    }
+                    contentItem: Text {
+                        text: parent.text
+                        color: "#FFFFFF"
+                        font.bold: true
+                        font.pixelSize: 11
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: {
+                        if (root.sessionVm) root.sessionVm.abortRebase();
+                    }
+                }
+            }
+        }
+
+        // ==========================================
         // 2. CORPO DELLA SESSIONE (Changes vs History)
         // ==========================================
         StackLayout {
@@ -352,6 +467,9 @@ Rectangle {
                         SplitView.fillHeight: true
                         SplitView.minimumHeight: 200
                         sessionVm: root.sessionVm
+                        onConflictResolveRequested: function(filePath) {
+                            conflictModal.open();
+                        }
                     }
 
                     CommitBox {
@@ -379,5 +497,24 @@ Rectangle {
     BranchManagerModal {
         id: branchModal
         branchManager: (root.sessionVm && root.sessionVm.branchManager) ? root.sessionVm.branchManager : null
+    }
+
+    StashManagerModal {
+        id: stashModal
+        stashManager: (root.sessionVm && root.sessionVm.stashManager) ? root.sessionVm.stashManager : null
+    }
+
+    ConflictResolverModal {
+        id: conflictModal
+        conflictResolver: (root.sessionVm && root.sessionVm.conflictResolver) ? root.sessionVm.conflictResolver : null
+    }
+
+    Connections {
+        target: (root.sessionVm && root.sessionVm.conflictResolver) ? root.sessionVm.conflictResolver : null
+        function onResolutionApplied(filePath) {
+            if (root.sessionVm) {
+                root.sessionVm.refreshActiveTab();
+            }
+        }
     }
 }

@@ -13,6 +13,10 @@
 #include "desktop/viewmodels/branch_list_model.hpp"
 #include "desktop/viewmodels/commit_history_list_model.hpp"
 #include "desktop/viewmodels/branch_manager_viewmodel.hpp"
+#include "desktop/viewmodels/stash_list_model.hpp"
+#include "desktop/viewmodels/stash_manager_viewmodel.hpp"
+#include "desktop/viewmodels/conflict_hunk_list_model.hpp"
+#include "desktop/viewmodels/conflict_resolver_viewmodel.hpp"
 #include "desktop/viewmodels/workspace_session_viewmodel.hpp"
 #include "core/modules/git/ports/repository_git_ops.hpp"
 #include "core/modules/git/bl/git_working_tree_service.hpp"
@@ -21,6 +25,9 @@
 #include "core/modules/git/bl/git_branch_service.hpp"
 #include "core/modules/git/bl/git_history_service.hpp"
 #include "core/modules/git/bl/git_remote_merge_service.hpp"
+#include "core/modules/git/bl/git_stash_service.hpp"
+#include "core/modules/git/bl/git_rebase_service.hpp"
+#include "core/modules/git/bl/git_conflict_service.hpp"
 
 #include "infrastructure/persistence/sqlite/connection/sqlite_connection.hpp"
 #include "infrastructure/persistence/sqlite/migrations/schema_migrator.hpp"
@@ -500,59 +507,84 @@ public:
         return {};
     }
 
+    std::vector<gf::git::bo::GitStashItem> stashesToReturn;
+    bool stashPushCalled = false;
+    bool stashPopCalled = false;
+    bool stashApplyCalled = false;
+    bool stashDropCalled = false;
+    bool stashClearCalled = false;
+
+    bool rebaseInProgressToReturn = false;
+    bool startRebaseCalled = false;
+    bool continueRebaseCalled = false;
+    bool skipRebaseCalled = false;
+    bool abortRebaseCalled = false;
+
+    gf::git::bo::ConflictFile conflictFileToReturn;
+    bool applyConflictResolutionCalled = false;
+
     std::expected<std::vector<gf::git::bo::GitStashItem>, gf::git::ports::GitOpsError>
     listStashes(const std::filesystem::path&) override {
-        return std::vector<gf::git::bo::GitStashItem>{};
+        return stashesToReturn;
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
     stashPush(const std::filesystem::path&, const gf::git::bo::StashPushOptions&) override {
+        stashPushCalled = true;
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
     stashPop(const std::filesystem::path&, const gf::git::bo::StashApplyOptions&) override {
+        stashPopCalled = true;
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
     stashApply(const std::filesystem::path&, const gf::git::bo::StashApplyOptions&) override {
+        stashApplyCalled = true;
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
     stashDrop(const std::filesystem::path&, std::size_t) override {
+        stashDropCalled = true;
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
     stashClear(const std::filesystem::path&) override {
+        stashClearCalled = true;
         return {};
     }
 
     std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
     startRebase(const std::filesystem::path&, const gf::git::bo::RebaseOptions&) override {
-        return gf::git::bo::RebaseResult{.status = gf::git::bo::RebaseStatus::Applied};
+        startRebaseCalled = true;
+        return gf::git::bo::RebaseResult{.status = gf::git::bo::RebaseStatus::Applied, .message = "Rebase started"};
     }
 
     std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
     continueRebase(const std::filesystem::path&) override {
-        return gf::git::bo::RebaseResult{.status = gf::git::bo::RebaseStatus::Finished};
+        continueRebaseCalled = true;
+        return gf::git::bo::RebaseResult{.status = gf::git::bo::RebaseStatus::Finished, .message = "Rebase finished"};
     }
 
     std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
     skipRebase(const std::filesystem::path&) override {
-        return gf::git::bo::RebaseResult{.status = gf::git::bo::RebaseStatus::Skipped};
+        skipRebaseCalled = true;
+        return gf::git::bo::RebaseResult{.status = gf::git::bo::RebaseStatus::Skipped, .message = "Rebase skipped"};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
     abortRebase(const std::filesystem::path&) override {
+        abortRebaseCalled = true;
         return {};
     }
 
     std::expected<bool, gf::git::ports::GitOpsError>
     isRebaseInProgress(const std::filesystem::path&) override {
-        return false;
+        return rebaseInProgressToReturn;
     }
 
     std::expected<gf::git::bo::CherryPickResult, gf::git::ports::GitOpsError>
@@ -567,7 +599,7 @@ public:
 
     std::expected<gf::git::bo::ConflictFile, gf::git::ports::GitOpsError>
     getConflictFile(const std::filesystem::path&, const std::string&) override {
-        return gf::git::bo::ConflictFile{};
+        return conflictFileToReturn;
     }
 
     std::expected<std::string, gf::git::ports::GitOpsError>
@@ -577,6 +609,7 @@ public:
 
     std::expected<void, gf::git::ports::GitOpsError>
     applyConflictResolution(const std::filesystem::path&, const gf::git::bo::ApplyConflictResolutionOptions&) override {
+        applyConflictResolutionCalled = true;
         return {};
     }
 };
@@ -744,6 +777,9 @@ TEST_CASE("WorkspaceSessionViewModel multi-tab orchestration", "[viewmodel][sess
     gf::git::bl::GitBranchService branchService(mockOps);
     gf::git::bl::GitHistoryService historyService(mockOps);
     gf::git::bl::GitRemoteMergeService remoteMergeService(mockOps);
+    gf::git::bl::GitStashService stashService(mockOps);
+    gf::git::bl::GitRebaseService rebaseService(mockOps);
+    gf::git::bl::GitConflictService conflictService(mockOps);
 
     WorkspaceSessionViewModel sessionVm(
         *ctx.repoService,
@@ -753,7 +789,10 @@ TEST_CASE("WorkspaceSessionViewModel multi-tab orchestration", "[viewmodel][sess
         diffService,
         branchService,
         historyService,
-        remoteMergeService
+        remoteMergeService,
+        stashService,
+        rebaseService,
+        conflictService
     );
 
     CHECK_FALSE(sessionVm.hasOpenTabs());
@@ -929,4 +968,291 @@ TEST_CASE("BranchManagerViewModel operations and signal propagation", "[viewmode
     bool merged = branchVm.mergeBranch("feature/test", false);
     CHECK(merged);
     CHECK(completedSpy.count() == 5);
+}
+
+TEST_CASE("StashListModel and StashManagerViewModel operations", "[viewmodel][stash]") {
+    ensureQtApp();
+
+    SECTION("StashListModel manages items and exposes correct roles") {
+        StashListModel model;
+        CHECK(model.rowCount() == 0);
+
+        std::vector<gf::git::bo::GitStashItem> stashes = {
+            gf::git::bo::GitStashItem{
+                .index = 0,
+                .selector = "stash@{0}",
+                .commitSha = "abc123456789",
+                .dateIso = "2026-11-07T12:00:00Z",
+                .message = "WIP work on feature",
+                .branchName = "main"
+            },
+            gf::git::bo::GitStashItem{
+                .index = 1,
+                .selector = "stash@{1}",
+                .commitSha = "def987654321",
+                .dateIso = "2026-11-06T10:00:00Z",
+                .message = "On dev: quick fix",
+                .branchName = "dev"
+            }
+        };
+
+        model.setStashes(stashes);
+        REQUIRE(model.rowCount() == 2);
+
+        auto idx0 = model.index(0);
+        CHECK(model.data(idx0, StashListModel::IndexRole).toLongLong() == 0);
+        CHECK(model.data(idx0, StashListModel::SelectorRole).toString() == "stash@{0}");
+        CHECK(model.data(idx0, StashListModel::CommitShaRole).toString() == "abc123456789");
+        CHECK(model.data(idx0, StashListModel::DateIsoRole).toString() == "2026-11-07T12:00:00Z");
+        CHECK(model.data(idx0, StashListModel::MessageRole).toString() == "WIP work on feature");
+        CHECK(model.data(idx0, StashListModel::BranchNameRole).toString() == "main");
+
+        auto idx1 = model.index(1);
+        CHECK(model.data(idx1, StashListModel::IndexRole).toLongLong() == 1);
+        CHECK(model.data(idx1, StashListModel::SelectorRole).toString() == "stash@{1}");
+
+        model.clear();
+        CHECK(model.rowCount() == 0);
+    }
+
+    SECTION("StashManagerViewModel interacts with GitStashService and signals") {
+        MockFullGitOps mockOps;
+        mockOps.stashesToReturn = {
+            gf::git::bo::GitStashItem{
+                .index = 0,
+                .selector = "stash@{0}",
+                .commitSha = "1111",
+                .dateIso = "2026-11-07T12:00:00Z",
+                .message = "Stash #1",
+                .branchName = "main"
+            }
+        };
+
+        gf::git::bl::GitStashService stashService(mockOps);
+        StashManagerViewModel vm(stashService);
+
+        auto tempDir = std::filesystem::temp_directory_path();
+        vm.setRepoPath(QString::fromStdString(tempDir.string()));
+        CHECK(vm.repoPath().toStdString() == tempDir.string());
+
+        QSignalSpy opSpy(&vm, &StashManagerViewModel::operationSucceeded);
+
+        // Refresh populates stashesModel
+        vm.refresh();
+        CHECK(vm.stashesModel()->rowCount() == 1);
+
+        // Push
+        bool pushed = vm.push("New stash message", true, false);
+        CHECK(pushed);
+        CHECK(mockOps.stashPushCalled);
+        CHECK(opSpy.count() == 1);
+        CHECK(opSpy.takeFirst().at(0).toString() == "push");
+
+        // Apply
+        bool applied = vm.apply(0, false);
+        CHECK(applied);
+        CHECK(mockOps.stashApplyCalled);
+        CHECK(opSpy.count() == 1);
+        CHECK(opSpy.takeFirst().at(0).toString() == "apply");
+
+        // Pop
+        bool popped = vm.pop(0, false);
+        CHECK(popped);
+        CHECK(mockOps.stashPopCalled);
+        CHECK(opSpy.count() == 1);
+        CHECK(opSpy.takeFirst().at(0).toString() == "pop");
+
+        // Drop
+        bool dropped = vm.drop(0);
+        CHECK(dropped);
+        CHECK(mockOps.stashDropCalled);
+        CHECK(opSpy.count() == 1);
+        CHECK(opSpy.takeFirst().at(0).toString() == "drop");
+
+        // Clear
+        bool cleared = vm.clear();
+        CHECK(cleared);
+        CHECK(mockOps.stashClearCalled);
+        CHECK(opSpy.count() == 1);
+        CHECK(opSpy.takeFirst().at(0).toString() == "clear");
+    }
+}
+
+TEST_CASE("ConflictHunkListModel and ConflictResolverViewModel 3-way conflict resolution", "[viewmodel][conflict]") {
+    ensureQtApp();
+
+    SECTION("ConflictHunkListModel tracks resolution state") {
+        ConflictHunkListModel model;
+        CHECK(model.rowCount() == 0);
+        CHECK(model.allResolved());
+
+        std::vector<gf::git::bo::ConflictHunk> hunks = {
+            gf::git::bo::ConflictHunk{
+                .hunkIndex = 0,
+                .startLine = 10,
+                .baseContent = "int x = 0;\n",
+                .oursContent = "int x = 1;\n",
+                .theirsContent = "int x = 2;\n",
+                .chosenSide = gf::git::bo::ConflictSide::Ours,
+                .customContent = {},
+                .isResolved = false
+            },
+            gf::git::bo::ConflictHunk{
+                .hunkIndex = 1,
+                .startLine = 25,
+                .baseContent = "return true;\n",
+                .oursContent = "return ok;\n",
+                .theirsContent = "return valid;\n",
+                .chosenSide = gf::git::bo::ConflictSide::Theirs,
+                .customContent = {},
+                .isResolved = false
+            }
+        };
+
+        model.setHunks(hunks);
+        REQUIRE(model.rowCount() == 2);
+        CHECK(model.resolvedCount() == 0);
+        CHECK_FALSE(model.allResolved());
+
+        // Resolve first hunk with Ours
+        model.resolveHunk(0, gf::git::bo::ConflictSide::Ours);
+        CHECK(model.resolvedCount() == 1);
+        CHECK_FALSE(model.allResolved());
+
+        auto idx0 = model.index(0);
+        CHECK(model.data(idx0, ConflictHunkListModel::IsResolvedRole).toBool() == true);
+        CHECK(model.data(idx0, ConflictHunkListModel::ChosenSideRole).toInt() == static_cast<int>(gf::git::bo::ConflictSide::Ours));
+        CHECK(model.data(idx0, ConflictHunkListModel::ResolvedPreviewRole).toString() == "int x = 1;\n");
+
+        // Resolve second hunk with Custom text
+        model.resolveHunk(1, gf::git::bo::ConflictSide::Custom, "return ok && valid;\n");
+        CHECK(model.resolvedCount() == 2);
+        CHECK(model.allResolved());
+
+        auto idx1 = model.index(1);
+        CHECK(model.data(idx1, ConflictHunkListModel::IsResolvedRole).toBool() == true);
+        CHECK(model.data(idx1, ConflictHunkListModel::ChosenSideRole).toInt() == static_cast<int>(gf::git::bo::ConflictSide::Custom));
+        CHECK(model.data(idx1, ConflictHunkListModel::CustomContentRole).toString() == "return ok && valid;\n");
+        CHECK(model.data(idx1, ConflictHunkListModel::ResolvedPreviewRole).toString() == "return ok && valid;\n");
+
+        model.clear();
+        CHECK(model.rowCount() == 0);
+    }
+
+    SECTION("ConflictResolverViewModel loads file, manages resolution and applies") {
+        MockFullGitOps mockOps;
+        mockOps.conflictFileToReturn = gf::git::bo::ConflictFile{
+            .filePath = "src/main.cpp",
+            .isBinary = false,
+            .hunks = {
+                gf::git::bo::ConflictHunk{
+                    .hunkIndex = 0,
+                    .startLine = 5,
+                    .baseContent = "base",
+                    .oursContent = "ours",
+                    .theirsContent = "theirs",
+                    .chosenSide = gf::git::bo::ConflictSide::Ours,
+                    .customContent = {},
+                    .isResolved = false
+                }
+            },
+            .fullContentWithMarkers = "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> feature\n"
+        };
+
+        gf::git::bl::GitConflictService conflictService(mockOps);
+        ConflictResolverViewModel vm(conflictService);
+
+        auto tempDir = std::filesystem::temp_directory_path();
+        vm.setRepoPath(QString::fromStdString(tempDir.string()));
+
+        QSignalSpy resAppliedSpy(&vm, &ConflictResolverViewModel::resolutionApplied);
+
+        // Load conflict file
+        bool loaded = vm.loadFile("src/main.cpp");
+        CHECK(loaded);
+        CHECK(vm.currentFilePath() == "src/main.cpp");
+        CHECK(vm.totalHunks() == 1);
+        CHECK(vm.resolvedHunks() == 0);
+        CHECK_FALSE(vm.allResolved());
+
+        // Resolve hunk 0 with Theirs (side = 2)
+        vm.resolveHunk(0, 2);
+        CHECK(vm.resolvedHunks() == 1);
+        CHECK(vm.allResolved());
+
+        // Apply resolution
+        bool applied = vm.applyResolution(true);
+        CHECK(applied);
+        CHECK(mockOps.applyConflictResolutionCalled);
+        CHECK(resAppliedSpy.count() == 1);
+        CHECK(resAppliedSpy.takeFirst().at(0).toString() == "src/main.cpp");
+    }
+}
+
+TEST_CASE("WorkspaceSessionViewModel Rebase operations and state tracking", "[viewmodel][session][rebase]") {
+    ensureQtApp();
+
+    TestContext ctx;
+    auto r1Res = ctx.repoService->registerRepository({
+        .localPath = ctx.repoAPath,
+        .displayName = "Repo Rebase"
+    });
+    REQUIRE(r1Res.has_value());
+
+    MockFullGitOps mockOps;
+    gf::git::bl::GitWorkingTreeService statusService(mockOps);
+    gf::git::bl::GitStagingService stagingService(mockOps);
+    gf::git::bl::GitDiffService diffService(mockOps);
+    gf::git::bl::GitBranchService branchService(mockOps);
+    gf::git::bl::GitHistoryService historyService(mockOps);
+    gf::git::bl::GitRemoteMergeService remoteMergeService(mockOps);
+    gf::git::bl::GitStashService stashService(mockOps);
+    gf::git::bl::GitRebaseService rebaseService(mockOps);
+    gf::git::bl::GitConflictService conflictService(mockOps);
+
+    WorkspaceSessionViewModel sessionVm(
+        *ctx.repoService,
+        *ctx.workspaceService,
+        statusService,
+        stagingService,
+        diffService,
+        branchService,
+        historyService,
+        remoteMergeService,
+        stashService,
+        rebaseService,
+        conflictService
+    );
+
+    sessionVm.openRepository(QString::fromStdString(r1Res->id.value()), "Repo Rebase", QString::fromStdString(ctx.repoAPath.string()));
+    CHECK(sessionVm.hasOpenTabs());
+
+    CHECK_FALSE(sessionVm.isRebaseInProgress());
+
+    // Start rebase
+    QSignalSpy rebaseSucceededSpy(&sessionVm, &WorkspaceSessionViewModel::rebaseSucceeded);
+    bool rebaseStarted = sessionVm.startRebase("main");
+    CHECK(rebaseStarted);
+    CHECK(mockOps.startRebaseCalled);
+    CHECK(rebaseSucceededSpy.count() == 1);
+
+    // Continue rebase
+    bool cont = sessionVm.continueRebase();
+    CHECK(cont);
+    CHECK(mockOps.continueRebaseCalled);
+
+    // Skip rebase
+    bool skipped = sessionVm.skipRebase();
+    CHECK(skipped);
+    CHECK(mockOps.skipRebaseCalled);
+
+    // Abort rebase
+    bool aborted = sessionVm.abortRebase();
+    CHECK(aborted);
+    CHECK(mockOps.abortRebaseCalled);
+
+    // Sub-viewmodels accessors
+    CHECK(sessionVm.stashManager() != nullptr);
+    CHECK(sessionVm.conflictResolver() != nullptr);
+    CHECK(sessionVm.workingTree()->conflictedModel() != nullptr);
 }

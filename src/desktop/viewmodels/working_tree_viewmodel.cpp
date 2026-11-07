@@ -12,13 +12,15 @@ WorkingTreeViewModel::WorkingTreeViewModel(gf::git::bl::GitWorkingTreeService& s
     , m_stagingService(stagingService)
     , m_stagedModel(this)
     , m_unstagedModel(this)
-    , m_untrackedModel(this) {}
+    , m_untrackedModel(this)
+    , m_conflictedModel(this) {}
 
 bool WorkingTreeViewModel::refresh(const QString& repoPath) {
     if (repoPath.trimmed().isEmpty()) {
         m_stagedModel.clear();
         m_unstagedModel.clear();
         m_untrackedModel.clear();
+        m_conflictedModel.clear();
         m_stagedCount = 0;
         m_unstagedCount = 0;
         m_untrackedCount = 0;
@@ -44,6 +46,7 @@ bool WorkingTreeViewModel::refresh(const QString& repoPath) {
     m_stagedModel.setItems(status.stagedFiles);
     m_unstagedModel.setItems(status.unstagedFiles);
     m_untrackedModel.setItems(status.untrackedFiles);
+    m_conflictedModel.setItems(status.conflictedFiles);
 
     m_stagedCount = status.stagedCount();
     m_unstagedCount = status.unstagedCount();

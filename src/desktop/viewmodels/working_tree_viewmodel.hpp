@@ -15,6 +15,7 @@ class WorkingTreeViewModel final : public QObject {
     Q_PROPERTY(WorkingTreeFileListModel* stagedModel READ stagedModel CONSTANT)
     Q_PROPERTY(WorkingTreeFileListModel* unstagedModel READ unstagedModel CONSTANT)
     Q_PROPERTY(WorkingTreeFileListModel* untrackedModel READ untrackedModel CONSTANT)
+    Q_PROPERTY(WorkingTreeFileListModel* conflictedModel READ conflictedModel CONSTANT)
 
     Q_PROPERTY(int stagedCount READ stagedCount NOTIFY statusChanged)
     Q_PROPERTY(int unstagedCount READ unstagedCount NOTIFY statusChanged)
@@ -38,6 +39,7 @@ public:
     [[nodiscard]] WorkingTreeFileListModel* stagedModel() noexcept { return &m_stagedModel; }
     [[nodiscard]] WorkingTreeFileListModel* unstagedModel() noexcept { return &m_unstagedModel; }
     [[nodiscard]] WorkingTreeFileListModel* untrackedModel() noexcept { return &m_untrackedModel; }
+    [[nodiscard]] WorkingTreeFileListModel* conflictedModel() noexcept { return &m_conflictedModel; }
 
     [[nodiscard]] int stagedCount() const noexcept { return m_stagedCount; }
     [[nodiscard]] int unstagedCount() const noexcept { return m_unstagedCount; }
@@ -71,6 +73,7 @@ private:
     WorkingTreeFileListModel m_stagedModel;
     WorkingTreeFileListModel m_unstagedModel;
     WorkingTreeFileListModel m_untrackedModel;
+    WorkingTreeFileListModel m_conflictedModel;
 
     int m_stagedCount = 0;
     int m_unstagedCount = 0;

@@ -12,6 +12,7 @@ Rectangle {
     property var diffViewer: sessionVm ? sessionVm.diffViewer : null
 
     signal fileSelected(string filePath, string scope)
+    signal conflictResolveRequested(string filePath)
 
     ColumnLayout {
         anchors.fill: parent
@@ -90,6 +91,119 @@ Rectangle {
             ColumnLayout {
                 width: root.width
                 spacing: 4
+
+                // ==========================================
+                // 0. SEZIONE CONFLICTED FILES
+                // ==========================================
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 28
+                    color: "#7F1D1D"
+                    visible: workingTree ? workingTree.conflictedCount > 0 : false
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 8
+                        spacing: 6
+
+                        Text {
+                            text: "⚠ CONFLICTED FILES"
+                            color: "#FEF2F2"
+                            font.bold: true
+                            font.pixelSize: 11
+                        }
+
+                        Rectangle {
+                            Layout.preferredHeight: 18
+                            implicitWidth: conflictedCountText.implicitWidth + 10
+                            radius: 9
+                            color: "#EF4444"
+
+                            Text {
+                                id: conflictedCountText
+                                anchors.centerIn: parent
+                                text: workingTree ? workingTree.conflictedCount.toString() : "0"
+                                color: "#FFFFFF"
+                                font.pixelSize: 10
+                                font.bold: true
+                            }
+                        }
+
+                        Item { Layout.fillWidth: true }
+                    }
+                }
+
+                ListView {
+                    Layout.fillWidth: true
+                    implicitHeight: contentHeight
+                    interactive: false
+                    visible: workingTree ? workingTree.conflictedCount > 0 : false
+                    model: workingTree ? workingTree.conflictedModel : null
+                    delegate: Rectangle {
+                        width: root.width
+                        height: 28
+                        color: mouseAreaConflicted.containsMouse ? "#371B1B" : "transparent"
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 12
+                            anchors.rightMargin: 8
+                            spacing: 8
+
+                            Text {
+                                text: "!"
+                                color: "#EF4444"
+                                font.bold: true
+                                font.pixelSize: 12
+                            }
+
+                            Text {
+                                text: model.path
+                                color: "#FCA5A5"
+                                font.pixelSize: 12
+                                font.bold: true
+                                elide: Text.ElideMiddle
+                                Layout.fillWidth: true
+                            }
+
+                            Button {
+                                text: "⚔ Risolvi"
+                                Layout.preferredHeight: 22
+                                background: Rectangle {
+                                    color: parent.hovered ? "#DC2626" : "#B91C1C"
+                                    radius: 3
+                                }
+                                contentItem: Text {
+                                    text: parent.text
+                                    color: "#FFFFFF"
+                                    font.pixelSize: 10
+                                    font.bold: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                onClicked: {
+                                    root.conflictResolveRequested(model.path);
+                                    if (root.sessionVm) {
+                                        root.sessionVm.openConflictResolver(model.path);
+                                    }
+                                }
+                            }
+                        }
+
+                        MouseArea {
+                            id: mouseAreaConflicted
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onClicked: {
+                                root.conflictResolveRequested(model.path);
+                                if (root.sessionVm) {
+                                    root.sessionVm.openConflictResolver(model.path);
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // ==========================================
                 // 1. SEZIONE STAGED CHANGES

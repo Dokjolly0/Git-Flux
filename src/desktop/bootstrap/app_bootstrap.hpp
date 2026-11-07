@@ -13,6 +13,9 @@
 #include "core/modules/git/bl/git_branch_service.hpp"
 #include "core/modules/git/bl/git_history_service.hpp"
 #include "core/modules/git/bl/git_remote_merge_service.hpp"
+#include "core/modules/git/bl/git_stash_service.hpp"
+#include "core/modules/git/bl/git_rebase_service.hpp"
+#include "core/modules/git/bl/git_conflict_service.hpp"
 #include "infrastructure/git/native/native_git_executor.hpp"
 #include "infrastructure/git/native/native_repository_git_ops.hpp"
 #include "desktop/viewmodels/home_hub_viewmodel.hpp"
@@ -68,6 +71,9 @@ private:
     std::unique_ptr<git::bl::GitBranchService> m_branchService;
     std::unique_ptr<git::bl::GitHistoryService> m_historyService;
     std::unique_ptr<git::bl::GitRemoteMergeService> m_remoteMergeService;
+    std::unique_ptr<git::bl::GitStashService> m_stashService;
+    std::unique_ptr<git::bl::GitRebaseService> m_rebaseService;
+    std::unique_ptr<git::bl::GitConflictService> m_conflictService;
 
     std::unique_ptr<HomeHubViewModel> m_homeHubVm;
     std::unique_ptr<QuickOpenViewModel> m_quickOpenVm;

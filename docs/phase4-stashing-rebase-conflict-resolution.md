@@ -1,6 +1,6 @@
 # Git Flux — Specifica e Stato di Avanzamento Fase 4 (Stashing, Rebase & Advanced Conflict Resolution)
 
-> **Stato:** Completato Task 4.3 — 3-Way Conflict Resolver Engine | Prossimo: Task 4.4 — Stash Manager & 3-Way Conflict Resolver UI  
+> **Stato:** Completata al 100% (Tutti i 4 task logici completati)  
 > **Architettura di riferimento:** [plan.md](plan.md) (Sezioni 2.1, 7, 8, 15)  
 > **Wireframe UI di riferimento:** [`docs/ui/git-flux-ui-v2.drawio`](ui/git-flux-ui-v2.drawio) (Pagine 05, 07)  
 
@@ -15,7 +15,7 @@ La Fase 4 completa le capacità avanzate di gestione dell'albero di lavoro, risc
 | **4.1** | **Stashing Engine** | Domain BO (`GitStashItem`, `StashPushOptions`), port `IRepositoryGitOps`, service `GitStashService` (validazione, per-repo locking), esecuzione nativa `git stash list/push/pop/apply/drop/clear` con parser formattato deterministico. | **Completato** |
 | **4.2** | **Rebase & Cherry-Pick Engine** | Domain BO (`RebaseOptions`, `RebaseResult`, `RebaseStatus`, `CherryPickOptions`), port `IRepositoryGitOps`, service `GitRebaseService` con gestione stati in-progress (`rebase --continue/abort/skip`) e cherry-pick atomico. | **Completato** |
 | **4.3** | **3-Way Conflict Resolver Engine** | Domain BO (`ConflictFile`, `ConflictHunk`, `ConflictSide`, `ApplyConflictResolutionOptions`), estrazione precisa degli stage 1 (base), 2 (ours), 3 (theirs) tramite `git show :stage:path` o marker di conflitto, applicazione risoluzioni e staging atomico. | **Completato** |
-| **4.4** | **Stash Manager & 3-Way Conflict Resolver UI** | ViewModels MVVM (`StashListModel`, `ConflictResolverViewModel`) e viste QML (`StashManagerModal`, `ConflictResolverModal`). | *In coda* |
+| **4.4** | **Stash Manager & 3-Way Conflict Resolver UI** | ViewModels MVVM (`StashListModel`, `StashManagerViewModel`, `ConflictHunkListModel`, `ConflictResolverViewModel`), viste QML (`StashManagerModal`, `ConflictResolverModal`), banner Rebase interattivo e sezione Conflitti in `WorkingTreePanel`. | **Completato** |
 
 ---
 
@@ -133,6 +133,49 @@ La Fase 4 completa le capacità avanzate di gestione dell'albero di lavoro, risc
   - `src/infrastructure/git/native/native_repository_git_ops.hpp` e `.cpp`: implementazione comandi nativi `git show :stage:path`, estrazione file conflitto e salvataggio/staging atomico.
   - `CMakeLists.txt`: registrazione di `conflict_marker_parser.cpp`, `git_conflict_service.cpp`, `conflict_unit_tests.cpp`, `conflict_integration_tests.cpp`.
 - **Metriche Test:** 93 asserzioni superate (55 unitari + 38 integrazione). Zero errori, zero warning con `-Werror`.
+
+---
+
+## 5. Dettaglio Task 4.4 — Stash Manager & 3-Way Conflict Resolver UI
+
+### Obiettivi e Principi Architetturali
+- **MVVM Puro per Qt Quick 6:**
+  - ViewModels dedicati incapsulano lo stato e la logica di presentazione, esponendo proprietà reattive (`NOTIFY`), modelli di lista (`QAbstractListModel`) con ruoli personalizzati, e metodi `Q_INVOKABLE` per le interazioni utente.
+  - Nessuna logica di business o Git nel layer QML, garantendo totale testabilità automatica headless.
+- **Stash Management UI:**
+  - `StashListModel`: modello lista reattivo che espone `stashIndex`, `selector` (`stash@{N}`), `commitSha`, `dateIso`, `message`, `branchName`.
+  - `StashManagerViewModel`: espone operazioni `refresh`, `push(message, untracked, keepIndex)`, `pop(index)`, `apply(index)`, `drop(index)`, `clear()` con gestione di stato busy e messaggi di errore.
+  - `StashManagerModal.qml`: interfaccia grafica scura, compatta ed elegante per creare stash con opzioni configurabili e gestire la lista con azioni dirette (Apply, Pop, Drop, Clear).
+- **Risolutore Conflitti a 3 Vie UI:**
+  - `ConflictHunkListModel`: modello lista degli hunk in conflitto con ruoli per numero riga iniziale, contenuti (`baseContent`, `oursContent`, `theirsContent`, `customContent`), stato di risoluzione (`isResolved`, `chosenSide`) e preview del testo unificato.
+  - `ConflictResolverViewModel`: carica il file confliggente (`loadFile`), permette la scelta interattiva della sorgente per singolo hunk (`resolveHunk` con Ours/Theirs/Base/Custom), traccia l'avanzamento (`resolvedHunks / totalHunks`, `allResolved`) e applica il salvataggio atomico con auto-staging (`applyResolution`).
+  - `ConflictResolverModal.qml`: finestra modale estesa a 3 pannelli/colonne con codice monospace, selezione guidata del blocco vincente o editor testuale personalizzato e pulsante di finalizzazione atomica.
+- **Integrazione nel Workspace & Flusso Rebase:**
+  - `WorkingTreePanel.qml`: introdotta la sezione `⚠ CONFLICTED FILES` in cima alle modifiche con badge contatore, evidenziazione visiva e pulsante rapido `⚔ Risolvi` che apre direttamente il modale di risoluzione.
+  - `WorkspaceSessionView.qml`:
+    - Toolbar integrata con pulsante dedicato `📦 Stash...`.
+    - Banner interattivo condizionale per Rebase in corso (`sessionVm.isRebaseInProgress`) in stile ambra con pulsanti per `Continua Rebase`, `Salta Commit` e `Annulla (Abort)`.
+    - Gestione automatica del refresh dei tab al termine della risoluzione di un file.
+  - `WorkingTreeViewModel`: integrato `conflictedModel` (`WorkingTreeFileListModel`) per il binding diretto dei file in conflitto.
+
+### Risultati del Task 4.4
+- **File Creati:**
+  - `src/desktop/viewmodels/stash_list_model.hpp` e `.cpp`
+  - `src/desktop/viewmodels/stash_manager_viewmodel.hpp` e `.cpp`
+  - `src/desktop/viewmodels/conflict_hunk_list_model.hpp` e `.cpp`
+  - `src/desktop/viewmodels/conflict_resolver_viewmodel.hpp` e `.cpp`
+  - `src/desktop/ui/qml/views/StashManagerModal.qml`
+  - `src/desktop/ui/qml/views/ConflictResolverModal.qml`
+- **File Modificati:**
+  - `src/desktop/viewmodels/working_tree_viewmodel.hpp` e `.cpp`: aggiunta proprietà e getter `conflictedModel`.
+  - `src/desktop/viewmodels/workspace_session_viewmodel.hpp` e `.cpp`: integrazione di Stash, Rebase e Conflict Resolver con comandi invokable.
+  - `src/desktop/bootstrap/app_bootstrap.hpp` e `.cpp`: istanziazione service e registrazione tipi QML in `registerWithQml`.
+  - `src/desktop/ui/qml/views/WorkspaceSessionView.qml`: toolbar stash, rebase banner, dialog modali e collegamenti.
+  - `src/desktop/ui/qml/views/WorkingTreePanel.qml`: sezione dedicata ai file confliggenti con trigger di risoluzione.
+  - `CMakeLists.txt`: inclusione dei nuovi file C++ in `gf_desktop_viewmodels` e dei file QML nel modulo `GitFlux.Desktop`.
+  - `tests/unit/viewmodels_unit_tests.cpp`: test unitari per `StashListModel`, `StashManagerViewModel`, `ConflictHunkListModel`, `ConflictResolverViewModel` e integrazione rebase su `WorkspaceSessionViewModel`.
+- **Metriche Test:** Suite completa passata con successo (3/3 test suites passate su `linux-qt-release`, 2/2 su `linux-core-release`, smoke test headless superato con codice 0).
+
 
 
 

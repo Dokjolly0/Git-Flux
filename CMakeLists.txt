@@ -176,6 +176,10 @@ if(GF_BUILD_DESKTOP)
         src/desktop/viewmodels/branch_list_model.cpp
         src/desktop/viewmodels/commit_history_list_model.cpp
         src/desktop/viewmodels/branch_manager_viewmodel.cpp
+        src/desktop/viewmodels/stash_list_model.cpp
+        src/desktop/viewmodels/stash_manager_viewmodel.cpp
+        src/desktop/viewmodels/conflict_hunk_list_model.cpp
+        src/desktop/viewmodels/conflict_resolver_viewmodel.cpp
         src/desktop/viewmodels/workspace_session_viewmodel.cpp
         src/desktop/viewmodels/home_hub_viewmodel.cpp
         src/desktop/viewmodels/quick_open_viewmodel.cpp
@@ -215,6 +219,8 @@ if(GF_BUILD_DESKTOP)
             src/desktop/ui/qml/views/DiffViewerPanel.qml
             src/desktop/ui/qml/views/BranchSwitcherDropdown.qml
             src/desktop/ui/qml/views/BranchManagerModal.qml
+            src/desktop/ui/qml/views/StashManagerModal.qml
+            src/desktop/ui/qml/views/ConflictResolverModal.qml
             src/desktop/ui/qml/views/CommitHistoryPanel.qml
     )
     target_include_directories(git_flux PRIVATE
