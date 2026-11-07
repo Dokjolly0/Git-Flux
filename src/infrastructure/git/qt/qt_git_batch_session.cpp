@@ -107,7 +107,7 @@ public:
             });
         }
 
-        const qsizetype needed = static_cast<qsizetype>(obj.header.size + 1); // +1 per '\n' finale
+        const qsizetype needed = static_cast<qsizetype>(obj.header.size + 1); // +1 for trailing '\n'
         while (proc_->bytesAvailable() < needed) {
             if (!proc_->waitForReadyRead(5000)) {
                 return std::unexpected(GitExecutionError{

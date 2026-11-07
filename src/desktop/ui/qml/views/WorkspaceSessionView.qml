@@ -30,7 +30,7 @@ Rectangle {
                 anchors.rightMargin: 8
                 spacing: 8
 
-                // Pulsante Torna a Home Hub
+                // Back to Home Hub button
                 Button {
                     Layout.preferredHeight: 32
                     background: Rectangle {
@@ -55,7 +55,7 @@ Rectangle {
                     }
                 }
 
-                // Pulsante Quick Open
+                // Quick Open button
                 Button {
                     Layout.preferredHeight: 32
                     background: Rectangle {
@@ -82,14 +82,14 @@ Rectangle {
                     }
                 }
 
-                // Separatore
+                // Separator
                 Rectangle {
                     Layout.preferredWidth: 1
                     Layout.preferredHeight: 22
                     color: "#334155"
                 }
 
-                // Tab Bar Scorrevole dei Repository Aperti
+                // Scrollable Tab Bar for Open Repositories
                 ScrollView {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
@@ -115,7 +115,7 @@ Rectangle {
                                     anchors.centerIn: parent
                                     spacing: 8
 
-                                    // Indicatore Dirty
+                                    // Dirty Indicator
                                     Rectangle {
                                         width: 8
                                         height: 8
@@ -177,20 +177,20 @@ Rectangle {
                     }
                 }
 
-                // Separatore
+                // Separator
                 Rectangle {
                     Layout.preferredWidth: 1
                     Layout.preferredHeight: 22
                     color: "#334155"
                 }
 
-                // Selettore Branch Dropdown
+                // Branch Selector Dropdown
                 BranchSwitcherDropdown {
                     Layout.preferredHeight: 32
                     branchManager: (root.sessionVm && root.sessionVm.branchManager) ? root.sessionVm.branchManager : null
                 }
 
-                // Pulsanti Azioni Remote Rapide
+                // Quick Remote Action Buttons
                 Button {
                     text: "⬇ Fetch"
                     Layout.preferredHeight: 32
@@ -299,14 +299,14 @@ Rectangle {
                     }
                 }
 
-                // Separatore
+                // Separator
                 Rectangle {
                     Layout.preferredWidth: 1
                     Layout.preferredHeight: 22
                     color: "#334155"
                 }
 
-                // Toggle Vista: "Changes" vs "History"
+                // View Toggle: "Changes" vs "History"
                 RowLayout {
                     spacing: 2
                     Rectangle {
@@ -352,7 +352,7 @@ Rectangle {
                     }
                 }
 
-                // Indicatore Attività Background / Batch Runner
+                // Background Activity / Batch Runner Indicator
                 Rectangle {
                     visible: batchOperationsVm && batchOperationsVm.isRunning
                     Layout.preferredHeight: 28
@@ -481,14 +481,14 @@ Rectangle {
         }
 
         // ==========================================
-        // 2. CORPO DELLA SESSIONE (Changes vs History)
+        // 2. SESSION BODY (Changes vs History)
         // ==========================================
         StackLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
             currentIndex: root.activeViewMode === "changes" ? 0 : 1
 
-            // Vista 0: Changes (Working Tree + Commit Box + Diff Viewer)
+            // View 0: Changes (Working Tree + Commit Box + Diff Viewer)
             SplitView {
                 orientation: Qt.Horizontal
 
@@ -522,7 +522,7 @@ Rectangle {
                 }
             }
 
-            // Vista 1: History (Commit Graph / Log)
+            // View 1: History (Commit Graph / Log)
             CommitHistoryPanel {
                 sessionVm: root.sessionVm
             }

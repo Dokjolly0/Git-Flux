@@ -8,9 +8,9 @@ namespace gf::infra::git {
 
 class GitDiscovery {
 public:
-    /// Rileva il binario Git nel sistema e identifica (su Windows) se il path nel PATH
-    /// punta allo shim `cmd\git.exe`, risolvendo anche il binario nativo diretto
-    /// (`mingw64\bin\git.exe` o equivalente) per eliminare il doppio spawn.
+    /// Discovers the Git binary on the system and detects (on Windows) whether the path in PATH
+    /// points to the `cmd\git.exe` shim, resolving the direct native binary
+    /// (`mingw64\bin\git.exe` or equivalent) to eliminate double process spawning overhead.
     [[nodiscard]] static std::expected<gf::git::bo::GitExecutableInfo, gf::git::bo::GitExecutionError>
     discover();
 };

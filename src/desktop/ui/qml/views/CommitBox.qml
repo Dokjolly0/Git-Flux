@@ -16,7 +16,7 @@ Rectangle {
         anchors.margins: 10
         spacing: 8
 
-        // Intestazione Commit Box
+        // Commit Box Header
         RowLayout {
             Layout.fillWidth: true
             spacing: 6
@@ -31,7 +31,7 @@ Rectangle {
 
             Item { Layout.fillWidth: true }
 
-            // Checkbox Amend
+            // Amend Checkbox
             CheckBox {
                 id: amendCheck
                 text: "Amend"
@@ -49,7 +49,7 @@ Rectangle {
             }
         }
 
-        // Textarea per messaggio commit
+        // Commit message textarea
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -91,7 +91,7 @@ Rectangle {
             }
         }
 
-        // Messaggio di Errore se presente
+        // Error message if present
         Text {
             visible: commitBox ? commitBox.lastErrorMessage !== "" : false
             text: commitBox ? commitBox.lastErrorMessage : ""
@@ -101,7 +101,7 @@ Rectangle {
             Layout.fillWidth: true
         }
 
-        // Pulsante di Invio Commit
+        // Commit submit button
         Button {
             id: commitBtn
             Layout.fillWidth: true

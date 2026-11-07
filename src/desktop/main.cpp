@@ -19,14 +19,14 @@ int main(int argc, char* argv[]) {
 
     QCommandLineOption dbOption(
         QStringList() << QStringLiteral("d") << QStringLiteral("db"),
-        QStringLiteral("Specifica il percorso del database SQLite"),
+        QStringLiteral("Specifies SQLite database path"),
         QStringLiteral("path")
     );
     parser.addOption(dbOption);
 
     QCommandLineOption smokeTestOption(
         QStringLiteral("test-startup"),
-        QStringLiteral("Verifica l'avvio completo del bootstrap e del caricamento QML ed esce immediatamente")
+        QStringLiteral("Verifies complete bootstrap and QML loading then exits immediately")
     );
     parser.addOption(smokeTestOption);
 
@@ -55,7 +55,7 @@ int main(int argc, char* argv[]) {
             &app,
             [url](QObject* obj, const QUrl& objUrl) {
                 if (!obj && url == objUrl) {
-                    std::cerr << "Errore critico: impossibile caricare il file QML principale: "
+                    std::cerr << "Critical error: unable to load main QML file: "
                               << url.toString().toStdString() << std::endl;
                     QCoreApplication::exit(-1);
                 }
@@ -66,18 +66,18 @@ int main(int argc, char* argv[]) {
         engine.load(url);
 
         if (engine.rootObjects().isEmpty()) {
-            std::cerr << "Errore: nessun oggetto radice QML caricato." << std::endl;
+            std::cerr << "Error: no QML root objects loaded." << std::endl;
             return 1;
         }
 
         if (parser.isSet(smokeTestOption)) {
-            std::cout << "[SMOKE_TEST] Git Flux bootstrap & QML engine inizializzati con successo." << std::endl;
+            std::cout << "[SMOKE_TEST] Git Flux bootstrap & QML engine initialized successfully." << std::endl;
             return 0;
         }
 
         return app.exec();
     } catch (const std::exception& ex) {
-        std::cerr << "Errore fatale all'avvio di Git Flux: " << ex.what() << std::endl;
+        std::cerr << "Fatal error starting Git Flux: " << ex.what() << std::endl;
         return 1;
     }
 }

@@ -15,31 +15,31 @@ public:
     explicit GitDiffService(ports::IRepositoryGitOps& gitOps) noexcept;
     ~GitDiffService() = default;
 
-    /// Estrae il diff per un singolo file nello scope specificato.
+    /// Extracts the diff for a single file within the specified scope.
     [[nodiscard]] std::expected<bo::FileDiff, ports::GitOpsError>
     getFileDiff(const std::filesystem::path& repoPath,
                 const std::string& filePath,
                 bo::DiffScope scope);
 
-    /// Shortcut per diff di un file staged.
+    /// Shortcut for diff of a staged file.
     [[nodiscard]] std::expected<bo::FileDiff, ports::GitOpsError>
     getStagedFileDiff(const std::filesystem::path& repoPath, const std::string& filePath) {
         return getFileDiff(repoPath, filePath, bo::DiffScope::Staged);
     }
 
-    /// Shortcut per diff di un file unstaged tracciato.
+    /// Shortcut for diff of a tracked unstaged file.
     [[nodiscard]] std::expected<bo::FileDiff, ports::GitOpsError>
     getUnstagedFileDiff(const std::filesystem::path& repoPath, const std::string& filePath) {
         return getFileDiff(repoPath, filePath, bo::DiffScope::Unstaged);
     }
 
-    /// Shortcut per diff di un file untracked.
+    /// Shortcut for diff of an untracked file.
     [[nodiscard]] std::expected<bo::FileDiff, ports::GitOpsError>
     getUntrackedFileDiff(const std::filesystem::path& repoPath, const std::string& filePath) {
         return getFileDiff(repoPath, filePath, bo::DiffScope::Untracked);
     }
 
-    /// Estrae tutti i diff per lo scope specificato (staged o unstaged).
+    /// Extracts all diffs for the specified scope (staged or unstaged).
     [[nodiscard]] std::expected<std::vector<bo::FileDiff>, ports::GitOpsError>
     getAllDiffs(const std::filesystem::path& repoPath, bo::DiffScope scope);
 

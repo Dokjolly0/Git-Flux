@@ -72,13 +72,13 @@ TEST_CASE("Suite A.1 - NoOptionalLocks evita conflitti su .git/index.lock sia st
         }
         REQUIRE(created.has_value());
 
-        // Sporca un file tracciato per invalidare la stat-cache dell'index
+        // Dirties a tracked file to invalidate index stat-cache
         {
             std::ofstream f(repoPath / "src/module_1/item.cpp", std::ios::app);
             f << "// touch while index.lock is held\n";
         }
 
-        // Simula un processo esterno (es. IDE / git add) che detiene .git/index.lock
+        // Simulate external process (e.g. IDE / git add) holding .git/index.lock
         const auto indexLockPath = repoPath / ".git" / "index.lock";
         {
             std::ofstream lockFile(indexLockPath, std::ios::binary);
@@ -94,7 +94,7 @@ TEST_CASE("Suite A.1 - NoOptionalLocks evita conflitti su .git/index.lock sia st
 
         REQUIRE(statusRes.has_value());
         REQUIRE(statusRes->succeeded());
-        // Verifica che il lock file esterno NON sia stato rimosso o alterato
+        // Verify external lock file was NOT removed or altered
         REQUIRE(std::filesystem::exists(indexLockPath));
 
         const auto parsed = gf::git::bl::PorcelainStatusParser::parse(statusRes->stdoutBytes);
@@ -193,7 +193,7 @@ TEST_CASE("Suite A.2 - Parita' funzionale Native vs Qt QProcess e sessione persi
     }
     REQUIRE(created.has_value());
 
-    // Aggiungiamo una modifica su un file con nome UTF-8
+    // Add modification to a file with UTF-8 path
     {
         std::ofstream unicodeFile(repoPath / gf::core::utf8ToPath("docs/specifica_città.md"), std::ios::app);
         unicodeFile << "Nuova riga UTF-8!\n";
@@ -210,7 +210,7 @@ TEST_CASE("Suite A.2 - Parita' funzionale Native vs Qt QProcess e sessione persi
     REQUIRE(nativeStatus.has_value());
     REQUIRE(nativeStatus->succeeded());
 
-    // Estraiamo gli ultimi 30 OID commit per testare cat-file --batch
+    // Extract the last 30 commit OIDs to test cat-file --batch
     const auto revListRes = nativeExec.execute({
         .args = {"rev-list", "--max-count=30", "HEAD"},
         .workingDirectory = repoPath,
@@ -253,7 +253,7 @@ TEST_CASE("Suite A.2 - Parita' funzionale Native vs Qt QProcess e sessione persi
         nativeContents.push_back(std::move(obj->content));
     }
 
-    // Verifica gestione oggetto inesistente senza far cadere la pipe!
+    // Verify non-existent object handling without terminating the pipe!
     auto missingObj = (*nativeSession)->readObject("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef");
     REQUIRE_FALSE(missingObj.has_value());
     REQUIRE((*nativeSession)->isAlive());

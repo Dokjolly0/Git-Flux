@@ -1,137 +1,137 @@
 # Git Flux — Linux Developer Utility Scripts
 
-Questa directory contiene gli script di utilità per la compilazione, il test, l'avvio e la manutenzione di **Git Flux** su sistemi operativi Linux.
+This directory contains utility scripts for building, testing, launching, and maintaining **Git Flux** on Linux operating systems.
 
-Tutti gli script sono autosufficienti, supportano parametri sia abbreviati che estesi (`--help`) e rispettano l'architettura del progetto (Zero-Qt Core e Desktop Qt Quick 6).
+All scripts are self-contained, support both short and long options (`--help`), and adhere strictly to the project architecture (Zero-Qt Core and Desktop Qt Quick 6).
 
 ---
 
-## Indice degli Script
+## Script Index
 
-| Script | Descrizione | Utilizzo Rapido |
+| Script | Description | Quick Usage |
 | :--- | :--- | :--- |
-| [`build.sh`](build.sh) | Compila i preset CMake (Desktop o Zero-Qt Core), con supporto a target specifici e clean build. | `./scripts/linux/build.sh` |
-| [`test.sh`](test.sh) | Esegue la test suite CTest (unitari, MVVM, integrazione) e lo smoke test headless. | `./scripts/linux/test.sh` |
-| [`run.sh`](run.sh) | Avvia l'applicazione desktop Git Flux, opzionalmente con ricompilazione, GDB o Valgrind. | `./scripts/linux/run.sh` |
-| [`clean.sh`](clean.sh) | Pulisce in modo selettivo o globale le directory di build (`build/qt-linux`, `build/core-linux`). | `./scripts/linux/clean.sh` |
-| [`check.sh`](check.sh) | Pipeline completa di health check locale / pre-commit (build e test sia Core che Desktop + smoke test). | `./scripts/linux/check.sh` |
+| [`build.sh`](build.sh) | Builds CMake presets (Desktop or Zero-Qt Core), with support for specific targets and clean builds. | `./scripts/linux/build.sh` |
+| [`test.sh`](test.sh) | Executes CTest test suites (unit, MVVM, integration) and headless smoke test. | `./scripts/linux/test.sh` |
+| [`run.sh`](run.sh) | Launches the Git Flux desktop application, optionally with auto-rebuild, GDB, or Valgrind. | `./scripts/linux/run.sh` |
+| [`clean.sh`](clean.sh) | Selectively or globally cleans build artifact directories (`build/qt-linux`, `build/core-linux`). | `./scripts/linux/clean.sh` |
+| [`check.sh`](check.sh) | Complete local health check / pre-commit verification pipeline (build and test both Core and Desktop + smoke test). | `./scripts/linux/check.sh` |
 
 ---
 
-## 1. `build.sh` — Compilazione
+## 1. `build.sh` — Compilation
 
-Compila il progetto utilizzando CMake Presets.
+Builds the project using CMake Presets.
 
 ```bash
-# Compilazione standard dell'applicazione desktop (linux-qt-release)
+# Standard build of the desktop application (linux-qt-release)
 ./scripts/linux/build.sh
 
-# Compilazione del solo Core Zero-Qt (linux-core-release)
+# Build only the Zero-Qt Core (linux-core-release)
 ./scripts/linux/build.sh --core
 
-# Compilazione di entrambi i preset in sequenza
+# Build both presets in sequence
 ./scripts/linux/build.sh --all
 
-# Clean build forzando la rimozione della cache e directory di build
+# Clean build forcing removal of cache and build directory
 ./scripts/linux/build.sh --clean --qt
 
-# Compilazione di un singolo target specifico
+# Build a single specific target
 ./scripts/linux/build.sh -t git_flux
 ./scripts/linux/build.sh -t gf_viewmodels_tests
 ./scripts/linux/build.sh -t gf_unit_tests
 ```
 
-### Opzioni supportate:
-- `-q, --qt`: preset `linux-qt-release` (default).
-- `-c, --core`: preset `linux-core-release` (Zero-Qt).
-- `-a, --all`: compila sia Core che Desktop.
-- `-C, --clean`: elimina la cartella prima di compilare.
-- `-g, --configure`: forza l'esecuzione di `cmake --preset`.
-- `-t, --target <nome>`: compila un target specifico.
-- `-j, --jobs <num>`: numero di thread di compilazione paralleli (default: `nproc`).
-- `-v, --verbose`: output dettagliato del compilatore.
+### Supported Options:
+- `-q, --qt`: `linux-qt-release` preset (default).
+- `-c, --core`: `linux-core-release` preset (Zero-Qt).
+- `-a, --all`: builds both Core and Desktop.
+- `-C, --clean`: deletes build directory before building.
+- `-g, --configure`: forces `cmake --preset` reconfiguration.
+- `-t, --target <name>`: builds a specific target.
+- `-j, --jobs <num>`: number of parallel build threads (default: `nproc`).
+- `-v, --verbose`: verbose compiler output.
 
 ---
 
 ## 2. `test.sh` — Test Runner
 
-Esegue le suite di test CTest e i test di integrazione con Git nativo.
+Runs CTest test suites and integration tests with native Git.
 
 ```bash
-# Esegue tutti i test del preset Desktop (unit, viewmodels, integration)
+# Run all tests in the Desktop preset (unit, viewmodels, integration)
 ./scripts/linux/test.sh
 
-# Esegue i test del Core Zero-Qt
+# Run Zero-Qt Core tests
 ./scripts/linux/test.sh --core
 
-# Esegue l'intera suite di entrambi i preset
+# Run the complete test suite across both presets
 ./scripts/linux/test.sh --all
 
-# Filtra per suite o nome del test (regex)
+# Filter by test suite or test name (regex)
 ./scripts/linux/test.sh -f viewmodels
 ./scripts/linux/test.sh -f watcher
 ./scripts/linux/test.sh -f batch
 
-# Esegue solo lo smoke test headless di avvio dell'applicazione
+# Run only the headless startup smoke test
 ./scripts/linux/test.sh --smoke
 ```
 
 ---
 
-## 3. `run.sh` — Avvio Applicazione
+## 3. `run.sh` — Application Launcher
 
-Avvia l'eseguibile desktop `git_flux`. Se l'eseguibile non è presente, viene compilato automaticamente.
+Launches the `git_flux` desktop executable. If the binary is missing, it is built automatically.
 
 ```bash
-# Avvio standard dell'interfaccia utente grafica
+# Standard graphical user interface launch
 ./scripts/linux/run.sh
 
-# Ricompila se necessario e poi avvia
+# Rebuild if needed, then launch
 ./scripts/linux/run.sh --build
 
-# Esegue lo smoke test di avvio senza finestra UI (headless)
+# Run headless startup smoke test without showing UI window
 ./scripts/linux/run.sh --smoke
 
-# Avvia l'applicazione con GDB per sessioni di debug
+# Launch application inside GDB for debugging sessions
 ./scripts/linux/run.sh --gdb
 
-# Passa parametri personalizzati all'applicazione
+# Pass custom arguments to the application
 ./scripts/linux/run.sh -- --help
 ```
 
 ---
 
-## 4. `clean.sh` — Pulizia Build
+## 4. `clean.sh` — Build Cleanup
 
-Pulisce le directory degli artefatti compilati.
+Cleans compiled artifact directories.
 
 ```bash
-# Rimuove tutte le cartelle di build generate
+# Remove all generated build folders
 ./scripts/linux/clean.sh
 
-# Rimuove solo la build desktop
+# Remove only the desktop build
 ./scripts/linux/clean.sh --qt
 
-# Rimuove solo la build core
+# Remove only the core build
 ./scripts/linux/clean.sh --core
 
-# Mostra i percorsi che verrebbero rimossi senza eliminarli
+# Show paths that would be removed without deleting them
 ./scripts/linux/clean.sh --dry-run
 ```
 
 ---
 
-## 5. `check.sh` — Health Check Completo (CI / Pre-commit)
+## 5. `check.sh` — Full Health Check (CI / Pre-commit)
 
-Esegue una verifica completa di salute del repository:
+Performs a full repository health verification:
 1. Build `linux-core-release`
-2. Test CTest `linux-core-release`
+2. Run CTest on `linux-core-release`
 3. Build `linux-qt-release`
-4. Test CTest `linux-qt-release`
+4. Run CTest on `linux-qt-release`
 5. Headless Smoke Test `./build/qt-linux/git_flux --test-startup`
 
 ```bash
 ./scripts/linux/check.sh
 ```
 
-Al termine stampa una tabella riassuntiva con durata e stato di ciascun controllo.
+Upon completion, prints a summary table showing duration and pass/fail status for each check.

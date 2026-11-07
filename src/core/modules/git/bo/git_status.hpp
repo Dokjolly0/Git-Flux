@@ -19,7 +19,7 @@ struct GitFileStatusEntry {
     char stagedStatus = '.';
     char unstagedStatus = '.';
     std::string path;
-    std::string originalPath; // Popolato per rename/copy
+    std::string originalPath; // Populated for rename/copy
     bool isConflict = false;
     bool isUntracked = false;
 

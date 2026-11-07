@@ -65,7 +65,7 @@ GitStagingService::validateRelativeFilePaths(const std::vector<std::string>& fil
             });
         }
 
-        // Rifiuta path traversal
+        // Reject path traversal
         for (const auto& part : p) {
             if (part == "..") {
                 return std::unexpected(ports::GitOpsError{

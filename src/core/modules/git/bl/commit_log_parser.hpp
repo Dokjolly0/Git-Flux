@@ -9,7 +9,7 @@ namespace gf::git::bl {
 
 class CommitLogParser {
 public:
-    /// Parsing deterministico ad alte prestazioni dell'output di git log formattato con separatori NUL (\0) e record 0x1E.
+    /// High-performance deterministic parsing of git log output formatted with NUL (\0) and 0x1E record separators.
     [[nodiscard]] static std::vector<bo::GitCommitLogItem> parse(std::string_view rawOutput);
 };
 

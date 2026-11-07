@@ -8,10 +8,10 @@
 
 namespace gf::git::bl {
 
-/// Coordinatore thread-safe dei lock di mutua esclusione per-repository.
-/// Assicura che operazioni concorrenti di scrittura (stage, commit, discard)
-/// sullo stesso repository fisico vengano serializzate deterministicamente,
-/// consentendo la totale concorrenza su repository differenti.
+/// Thread-safe coordinator for per-repository mutual exclusion locks.
+/// Ensures that concurrent write operations (stage, commit, discard)
+/// on the same physical repository are serialized deterministically,
+/// while allowing full concurrency across distinct repositories.
 class RepositoryLockCoordinator {
 public:
     static RepositoryLockCoordinator& instance() {

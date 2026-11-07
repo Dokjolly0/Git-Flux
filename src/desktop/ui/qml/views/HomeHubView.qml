@@ -15,7 +15,7 @@ Item {
         spacing: 0
 
         // =====================================================================
-        // TOP BAR: Brand, Ricerca e Azioni Globali
+        // TOP BAR: Brand, Search, and Global Actions
         // =====================================================================
         Rectangle {
             Layout.fillWidth: true
@@ -30,7 +30,7 @@ Item {
                 anchors.rightMargin: 20
                 spacing: 16
 
-                // Brand e Logo Git Flux
+                // Git Flux Logo & Branding
                 RowLayout {
                     spacing: 10
                     Rectangle {
@@ -60,7 +60,7 @@ Item {
 
                 Item { Layout.preferredWidth: 20 }
 
-                // Campo di Ricerca Rapido Reattivo
+                // Reactive Quick Search Field
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.maximumWidth: 420
@@ -115,7 +115,7 @@ Item {
 
                 Item { Layout.fillWidth: true }
 
-                // Bottoni di Creazione & Quick Open
+                // Creation & Quick Open Buttons
                 RowLayout {
                     spacing: 8
 
@@ -194,7 +194,7 @@ Item {
         }
 
         // =====================================================================
-        // CORPO PRINCIPALE: Layout a 3 Colonne (Repo, Gruppi, Workspace)
+        // MAIN BODY: 3-Column Layout (Repositories, Groups, Workspaces)
         // =====================================================================
         Rectangle {
             Layout.fillWidth: true
@@ -207,7 +207,7 @@ Item {
                 orientation: Qt.Horizontal
 
                 // -------------------------------------------------------------
-                // COLONNA 1: REPOSITORIES
+                // COLUMN 1: REPOSITORIES
                 // -------------------------------------------------------------
                 Rectangle {
                     SplitView.preferredWidth: parent.width / 3
@@ -329,7 +329,7 @@ Item {
                                         }
                                     }
 
-                                    // Se missing mostra pulsante Ricollega
+                                    // If missing, show Reconnect button
                                     Button {
                                         visible: model.isMissing
                                         text: "Ricollega"
@@ -350,7 +350,7 @@ Item {
                                         }
                                     }
 
-                                    // Pulsante Rimuovi
+                                    // Remove button
                                     Button {
                                         visible: repoHover.containsMouse && !model.isMissing
                                         text: "✕"
@@ -376,7 +376,7 @@ Item {
                 }
 
                 // -------------------------------------------------------------
-                // COLONNA 2: GRUPPI
+                // COLUMN 2: GROUPS
                 // -------------------------------------------------------------
                 Rectangle {
                     SplitView.preferredWidth: parent.width / 3
@@ -515,7 +515,7 @@ Item {
                 }
 
                 // -------------------------------------------------------------
-                // COLONNA 3: WORKSPACE
+                // COLUMN 3: WORKSPACES
                 // -------------------------------------------------------------
                 Rectangle {
                     SplitView.fillWidth: true
@@ -674,7 +674,7 @@ Item {
         }
 
         // =====================================================================
-        // STATUS BAR INFERIORE
+        // BOTTOM STATUS BAR
         // =====================================================================
         Rectangle {
             Layout.fillWidth: true
@@ -706,10 +706,10 @@ Item {
     }
 
     // =========================================================================
-    // DIALOGHI DI INSERIMENTO RAPIDO
+    // QUICK CREATION DIALOGS
     // =========================================================================
 
-    // Dialog: Aggiungi Repository
+    // Dialog: Add Repository
     Dialog {
         id: addRepoDialog
         anchors.centerIn: parent
@@ -780,7 +780,7 @@ Item {
         }
     }
 
-    // Dialog: Crea Gruppo
+    // Dialog: Create Group
     Dialog {
         id: addGroupDialog
         anchors.centerIn: parent
@@ -827,7 +827,7 @@ Item {
         }
     }
 
-    // Dialog: Crea Workspace
+    // Dialog: Create Workspace
     Dialog {
         id: addWorkspaceDialog
         anchors.centerIn: parent
@@ -874,7 +874,7 @@ Item {
         }
     }
 
-    // Dialog: Riconnetti Repository Mancante
+    // Dialog: Reconnect Missing Repository
     Dialog {
         id: reconnectDialog
         property string targetRepoId: ""

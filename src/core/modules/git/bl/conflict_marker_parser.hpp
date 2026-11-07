@@ -11,15 +11,15 @@ namespace gf::git::bl {
 
 class ConflictMarkerParser {
 public:
-    /// Esegue il parsing di una stringa con marker git (<<<<<<<, |||||||, =======, >>>>>>>).
+    /// Parses a string containing git conflict markers (<<<<<<<, |||||||, =======, >>>>>>>).
     [[nodiscard]] static std::vector<bo::ConflictHunk>
     parseHunks(std::string_view content);
 
-    /// Ricostruisce il file completo sostituendo ogni hunk con la relativa risoluzione.
+    /// Reconstructs the complete file replacing each hunk with its chosen resolution.
     [[nodiscard]] static std::expected<std::string, std::string>
     reconstruct(std::string_view originalContent, const std::vector<bo::ConflictHunk>& hunks);
 
-    /// Verifica rapida se il testo contiene marker di conflitto Git validi.
+    /// Fast check to verify whether text contains valid Git conflict markers.
     [[nodiscard]] static bool
     hasConflictMarkers(std::string_view content) noexcept;
 };

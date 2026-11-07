@@ -32,7 +32,7 @@ void parseDiffGitHeader(std::string_view line, bo::FileDiff& file) {
         return;
     }
     std::string_view rest = line.substr(prefix.size());
-    // Se ci sono virgolette o spazi
+    // Handle quoted paths or spaces
     if (rest.starts_with("\"")) {
         auto closeQuote = rest.find('"', 1);
         if (closeQuote != std::string_view::npos) {
@@ -63,7 +63,7 @@ bool parseHunkHeader(std::string_view line, bo::DiffHunk& hunk) {
 
     hunk.header = std::string(line);
 
-    std::size_t idx = 4; // dopo "@@ -"
+    std::size_t idx = 4; // after "@@ -"
     int oldStart = 0;
     auto [p1, ec1] = std::from_chars(line.data() + idx, line.data() + line.size(), oldStart);
     if (ec1 != std::errc{}) {
@@ -81,14 +81,14 @@ bool parseHunkHeader(std::string_view line, bo::DiffHunk& hunk) {
         idx = p2 - line.data();
     }
 
-    // Salta spazi prima di '+'
+    // Skip spaces before '+'
     while (idx < line.size() && line[idx] == ' ') {
         ++idx;
     }
     if (idx >= line.size() || line[idx] != '+') {
         return false;
     }
-    ++idx; // dopo '+'
+    ++idx; // after '+'
 
     int newStart = 0;
     auto [p3, ec3] = std::from_chars(line.data() + idx, line.data() + line.size(), newStart);
@@ -155,7 +155,7 @@ std::vector<bo::FileDiff> UnifiedDiffParser::parse(std::string_view diffOutput) 
 
         std::string_view line = trimRight(rawLine);
 
-        // Inizio di un nuovo file diff
+        // Start of a new diff file
         if (line.starts_with("diff --git ")) {
             flushFile();
             hasActiveFile = true;
@@ -190,7 +190,7 @@ std::vector<bo::FileDiff> UnifiedDiffParser::parse(std::string_view diffOutput) 
             continue;
         }
 
-        // Intestazione percorso file standard diff
+        // Standard diff file path header
         if (line.starts_with("--- ")) {
             std::string_view pathPart = line.substr(4);
             if (pathPart != "/dev/null") {
@@ -206,7 +206,7 @@ std::vector<bo::FileDiff> UnifiedDiffParser::parse(std::string_view diffOutput) 
             continue;
         }
 
-        // Inizio di un nuovo hunk
+        // Start of a new hunk
         if (line.starts_with("@@ -")) {
             flushHunk();
             bo::DiffHunk hunk;
@@ -222,7 +222,7 @@ std::vector<bo::FileDiff> UnifiedDiffParser::parse(std::string_view diffOutput) 
             continue;
         }
 
-        // Se siamo all'interno di un hunk, processiamo le righe di contenuto
+        // Process line content if inside an active hunk
         if (inHunk && currentHunk) {
             if (line.starts_with('+')) {
                 currentHunk->lines.push_back(bo::DiffLine{
@@ -255,7 +255,7 @@ std::vector<bo::FileDiff> UnifiedDiffParser::parse(std::string_view diffOutput) 
                     .content = std::string(line)
                 });
             } else if (line.empty()) {
-                // Riga vuota all'interno di un hunk trattata come context
+                // Empty line inside a hunk treated as context
                 currentHunk->lines.push_back(bo::DiffLine{
                     .kind = bo::DiffLineKind::Context,
                     .oldLineNumber = currentOldLine++,

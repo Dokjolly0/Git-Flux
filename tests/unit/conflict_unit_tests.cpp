@@ -69,7 +69,7 @@ public:
         return {};
     }
 
-    // Metodi non rilevanti per questo mock
+    // Methods not relevant for this mock
     std::expected<gf::git::bo::RepoWorkingTreeStatus, gf::git::ports::GitOpsError>
     getWorkingTreeStatus(const std::filesystem::path&) override { return gf::git::bo::RepoWorkingTreeStatus{}; }
     std::expected<void, gf::git::ports::GitOpsError> stageFiles(const std::filesystem::path&, const std::vector<std::string>&) override { return {}; }
@@ -153,13 +153,13 @@ TEST_CASE("ConflictMarkerParser parses Git conflict blocks and reconstructs cont
         REQUIRE(recOurs.has_value());
         CHECK(*recOurs == "pre-context\nour changes line 1\nour changes line 2\npost-context\n");
 
-        // Risolvi scegliendo Theirs
+        // Resolve choosing Theirs
         hunks[0].chosenSide = ConflictSide::Theirs;
         auto recTheirs = ConflictMarkerParser::reconstruct(conflictText, hunks);
         REQUIRE(recTheirs.has_value());
         CHECK(*recTheirs == "pre-context\ntheir changes line A\npost-context\n");
 
-        // Risolvi con testo Custom
+        // Resolve with Custom text
         hunks[0].chosenSide = ConflictSide::Custom;
         hunks[0].customContent = "custom merged content\n";
         auto recCustom = ConflictMarkerParser::reconstruct(conflictText, hunks);
@@ -185,7 +185,7 @@ TEST_CASE("ConflictMarkerParser parses Git conflict blocks and reconstructs cont
         CHECK(hunks[0].baseContent == "base\n");
         CHECK(hunks[0].theirsContent == "theirs\n");
 
-        // Risolvi scegliendo Base
+        // Resolve choosing Base
         hunks[0].isResolved = true;
         hunks[0].chosenSide = ConflictSide::Base;
         auto recBase = ConflictMarkerParser::reconstruct(diff3Text, hunks);
@@ -214,7 +214,7 @@ TEST_CASE("ConflictMarkerParser parses Git conflict blocks and reconstructs cont
         CHECK(hunks[0].hunkIndex == 0);
         CHECK(hunks[1].hunkIndex == 1);
 
-        // Errore se un hunk non è risolto
+        // Error if a hunk is unresolved
         hunks[0].isResolved = true;
         hunks[0].chosenSide = ConflictSide::Ours;
         hunks[1].isResolved = false;
@@ -222,7 +222,7 @@ TEST_CASE("ConflictMarkerParser parses Git conflict blocks and reconstructs cont
         auto errRes = ConflictMarkerParser::reconstruct(multiText, hunks);
         REQUIRE_FALSE(errRes.has_value());
 
-        // Risolvi anche il secondo
+        // Resolve the second hunk as well
         hunks[1].isResolved = true;
         hunks[1].chosenSide = ConflictSide::Theirs;
         auto succRes = ConflictMarkerParser::reconstruct(multiText, hunks);

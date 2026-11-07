@@ -7,9 +7,9 @@
 
 namespace gf::git::bo {
 
-/// Politica sui lock opzionali di Git.
-/// NoOptionalLocks passa `--no-optional-locks` (e GIT_OPTIONAL_LOCKS=0),
-/// impedendo a comandi passivi come `git status` di acquisire `.git/index.lock`.
+/// Git optional locks policy.
+/// NoOptionalLocks passes `--no-optional-locks` (and GIT_OPTIONAL_LOCKS=0),
+/// preventing passive commands like `git status` from acquiring `.git/index.lock`.
 enum class GitLockPolicy {
     Standard,
     NoOptionalLocks

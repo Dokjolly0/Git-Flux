@@ -54,7 +54,7 @@ TEST_CASE("SqliteConnection & SchemaMigrator inizializzano correttamente il DB e
     REQUIRE(v1.has_value());
     REQUIRE(*v1 == 1);
 
-    // Esecuzione successiva idempotente
+    // Subsequent idempotent execution
     auto migAgain = SchemaMigrator::migrateToLatest(conn);
     REQUIRE(migAgain.has_value());
     auto vStill1 = SchemaMigrator::getCurrentVersion(conn);
@@ -65,7 +65,7 @@ TEST_CASE("SqliteConnection & SchemaMigrator inizializzano correttamente il DB e
 TEST_CASE("SqliteTransaction garantisce commit e rollback automatico in caso di errore", "[integration][sqlite][tx]") {
     auto conn = createMigratedInMemoryDb();
 
-    // 1. Commit esplicito
+    // 1. Explicit commit
     {
         auto tx = SqliteTransaction::begin(conn);
         REQUIRE(tx.has_value());
@@ -74,7 +74,7 @@ TEST_CASE("SqliteTransaction garantisce commit e rollback automatico in caso di 
         REQUIRE(tx->commit().has_value());
     }
 
-    // Verifica persistenza
+    // Verify persistence
     {
         auto stmt = SqliteStatement::prepare(conn, "SELECT COUNT(*) FROM groups WHERE id = 'g1';");
         REQUIRE(stmt.has_value());
@@ -82,16 +82,16 @@ TEST_CASE("SqliteTransaction garantisce commit e rollback automatico in caso di 
         REQUIRE(stmt->getInt(0) == 1);
     }
 
-    // 2. Rollback automatico (senza commit)
+    // 2. Automatic rollback (without commit)
     {
         auto tx = SqliteTransaction::begin(conn);
         REQUIRE(tx.has_value());
         auto r = conn.execute("INSERT INTO groups (id, name, created_at_ms, updated_at_ms) VALUES ('g2', 'Beta', 2, 2);");
         REQUIRE(r.has_value());
-        // tx esce dallo scope senza commit() -> esegue ROLLBACK
+        // tx goes out of scope without commit() -> performs ROLLBACK
     }
 
-    // Verifica assenza di g2
+    // Verify absence of g2
     {
         auto stmt = SqliteStatement::prepare(conn, "SELECT COUNT(*) FROM groups WHERE id = 'g2';");
         REQUIRE(stmt.has_value());
@@ -115,7 +115,7 @@ TEST_CASE("SqliteRepositoryStore gestisce CRUD, percorsi Unicode e unicita' perc
 
     REQUIRE(repoStore.save(repo1).has_value());
 
-    // Lookup per ID
+    // Lookup by ID
     auto fetched = repoStore.getById(RepositoryId("repo-front"));
     REQUIRE(fetched.has_value());
     REQUIRE(fetched->has_value());
@@ -123,13 +123,13 @@ TEST_CASE("SqliteRepositoryStore gestisce CRUD, percorsi Unicode e unicita' perc
     REQUIRE((*fetched)->displayName == "Frontend Web");
     REQUIRE((*fetched)->localPath == "/progetti/città/frontend");
 
-    // Lookup per Path
+    // Lookup by Path
     auto fetchedByPath = repoStore.getByPath("/progetti/città/frontend");
     REQUIRE(fetchedByPath.has_value());
     REQUIRE(fetchedByPath->has_value());
     REQUIRE((*fetchedByPath)->id == repo1.id);
 
-    // Tentativo di inserire un ID diverso con lo STESSO path (deve fallire con DuplicatePath)
+    // Attempting to insert a different ID with the SAME path (must fail with DuplicatePath)
     Repository dupPathRepo{
         .id = RepositoryId("repo-dup"),
         .displayName = "Altro nome",
@@ -139,7 +139,7 @@ TEST_CASE("SqliteRepositoryStore gestisce CRUD, percorsi Unicode e unicita' perc
     REQUIRE_FALSE(dupRes.has_value());
     REQUIRE(dupRes.error().kind == gf::repositories::ports::RepositoryStoreError::Kind::DuplicatePath);
 
-    // Aggiornamento percorso (reconnect path)
+    // Update path (reconnect path)
     auto updateRes = repoStore.updatePath(RepositoryId("repo-front"), "/nuovo/percorso/frontend");
     REQUIRE(updateRes.has_value());
 
@@ -147,7 +147,7 @@ TEST_CASE("SqliteRepositoryStore gestisce CRUD, percorsi Unicode e unicita' perc
     REQUIRE(updatedRepo.has_value());
     REQUIRE((*updatedRepo)->localPath == "/nuovo/percorso/frontend");
 
-    // Eliminazione
+    // Deletion
     auto delRes = repoStore.remove(RepositoryId("repo-front"));
     REQUIRE(delRes.has_value());
     REQUIRE(*delRes);
@@ -162,7 +162,7 @@ TEST_CASE("SqliteGroupStore gestisce ordinamento, membership e cascade delete", 
     SqliteRepositoryStore repoStore(conn);
     SqliteGroupStore groupStore(conn);
 
-    // Creiamo due repository per popolare il catalogo
+    // Create repositories to populate catalog
     Repository r1{.id = RepositoryId("r1"), .displayName = "Repo 1", .localPath = "/p1"};
     Repository r2{.id = RepositoryId("r2"), .displayName = "Repo 2", .localPath = "/p2"};
     Repository r3{.id = RepositoryId("r3"), .displayName = "Repo 3", .localPath = "/p3"};
@@ -173,14 +173,14 @@ TEST_CASE("SqliteGroupStore gestisce ordinamento, membership e cascade delete", 
     Group group{
         .id = GroupId("grp-core"),
         .name = "Core Services",
-        .repositoryIds = {RepositoryId("r3"), RepositoryId("r1")}, // Ordine specifico r3 poi r1
+        .repositoryIds = {RepositoryId("r3"), RepositoryId("r1")}, // Specific order: r3 then r1
         .createdAtUnixEpochMs = 100,
         .updatedAtUnixEpochMs = 100
     };
 
     REQUIRE(groupStore.save(group).has_value());
 
-    // Verifica ordinamento preservato
+    // Verify ordering is preserved
     auto loaded = groupStore.getById(GroupId("grp-core"));
     REQUIRE(loaded.has_value());
     REQUIRE(loaded->has_value());
@@ -188,13 +188,13 @@ TEST_CASE("SqliteGroupStore gestisce ordinamento, membership e cascade delete", 
     REQUIRE((*loaded)->repositoryIds[0] == RepositoryId("r3"));
     REQUIRE((*loaded)->repositoryIds[1] == RepositoryId("r1"));
 
-    // Lookup gruppi che contengono r1
+    // Lookup groups containing r1
     auto containingR1 = groupStore.getGroupsContainingRepository(RepositoryId("r1"));
     REQUIRE(containingR1.has_value());
     REQUIRE(containingR1->size() == 1);
     REQUIRE((*containingR1)[0].id == GroupId("grp-core"));
 
-    // Se r3 viene eliminato dal catalogo, la foreign key ON DELETE CASCADE deve rimuoverlo dal gruppo
+    // If r3 is deleted from catalog, ON DELETE CASCADE foreign key must remove it from group
     REQUIRE(repoStore.remove(RepositoryId("r3")).has_value());
 
     auto loadedAfterRepoDel = groupStore.getById(GroupId("grp-core"));
@@ -237,7 +237,7 @@ TEST_CASE("SqliteWorkspaceStore gestisce gruppi, repo diretti, sessioni e cascad
     REQUIRE((*loadedWs)->directRepositoryIds.size() == 1);
     REQUIRE((*loadedWs)->directRepositoryIds[0] == RepositoryId("r2"));
 
-    // Salvataggio e recupero della sessione
+    // Save and retrieve session
     PanelLayoutState layout;
     layout.leftSidebarCollapsed = false;
     layout.rightSidebarCollapsed = true;
@@ -270,14 +270,14 @@ TEST_CASE("SqliteWorkspaceStore gestisce gruppi, repo diretti, sessioni e cascad
     REQUIRE((*loadedSession)->layout.leftSidebarWidth == 270.0);
     REQUIRE((*loadedSession)->customStateJson == R"({"activeBranch":"feature"})");
 
-    // Eliminazione del workspace con cascade sulla sessione
+    // Delete workspace with cascade on session
     REQUIRE(wsStore.remove(WorkspaceId("ws-alpha")).has_value());
 
     auto deletedWs = wsStore.getById(WorkspaceId("ws-alpha"));
     REQUIRE(deletedWs.has_value());
     REQUIRE_FALSE(deletedWs->has_value());
 
-    // Anche la sessione deve essere stata eliminata in cascata
+    // Session must also be deleted in cascade
     auto deletedSession = wsStore.getSession(WorkspaceId("ws-alpha"));
     REQUIRE(deletedSession.has_value());
     REQUIRE_FALSE(deletedSession->has_value());

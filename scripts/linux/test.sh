@@ -2,18 +2,18 @@
 # ==============================================================================
 # Git Flux — Linux Test Runner Script
 # ==============================================================================
-# Utilizzo:
-#   ./scripts/linux/test.sh [OPZIONI]
+# Usage:
+#   ./scripts/linux/test.sh [OPTIONS]
 #
-# Opzioni:
-#   -q, --qt             Esegue i test del preset Desktop Qt (default: linux-qt-release)
-#   -c, --core           Esegue i test del preset Zero-Qt Core (linux-core-release)
-#   -a, --all            Esegue i test di entrambi i preset (core + desktop)
-#   -f, --filter REGEX   Filtra i test da eseguire tramite espressione regolare (-R)
-#   -e, --exclude REGEX  Esclude i test che matchano l'espressione regolare (-E)
-#   -s, --smoke          Esegue solo lo smoke test headless di avvio dell'applicazione
-#   -v, --verbose        Stampa output dettagliato di ogni singolo test
-#   -h, --help           Mostra questa guida
+# Options:
+#   -q, --qt             Run Desktop Qt preset tests (default: linux-qt-release)
+#   -c, --core           Run Zero-Qt Core preset tests (linux-core-release)
+#   -a, --all            Run tests for both presets (core + desktop)
+#   -f, --filter REGEX   Filter tests to run using a regular expression (-R)
+#   -e, --exclude REGEX  Exclude tests matching regular expression (-E)
+#   -s, --smoke          Run only the headless application startup smoke test
+#   -v, --verbose        Print detailed output for each individual test
+#   -h, --help           Show this help message
 # ==============================================================================
 
 set -euo pipefail
@@ -38,27 +38,27 @@ VERBOSE=false
 
 show_help() {
     cat << EOF
-${BOLD}Git Flux — Script di Esecuzione Test Linux${NC}
+${BOLD}Git Flux — Linux Test Runner Script${NC}
 
-${CYAN}Utilizzo:${NC}
-  $0 [OPZIONI]
+${CYAN}Usage:${NC}
+  $0 [OPTIONS]
 
-${CYAN}Opzioni:${NC}
-  -q, --qt              Esegue i test Desktop Qt Quick 6 [default] (${BOLD}linux-qt-release${NC})
-  -c, --core            Esegue i test Zero-Qt Core C++23 (${BOLD}linux-core-release${NC})
-  -a, --all             Esegue tutti i test di entrambi i preset
-  -f, --filter <REGEX>  Filtra i test per nome o suite (es. -f unit, -f viewmodels, -f integration)
-  -e, --exclude <REGEX> Esclude i test che matchano il pattern
-  -s, --smoke           Esegue unicamente lo smoke test headless di avvio (./build/qt-linux/git_flux --test-startup)
-  -v, --verbose         Output dettagliato con log completi dei test
-  -h, --help            Mostra questa guida
+${CYAN}Options:${NC}
+  -q, --qt              Run Desktop Qt Quick 6 tests [default] (${BOLD}linux-qt-release${NC})
+  -c, --core            Run Zero-Qt Core C++23 tests (${BOLD}linux-core-release${NC})
+  -a, --all             Run all tests across both presets
+  -f, --filter <REGEX>  Filter tests by name or suite (e.g. -f unit, -f viewmodels, -f integration)
+  -e, --exclude <REGEX> Exclude tests matching the pattern
+  -s, --smoke           Run only headless startup smoke test (./build/qt-linux/git_flux --test-startup)
+  -v, --verbose         Detailed output with full test logs
+  -h, --help            Show this help message
 
-${CYAN}Esempi:${NC}
-  $0                        # Esegue tutti i test desktop (unit, viewmodels, integration)
-  $0 --core                 # Esegue tutti i test del core C++23
-  $0 --all                  # Esegue l'intera suite su entrambi i preset
-  $0 -f viewmodels          # Esegue unicamente la test suite viewmodels
-  $0 --smoke                # Verifica lo startup headless di Git Flux
+${CYAN}Examples:${NC}
+  $0                        # Run all desktop tests (unit, viewmodels, integration)
+  $0 --core                 # Run all C++23 core tests
+  $0 --all                  # Run the entire test suite on both presets
+  $0 -f viewmodels          # Run only the viewmodels test suite
+  $0 --smoke                # Verify Git Flux headless startup
 EOF
 }
 
@@ -78,7 +78,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         -f|--filter)
             if [[ -z "${2:-}" ]]; then
-                echo -e "${RED}Errore: --filter richiede un pattern regex.${NC}" >&2
+                echo -e "${RED}Error: --filter requires a regex pattern.${NC}" >&2
                 exit 1
             fi
             INCLUDE_REGEX="$2"
@@ -86,7 +86,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         -e|--exclude)
             if [[ -z "${2:-}" ]]; then
-                echo -e "${RED}Errore: --exclude richiede un pattern regex.${NC}" >&2
+                echo -e "${RED}Error: --exclude requires a regex pattern.${NC}" >&2
                 exit 1
             fi
             EXCLUDE_REGEX="$2"
@@ -105,8 +105,8 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            echo -e "${RED}Opzione non riconosciuta: $1${NC}" >&2
-            echo "Usa $0 --help per visualizzare la guida." >&2
+            echo -e "${RED}Unrecognized option: $1${NC}" >&2
+            echo "Use $0 --help to display help." >&2
             exit 1
             ;;
     esac
@@ -117,11 +117,11 @@ cd "${ROOT_DIR}"
 run_smoke_test() {
     local bin_path="build/qt-linux/git_flux"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BOLD}${CYAN}▶ Esecuzione Headless Smoke Test: ${YELLOW}${bin_path}${NC}"
+    echo -e "${BOLD}${CYAN}▶ Running Headless Smoke Test: ${YELLOW}${bin_path}${NC}"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
     if [[ ! -x "${bin_path}" ]]; then
-        echo -e "${YELLOW}⚠️ Eseguibile ${bin_path} non trovato. Avvio compilazione...${NC}"
+        echo -e "${YELLOW}⚠️ Executable ${bin_path} not found. Starting build...${NC}"
         cmake --build --preset linux-qt-release --target git_flux
     fi
 
@@ -134,7 +134,7 @@ run_smoke_test() {
     end_time=$(date +%s%N)
     local elapsed_ms=$(( (end_time - start_time) / 1000000 ))
 
-    echo -e "${GREEN}✔ Smoke Test superato con successo in ${elapsed_ms}ms!${NC}\n"
+    echo -e "${GREEN}✔ Smoke Test passed successfully in ${elapsed_ms}ms!${NC}\n"
 }
 
 run_preset_tests() {
@@ -148,23 +148,23 @@ run_preset_tests() {
     fi
 
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BOLD}${CYAN}▶ Esecuzione test per preset: ${YELLOW}${target_preset}${NC}"
+    echo -e "${BOLD}${CYAN}▶ Running tests for preset: ${YELLOW}${target_preset}${NC}"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
     if [[ ! -d "${build_dir}" ]]; then
-        echo -e "${YELLOW}⚠️ Directory di build non trovata. Esecuzione build preliminare...${NC}"
+        echo -e "${YELLOW}⚠️ Build directory not found. Running preliminary build...${NC}"
         cmake --build --preset "${target_preset}"
     fi
 
     local ctest_cmd=("ctest" "--preset" "${target_preset}" "--output-on-failure")
 
     if [[ -n "${INCLUDE_REGEX}" ]]; then
-        echo -e "${CYAN}🔍 Filtro inclusione: ${BOLD}${INCLUDE_REGEX}${NC}"
+        echo -e "${CYAN}🔍 Inclusion filter: ${BOLD}${INCLUDE_REGEX}${NC}"
         ctest_cmd+=("-R" "${INCLUDE_REGEX}")
     fi
 
     if [[ -n "${EXCLUDE_REGEX}" ]]; then
-        echo -e "${CYAN}🚫 Filtro esclusione: ${BOLD}${EXCLUDE_REGEX}${NC}"
+        echo -e "${CYAN}🚫 Exclusion filter: ${BOLD}${EXCLUDE_REGEX}${NC}"
         ctest_cmd+=("-E" "${EXCLUDE_REGEX}")
     fi
 
@@ -175,14 +175,14 @@ run_preset_tests() {
     local start_time
     start_time=$(date +%s)
 
-    echo -e "${CYAN}🧪 Esecuzione: ${ctest_cmd[*]}${NC}"
+    echo -e "${CYAN}🧪 Running: ${ctest_cmd[*]}${NC}"
     "${ctest_cmd[@]}"
 
     local end_time
     end_time=$(date +%s)
     local elapsed=$((end_time - start_time))
 
-    echo -e "${GREEN}✔ Test per '${target_preset}' completati con successo in ${elapsed}s!${NC}\n"
+    echo -e "${GREEN}✔ Tests for '${target_preset}' completed successfully in ${elapsed}s!${NC}\n"
 }
 
 if [[ "${SMOKE_ONLY}" == true ]]; then
@@ -203,5 +203,5 @@ END_ALL=$(date +%s)
 TOTAL_ELAPSED=$((END_ALL - START_ALL))
 
 echo -e "${GREEN}${BOLD}============================================================${NC}"
-echo -e "${GREEN}${BOLD}  TUTTI I TEST SONO PASSATI CON SUCCESSO (${TOTAL_ELAPSED}s)${NC}"
+echo -e "${GREEN}${BOLD}  ALL TESTS PASSED SUCCESSFULLY (${TOTAL_ELAPSED}s)${NC}"
 echo -e "${GREEN}${BOLD}============================================================${NC}"

@@ -43,7 +43,7 @@ WorkspaceService::createWorkspace(std::string name,
         });
     }
 
-    // Verifica gruppi inclusi
+    // Validate included groups
     for (const auto& gId : groupIds) {
         auto g = groupStore_.getById(gId);
         if (!g || !g->has_value()) {
@@ -54,7 +54,7 @@ WorkspaceService::createWorkspace(std::string name,
         }
     }
 
-    // Verifica repository diretti
+    // Validate direct repositories
     for (const auto& rId : directRepoIds) {
         auto r = repoStore_.getById(rId);
         if (!r || !r->has_value()) {
@@ -89,7 +89,7 @@ WorkspaceService::createWorkspace(std::string name,
         });
     }
 
-    // Risolvi i repository effettivi e inizializza la prima sessione
+    // Resolve actual repositories and initialize the initial session
     auto reposRes = resolveWorkspaceRepositories(ws.id);
     std::vector<RepositoryId> openTabs;
     std::optional<RepositoryId> activeRepo;
@@ -124,7 +124,7 @@ WorkspaceService::updateWorkspaceComposition(const WorkspaceId& id,
         });
     }
 
-    // Verifica gruppi
+    // Validate groups
     for (const auto& gId : groupIds) {
         auto g = groupStore_.getById(gId);
         if (!g || !g->has_value()) {
@@ -135,7 +135,7 @@ WorkspaceService::updateWorkspaceComposition(const WorkspaceId& id,
         }
     }
 
-    // Verifica repo diretti
+    // Validate direct repositories
     for (const auto& rId : directRepoIds) {
         auto r = repoStore_.getById(rId);
         if (!r || !r->has_value()) {
@@ -228,7 +228,7 @@ WorkspaceService::resolveWorkspaceRepositories(const WorkspaceId& id) {
         }
     }
 
-    // 2. Repository diretti del workspace
+    // 2. Direct repositories of the workspace
     for (const auto& rId : ws.directRepositoryIds) {
         if (seenIds.insert(rId).second) {
             auto repoRes = repoStore_.getById(rId);
@@ -248,7 +248,7 @@ WorkspaceService::loadOrCreateSession(const WorkspaceId& id) {
         return std::move(**existing);
     }
 
-    // Se non esiste ancora, creane una di default
+    // If it does not exist yet, create a default one
     auto reposRes = resolveWorkspaceRepositories(id);
     std::vector<RepositoryId> openTabs;
     std::optional<RepositoryId> activeRepo;

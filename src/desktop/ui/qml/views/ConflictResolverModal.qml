@@ -23,7 +23,7 @@ Dialog {
         spacing: 10
 
         // ==========================================
-        // 1. HEADER MODAL: NOME FILE & PROGRESSO
+        // 1. MODAL HEADER: FILE NAME & PROGRESS
         // ==========================================
         Rectangle {
             Layout.fillWidth: true
@@ -55,7 +55,7 @@ Dialog {
                     Layout.fillWidth: true
                 }
 
-                // Progresso Hunks
+                // Hunk Progress
                 Rectangle {
                     Layout.preferredHeight: 24
                     implicitWidth: hunkProgressText.implicitWidth + 14
@@ -78,7 +78,7 @@ Dialog {
         }
 
         // ==========================================
-        // 2. LISTA HUNKS IN CONFLITTO
+        // 2. CONFLICTED HUNKS LIST
         // ==========================================
         Rectangle {
             Layout.fillWidth: true
@@ -114,7 +114,7 @@ Dialog {
                         anchors.margins: 10
                         spacing: 8
 
-                        // Intestazione dell'Hunk
+                        // Hunk Header
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 8
@@ -157,12 +157,12 @@ Dialog {
                             }
                         }
 
-                        // Due Colonne a Confronto: Ours vs Theirs
+                        // Two-Column Comparison: Ours vs Theirs
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 8
 
-                            // Box OURS (Nostre modifiche correnti)
+                            // OURS Box (Current local changes)
                             Rectangle {
                                 Layout.fillWidth: true
                                 implicitHeight: 120
@@ -212,7 +212,7 @@ Dialog {
                                 }
                             }
 
-                            // Box THEIRS (Modifiche in arrivo)
+                            // THEIRS Box (Incoming changes)
                             Rectangle {
                                 Layout.fillWidth: true
                                 implicitHeight: 120
@@ -263,7 +263,7 @@ Dialog {
                             }
                         }
 
-                        // Box Custom / Risoluzione Manuale
+                        // Custom Box / Manual Resolution
                         Rectangle {
                             Layout.fillWidth: true
                             implicitHeight: customExpandCheck.checked ? 100 : 28
@@ -332,7 +332,7 @@ Dialog {
         }
 
         // ==========================================
-        // 3. BARRA INFERIORE: OPZIONI & SALVATAGGIO
+        // 3. BOTTOM BAR: OPTIONS & SAVE
         // ==========================================
         RowLayout {
             Layout.fillWidth: true

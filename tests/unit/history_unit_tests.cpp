@@ -400,12 +400,12 @@ TEST_CASE("GitHistoryService business logic and delegation", "[git][history][ser
         CHECK(mockOps.lastLogOptions.maxCount == 1);
         CHECK(mockOps.lastLogOptions.revisionRange == "1234567");
 
-        // Commit vuoto
+        // Empty commit SHA
         auto emptyShaRes = historyService.getCommitDetails(validTempDir, "");
         REQUIRE_FALSE(emptyShaRes.has_value());
         CHECK(emptyShaRes.error().kind == gf::git::ports::GitOpsError::Kind::InvalidOperation);
 
-        // Commit non trovato
+        // Commit not found
         mockOps.logToReturn.clear();
         auto notFoundRes = historyService.getCommitDetails(validTempDir, "nonexistent");
         REQUIRE(notFoundRes.has_value());

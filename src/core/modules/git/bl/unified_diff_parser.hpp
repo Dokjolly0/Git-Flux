@@ -10,10 +10,10 @@ namespace gf::git::bl {
 
 class UnifiedDiffParser {
 public:
-    /// Parsea l'output di un comando `git diff` contenente uno o più file diff unificati.
+    /// Parses the output of a `git diff` command containing one or more unified file diffs.
     [[nodiscard]] static std::vector<bo::FileDiff> parse(std::string_view diffOutput);
 
-    /// Parsea l'output di un diff relativo ad un singolo file. Ritorna nullopt se l'output è vuoto.
+    /// Parses the diff output for a single file. Returns nullopt if the output is empty.
     [[nodiscard]] static std::optional<bo::FileDiff> parseSingle(std::string_view diffOutput);
 };
 

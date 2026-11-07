@@ -686,7 +686,7 @@ TEST_CASE("WorkingTreeFileListModel and DiffLineListModel MVVM models", "[viewmo
         diff.hunks.push_back(std::move(hunk));
 
         diffModel.setDiff(diff);
-        // 1 hunk header + 2 righe = 3
+        // 1 hunk header + 2 lines = 3
         REQUIRE(diffModel.rowCount() == 3);
 
         QModelIndex hIdx = diffModel.index(0, 0);
@@ -758,7 +758,7 @@ TEST_CASE("WorkingTreeViewModel and CommitBoxViewModel reactive behavior", "[vie
         CHECK(mockOps.commitCalled);
         CHECK(successSpy.count() == 1);
 
-        // Al termine del commit il messaggio viene resettato
+        // Upon commit completion, message is reset
         CHECK(commitVm.commitMessage().isEmpty());
         CHECK_FALSE(commitVm.canCommit());
     }

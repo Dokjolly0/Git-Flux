@@ -98,8 +98,8 @@ void OperationCoordinator::onTaskFinished(const repositories::bo::RepositoryId& 
             }
         }
     }
-    // Un task bloccato sullo stesso RepositoryId potrebbe ora essere eseguibile:
-    // notifichiamo tutti i worker in attesa.
+    // A task blocked on the same RepositoryId might now be runnable:
+    // notify all waiting worker threads.
     cv_.notify_all();
 }
 

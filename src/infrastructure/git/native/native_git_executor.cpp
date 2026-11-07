@@ -47,7 +47,7 @@ namespace {
     return result;
 }
 
-/// Applica le regole di quoting MSVCRT / CommandLineToArgvW senza passare da cmd.exe.
+/// Applies MSVCRT / CommandLineToArgvW quoting rules directly without passing through cmd.exe.
 void appendQuotedWindowsArg(std::wstring& cmdLine, std::wstring_view arg) {
     const bool needsQuotes = arg.empty() ||
                              arg.find_first_of(L" \t\n\v\"") != std::wstring_view::npos;

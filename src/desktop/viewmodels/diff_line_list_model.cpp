@@ -48,11 +48,11 @@ QVariant DiffLineListModel::data(const QModelIndex& index, int role) const {
     case BgColorRole:
         switch (line.kind) {
         case gf::git::bo::DiffLineKind::Addition:
-            return QStringLiteral("#143525"); // Verde scuro discreto
+            return QStringLiteral("#143525"); // Subtle dark green
         case gf::git::bo::DiffLineKind::Deletion:
-            return QStringLiteral("#3E181C"); // Rosso scuro discreto
+            return QStringLiteral("#3E181C"); // Subtle dark red
         case gf::git::bo::DiffLineKind::Header:
-            return QStringLiteral("#1E293B"); // Slate blue scuro
+            return QStringLiteral("#1E293B"); // Dark slate blue
         case gf::git::bo::DiffLineKind::Context:
         case gf::git::bo::DiffLineKind::NoNewline:
         default:
@@ -62,16 +62,16 @@ QVariant DiffLineListModel::data(const QModelIndex& index, int role) const {
     case FgColorRole:
         switch (line.kind) {
         case gf::git::bo::DiffLineKind::Addition:
-            return QStringLiteral("#4ADE80"); // Verde brillante
+            return QStringLiteral("#4ADE80"); // Bright green
         case gf::git::bo::DiffLineKind::Deletion:
-            return QStringLiteral("#F87171"); // Rosso salmone
+            return QStringLiteral("#F87171"); // Salmon red
         case gf::git::bo::DiffLineKind::Header:
-            return QStringLiteral("#93C5FD"); // Blu cielo
+            return QStringLiteral("#93C5FD"); // Sky blue
         case gf::git::bo::DiffLineKind::NoNewline:
-            return QStringLiteral("#64748B"); // Slate grigio
+            return QStringLiteral("#64748B"); // Slate grey
         case gf::git::bo::DiffLineKind::Context:
         default:
-            return QStringLiteral("#E2E8F0"); // Testo chiaro standard
+            return QStringLiteral("#E2E8F0"); // Standard light text
         }
 
     default:
@@ -95,7 +95,7 @@ void DiffLineListModel::setDiff(const gf::git::bo::FileDiff& diff) {
     m_lines.clear();
 
     for (const auto& hunk : diff.hunks) {
-        // Aggiunge riga di intestazione hunk
+        // Add hunk header line
         m_lines.push_back(gf::git::bo::DiffLine{
             .kind = gf::git::bo::DiffLineKind::Header,
             .oldLineNumber = std::nullopt,
@@ -103,7 +103,7 @@ void DiffLineListModel::setDiff(const gf::git::bo::FileDiff& diff) {
             .content = hunk.header
         });
 
-        // Aggiunge tutte le righe dell'hunk
+        // Add all lines of the hunk
         for (const auto& l : hunk.lines) {
             m_lines.push_back(l);
         }

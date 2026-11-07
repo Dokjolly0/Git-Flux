@@ -23,7 +23,7 @@ Dialog {
         spacing: 12
 
         // ==========================================
-        // 1. BOX CREAZIONE NUOVO STASH
+        // 1. NEW STASH CREATION BOX
         // ==========================================
         Rectangle {
             Layout.fillWidth: true
@@ -117,7 +117,7 @@ Dialog {
         }
 
         // ==========================================
-        // 2. LISTA DEGLI STASH
+        // 2. STASH LIST
         // ==========================================
         Rectangle {
             Layout.fillWidth: true
@@ -132,7 +132,7 @@ Dialog {
                 anchors.fill: parent
                 spacing: 0
 
-                // Header lista
+                // List Header
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 32
@@ -198,7 +198,7 @@ Dialog {
                             anchors.rightMargin: 12
                             spacing: 10
 
-                            // Badge Selector
+                            // Selector Badge
                             Rectangle {
                                 Layout.preferredHeight: 24
                                 Layout.preferredWidth: selectorText.implicitWidth + 12
@@ -216,7 +216,7 @@ Dialog {
                                 }
                             }
 
-                            // Info stash
+                            // Stash info
                             ColumnLayout {
                                 Layout.fillWidth: true
                                 spacing: 2
@@ -247,7 +247,7 @@ Dialog {
                                 }
                             }
 
-                            // Azioni
+                            // Actions
                             Button {
                                 text: "Apply"
                                 Layout.preferredHeight: 26
@@ -327,7 +327,7 @@ Dialog {
                     }
                 }
 
-                // Placeholder se vuoto
+                // Placeholder when empty
                 Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
@@ -344,7 +344,7 @@ Dialog {
         }
 
         // ==========================================
-        // 3. BARRA INFERIORE DI STATO & CHIUSURA
+        // 3. BOTTOM STATUS BAR & CLOSE
         // ==========================================
         RowLayout {
             Layout.fillWidth: true

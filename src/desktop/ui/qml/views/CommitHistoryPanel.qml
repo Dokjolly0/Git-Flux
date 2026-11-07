@@ -15,7 +15,7 @@ Rectangle {
         spacing: 0
 
         // ==========================================
-        // 1. LISTA DEI COMMIT (Tabella / Grafo)
+        // 1. COMMIT LIST (Table / Graph)
         // ==========================================
         Rectangle {
             Layout.fillWidth: true
@@ -27,7 +27,7 @@ Rectangle {
                 anchors.fill: parent
                 spacing: 0
 
-                // Header ricerca
+                // Search header
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 44
@@ -66,7 +66,7 @@ Rectangle {
                     }
                 }
 
-                // Lista commit
+                // Commit list
                 ListView {
                     id: commitListView
                     Layout.fillWidth: true
@@ -92,7 +92,7 @@ Rectangle {
                             anchors.rightMargin: 12
                             spacing: 10
 
-                            // Pallino del commit nel grafo
+                            // Commit dot in graph
                             Rectangle {
                                 width: 10
                                 height: 10
@@ -102,7 +102,7 @@ Rectangle {
                                 border.width: 2
                             }
 
-                            // Dettagli commit
+                            // Commit details
                             ColumnLayout {
                                 Layout.fillWidth: true
                                 spacing: 2
@@ -111,7 +111,7 @@ Rectangle {
                                     spacing: 6
                                     Layout.fillWidth: true
 
-                                    // Badge Ref Decorations (Branch/Tags)
+                                    // Ref Decorations Badge (Branches/Tags)
                                     Repeater {
                                         model: model.decorations
 
@@ -206,7 +206,7 @@ Rectangle {
         }
 
         // ==========================================
-        // 2. PANNELLO DETTAGLIO COMMIT SELEZIONATO
+        // 2. SELECTED COMMIT DETAILS PANEL
         // ==========================================
         Rectangle {
             Layout.preferredWidth: 380
@@ -243,7 +243,7 @@ Rectangle {
                     color: "#334155"
                 }
 
-                // Autore e data
+                // Author and date
                 RowLayout {
                     spacing: 8
                     Text {
@@ -289,7 +289,7 @@ Rectangle {
                     }
                 }
 
-                // Corpo del messaggio
+                // Message body
                 Text {
                     text: "Messaggio:"
                     color: "#64748B"

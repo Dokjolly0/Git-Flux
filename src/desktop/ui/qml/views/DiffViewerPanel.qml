@@ -13,7 +13,7 @@ Rectangle {
         anchors.fill: parent
         spacing: 0
 
-        // Header Diff Viewer
+        // Diff Viewer Header
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 40
@@ -34,7 +34,7 @@ Rectangle {
                     Layout.maximumWidth: root.width * 0.5
                 }
 
-                // Badge Tipo
+                // Type Badge
                 Rectangle {
                     visible: diffViewer && !diffViewer.isEmpty
                     Layout.preferredHeight: 20
@@ -68,7 +68,7 @@ Rectangle {
 
                 Item { Layout.fillWidth: true }
 
-                // Badge Conteggio Additions / Deletions
+                // Additions / Deletions count badge
                 RowLayout {
                     visible: diffViewer && !diffViewer.isEmpty && !diffViewer.isBinary
                     spacing: 8
@@ -90,12 +90,12 @@ Rectangle {
             }
         }
 
-        // Area Contenuto Diff
+        // Diff Content Area
         Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
 
-            // Stato Vuoto
+            // Empty State
             Text {
                 anchors.centerIn: parent
                 visible: !diffViewer || diffViewer.isEmpty
@@ -104,7 +104,7 @@ Rectangle {
                 font.pixelSize: 13
             }
 
-            // File Binario
+            // Binary File
             Text {
                 anchors.centerIn: parent
                 visible: diffViewer && diffViewer.isBinary
@@ -113,7 +113,7 @@ Rectangle {
                 font.pixelSize: 13
             }
 
-            // Lista Righe di Diff
+            // Diff Lines List
             ScrollView {
                 anchors.fill: parent
                 visible: diffViewer && !diffViewer.isEmpty && !diffViewer.isBinary
@@ -134,7 +134,7 @@ Rectangle {
                             anchors.fill: parent
                             spacing: 0
 
-                            // Numero Riga Vecchio
+                            // Old Line Number
                             Rectangle {
                                 Layout.preferredWidth: 44
                                 Layout.fillHeight: true
@@ -152,7 +152,7 @@ Rectangle {
                                 }
                             }
 
-                            // Numero Riga Nuovo
+                            // New Line Number
                             Rectangle {
                                 Layout.preferredWidth: 44
                                 Layout.fillHeight: true
@@ -170,7 +170,7 @@ Rectangle {
                                 }
                             }
 
-                            // Indicatore prefisso (+/-)
+                            // Prefix indicator (+/-)
                             Rectangle {
                                 Layout.preferredWidth: 20
                                 Layout.fillHeight: true
@@ -190,7 +190,7 @@ Rectangle {
                                 }
                             }
 
-                            // Testo della riga
+                            // Line text
                             Text {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true

@@ -33,7 +33,7 @@ enum class FileChangeKind {
 
 struct WorkingTreeFileItem {
     std::string path;
-    std::string originalPath; // Popolato per rename e copy
+    std::string originalPath; // Populated for rename and copy
     FileChangeKind kind = FileChangeKind::Modified;
     char statusCode = 'M';
 

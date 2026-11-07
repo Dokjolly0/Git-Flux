@@ -59,7 +59,7 @@ GitDiscovery::discover() {
     info.discoveredInPath = fs::path(std::wstring_view(buffer, len)).lexically_normal();
     info.directBinaryPath = info.discoveredInPath;
 
-    // Verifica se punta a "...\Git\cmd\git.exe" (wrapper shim di Git for Windows)
+    // Check if path points to "...\Git\cmd\git.exe" (Git for Windows wrapper shim)
     const fs::path parentDir = info.discoveredInPath.parent_path();
     if (toLowerAscii(parentDir.filename().string()) == "cmd") {
         const fs::path gitRoot = parentDir.parent_path();

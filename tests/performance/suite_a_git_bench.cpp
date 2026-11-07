@@ -209,7 +209,7 @@ constexpr const char* kGitBinaryName = "git";
     std::cout << "\n";
 
     // -------------------------------------------------------------------------
-    // 2. A.3: Concurrency Sweep su flotta di 30 Repository + Active-Repo Priority
+    // 2. A.3: Concurrency Sweep on a fleet of 30 Repositories + Active-Repo Priority
     // -------------------------------------------------------------------------
     const auto fleetDir = tempDir.path() / "fleet_30";
     auto fleetRes = generator.generateRepoFleet({
@@ -243,7 +243,7 @@ constexpr const char* kGitBinaryName = "git";
                 std::vector<std::future<void>> bgFutures;
                 bgFutures.reserve(fleetRes->repoPaths.size());
 
-                // Accodiamo 29 repo come NormalBackground
+                // Enqueue 29 repos as NormalBackground
                 for (std::size_t i = 0; i < fleetRes->repoPaths.size() - 1; ++i) {
                     const auto& rp = fleetRes->repoPaths[i];
                     bgFutures.push_back(coordinator.submit(
@@ -262,7 +262,7 @@ constexpr const char* kGitBinaryName = "git";
                         }));
                 }
 
-                // L'ultimo repo (indice 29) viene sottomesso per ULTIMO ma con priorità HighActiveRepo!
+                // The last repo (index 29) is submitted LAST but with HighActiveRepo priority!
                 const auto& activePath = fleetRes->repoPaths.back();
                 auto activeFuture = coordinator.submit(
                     gf::repositories::bo::RepositoryId("repo-active"),
@@ -309,7 +309,7 @@ constexpr const char* kGitBinaryName = "git";
     std::cout << "\n";
 
     // -------------------------------------------------------------------------
-    // 3. A.4: Lettura di 150 commit: Single-Shot Process vs Persistent Pipe `cat-file --batch`
+    // 3. A.4: Read 150 commits: Single-Shot Process vs Persistent Pipe `cat-file --batch`
     // -------------------------------------------------------------------------
     gf::infra::git::NativeGitCommandExecutor oidLoader(gitInfo->directBinaryPath);
     const auto oids = loadCommitOids(oidLoader, singleRepoPath, 150);
@@ -319,7 +319,7 @@ constexpr const char* kGitBinaryName = "git";
     std::cout << "| Strategia | Tempo Totale 150 commit (ms) | Media per commit (ms) | Speedup |\n";
     std::cout << "| :--- | ---: | ---: | ---: |\n";
 
-    // Misura Single-Shot Native
+    // Measure Native Single-Shot
     double nativeSingleShotMs = 0.0;
     {
         const auto t0 = Clock::now();
@@ -355,7 +355,7 @@ constexpr const char* kGitBinaryName = "git";
     }
 #endif
 
-    // Misura Persistent Batch Session Native (include costo di apertura pipe + 150 query!)
+    // Measure Persistent Batch Session Native (includes pipe spawn cost + 150 queries!)
     {
         gf::infra::git::NativeGitBatchSessionFactory batchFactory(gitInfo->directBinaryPath);
         const auto t0 = Clock::now();
@@ -367,7 +367,7 @@ constexpr const char* kGitBinaryName = "git";
         }
         const double batchIncludeOpenMs = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
 
-        // Misura su sessione già calda (warm pipe)
+        // Measure on warm session (warm pipe)
         const auto tWarm = Clock::now();
         for (const auto& oid : oids) {
             auto obj = (*session)->readObject(oid);
@@ -409,7 +409,7 @@ constexpr const char* kGitBinaryName = "git";
     std::cout << "\n";
 
     // -------------------------------------------------------------------------
-    // 4. Verifica velocità generatore fixture da 50.000 commit per le Suite C/D
+    // 4. Verify fixture generator throughput with 50,000 commits for Suites C/D
     // -------------------------------------------------------------------------
     const auto repo50kPath = tempDir.path() / "monorepo_50k";
     auto repo50kRes = generator.generateFastImportRepo({

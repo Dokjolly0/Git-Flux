@@ -19,7 +19,7 @@ Item {
         root.closed();
     }
 
-    // Backdrop oscurato
+    // Darkened backdrop
     Rectangle {
         anchors.fill: parent
         color: "#000000"
@@ -31,7 +31,7 @@ Item {
         }
     }
 
-    // Contenitore Modale
+    // Modal container
     Rectangle {
         id: modalContainer
         width: Math.min(parent.width - 64, 820)
@@ -43,7 +43,7 @@ Item {
         border.width: 1
 
         MouseArea {
-            // Impedisce che i click all'interno chiudano il modale
+            // Prevent inside clicks from closing the modal
             anchors.fill: parent
         }
 
@@ -52,7 +52,7 @@ Item {
             anchors.margins: 20
             spacing: 16
 
-            // Header Modale
+            // Modal Header
             RowLayout {
                 Layout.fillWidth: true
 
@@ -105,13 +105,13 @@ Item {
                 color: "#30363D"
             }
 
-            // Corpo a due colonne: Sinistra Gruppi, Destra Anteprima Deduplicata
+            // Two-column body: Left Groups, Right Deduplicated Preview
             RowLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 spacing: 16
 
-                // COLONNA SINISTRA: Selezione Gruppi
+                // LEFT COLUMN: Group Selection
                 Rectangle {
                     Layout.fillHeight: true
                     Layout.preferredWidth: 320
@@ -238,7 +238,7 @@ Item {
                     }
                 }
 
-                // COLONNA DESTRA: Anteprima Deduplicata
+                // RIGHT COLUMN: Deduplicated Preview
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
@@ -279,7 +279,7 @@ Item {
                                 }
                             }
 
-                            // Pillola Deduplicati
+                            // Deduplicated Pill
                             Rectangle {
                                 height: 22
                                 width: dedupLabel.implicitWidth + 14
@@ -301,7 +301,7 @@ Item {
                             Item { Layout.fillWidth: true }
                         }
 
-                        // Lista dei repository risultanti
+                        // Resulting repositories list
                         ListView {
                             id: previewListView
                             Layout.fillWidth: true
@@ -367,7 +367,7 @@ Item {
                                 }
                             }
 
-                            // Placeholder se nessun gruppo è selezionato
+                            // Placeholder when no group is selected
                             Item {
                                 anchors.centerIn: parent
                                 visible: quickOpenVm.resolvedRepositoriesCount === 0
@@ -401,7 +401,7 @@ Item {
                 }
             }
 
-            // Footer con pulsanti di azione
+            // Footer with action buttons
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 12

@@ -47,7 +47,7 @@ TEST_CASE("NativeRepositoryGitOps and GitHistoryService real Git integration", "
 
     HistoryTestSandbox sandbox;
 
-    // Inizializza repository Git con branch 'main'
+    // Initialize Git repository with branch 'main'
     gf::git::bo::GitCommand initCmd{
         .args = {"init", "-b", "main"},
         .workingDirectory = sandbox.root,
@@ -55,7 +55,7 @@ TEST_CASE("NativeRepositoryGitOps and GitHistoryService real Git integration", "
     };
     REQUIRE(executor.execute(initCmd)->exitCode == 0);
 
-    // Configura utente
+    // Configure user identity
     REQUIRE(executor.execute(gf::git::bo::GitCommand{
         .args = {"config", "user.name", "Tester Bot"},
         .workingDirectory = sandbox.root,
@@ -68,7 +68,7 @@ TEST_CASE("NativeRepositoryGitOps and GitHistoryService real Git integration", "
         .lockPolicy = gf::git::bo::GitLockPolicy::Standard
     })->exitCode == 0);
 
-    // Commit 1: file1.txt con subject e body
+    // Commit 1: file1.txt with subject and body
     sandbox.writeFile("file1.txt", "Contenuto iniziale 1\n");
     REQUIRE(executor.execute(gf::git::bo::GitCommand{
         .args = {"add", "file1.txt"},
@@ -96,7 +96,7 @@ TEST_CASE("NativeRepositoryGitOps and GitHistoryService real Git integration", "
         .lockPolicy = gf::git::bo::GitLockPolicy::Standard
     })->exitCode == 0);
 
-    // Creazione branch feature e Commit 3
+    // Create feature branch and Commit 3
     REQUIRE(executor.execute(gf::git::bo::GitCommand{
         .args = {"checkout", "-b", "feature/branch-a"},
         .workingDirectory = sandbox.root,
@@ -116,7 +116,7 @@ TEST_CASE("NativeRepositoryGitOps and GitHistoryService real Git integration", "
         .lockPolicy = gf::git::bo::GitLockPolicy::Standard
     })->exitCode == 0);
 
-    // Switch su main e merge --no-ff per generare commit di merge con 2 genitori
+    // Switch to main and merge --no-ff to create merge commit with 2 parents
     REQUIRE(executor.execute(gf::git::bo::GitCommand{
         .args = {"checkout", "main"},
         .workingDirectory = sandbox.root,
@@ -134,7 +134,7 @@ TEST_CASE("NativeRepositoryGitOps and GitHistoryService real Git integration", "
         REQUIRE(logRes.has_value());
         REQUIRE(logRes->size() == 4);
 
-        // Il primo commit ritornato (HEAD) è il merge commit
+        // The first returned commit (HEAD) is the merge commit
         const auto& mergeCommit = (*logRes)[0];
         CHECK(mergeCommit.subject == "merge: integrate branch-a");
         REQUIRE(mergeCommit.parents.size() == 2);
@@ -142,7 +142,7 @@ TEST_CASE("NativeRepositoryGitOps and GitHistoryService real Git integration", "
         CHECK(mergeCommit.authorEmail == "tester@gitflux.local");
         CHECK_FALSE(mergeCommit.authorDateIso.empty());
 
-        // L'ultimo commit è il commit iniziale
+        // The last commit is the initial commit
         const auto& initialCommit = (*logRes)[3];
         CHECK(initialCommit.subject == "feat: first commit");
         CHECK(initialCommit.body == "This is a multiline commit body for testing.");
@@ -199,7 +199,7 @@ TEST_CASE("NativeRepositoryGitOps and GitHistoryService real Git integration", "
     }
 
     SECTION("5. Creazione, elenco ed eliminazione tag (Lightweight e Annotated)") {
-        // Tag lightweight v0.1.0 sul primo commit
+        // Lightweight tag v0.1.0 on first commit
         auto commits = historyService.getCommitHistory(sandbox.root);
         REQUIRE(commits.has_value());
         const auto firstSha = (*commits)[3].sha;
@@ -210,14 +210,14 @@ TEST_CASE("NativeRepositoryGitOps and GitHistoryService real Git integration", "
         });
         REQUIRE(lwRes.has_value());
 
-        // Tag annotato v1.0.0 su HEAD
+        // Annotated tag v1.0.0 on HEAD
         auto annRes = historyService.createTag(sandbox.root, gf::git::bo::CreateTagOptions{
             .name = "v1.0.0",
             .message = "Release version 1.0.0"
         });
         REQUIRE(annRes.has_value());
 
-        // Verifica elenco tag
+        // Verify tag list
         auto tagsRes = historyService.listTags(sandbox.root);
         REQUIRE(tagsRes.has_value());
         REQUIRE(tagsRes->size() == 2);
@@ -241,14 +241,14 @@ TEST_CASE("NativeRepositoryGitOps and GitHistoryService real Git integration", "
         CHECK(foundLw);
         CHECK(foundAnn);
 
-        // Errore su tag duplicato
+        // Error on duplicate tag
         auto dupRes = historyService.createTag(sandbox.root, gf::git::bo::CreateTagOptions{
             .name = "v1.0.0"
         });
         REQUIRE_FALSE(dupRes.has_value());
         CHECK(dupRes.error().kind == gf::git::ports::GitOpsError::Kind::TagAlreadyExists);
 
-        // Eliminazione tag
+        // Delete tag
         auto delRes = historyService.deleteTag(sandbox.root, "v0.1.0");
         REQUIRE(delRes.has_value());
 
@@ -257,7 +257,7 @@ TEST_CASE("NativeRepositoryGitOps and GitHistoryService real Git integration", "
         REQUIRE(remainingTags->size() == 1);
         CHECK((*remainingTags)[0].name == "v1.0.0");
 
-        // Eliminazione tag inesistente
+        // Delete non-existent tag
         auto delBad = historyService.deleteTag(sandbox.root, "nonexistent-tag");
         REQUIRE_FALSE(delBad.has_value());
         CHECK(delBad.error().kind == gf::git::ports::GitOpsError::Kind::TagNotFound);

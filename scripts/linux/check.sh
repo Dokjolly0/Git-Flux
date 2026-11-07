@@ -2,15 +2,15 @@
 # ==============================================================================
 # Git Flux — Linux Full Health Check (Pre-Commit / CI Local Verification)
 # ==============================================================================
-# Utilizzo:
+# Usage:
 #   ./scripts/linux/check.sh
 #
-# Esegue in sequenza:
-#   1. Compilazione Zero-Qt Core C++23 (linux-core-release)
-#   2. Test Unitari & Integrazione Core (ctest core)
-#   3. Compilazione Desktop Qt Quick 6 (linux-qt-release)
-#   4. Test Unitari, MVVM & Integrazione Desktop (ctest qt)
-#   5. Smoke Test Headless di Avvio Applicazione (git_flux --test-startup)
+# Runs in sequence:
+#   1. Zero-Qt Core C++23 build (linux-core-release)
+#   2. Core Unit & Integration Tests (ctest core)
+#   3. Desktop Qt Quick 6 build (linux-qt-release)
+#   4. Desktop Unit, MVVM & Integration Tests (ctest qt)
+#   5. Headless Application Startup Smoke Test (git_flux --test-startup)
 # ==============================================================================
 
 set -euo pipefail
@@ -46,10 +46,10 @@ run_step() {
 
     if "${cmd[@]}"; then
         status="PASS"
-        echo -e "${GREEN}✔ ${name} completato con successo!${NC}"
+        echo -e "${GREEN}✔ ${name} completed successfully!${NC}"
     else
         status="FAIL"
-        echo -e "${RED}✖ ${name} FALLITO!${NC}" >&2
+        echo -e "${RED}✖ ${name} FAILED!${NC}" >&2
     fi
 
     local end_time
@@ -72,7 +72,7 @@ print_summary() {
     local total_elapsed=$((total_end - TOTAL_START))
 
     echo -e "\n${BOLD}============================================================${NC}"
-    echo -e "${BOLD}              RIASSUNTO HEALTH CHECK GIT FLUX               ${NC}"
+    echo -e "${BOLD}              GIT FLUX HEALTH CHECK SUMMARY                 ${NC}"
     echo -e "${BOLD}============================================================${NC}"
 
     for i in "${!STEP_NAMES[@]}"; do
@@ -84,7 +84,7 @@ print_summary() {
     done
 
     echo -e "${BOLD}------------------------------------------------------------${NC}"
-    echo -e "  Tempo totale impiegato: ${BOLD}${total_elapsed}s${NC}"
+    echo -e "  Total time elapsed: ${BOLD}${total_elapsed}s${NC}"
     echo -e "${BOLD}============================================================${NC}\n"
 }
 
@@ -97,4 +97,4 @@ run_step "4. Test Suite Desktop & MVVM" "${SCRIPT_DIR}/test.sh" --qt
 run_step "5. Headless Smoke Test (git_flux)" "${SCRIPT_DIR}/test.sh" --smoke
 
 print_summary
-echo -e "${GREEN}${BOLD}🎉 TUTTI I CHECK SONO STATI SUPERATI CON SUCCESSO!${NC}\n"
+echo -e "${GREEN}${BOLD}🎉 ALL CHECKS PASSED SUCCESSFULLY!${NC}\n"

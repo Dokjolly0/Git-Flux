@@ -2,24 +2,24 @@
 # ==============================================================================
 # Git Flux — Linux Build Utility Script
 # ==============================================================================
-# Utilizzo:
-#   ./scripts/linux/build.sh [OPZIONI]
+# Usage:
+#   ./scripts/linux/build.sh [OPTIONS]
 #
-# Opzioni:
-#   -q, --qt            Compila il preset Desktop Qt Quick 6 (default: linux-qt-release)
-#   -c, --core          Compila il preset Zero-Qt Core C++23 (linux-core-release)
-#   -a, --all           Compila entrambi i preset (core + desktop)
-#   -C, --clean         Pulisce la directory di build prima di compilare
-#   -g, --configure     Forza la fase di configurazione cmake prima della compilazione
-#   -t, --target NOME   Compila solo lo specifico target (es. git_flux, gf_unit_tests)
-#   -j, --jobs NUM      Numero di job paralleli (default: nproc)
-#   -v, --verbose       Output dettagliato durante la compilazione
-#   -h, --help          Mostra questo messaggio di aiuto
+# Options:
+#   -q, --qt            Build Desktop Qt Quick 6 preset (default: linux-qt-release)
+#   -c, --core          Build Zero-Qt Core C++23 preset (linux-core-release)
+#   -a, --all           Build both presets (core + desktop)
+#   -C, --clean         Clean build directory before building
+#   -g, --configure     Force cmake configuration step before build
+#   -t, --target NAME   Build only the specified target (e.g. git_flux, gf_unit_tests)
+#   -j, --jobs NUM      Number of parallel jobs (default: nproc)
+#   -v, --verbose       Verbose compiler output
+#   -h, --help          Show this help message
 # ==============================================================================
 
 set -euo pipefail
 
-# Colori per il terminale
+# Terminal colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -28,11 +28,11 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-# Directory radice del repository
+# Repository root directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-# Parametri di default
+# Default parameters
 PRESET="linux-qt-release"
 BUILD_ALL=false
 CLEAN_BUILD=false
@@ -43,33 +43,33 @@ VERBOSE=false
 
 show_help() {
     cat << EOF
-${BOLD}Git Flux — Script di Compilazione Linux${NC}
+${BOLD}Git Flux — Linux Build Script${NC}
 
-${CYAN}Utilizzo:${NC}
-  $0 [OPZIONI]
+${CYAN}Usage:${NC}
+  $0 [OPTIONS]
 
-${CYAN}Opzioni:${NC}
-  -q, --qt             Compila il preset Desktop Qt Quick 6 [default] (${BOLD}linux-qt-release${NC})
-  -c, --core           Compila il preset Zero-Qt Core C++23 (${BOLD}linux-core-release${NC})
-  -a, --all            Compila sia Core che Desktop in sequenza
-  -C, --clean          Elimina la directory di build prima di compilare
-  -g, --configure      Forza la riconfigurazione di CMake prima della build
-  -t, --target <NOME>  Compila unicamente il target specificato (es. git_flux)
-  -j, --jobs <NUM>     Numero di job paralleli di compilazione (default: ${JOBS})
-  -v, --verbose        Modalità verbosa (stampa linee di comando del compilatore)
-  -h, --help           Mostra questa guida
+${CYAN}Options:${NC}
+  -q, --qt             Build Desktop Qt Quick 6 preset [default] (${BOLD}linux-qt-release${NC})
+  -c, --core           Build Zero-Qt Core C++23 preset (${BOLD}linux-core-release${NC})
+  -a, --all            Build both Core and Desktop in sequence
+  -C, --clean          Remove build directory before building
+  -g, --configure      Force CMake reconfiguration before build
+  -t, --target <NAME>  Build only the specified target (e.g. git_flux)
+  -j, --jobs <NUM>     Number of parallel build jobs (default: ${JOBS})
+  -v, --verbose        Verbose mode (print compiler command lines)
+  -h, --help           Show this help message
 
-${CYAN}Esempi:${NC}
-  $0                         # Build completa del target desktop standard
-  $0 --core                  # Build del core puro C++23 (Zero-Qt)
-  $0 --all                   # Build completa di entrambi i preset
-  $0 --clean --qt            # Clean build del desktop
-  $0 -t git_flux             # Compila solo l'eseguibile principale
-  $0 -t gf_viewmodels_tests  # Compila solo l'eseguibile dei test MVVM
+${CYAN}Examples:${NC}
+  $0                         # Full build of standard desktop target
+  $0 --core                  # Build pure C++23 core (Zero-Qt)
+  $0 --all                   # Full build of both presets
+  $0 --clean --qt            # Clean build of desktop
+  $0 -t git_flux             # Build only the main executable
+  $0 -t gf_viewmodels_tests  # Build only the MVVM test executable
 EOF
 }
 
-# Parsing argomenti
+# Argument parsing
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -q|--qt)
@@ -94,7 +94,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         -t|--target)
             if [[ -z "${2:-}" ]]; then
-                echo -e "${RED}Errore: --target richiede il nome di un target.${NC}" >&2
+                echo -e "${RED}Error: --target requires a target name.${NC}" >&2
                 exit 1
             fi
             SPECIFIC_TARGET="$2"
@@ -102,7 +102,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         -j|--jobs)
             if [[ -z "${2:-}" ]]; then
-                echo -e "${RED}Errore: --jobs richiede un numero.${NC}" >&2
+                echo -e "${RED}Error: --jobs requires a number.${NC}" >&2
                 exit 1
             fi
             JOBS="$2"
@@ -117,8 +117,8 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            echo -e "${RED}Opzione non riconosciuta: $1${NC}" >&2
-            echo "Usa $0 --help per visualizzare la guida." >&2
+            echo -e "${RED}Unrecognized option: $1${NC}" >&2
+            echo "Use $0 --help to display help." >&2
             exit 1
             ;;
     esac
@@ -137,23 +137,23 @@ build_preset() {
     fi
 
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BOLD}${CYAN}▶ Avvio compilazione per preset: ${YELLOW}${target_preset}${NC}"
+    echo -e "${BOLD}${CYAN}▶ Starting build for preset: ${YELLOW}${target_preset}${NC}"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
     if [[ "${CLEAN_BUILD}" == true && -n "${build_dir}" && -d "${build_dir}" ]]; then
-        echo -e "${YELLOW}🧹 Pulizia directory di build: ${build_dir}...${NC}"
+        echo -e "${YELLOW}🧹 Cleaning build directory: ${build_dir}...${NC}"
         rm -rf "${build_dir}"
     fi
 
     if [[ "${FORCE_CONFIGURE}" == true || ! -d "${build_dir}" ]]; then
-        echo -e "${CYAN}⚙️  Configurazione CMake con preset '${target_preset}'...${NC}"
+        echo -e "${CYAN}⚙️  Configuring CMake with preset '${target_preset}'...${NC}"
         cmake --preset "${target_preset}"
     fi
 
     local build_cmd=("cmake" "--build" "--preset" "${target_preset}" "-j" "${JOBS}")
 
     if [[ -n "${SPECIFIC_TARGET}" ]]; then
-        echo -e "${CYAN}🎯 Compilazione target specifico: ${BOLD}${SPECIFIC_TARGET}${NC}"
+        echo -e "${CYAN}🎯 Building specific target: ${BOLD}${SPECIFIC_TARGET}${NC}"
         build_cmd+=("--target" "${SPECIFIC_TARGET}")
     fi
 
@@ -164,14 +164,14 @@ build_preset() {
     local start_time
     start_time=$(date +%s)
 
-    echo -e "${CYAN}🔨 Esecuzione: ${build_cmd[*]}${NC}"
+    echo -e "${CYAN}🔨 Running: ${build_cmd[*]}${NC}"
     "${build_cmd[@]}"
 
     local end_time
     end_time=$(date +%s)
     local elapsed=$((end_time - start_time))
 
-    echo -e "${GREEN}✔ Compilazione '${target_preset}' completata con successo in ${elapsed}s!${NC}\n"
+    echo -e "${GREEN}✔ Build for '${target_preset}' completed successfully in ${elapsed}s!${NC}\n"
 }
 
 START_ALL=$(date +%s)
@@ -187,5 +187,5 @@ END_ALL=$(date +%s)
 TOTAL_ELAPSED=$((END_ALL - START_ALL))
 
 echo -e "${GREEN}${BOLD}============================================================${NC}"
-echo -e "${GREEN}${BOLD}  TUTTE LE OPERAZIONI DI BUILD SONO STATE COMPLETATE (${TOTAL_ELAPSED}s)${NC}"
+echo -e "${GREEN}${BOLD}  ALL BUILD OPERATIONS COMPLETED (${TOTAL_ELAPSED}s)${NC}"
 echo -e "${GREEN}${BOLD}============================================================${NC}"

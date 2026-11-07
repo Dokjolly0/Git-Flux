@@ -166,7 +166,7 @@ std::string AsyncGitService::refreshWorkingTreeAsync(const std::filesystem::path
             }
             return {};
         },
-        tasks::bo::TaskPriority::High, // Scansione status priorità alta per UI
+        tasks::bo::TaskPriority::High, // High-priority status scan for responsive UI
         onProgress,
         nullptr
     );

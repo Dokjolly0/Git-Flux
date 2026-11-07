@@ -46,16 +46,16 @@ SqliteConnection::open(const std::filesystem::path& dbPath) {
 
     SqliteConnection conn(db);
 
-    // Configura busy timeout a 5000ms
+    // Configure busy timeout to 5000ms
     sqlite3_busy_timeout(db, 5000);
 
-    // Abilita i vincoli di Foreign Key (obbligatorio in SQLite)
+    // Enable foreign key constraints (required in SQLite)
     auto fkRes = conn.execute("PRAGMA foreign_keys = ON;");
     if (!fkRes) {
         return std::unexpected(fkRes.error());
     }
 
-    // Se non è in-memory, imposta WAL mode e synchronous NORMAL per massime prestazioni e durabilità
+    // For on-disk databases, enable WAL mode and NORMAL synchronous for maximum performance and durability
     if (pathUtf8 != ":memory:") {
         auto walRes = conn.execute("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;");
         if (!walRes) {

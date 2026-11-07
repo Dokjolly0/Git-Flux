@@ -36,7 +36,7 @@ TEST_CASE("Conversione UTF-8 <-> std::filesystem::path preserva caratteri Unicod
     const std::string original = "progetti/città/specifica_🚀_test.md";
     const auto path = gf::core::utf8ToPath(original);
     const std::string roundtrip = gf::core::pathToUtf8(path);
-    // Normalizza eventuali separatori prima del confronto
+    // Normalize separators before comparison if needed
     REQUIRE(roundtrip == original);
 }
 
@@ -98,7 +98,7 @@ TEST_CASE("OperationCoordinator serializza mutazioni sullo stesso repo ma parall
     std::atomic<int> maxConcurrentOnRepoA{0};
 
     std::vector<std::future<void>> futures;
-    // 8 mutazioni concorrenti sullo STESSO RepositoryId("repo-A")
+    // 8 concurrent mutations on the SAME RepositoryId("repo-A")
     for (int i = 0; i < 8; ++i) {
         futures.push_back(coordinator.submit(
             RepositoryId("repo-A"),
@@ -113,7 +113,7 @@ TEST_CASE("OperationCoordinator serializza mutazioni sullo stesso repo ma parall
             }));
     }
 
-    // In contemporanea, 4 letture passive su repository DIVERSI
+    // Simultaneously, 4 passive reads on DIFFERENT repositories
     for (int i = 0; i < 4; ++i) {
         futures.push_back(coordinator.submit(
             RepositoryId("other-" + std::to_string(i)),
@@ -126,9 +126,9 @@ TEST_CASE("OperationCoordinator serializza mutazioni sullo stesso repo ma parall
         f.get();
     }
 
-    // Sullo stesso repo non devono MAI sovrapporsi due operazioni Mutating
+    // On the same repo, two Mutating operations must NEVER overlap
     REQUIRE(maxConcurrentOnRepoA.load() == 1);
-    // Globalmente i worker devono aver lavorato in parallelo entro il tetto di 4
+    // Globally, workers must have executed in parallel up to the ceiling of 4
     REQUIRE(coordinator.maxObservedActiveWorkers() <= 4);
     REQUIRE(coordinator.maxObservedActiveWorkers() >= 2);
 }
@@ -139,7 +139,7 @@ TEST_CASE("OperationCoordinator serve HighActiveRepo prima della coda NormalBack
     using gf::git::bl::TaskPriority;
     using gf::repositories::bo::RepositoryId;
 
-    // 1 solo worker per rendere l'ordine deterministico
+    // Single worker to ensure deterministic scheduling order
     OperationCoordinator coordinator(1);
 
     std::promise<void> gatePromise;
@@ -148,12 +148,12 @@ TEST_CASE("OperationCoordinator serve HighActiveRepo prima della coda NormalBack
     std::vector<int> executionOrder;
     std::mutex orderMutex;
 
-    // Task 0 occupa l'unico worker finché non apriamo il gate
+    // Task 0 occupies the only worker until the gate is opened
     auto blocker = coordinator.submit(
         RepositoryId("r0"), OperationKind::PassiveRead, TaskPriority::NormalBackground,
         [gateFuture]() { gateFuture.wait(); });
 
-    // Accodiamo 5 task NormalBackground (id 1..5)
+    // Enqueue 5 NormalBackground tasks (id 1..5)
     std::vector<std::future<void>> bgFutures;
     for (int i = 1; i <= 5; ++i) {
         bgFutures.push_back(coordinator.submit(
@@ -166,7 +166,7 @@ TEST_CASE("OperationCoordinator serve HighActiveRepo prima della coda NormalBack
             }));
     }
 
-    // Accodiamo per ultimo un task HighActiveRepo (id 99)
+    // Enqueue a HighActiveRepo task last (id 99)
     auto highFuture = coordinator.submit(
         RepositoryId("active-repo"),
         OperationKind::PassiveRead,

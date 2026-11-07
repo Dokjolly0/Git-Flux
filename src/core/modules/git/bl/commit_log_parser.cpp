@@ -78,12 +78,12 @@ std::vector<bo::GitCommitLogItem> CommitLogParser::parse(std::string_view rawOut
             start = end + 1;
         }
 
-        // Se il record contiene solo spazi / newline residui, scartalo
+        // If record contains only whitespace or newlines, discard it
         if (trim(record).empty()) {
             continue;
         }
 
-        // Estrazione dei campi separati da '\0'
+        // Extract NUL-separated fields
         std::vector<std::string_view> fields;
         fields.reserve(12);
         std::size_t fieldStart = 0;
@@ -98,7 +98,7 @@ std::vector<bo::GitCommitLogItem> CommitLogParser::parse(std::string_view rawOut
         }
 
         if (fields.size() < 11) {
-            // Record non conforme, saltalo
+            // Malformed record, skip it
             continue;
         }
 

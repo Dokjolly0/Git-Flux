@@ -14,27 +14,27 @@ public:
     explicit GitStagingService(ports::IRepositoryGitOps& gitOps) noexcept;
     ~GitStagingService() = default;
 
-    /// Aggiunge file specifici all'area di staging con validazione e mutua esclusione.
+    /// Stages specific files with validation and mutual exclusion.
     [[nodiscard]] std::expected<void, ports::GitOpsError>
     stageFiles(const std::filesystem::path& repoPath, const std::vector<std::string>& filePaths);
 
-    /// Aggiunge tutte le modifiche del working tree all'area di staging.
+    /// Stages all working tree modifications into the staging area.
     [[nodiscard]] std::expected<void, ports::GitOpsError>
     stageAll(const std::filesystem::path& repoPath);
 
-    /// Rimuove file specifici dall'area di staging.
+    /// Unstages specific files from the staging area.
     [[nodiscard]] std::expected<void, ports::GitOpsError>
     unstageFiles(const std::filesystem::path& repoPath, const std::vector<std::string>& filePaths);
 
-    /// Rimuove tutti i file dall'area di staging.
+    /// Unstages all files from the staging area.
     [[nodiscard]] std::expected<void, ports::GitOpsError>
     unstageAll(const std::filesystem::path& repoPath);
 
-    /// Scarta le modifiche locali non staged di file tracciati o rimuove file untracked.
+    /// Discards unstaged local modifications of tracked files or removes untracked files.
     [[nodiscard]] std::expected<void, ports::GitOpsError>
     discardFiles(const std::filesystem::path& repoPath, const std::vector<std::string>& filePaths);
 
-    /// Crea un commit git dopo aver validato il messaggio e i requisiti di staging.
+    /// Creates a git commit after validating the message and staging prerequisites.
     [[nodiscard]] std::expected<bo::CommitResult, ports::GitOpsError>
     createCommit(const std::filesystem::path& repoPath, const bo::CommitOptions& options);
 

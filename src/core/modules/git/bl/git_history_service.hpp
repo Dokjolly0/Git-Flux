@@ -17,26 +17,26 @@ public:
     explicit GitHistoryService(ports::IRepositoryGitOps& gitOps) noexcept;
     ~GitHistoryService() = default;
 
-    /// Verifica se un nome rispetta le specifiche git-check-ref-format per i tag.
+    /// Checks if a tag name conforms to git-check-ref-format specifications.
     [[nodiscard]] static bool isValidTagName(std::string_view name) noexcept;
 
-    /// Ritorna la cronologia dei commit con opzioni di paginazione e filtri.
+    /// Returns commit history with pagination and filtering options.
     [[nodiscard]] std::expected<std::vector<bo::GitCommitLogItem>, ports::GitOpsError>
     getCommitHistory(const std::filesystem::path& repoPath, const bo::CommitLogOptions& options = {});
 
-    /// Ritorna i dettagli di un singolo commit dato il suo hash SHA o riferimento.
+    /// Returns details of a single commit given its SHA hash or reference.
     [[nodiscard]] std::expected<std::optional<bo::GitCommitLogItem>, ports::GitOpsError>
     getCommitDetails(const std::filesystem::path& repoPath, const std::string& commitSha);
 
-    /// Ritorna tutti i tag del repository (lightweight e annotated).
+    /// Returns all repository tags (lightweight and annotated).
     [[nodiscard]] std::expected<std::vector<bo::GitTag>, ports::GitOpsError>
     listTags(const std::filesystem::path& repoPath);
 
-    /// Crea un nuovo tag dopo aver validato il nome e acquisito il lock sul repository.
+    /// Creates a new tag after validating the name and acquiring per-repo lock.
     [[nodiscard]] std::expected<void, ports::GitOpsError>
     createTag(const std::filesystem::path& repoPath, const bo::CreateTagOptions& options);
 
-    /// Elimina un tag locale acquisendo il lock sul repository.
+    /// Deletes a local tag acquiring per-repo lock.
     [[nodiscard]] std::expected<void, ports::GitOpsError>
     deleteTag(const std::filesystem::path& repoPath, const std::string& tagName);
 

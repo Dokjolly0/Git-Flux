@@ -98,44 +98,44 @@ void AppBootstrap::initialize() {
 
 void AppBootstrap::registerWithQml(QQmlApplicationEngine& engine) {
     qmlRegisterUncreatableType<RepositoryListModel>("GitFlux.Desktop", 1, 0, "RepositoryListModel",
-        "Modello fornito da HomeHubViewModel");
+        "Model provided by HomeHubViewModel");
     qmlRegisterUncreatableType<GroupListModel>("GitFlux.Desktop", 1, 0, "GroupListModel",
-        "Modello fornito da HomeHubViewModel");
+        "Model provided by HomeHubViewModel");
     qmlRegisterUncreatableType<WorkspaceListModel>("GitFlux.Desktop", 1, 0, "WorkspaceListModel",
-        "Modello fornito da HomeHubViewModel");
+        "Model provided by HomeHubViewModel");
     qmlRegisterUncreatableType<WorkingTreeFileListModel>("GitFlux.Desktop", 1, 0, "WorkingTreeFileListModel",
-        "Modello fornito da WorkingTreeViewModel");
+        "Model provided by WorkingTreeViewModel");
     qmlRegisterUncreatableType<DiffLineListModel>("GitFlux.Desktop", 1, 0, "DiffLineListModel",
-        "Modello fornito da DiffViewModel");
+        "Model provided by DiffViewModel");
     qmlRegisterUncreatableType<BranchListModel>("GitFlux.Desktop", 1, 0, "BranchListModel",
-        "Modello fornito da BranchManagerViewModel");
+        "Model provided by BranchManagerViewModel");
     qmlRegisterUncreatableType<CommitHistoryListModel>("GitFlux.Desktop", 1, 0, "CommitHistoryListModel",
-        "Modello fornito da BranchManagerViewModel");
+        "Model provided by BranchManagerViewModel");
 
     qmlRegisterUncreatableType<HomeHubViewModel>("GitFlux.Desktop", 1, 0, "HomeHubViewModel",
-        "ViewModel gestito dal bootstrap");
+        "ViewModel managed by bootstrap");
     qmlRegisterUncreatableType<QuickOpenViewModel>("GitFlux.Desktop", 1, 0, "QuickOpenViewModel",
-        "ViewModel gestito dal bootstrap");
+        "ViewModel managed by bootstrap");
     qmlRegisterUncreatableType<WorkingTreeViewModel>("GitFlux.Desktop", 1, 0, "WorkingTreeViewModel",
-        "ViewModel gestito da WorkspaceSessionViewModel");
+        "ViewModel managed by WorkspaceSessionViewModel");
     qmlRegisterUncreatableType<CommitBoxViewModel>("GitFlux.Desktop", 1, 0, "CommitBoxViewModel",
-        "ViewModel gestito da WorkspaceSessionViewModel");
+        "ViewModel managed by WorkspaceSessionViewModel");
     qmlRegisterUncreatableType<DiffViewModel>("GitFlux.Desktop", 1, 0, "DiffViewModel",
-        "ViewModel gestito da WorkspaceSessionViewModel");
+        "ViewModel managed by WorkspaceSessionViewModel");
     qmlRegisterUncreatableType<BranchManagerViewModel>("GitFlux.Desktop", 1, 0, "BranchManagerViewModel",
-        "ViewModel gestito da WorkspaceSessionViewModel");
+        "ViewModel managed by WorkspaceSessionViewModel");
     qmlRegisterUncreatableType<StashListModel>("GitFlux.Desktop", 1, 0, "StashListModel",
-        "Modello fornito da StashManagerViewModel");
+        "Model provided by StashManagerViewModel");
     qmlRegisterUncreatableType<ConflictHunkListModel>("GitFlux.Desktop", 1, 0, "ConflictHunkListModel",
-        "Modello fornito da ConflictResolverViewModel");
+        "Model provided by ConflictResolverViewModel");
     qmlRegisterUncreatableType<StashManagerViewModel>("GitFlux.Desktop", 1, 0, "StashManagerViewModel",
-        "ViewModel gestito da WorkspaceSessionViewModel");
+        "ViewModel managed by WorkspaceSessionViewModel");
     qmlRegisterUncreatableType<ConflictResolverViewModel>("GitFlux.Desktop", 1, 0, "ConflictResolverViewModel",
-        "ViewModel gestito da WorkspaceSessionViewModel");
+        "ViewModel managed by WorkspaceSessionViewModel");
     qmlRegisterUncreatableType<WorkspaceSessionViewModel>("GitFlux.Desktop", 1, 0, "WorkspaceSessionViewModel",
-        "ViewModel gestito dal bootstrap");
+        "ViewModel managed by bootstrap");
     qmlRegisterUncreatableType<BatchOperationsViewModel>("GitFlux.Desktop", 1, 0, "BatchOperationsViewModel",
-        "ViewModel gestito dal bootstrap");
+        "ViewModel managed by bootstrap");
 
     auto* rootCtx = engine.rootContext();
     rootCtx->setContextProperty(QStringLiteral("homeHubVm"), m_homeHubVm.get());

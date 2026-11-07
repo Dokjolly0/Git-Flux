@@ -25,7 +25,7 @@ public:
     std::vector<gf::git::bo::GitStashItem> stashesToReturn;
     bool failOperations = false;
 
-    // Metodi stash sotto test
+    // Stash methods under test
     std::expected<std::vector<gf::git::bo::GitStashItem>, gf::git::ports::GitOpsError>
     listStashes(const std::filesystem::path&) override {
         listStashesCalled = true;
@@ -149,7 +149,7 @@ public:
         return {};
     }
 
-    // Metodi non rilevanti per questo mock
+    // Methods not relevant for this mock
     std::expected<gf::git::bo::RepoWorkingTreeStatus, gf::git::ports::GitOpsError>
     getWorkingTreeStatus(const std::filesystem::path&) override { return gf::git::bo::RepoWorkingTreeStatus{}; }
     std::expected<void, gf::git::ports::GitOpsError> stageFiles(const std::filesystem::path&, const std::vector<std::string>&) override { return {}; }

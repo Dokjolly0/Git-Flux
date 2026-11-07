@@ -14,27 +14,27 @@ public:
     explicit GitStashService(ports::IRepositoryGitOps& gitOps) noexcept;
     ~GitStashService() = default;
 
-    /// Ritorna la lista degli stash salvati nel repository.
+    /// Returns the list of stashes saved in the repository.
     [[nodiscard]] std::expected<std::vector<bo::GitStashItem>, ports::GitOpsError>
     listStashes(const std::filesystem::path& repoPath);
 
-    /// Salva le modifiche correnti in un nuovo stash con lock per-repo.
+    /// Saves current changes into a new stash under per-repo lock.
     [[nodiscard]] std::expected<void, ports::GitOpsError>
     stashPush(const std::filesystem::path& repoPath, const bo::StashPushOptions& options = {});
 
-    /// Applica e rimuove uno stash con lock per-repo.
+    /// Applies and drops a stash under per-repo lock.
     [[nodiscard]] std::expected<void, ports::GitOpsError>
     stashPop(const std::filesystem::path& repoPath, const bo::StashApplyOptions& options = {});
 
-    /// Applica uno stash mantenendolo salvato con lock per-repo.
+    /// Applies a stash keeping it saved under per-repo lock.
     [[nodiscard]] std::expected<void, ports::GitOpsError>
     stashApply(const std::filesystem::path& repoPath, const bo::StashApplyOptions& options = {});
 
-    /// Rimuove uno stash specifico con lock per-repo.
+    /// Drops a specific stash under per-repo lock.
     [[nodiscard]] std::expected<void, ports::GitOpsError>
     stashDrop(const std::filesystem::path& repoPath, std::size_t stashIndex = 0);
 
-    /// Rimuove tutti gli stash con lock per-repo.
+    /// Clears all stashes under per-repo lock.
     [[nodiscard]] std::expected<void, ports::GitOpsError>
     stashClear(const std::filesystem::path& repoPath);
 

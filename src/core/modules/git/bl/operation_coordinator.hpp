@@ -26,12 +26,12 @@ enum class TaskPriority {
     HighActiveRepo = 1
 };
 
-/// Coordina la concorrenza delle operazioni Git:
-/// - Limita il parallelismo globale a `maxConcurrency` processi/task attivi.
-/// - Dà precedenza ai task `HighActiveRepo` (repository selezionato nella UI).
-/// - Applica una policy Readers-Writer per singolo `RepositoryId`: le operazioni
-///   `Mutating` sullo stesso repository sono strettamente serializzate senza bloccare
-///   i worker thread liberi per gli altri repository.
+/// Coordinates concurrency of Git operations:
+/// - Limits global parallelism to `maxConcurrency` active processes/tasks.
+/// - Prioritizes `HighActiveRepo` tasks (repository selected in UI).
+/// - Enforces Readers-Writer policy per `RepositoryId`: `Mutating` operations
+///   on the same repository are strictly serialized without blocking free worker
+///   threads for other repositories.
 class OperationCoordinator {
 public:
     explicit OperationCoordinator(std::size_t maxConcurrency);

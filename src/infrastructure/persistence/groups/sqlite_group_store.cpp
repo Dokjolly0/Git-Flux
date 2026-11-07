@@ -100,7 +100,7 @@ ON CONFLICT(id) DO UPDATE SET
         });
     }
 
-    // Ricostruisci le associazioni ordinate
+    // Rebuild ordered repository associations
     auto delStmtRes = sqlite::SqliteStatement::prepare(
         conn_, "DELETE FROM group_repositories WHERE group_id = ?;");
     if (!delStmtRes) {

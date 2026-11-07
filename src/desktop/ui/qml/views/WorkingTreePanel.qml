@@ -18,7 +18,7 @@ Rectangle {
         anchors.fill: parent
         spacing: 0
 
-        // Header Working Tree con Branch e Status
+        // Working Tree Header with Branch and Status
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 40
@@ -40,7 +40,7 @@ Rectangle {
 
                 Item { Layout.fillWidth: true }
 
-                // Badge Branch
+                // Branch Badge
                 Rectangle {
                     visible: workingTree ? workingTree.branchName !== "" : false
                     Layout.preferredHeight: 22
@@ -58,7 +58,7 @@ Rectangle {
                     }
                 }
 
-                // Bottone Refresh
+                // Refresh Button
                 Button {
                     Layout.preferredHeight: 24
                     Layout.preferredWidth: 24
@@ -82,7 +82,7 @@ Rectangle {
             }
         }
 
-        // Sezioni Scrollabili
+        // Scrollable Sections
         ScrollView {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -93,7 +93,7 @@ Rectangle {
                 spacing: 4
 
                 // ==========================================
-                // 0. SEZIONE CONFLICTED FILES
+                // 0. CONFLICTED FILES SECTION
                 // ==========================================
                 Rectangle {
                     Layout.fillWidth: true
@@ -206,7 +206,7 @@ Rectangle {
                 }
 
                 // ==========================================
-                // 1. SEZIONE STAGED CHANGES
+                // 1. STAGED CHANGES SECTION
                 // ==========================================
                 Rectangle {
                     Layout.fillWidth: true
@@ -226,7 +226,7 @@ Rectangle {
                             font.pixelSize: 11
                         }
 
-                        // Badge Conteggio
+                        // Count Badge
                         Rectangle {
                             Layout.preferredHeight: 18
                             implicitWidth: stagedCountText.implicitWidth + 10
@@ -334,7 +334,7 @@ Rectangle {
                 }
 
                 // ==========================================
-                // 2. SEZIONE UNSTAGED CHANGES
+                // 2. UNSTAGED CHANGES SECTION
                 // ==========================================
                 Rectangle {
                     Layout.fillWidth: true
@@ -425,7 +425,7 @@ Rectangle {
                                 Layout.fillWidth: true
                             }
 
-                            // Pulsante Discard
+                            // Discard button
                             Button {
                                 text: "↺"
                                 Layout.preferredWidth: 20
@@ -447,7 +447,7 @@ Rectangle {
                                 }
                             }
 
-                            // Pulsante Stage
+                            // Stage button
                             Button {
                                 text: "+"
                                 Layout.preferredWidth: 20
@@ -485,7 +485,7 @@ Rectangle {
                 }
 
                 // ==========================================
-                // 3. SEZIONE UNTRACKED FILES
+                // 3. UNTRACKED FILES SECTION
                 // ==========================================
                 Rectangle {
                     Layout.fillWidth: true
@@ -616,7 +616,7 @@ Rectangle {
                     }
                 }
 
-                // Spazio vuoto se clean
+                // Empty placeholder if clean
                 Item {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 40

@@ -91,7 +91,7 @@ TEST_CASE("Group entity gestisce repository ordinati e membership", "[unit][doma
     REQUIRE(group.contains(RepositoryId("repo-backend")));
     REQUIRE_FALSE(group.contains(RepositoryId("repo-portfolio")));
 
-    // L'ordine dei repository è preservato
+    // Repository ordering is preserved
     REQUIRE(group.repositoryIds[0] == RepositoryId("repo-frontend"));
     REQUIRE(group.repositoryIds[1] == RepositoryId("repo-backend"));
     REQUIRE(group.repositoryIds[2] == RepositoryId("repo-infra"));

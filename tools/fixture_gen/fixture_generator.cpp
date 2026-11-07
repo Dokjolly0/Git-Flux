@@ -39,8 +39,8 @@ ScopedTempDir::~ScopedTempDir() {
         return;
     }
     std::error_code ec;
-    // Su Windows i packfile Git in .git/objects/pack hanno talvolta l'attributo read-only:
-    // rimuoviamo i permessi sola-lettura prima della cancellazione ricorsiva.
+    // On Windows, Git packfiles in .git/objects/pack may have read-only attributes:
+    // ensure owner write permissions before recursive deletion.
     for (auto it = std::filesystem::recursive_directory_iterator(
              path_, std::filesystem::directory_options::skip_permission_denied, ec);
          !ec && it != std::filesystem::recursive_directory_iterator();
@@ -200,7 +200,7 @@ FixtureGenerator::generateFastImportRepo(const FastImportSpec& spec) const {
         return std::unexpected("git init fallito");
     }
 
-    // Configura identità locale per eventuali commit successivi nei test
+    // Configure local test identity for subsequent test commits
     (void)executor.execute({
         .args = {"config", "user.name", "Git Flux Test Bot"},
         .workingDirectory = spec.repoPath,
@@ -216,7 +216,7 @@ FixtureGenerator::generateFastImportRepo(const FastImportSpec& spec) const {
         return FastImportResult{spec.repoPath, 0, 0, std::chrono::milliseconds{0}};
     }
 
-    // 2. Genera stream fast-import deterministico su file binario temporaneo
+    // 2. Generate deterministic fast-import stream to a temporary binary file
     const std::filesystem::path streamPath = spec.repoPath.parent_path() /
         (spec.repoPath.filename().string() + "_fast_import.stream");
 
@@ -246,7 +246,7 @@ FixtureGenerator::generateFastImportRepo(const FastImportSpec& spec) const {
             if (i == 1) {
                 mainTipMark = 1;
             } else if (roll < 20) {
-                // Avanza o crea un feature branch parallelo
+                // Advance or create a parallel feature branch
                 const std::size_t slot = static_cast<std::size_t>(rng() % kFeatureSlots);
                 if (featureTipMarks[slot] == 0) {
                     featureEpochs[slot] = (featureEpochs[slot] + 1) % 4;
@@ -257,7 +257,7 @@ FixtureGenerator::generateFastImportRepo(const FastImportSpec& spec) const {
                 targetRef = std::format("refs/heads/feat-{}-{}", slot, featureEpochs[slot]);
                 featureTipMarks[slot] = i;
             } else if (roll < 28) {
-                // Cerca un feature branch aperto da mergiare in main
+                // Find an open feature branch to merge into main
                 const std::size_t slot = static_cast<std::size_t>(rng() % kFeatureSlots);
                 if (featureTipMarks[slot] != 0 && featureTipMarks[slot] != mainTipMark) {
                     mergeMark = featureTipMarks[slot];
@@ -311,14 +311,14 @@ FixtureGenerator::generateFastImportRepo(const FastImportSpec& spec) const {
         return std::unexpected("Stream fast-import vuoto o non scritto su disco");
     }
 
-    // 3. Esegue git fast-import leggendo il file binario
+    // 3. Execute git fast-import reading the binary file
     auto importRes = runFastImportFromFile(spec.repoPath, streamPath);
     std::filesystem::remove(streamPath, ec);
     if (!importRes) {
         return std::unexpected(importRes.error());
     }
 
-    // 4. Allinea l'index e il working tree a `main` se richiesto
+    // 4. Align index and working tree to `main` if requested
     if (spec.checkoutWorkingTree) {
         auto coRes = executor.execute({
             .args = {"reset", "--hard", "refs/heads/main"},
@@ -353,7 +353,7 @@ FixtureGenerator::generateRepoFleet(const FleetSpec& spec) const {
         return std::unexpected("Impossibile creare directory flotta: " + ec.message());
     }
 
-    // 1. Crea un singolo template locale con N commit
+    // 1. Create a single local template with N commits
     const std::filesystem::path templateDir = spec.rootDir / "_template_base";
     auto tplRes = generateFastImportRepo({
         .repoPath = templateDir,
@@ -414,7 +414,7 @@ FixtureGenerator::generateRepoFleet(const FleetSpec& spec) const {
         result.repoPaths.push_back(repoDir);
     }
 
-    // Rimuove il template di appoggio
+    // Remove the temporary template directory
     for (auto it = std::filesystem::recursive_directory_iterator(templateDir, ec);
          !ec && it != std::filesystem::recursive_directory_iterator();
          it.increment(ec)) {

@@ -58,7 +58,7 @@ TEST_CASE("NativeRepositoryGitOps and GitStashService real Git lifecycle", "[git
 
     StashTestSandbox sandbox;
 
-    // 1. Inizializza repository Git con branch 'main'
+    // 1. Initialize Git repository with branch 'main'
     gf::git::bo::GitCommand initCmd{
         .args = {"init", "-b", "main"},
         .workingDirectory = sandbox.root,
@@ -66,7 +66,7 @@ TEST_CASE("NativeRepositoryGitOps and GitStashService real Git lifecycle", "[git
     };
     REQUIRE(executor.execute(initCmd)->exitCode == 0);
 
-    // Configura autore locale
+    // Configure local author
     REQUIRE(executor.execute(gf::git::bo::GitCommand{
         .args = {"config", "user.name", "Tester Bot"},
         .workingDirectory = sandbox.root
@@ -77,7 +77,7 @@ TEST_CASE("NativeRepositoryGitOps and GitStashService real Git lifecycle", "[git
         .workingDirectory = sandbox.root
     })->exitCode == 0);
 
-    // Commit iniziale
+    // Initial commit
     sandbox.writeFile("base.txt", "line 1\nline 2\n");
     REQUIRE(executor.execute(gf::git::bo::GitCommand{
         .args = {"add", "base.txt"},
@@ -100,11 +100,11 @@ TEST_CASE("NativeRepositoryGitOps and GitStashService real Git lifecycle", "[git
     }
 
     SECTION("Ciclo completo di stash: push, list, apply, drop, pop e clear") {
-        // Modifica file tracciato e aggiungi file non tracciato
+        // Modify tracked file and add untracked file
         sandbox.writeFile("base.txt", "line 1\nmodified line 2\n");
         sandbox.writeFile("untracked.txt", "new untracked file\n");
 
-        // 1. Stash push con includeUntracked e messaggio personalizzato
+        // 1. Stash push with includeUntracked and custom message
         gf::git::bo::StashPushOptions pushOpts1{
             .message = "WIP feature alpha",
             .includeUntracked = true
@@ -112,11 +112,11 @@ TEST_CASE("NativeRepositoryGitOps and GitStashService real Git lifecycle", "[git
         auto pushRes1 = stashService.stashPush(sandbox.root, pushOpts1);
         REQUIRE(pushRes1.has_value());
 
-        // Verifica che l'albero di lavoro sia pulito (file ripristinato e untracked rimosso)
+        // Verify working tree is clean (file restored and untracked removed)
         CHECK(sandbox.readFile("base.txt") == "line 1\nline 2\n");
         CHECK_FALSE(sandbox.fileExists("untracked.txt"));
 
-        // 2. List stashes verifica record parsing
+        // 2. List stashes and verify record parsing
         auto list1 = stashService.listStashes(sandbox.root);
         REQUIRE(list1.has_value());
         REQUIRE(list1->size() == 1);
@@ -128,7 +128,7 @@ TEST_CASE("NativeRepositoryGitOps and GitStashService real Git lifecycle", "[git
         CHECK_FALSE(item1.commitSha.empty());
         CHECK_FALSE(item1.dateIso.empty());
 
-        // 3. Secondo stash
+        // 3. Second stash
         sandbox.writeFile("second.txt", "second file content\n");
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"add", "second.txt"},
@@ -143,7 +143,7 @@ TEST_CASE("NativeRepositoryGitOps and GitStashService real Git lifecycle", "[git
         REQUIRE(pushRes2.has_value());
         CHECK_FALSE(sandbox.fileExists("second.txt"));
 
-        // Ora ci sono 2 stash
+        // Now there are 2 stashes
         auto list2 = stashService.listStashes(sandbox.root);
         REQUIRE(list2.has_value());
         REQUIRE(list2->size() == 2);
@@ -152,17 +152,17 @@ TEST_CASE("NativeRepositoryGitOps and GitStashService real Git lifecycle", "[git
         CHECK((*list2)[1].index == 1);
         CHECK((*list2)[1].message.find("WIP feature alpha") != std::string::npos);
 
-        // 4. Stash apply su stash@{0} (Second quick stash) senza rimuoverlo
+        // 4. Stash apply on stash@{0} (Second quick stash) without dropping it
         auto applyRes = stashService.stashApply(sandbox.root, {.stashIndex = 0});
         REQUIRE(applyRes.has_value());
         CHECK(sandbox.fileExists("second.txt"));
 
-        // La lista ha ancora 2 stash
+        // The list still contains 2 stashes
         auto listAfterApply = stashService.listStashes(sandbox.root);
         REQUIRE(listAfterApply.has_value());
         CHECK(listAfterApply->size() == 2);
 
-        // Scarta la modifica ripristinata per pulire
+        // Discard restored change to clean working tree
         std::error_code ec;
         std::filesystem::remove(sandbox.root / "second.txt", ec);
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
@@ -170,32 +170,32 @@ TEST_CASE("NativeRepositoryGitOps and GitStashService real Git lifecycle", "[git
             .workingDirectory = sandbox.root
         })->exitCode == 0);
 
-        // 5. Stash drop di stash@{0}
+        // 5. Stash drop on stash@{0}
         auto dropRes = stashService.stashDrop(sandbox.root, 0);
         REQUIRE(dropRes.has_value());
 
-        // Ora rimane solo lo stash@{0} originario (WIP feature alpha)
+        // Now only original stash@{0} remains (WIP feature alpha)
         auto listAfterDrop = stashService.listStashes(sandbox.root);
         REQUIRE(listAfterDrop.has_value());
         REQUIRE(listAfterDrop->size() == 1);
         CHECK((*listAfterDrop)[0].message.find("WIP feature alpha") != std::string::npos);
 
-        // 6. Stash pop su stash@{0}
+        // 6. Stash pop on stash@{0}
         auto popRes = stashService.stashPop(sandbox.root, {.stashIndex = 0});
         REQUIRE(popRes.has_value());
 
-        // Sia base.txt che untracked.txt sono tornati!
+        // Both base.txt and untracked.txt are restored!
         CHECK(sandbox.readFile("base.txt") == "line 1\nmodified line 2\n");
         CHECK(sandbox.fileExists("untracked.txt"));
         CHECK(sandbox.readFile("untracked.txt") == "new untracked file\n");
 
-        // Ora la lista è vuota
+        // Now the list is empty
         auto listAfterPop = stashService.listStashes(sandbox.root);
         REQUIRE(listAfterPop.has_value());
         CHECK(listAfterPop->empty());
 
         // 7. Stash clear
-        // Creiamo un nuovo stash per verificare clear
+        // Create a new stash to verify clear
         REQUIRE(stashService.stashPush(sandbox.root, {.message = "Temp for clear"}).has_value());
         CHECK(stashService.listStashes(sandbox.root)->size() == 1);
 
@@ -203,7 +203,7 @@ TEST_CASE("NativeRepositoryGitOps and GitStashService real Git lifecycle", "[git
         REQUIRE(clearRes.has_value());
         CHECK(stashService.listStashes(sandbox.root)->empty());
 
-        // 8. StashNotFound su pop/drop di indice inesistente
+        // 8. StashNotFound on pop/drop of non-existent index
         auto invalidDrop = stashService.stashDrop(sandbox.root, 42);
         REQUIRE_FALSE(invalidDrop.has_value());
         CHECK(invalidDrop.error().kind == gf::git::ports::GitOpsError::Kind::StashNotFound);

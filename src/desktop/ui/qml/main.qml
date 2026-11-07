@@ -19,9 +19,9 @@ ApplicationWindow {
         id: fluxTheme
     }
 
-    property string currentView: "home" // "home" oppure "session"
+    property string currentView: "home" // "home" or "session"
 
-    // Vista Principale: Home Hub a 3 Colonne
+    // Main View: 3-Column Home Hub
     HomeHubView {
         id: homeHubView
         anchors.fill: parent
@@ -39,7 +39,7 @@ ApplicationWindow {
         }
 
         onGroupOpened: function(groupId) {
-            console.log("Apertura Gruppo:", groupId);
+            console.log("Opening Group:", groupId);
         }
 
         onWorkspaceOpened: function(workspaceId) {
@@ -50,7 +50,7 @@ ApplicationWindow {
         }
     }
 
-    // Vista Sessione Multi-Repo (Working Tree, Staging, Diff Viewer)
+    // Multi-Repo Session View (Working Tree, Staging, Diff Viewer)
     WorkspaceSessionView {
         id: workspaceSessionView
         anchors.fill: parent
@@ -66,7 +66,7 @@ ApplicationWindow {
         }
     }
 
-    // Modale Sovrapposto: Apertura Rapida Multi-Gruppo
+    // Modal Overlay: Multi-Group Quick Open
     QuickOpenModal {
         id: quickOpenModal
         anchors.fill: parent

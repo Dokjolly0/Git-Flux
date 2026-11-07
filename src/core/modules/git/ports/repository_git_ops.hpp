@@ -58,199 +58,199 @@ class IRepositoryGitOps {
 public:
     virtual ~IRepositoryGitOps() = default;
 
-    /// Ritorna lo stato dettagliato e classificato del working tree del repository.
+    /// Returns the detailed, classified status of the repository working tree.
     [[nodiscard]] virtual std::expected<bo::RepoWorkingTreeStatus, GitOpsError>
     getWorkingTreeStatus(const std::filesystem::path& repoPath) = 0;
 
-    /// Aggiunge percorsi specifici all'area di staging (`git add -- <paths>`).
+    /// Stages specific paths (`git add -- <paths>`).
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     stageFiles(const std::filesystem::path& repoPath, const std::vector<std::string>& filePaths) = 0;
 
-    /// Aggiunge tutte le modifiche del working tree all'area di staging (`git add -A`).
+    /// Stages all working tree changes (`git add -A`).
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     stageAll(const std::filesystem::path& repoPath) = 0;
 
-    /// Rimuove percorsi specifici dall'area di staging.
+    /// Unstages specific paths from the index.
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     unstageFiles(const std::filesystem::path& repoPath, const std::vector<std::string>& filePaths) = 0;
 
-    /// Rimuove tutte le modifiche dall'area di staging.
+    /// Unstages all changes from the index.
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     unstageAll(const std::filesystem::path& repoPath) = 0;
 
-    /// Scarta le modifiche locali non staged ripristinando file tracciati o rimuovendo file untracked.
+    /// Discards unstaged local modifications, restoring tracked files or removing untracked files.
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     discardFiles(const std::filesystem::path& repoPath, const std::vector<std::string>& filePaths) = 0;
 
-    /// Crea un commit con i file attualmente staged.
+    /// Creates a commit with the currently staged files.
     [[nodiscard]] virtual std::expected<bo::CommitResult, GitOpsError>
     createCommit(const std::filesystem::path& repoPath, const bo::CommitOptions& options) = 0;
 
-    /// Estrae il diff per un file specifico nello scope specificato (staged, unstaged o untracked).
+    /// Retrieves the diff for a specific file within the specified scope (staged, unstaged, or untracked).
     [[nodiscard]] virtual std::expected<bo::FileDiff, GitOpsError>
     getFileDiff(const std::filesystem::path& repoPath,
                 const std::string& filePath,
                 bo::DiffScope scope) = 0;
 
-    /// Estrae tutti i diff per lo scope specificato (staged o unstaged).
+    /// Retrieves all diffs for the specified scope (staged or unstaged).
     [[nodiscard]] virtual std::expected<std::vector<bo::FileDiff>, GitOpsError>
     getAllDiffs(const std::filesystem::path& repoPath,
                 bo::DiffScope scope) = 0;
 
-    /// Ritorna l'elenco dei branch locali e remoti del repository.
+    /// Returns the list of local and remote branches in the repository.
     [[nodiscard]] virtual std::expected<std::vector<bo::GitBranch>, GitOpsError>
     listBranches(const std::filesystem::path& repoPath) = 0;
 
-    /// Crea un nuovo branch a partire da un punto di partenza opzionale.
+    /// Creates a new branch from an optional starting point.
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     createBranch(const std::filesystem::path& repoPath,
                  const bo::CreateBranchOptions& options) = 0;
 
-    /// Esegue il checkout / switch a un branch o commit.
+    /// Checks out / switches to a branch or commit.
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     checkoutBranch(const std::filesystem::path& repoPath,
                    const bo::CheckoutOptions& options) = 0;
 
-    /// Elimina un branch esistente (con flag force per branch non mergiati).
+    /// Deletes an existing branch (with force flag for unmerged branches).
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     deleteBranch(const std::filesystem::path& repoPath,
                  const std::string& branchName,
                  bool force) = 0;
 
-    /// Rinomina un branch esistente.
+    /// Renames an existing branch.
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     renameBranch(const std::filesystem::path& repoPath,
                  const std::string& oldName,
                  const std::string& newName) = 0;
 
-    /// Ritorna la cronologia dei commit (git log) con filtri avanzati e ordinamento topologico.
+    /// Returns the commit log history with advanced filters and topological ordering.
     [[nodiscard]] virtual std::expected<std::vector<bo::GitCommitLogItem>, GitOpsError>
     getCommitLog(const std::filesystem::path& repoPath,
                  const bo::CommitLogOptions& options) = 0;
 
-    /// Ritorna l'elenco dei tag locali (lightweight e annotated).
+    /// Returns the list of local tags (lightweight and annotated).
     [[nodiscard]] virtual std::expected<std::vector<bo::GitTag>, GitOpsError>
     listTags(const std::filesystem::path& repoPath) = 0;
 
-    /// Crea un nuovo tag (lightweight se message è vuoto/nullo, annotated se fornito).
+    /// Creates a new tag (lightweight if message is empty/null, annotated if provided).
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     createTag(const std::filesystem::path& repoPath,
               const bo::CreateTagOptions& options) = 0;
 
-    /// Elimina un tag locale.
+    /// Deletes a local tag.
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     deleteTag(const std::filesystem::path& repoPath,
               const std::string& tagName) = 0;
 
-    /// Ritorna l'elenco dei remote configurati (`git remote -v`).
+    /// Returns the list of configured remotes (`git remote -v`).
     [[nodiscard]] virtual std::expected<std::vector<bo::GitRemote>, GitOpsError>
     listRemotes(const std::filesystem::path& repoPath) = 0;
 
-    /// Aggiunge un nuovo remote (`git remote add <name> <url>`).
+    /// Adds a new remote (`git remote add <name> <url>`).
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     addRemote(const std::filesystem::path& repoPath,
               const std::string& name,
               const std::string& url) = 0;
 
-    /// Rimuove un remote configurato (`git remote remove <name>`).
+    /// Removes a configured remote (`git remote remove <name>`).
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     removeRemote(const std::filesystem::path& repoPath,
                  const std::string& name) = 0;
 
-    /// Esegue il fetch da un remote (`git fetch`).
+    /// Fetches updates from a remote (`git fetch`).
     [[nodiscard]] virtual std::expected<bo::RemoteOperationResult, GitOpsError>
     fetchRemote(const std::filesystem::path& repoPath,
                 const bo::RemoteOperationOptions& options) = 0;
 
-    /// Esegue il pull da un remote (`git pull`).
+    /// Pulls changes from a remote (`git pull`).
     [[nodiscard]] virtual std::expected<bo::RemoteOperationResult, GitOpsError>
     pullRemote(const std::filesystem::path& repoPath,
                const bo::RemoteOperationOptions& options) = 0;
 
-    /// Esegue il push verso un remote (`git push`).
+    /// Pushes commits to a remote (`git push`).
     [[nodiscard]] virtual std::expected<bo::RemoteOperationResult, GitOpsError>
     pushRemote(const std::filesystem::path& repoPath,
                const bo::RemoteOperationOptions& options) = 0;
 
-    /// Esegue il merge di un branch o commit nel branch attivo (`git merge`).
+    /// Merges a branch or commit into the active branch (`git merge`).
     [[nodiscard]] virtual std::expected<bo::MergeResult, GitOpsError>
     mergeBranch(const std::filesystem::path& repoPath,
                 const bo::MergeOptions& options) = 0;
 
-    /// Annulla un merge in corso (`git merge --abort`).
+    /// Aborts an in-progress merge (`git merge --abort`).
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     abortMerge(const std::filesystem::path& repoPath) = 0;
 
-    /// Ritorna l'elenco degli stash presenti (`git stash list`).
+    /// Returns the list of available stashes (`git stash list`).
     [[nodiscard]] virtual std::expected<std::vector<bo::GitStashItem>, GitOpsError>
     listStashes(const std::filesystem::path& repoPath) = 0;
 
-    /// Salva lo stato corrente in uno stash (`git stash push`).
+    /// Saves the current state into a new stash (`git stash push`).
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     stashPush(const std::filesystem::path& repoPath,
               const bo::StashPushOptions& options) = 0;
 
-    /// Applica e rimuove uno stash (`git stash pop`).
+    /// Applies and drops a stash (`git stash pop`).
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     stashPop(const std::filesystem::path& repoPath,
              const bo::StashApplyOptions& options) = 0;
 
-    /// Applica uno stash mantenendolo nell'elenco (`git stash apply`).
+    /// Applies a stash while retaining it in the list (`git stash apply`).
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     stashApply(const std::filesystem::path& repoPath,
                const bo::StashApplyOptions& options) = 0;
 
-    /// Rimuove uno stash specifico (`git stash drop`).
+    /// Drops a specific stash (`git stash drop`).
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     stashDrop(const std::filesystem::path& repoPath,
               std::size_t stashIndex) = 0;
 
-    /// Rimuove tutti gli stash (`git stash clear`).
+    /// Clears all stashes (`git stash clear`).
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     stashClear(const std::filesystem::path& repoPath) = 0;
 
-    /// Avvia una sessione di rebase (`git rebase`).
+    /// Starts a rebase session (`git rebase`).
     [[nodiscard]] virtual std::expected<bo::RebaseResult, GitOpsError>
     startRebase(const std::filesystem::path& repoPath,
                 const bo::RebaseOptions& options) = 0;
 
-    /// Continua un rebase in corso dopo aver risolto i conflitti (`git rebase --continue`).
+    /// Continues an in-progress rebase after resolving conflicts (`git rebase --continue`).
     [[nodiscard]] virtual std::expected<bo::RebaseResult, GitOpsError>
     continueRebase(const std::filesystem::path& repoPath) = 0;
 
-    /// Salta il commit corrente durante un rebase (`git rebase --skip`).
+    /// Skips the current commit during a rebase (`git rebase --skip`).
     [[nodiscard]] virtual std::expected<bo::RebaseResult, GitOpsError>
     skipRebase(const std::filesystem::path& repoPath) = 0;
 
-    /// Annulla un rebase in corso ripristinando lo stato precedente (`git rebase --abort`).
+    /// Aborts an in-progress rebase, restoring the previous state (`git rebase --abort`).
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     abortRebase(const std::filesystem::path& repoPath) = 0;
 
-    /// Verifica se è attualmente in corso un rebase (`.git/rebase-merge` o `.git/rebase-apply`).
+    /// Checks if a rebase is currently in progress (`.git/rebase-merge` or `.git/rebase-apply`).
     [[nodiscard]] virtual std::expected<bool, GitOpsError>
     isRebaseInProgress(const std::filesystem::path& repoPath) = 0;
 
-    /// Esegue il cherry-pick di un commit (`git cherry-pick`).
+    /// Cherry-picks a commit (`git cherry-pick`).
     [[nodiscard]] virtual std::expected<bo::CherryPickResult, GitOpsError>
     cherryPick(const std::filesystem::path& repoPath,
                const bo::CherryPickOptions& options) = 0;
 
-    /// Annulla un cherry-pick in corso (`git cherry-pick --abort`).
+    /// Aborts an in-progress cherry-pick (`git cherry-pick --abort`).
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     abortCherryPick(const std::filesystem::path& repoPath) = 0;
 
-    /// Ispeziona un file in conflitto ed estrae gli hunk con marker e stages.
+    /// Inspects a conflicted file and parses hunks with markers and stages.
     [[nodiscard]] virtual std::expected<bo::ConflictFile, GitOpsError>
     getConflictFile(const std::filesystem::path& repoPath,
                     const std::string& filePath) = 0;
 
-    /// Estrae il contenuto di uno stage specifico per un file (1=base, 2=ours, 3=theirs) via `git show :<stage>:<path>`.
+    /// Retrieves the content of a specific stage for a file (1=base, 2=ours, 3=theirs) via `git show :<stage>:<path>`.
     [[nodiscard]] virtual std::expected<std::string, GitOpsError>
     getFileStageContent(const std::filesystem::path& repoPath,
                         const std::string& filePath,
                         int stage) = 0;
 
-    /// Salva il contenuto risolto di un file ed esegue facoltativamente lo staging (`git add`).
+    /// Saves the resolved content of a file and optionally stages it (`git add`).
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     applyConflictResolution(const std::filesystem::path& repoPath,
                             const bo::ApplyConflictResolutionOptions& options) = 0;

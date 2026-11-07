@@ -63,14 +63,14 @@ TEST_CASE("NativeRepositoryGitOps and GitRemoteMergeService real Git integration
 
     RemoteMergeSandbox sandbox;
 
-    // 1. Inizializza bare remote
+    // 1. Initialize bare remote
     REQUIRE(executor.execute(gf::git::bo::GitCommand{
         .args = {"init", "--bare", "-b", "main"},
         .workingDirectory = sandbox.bareRemote,
         .lockPolicy = gf::git::bo::GitLockPolicy::Standard
     })->exitCode == 0);
 
-    // 2. Inizializza localRepoA
+    // 2. Initialize localRepoA
     REQUIRE(executor.execute(gf::git::bo::GitCommand{
         .args = {"init", "-b", "main"},
         .workingDirectory = sandbox.localRepoA,
@@ -89,7 +89,7 @@ TEST_CASE("NativeRepositoryGitOps and GitRemoteMergeService real Git integration
         .lockPolicy = gf::git::bo::GitLockPolicy::Standard
     })->exitCode == 0);
 
-    // Commit iniziale in repoA
+    // Initial commit in repoA
     sandbox.writeFile(sandbox.localRepoA, "README.md", "# Repo A\n");
     REQUIRE(executor.execute(gf::git::bo::GitCommand{
         .args = {"add", "README.md"},
@@ -108,7 +108,7 @@ TEST_CASE("NativeRepositoryGitOps and GitRemoteMergeService real Git integration
         REQUIRE(initialRemotes.has_value());
         CHECK(initialRemotes->empty());
 
-        // Aggiunta remote 'origin'
+        // Add remote 'origin'
         auto addRes = service.addRemote(sandbox.localRepoA, "origin", sandbox.bareRemote.string());
         REQUIRE(addRes.has_value());
 
@@ -119,18 +119,18 @@ TEST_CASE("NativeRepositoryGitOps and GitRemoteMergeService real Git integration
         CHECK((*remotes)[0].fetchUrl == sandbox.bareRemote.string());
         CHECK((*remotes)[0].pushUrl == sandbox.bareRemote.string());
 
-        // Rifiuto remote duplicato
+        // Reject duplicate remote
         auto dupRes = service.addRemote(sandbox.localRepoA, "origin", sandbox.bareRemote.string());
         REQUIRE_FALSE(dupRes.has_value());
         CHECK(dupRes.error().kind == gf::git::ports::GitOpsError::Kind::RemoteAlreadyExists);
 
-        // Aggiunta secondo remote 'backup'
+        // Add second remote 'backup'
         REQUIRE(service.addRemote(sandbox.localRepoA, "backup", "/tmp/backup.git").has_value());
         auto twoRemotes = service.listRemotes(sandbox.localRepoA);
         REQUIRE(twoRemotes.has_value());
         REQUIRE(twoRemotes->size() == 2);
 
-        // Rimozione remote 'backup'
+        // Remove remote 'backup'
         auto removeRes = service.removeRemote(sandbox.localRepoA, "backup");
         REQUIRE(removeRes.has_value());
 
@@ -139,7 +139,7 @@ TEST_CASE("NativeRepositoryGitOps and GitRemoteMergeService real Git integration
         REQUIRE(afterRemove->size() == 1);
         CHECK((*afterRemove)[0].name == "origin");
 
-        // Rimozione remote inesistente
+        // Remove non-existent remote
         auto badRemove = service.removeRemote(sandbox.localRepoA, "ghost_remote");
         REQUIRE_FALSE(badRemove.has_value());
         CHECK(badRemove.error().kind == gf::git::ports::GitOpsError::Kind::RemoteNotFound);
@@ -148,7 +148,7 @@ TEST_CASE("NativeRepositoryGitOps and GitRemoteMergeService real Git integration
     SECTION("2. Operazioni remote: Push, Fetch e Pull sincronizzati tra repo") {
         REQUIRE(service.addRemote(sandbox.localRepoA, "origin", sandbox.bareRemote.string()).has_value());
 
-        // Push da repoA verso bareRemote con upstream
+        // Push from repoA to bareRemote with upstream
         auto pushRes = service.pushRemote(sandbox.localRepoA, gf::git::bo::RemoteOperationOptions{
             .remoteName = "origin",
             .branchName = "main",
@@ -157,7 +157,7 @@ TEST_CASE("NativeRepositoryGitOps and GitRemoteMergeService real Git integration
         REQUIRE(pushRes.has_value());
         CHECK(pushRes->success);
 
-        // Cloniamo in repoB
+        // Clone into repoB
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"clone", sandbox.bareRemote.string(), "."},
             .workingDirectory = sandbox.localRepoB,
@@ -178,7 +178,7 @@ TEST_CASE("NativeRepositoryGitOps and GitRemoteMergeService real Git integration
 
         CHECK(sandbox.readFile(sandbox.localRepoB, "README.md") == "# Repo A\n");
 
-        // RepoA crea un secondo file e fa push
+        // RepoA creates a second file and pushes
         sandbox.writeFile(sandbox.localRepoA, "new_feature.txt", "Contenuto 2\n");
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"add", "new_feature.txt"},
@@ -196,7 +196,7 @@ TEST_CASE("NativeRepositoryGitOps and GitRemoteMergeService real Git integration
             .remoteName = "origin"
         }).has_value());
 
-        // In repoB facciamo fetch e poi pull
+        // In repoB fetch and then pull
         auto fetchRes = service.fetchRemote(sandbox.localRepoB, gf::git::bo::RemoteOperationOptions{
             .remoteName = "origin"
         });
@@ -213,7 +213,7 @@ TEST_CASE("NativeRepositoryGitOps and GitRemoteMergeService real Git integration
     }
 
     SECTION("3. Merge Fast-Forward") {
-        // Creiamo branch feature/ff
+        // Create branch feature/ff
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"checkout", "-b", "feature/ff"},
             .workingDirectory = sandbox.localRepoA,
@@ -233,14 +233,14 @@ TEST_CASE("NativeRepositoryGitOps and GitRemoteMergeService real Git integration
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard
         })->exitCode == 0);
 
-        // Torniamo su main
+        // Switch back to main
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"checkout", "main"},
             .workingDirectory = sandbox.localRepoA,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard
         })->exitCode == 0);
 
-        // Merge di feature/ff
+        // Merge feature/ff
         auto mergeRes = service.mergeBranch(sandbox.localRepoA, gf::git::bo::MergeOptions{
             .sourceBranchOrCommit = "feature/ff"
         });
@@ -251,7 +251,7 @@ TEST_CASE("NativeRepositoryGitOps and GitRemoteMergeService real Git integration
     }
 
     SECTION("4. Merge a 3 vie con no-ff") {
-        // Commit su main
+        // Commit on main
         sandbox.writeFile(sandbox.localRepoA, "main_file.txt", "Main line\n");
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"add", "main_file.txt"},
@@ -264,7 +264,7 @@ TEST_CASE("NativeRepositoryGitOps and GitRemoteMergeService real Git integration
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard
         })->exitCode == 0);
 
-        // Creiamo branch feature/divergent
+        // Create branch feature/divergent
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"checkout", "-b", "feature/divergent"},
             .workingDirectory = sandbox.localRepoA,
@@ -283,7 +283,7 @@ TEST_CASE("NativeRepositoryGitOps and GitRemoteMergeService real Git integration
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard
         })->exitCode == 0);
 
-        // Ritorno su main
+        // Switch back to main
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"checkout", "main"},
             .workingDirectory = sandbox.localRepoA,
@@ -302,7 +302,7 @@ TEST_CASE("NativeRepositoryGitOps and GitRemoteMergeService real Git integration
     }
 
     SECTION("5. Conflitto di Merge e Abort") {
-        // Base commit con file_conflict.txt
+        // Base commit with file_conflict.txt
         sandbox.writeFile(sandbox.localRepoA, "file_conflict.txt", "Line 1 base\n");
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"add", "file_conflict.txt"},
@@ -329,7 +329,7 @@ TEST_CASE("NativeRepositoryGitOps and GitRemoteMergeService real Git integration
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard
         })->exitCode == 0);
 
-        // Torna su main e modifica la stessa riga
+        // Switch back to main and modify the same line
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"checkout", "main"},
             .workingDirectory = sandbox.localRepoA,
@@ -343,7 +343,7 @@ TEST_CASE("NativeRepositoryGitOps and GitRemoteMergeService real Git integration
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard
         })->exitCode == 0);
 
-        // Merge di feature/conflict genera conflitto
+        // Merge feature/conflict generates conflict
         auto conflictRes = service.mergeBranch(sandbox.localRepoA, gf::git::bo::MergeOptions{
             .sourceBranchOrCommit = "feature/conflict"
         });
@@ -352,15 +352,15 @@ TEST_CASE("NativeRepositoryGitOps and GitRemoteMergeService real Git integration
         REQUIRE(conflictRes->conflictedFiles.size() == 1);
         CHECK(conflictRes->conflictedFiles[0] == "file_conflict.txt");
 
-        // Il file contiene i marker di conflitto
+        // File contains conflict markers
         auto conflictedContent = sandbox.readFile(sandbox.localRepoA, "file_conflict.txt");
         CHECK(conflictedContent.find("<<<<<<<") != std::string::npos);
 
-        // Annullamento merge con abortMerge
+        // Cancel merge with abortMerge
         auto abortRes = service.abortMerge(sandbox.localRepoA);
         REQUIRE(abortRes.has_value());
 
-        // Il file è ripristinato allo stato pre-merge
+        // File is restored to pre-merge state
         auto restoredContent = sandbox.readFile(sandbox.localRepoA, "file_conflict.txt");
         CHECK(restoredContent == "Line 1 from main differently\n");
     }

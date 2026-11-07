@@ -329,7 +329,7 @@ NativeRepositoryGitOps::unstageFiles(const std::filesystem::path& repoPath,
         });
     }
 
-    // Se fallisce a causa di unborn HEAD (nessun commit nel repository):
+    // In case of unborn HEAD failure (no commits in repository):
     if (execResult->exitCode != 0) {
         if (execResult->stderrBytes.find("HEAD") != std::string::npos) {
             // Fallback: git rm --cached -- <filePaths>
@@ -385,7 +385,7 @@ NativeRepositoryGitOps::unstageAll(const std::filesystem::path& repoPath) {
 
     if (execResult->exitCode != 0) {
         if (execResult->stderrBytes.find("HEAD") != std::string::npos) {
-            // Fallback per unborn HEAD: git rm --cached -r -- .
+            // Fallback for unborn HEAD: git rm --cached -r -- .
             gf::git::bo::GitCommand rmCmd{
                 .args = {"rm", "--cached", "-r", "--", "."},
                 .workingDirectory = repoPath,
@@ -422,7 +422,7 @@ NativeRepositoryGitOps::discardFiles(const std::filesystem::path& repoPath,
     }
 
     for (const auto& path : filePaths) {
-        // 1. Prova a ripristinare il file tracciato (modificato o rimosso nel working tree)
+        // 1. Try restoring tracked file (modified or deleted in working tree)
         gf::git::bo::GitCommand restoreCmd{
             .args = {"restore", "--", path},
             .workingDirectory = repoPath,
@@ -435,7 +435,7 @@ NativeRepositoryGitOps::discardFiles(const std::filesystem::path& repoPath,
             continue;
         }
 
-        // 2. Se restore fallisce (file untracked), prova con git clean
+        // 2. If restore fails (untracked file), attempt git clean
         gf::git::bo::GitCommand cleanCmd{
             .args = {"clean", "-f", "-d", "-q", "--", path},
             .workingDirectory = repoPath,
@@ -448,7 +448,7 @@ NativeRepositoryGitOps::discardFiles(const std::filesystem::path& repoPath,
             continue;
         }
 
-        // 3. Fallback per pulizia diretta su filesystem se il file untracked esiste ancora
+        // 3. Fallback to direct filesystem removal if untracked file still exists
         std::error_code fsEc;
         auto targetPath = repoPath / path;
         if (std::filesystem::exists(targetPath, fsEc)) {
@@ -472,7 +472,7 @@ NativeRepositoryGitOps::discardFiles(const std::filesystem::path& repoPath,
 std::expected<gf::git::bo::CommitResult, gf::git::ports::GitOpsError>
 NativeRepositoryGitOps::createCommit(const std::filesystem::path& repoPath,
                                      const gf::git::bo::CommitOptions& options) {
-    // Controllo rapido per staging vuoto se non è richiesto amend o allowEmpty
+    // Fast check for empty staging area if neither amend nor allowEmpty is specified
     if (!options.amend && !options.allowEmpty) {
         gf::git::bo::GitCommand diffCheck{
             .args = {"diff", "--cached", "--quiet"},
@@ -537,7 +537,7 @@ NativeRepositoryGitOps::createCommit(const std::filesystem::path& repoPath,
         });
     }
 
-    // Risoluzione commit SHA
+    // Commit SHA resolution
     gf::git::bo::GitCommand revParseCmd{
         .args = {"rev-parse", "HEAD"},
         .workingDirectory = repoPath,
@@ -548,7 +548,7 @@ NativeRepositoryGitOps::createCommit(const std::filesystem::path& repoPath,
     std::string commitSha = revParseRes ? trimString(revParseRes->stdoutBytes) : "";
     std::string shortSha = commitSha.size() >= 8 ? commitSha.substr(0, 8) : commitSha;
 
-    // Risoluzione branch
+    // Branch resolution
     gf::git::bo::GitCommand branchCmd{
         .args = {"rev-parse", "--abbrev-ref", "HEAD"},
         .workingDirectory = repoPath,
@@ -576,7 +576,7 @@ NativeRepositoryGitOps::getFileDiff(const std::filesystem::path& repoPath,
     } else if (scope == gf::git::bo::DiffScope::Unstaged) {
         args = {"diff", "--no-color", "-p", "--", filePath};
     } else {
-        // Untracked: usa --no-index rispetto a /dev/null
+        // Untracked: use --no-index against /dev/null
         args = {"diff", "--no-index", "--no-color", "-p", "--", "/dev/null", filePath};
     }
 
@@ -597,7 +597,7 @@ NativeRepositoryGitOps::getFileDiff(const std::filesystem::path& repoPath,
         });
     }
 
-    // Per --no-index, exitCode 1 significa che sono presenti differenze
+    // For --no-index, exitCode 1 indicates differences are present
     const bool isNoIndex = (scope == gf::git::bo::DiffScope::Untracked);
     if ((isNoIndex && execResult->exitCode >= 2) || (!isNoIndex && execResult->exitCode > 1)) {
         return std::unexpected(gf::git::ports::GitOpsError{
@@ -633,7 +633,7 @@ std::expected<std::vector<gf::git::bo::FileDiff>, gf::git::ports::GitOpsError>
 NativeRepositoryGitOps::getAllDiffs(const std::filesystem::path& repoPath,
                                     gf::git::bo::DiffScope scope) {
     if (scope == gf::git::bo::DiffScope::Untracked) {
-        // Per Untracked, elenca i file non tracciati e ricava il diff per ciascuno
+        // For untracked scope, list untracked files and get diff for each
         auto statusRes = getWorkingTreeStatus(repoPath);
         if (!statusRes) {
             return std::unexpected(statusRes.error());
@@ -778,7 +778,7 @@ NativeRepositoryGitOps::listBranches(const std::filesystem::path& repoPath) {
             b.shortName = b.name;
         }
 
-        // Parsing ahead/behind da track (es. "[ahead 2, behind 1]")
+        // Parse ahead/behind from tracking descriptor (e.g. "[ahead 2, behind 1]")
         if (!track.empty()) {
             auto aheadPos = track.find("ahead ");
             if (aheadPos != std::string_view::npos) {
@@ -806,7 +806,7 @@ NativeRepositoryGitOps::listBranches(const std::filesystem::path& repoPath) {
         branches.push_back(std::move(b));
     }
 
-    // Se la lista è vuota (es. repository appena inizializzato con unborn HEAD)
+    // If branch list is empty (e.g. freshly initialized repository with unborn HEAD)
     if (branches.empty()) {
         gf::git::bo::GitCommand branchCheckCmd{
             .args = {"rev-parse", "--abbrev-ref", "HEAD"},

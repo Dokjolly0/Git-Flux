@@ -2,15 +2,15 @@
 # ==============================================================================
 # Git Flux — Linux Clean Utility Script
 # ==============================================================================
-# Utilizzo:
-#   ./scripts/linux/clean.sh [OPZIONI]
+# Usage:
+#   ./scripts/linux/clean.sh [OPTIONS]
 #
-# Opzioni:
-#   -q, --qt       Elimina unicamente la build Desktop Qt (build/qt-linux)
-#   -c, --core     Elimina unicamente la build Zero-Qt Core (build/core-linux)
-#   -a, --all      Elimina tutte le directory di build (build/*) [default]
-#   -d, --dry-run  Mostra le directory che verrebbero eliminate senza rimuoverle
-#   -h, --help     Mostra questa guida
+# Options:
+#   -q, --qt       Remove only Desktop Qt build (build/qt-linux)
+#   -c, --core     Remove only Zero-Qt Core build (build/core-linux)
+#   -a, --all      Remove all build directories (build/*) [default]
+#   -d, --dry-run  Show directories that would be removed without deleting
+#   -h, --help     Show this help message
 # ==============================================================================
 
 set -euo pipefail
@@ -32,22 +32,22 @@ DRY_RUN=false
 
 show_help() {
     cat << EOF
-${BOLD}Git Flux — Script di Pulizia Build Linux${NC}
+${BOLD}Git Flux — Linux Build Cleaning Script${NC}
 
-${CYAN}Utilizzo:${NC}
-  $0 [OPZIONI]
+${CYAN}Usage:${NC}
+  $0 [OPTIONS]
 
-${CYAN}Opzioni:${NC}
-  -a, --all      Elimina l'intero contenuto della cartella build/ [default]
-  -q, --qt       Elimina unicamente la build Qt Quick Desktop (build/qt-linux)
-  -c, --core     Elimina unicamente la build Core Zero-Qt (build/core-linux)
-  -d, --dry-run  Mostra cosa verrebbe rimosso senza cancellare nulla
-  -h, --help     Mostra questa guida
+${CYAN}Options:${NC}
+  -a, --all      Remove the entire contents of the build/ directory [default]
+  -q, --qt       Remove only Qt Quick Desktop build (build/qt-linux)
+  -c, --core     Remove only Zero-Qt Core build (build/core-linux)
+  -d, --dry-run  Show what would be removed without deleting anything
+  -h, --help     Show this help message
 
-${CYAN}Esempi:${NC}
-  $0             # Pulisce tutte le build
-  $0 --qt        # Pulisce solo build/qt-linux
-  $0 --core      # Pulisce solo build/core-linux
+${CYAN}Examples:${NC}
+  $0             # Clean all builds
+  $0 --qt        # Clean only build/qt-linux
+  $0 --core      # Clean only build/core-linux
 EOF
 }
 
@@ -76,8 +76,8 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            echo -e "${RED}Opzione non riconosciuta: $1${NC}" >&2
-            echo "Usa $0 --help per visualizzare la guida." >&2
+            echo -e "${RED}Unrecognized option: $1${NC}" >&2
+            echo "Use $0 --help to display help." >&2
             exit 1
             ;;
     esac
@@ -89,18 +89,18 @@ remove_path() {
     local target_path="$1"
     if [[ -e "${target_path}" ]]; then
         if [[ "${DRY_RUN}" == true ]]; then
-            echo -e "${CYAN}[DRY-RUN] Verrebbe rimosso: ${BOLD}${target_path}${NC}"
+            echo -e "${CYAN}[DRY-RUN] Would remove: ${BOLD}${target_path}${NC}"
         else
-            echo -e "${YELLOW}🗑️  Rimozione: ${BOLD}${target_path}${NC}..."
+            echo -e "${YELLOW}🗑️  Removing: ${BOLD}${target_path}${NC}..."
             rm -rf "${target_path}"
-            echo -e "${GREEN}✔ Rimosso: ${target_path}${NC}"
+            echo -e "${GREEN}✔ Removed: ${target_path}${NC}"
         fi
     else
-        echo -e "${CYAN}ℹ️  Percorso non presente (già pulito): ${target_path}${NC}"
+        echo -e "${CYAN}ℹ️  Path does not exist (already clean): ${target_path}${NC}"
     fi
 }
 
-echo -e "${BOLD}▶ Avvio pulizia directory di build...${NC}"
+echo -e "${BOLD}▶ Starting build directory cleanup...${NC}"
 
 if [[ "${CLEAN_ALL}" == true ]]; then
     remove_path "build/qt-linux"
@@ -113,4 +113,4 @@ elif [[ "${CLEAN_CORE}" == true ]]; then
     remove_path "build/core-linux"
 fi
 
-echo -e "\n${GREEN}${BOLD}Operazione di pulizia completata!${NC}"
+echo -e "\n${GREEN}${BOLD}Cleanup operation completed!${NC}"

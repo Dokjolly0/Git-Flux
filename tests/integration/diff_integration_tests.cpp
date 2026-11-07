@@ -54,7 +54,7 @@ TEST_CASE("NativeRepositoryGitOps and GitDiffService real Git diff extraction", 
 
     DiffTestSandbox sandbox;
 
-    // Inizializza repository Git
+    // Initialize Git repository
     gf::git::bo::GitCommand initCmd{
         .args = {"init", "-b", "main"},
         .workingDirectory = sandbox.root,
@@ -64,7 +64,7 @@ TEST_CASE("NativeRepositoryGitOps and GitDiffService real Git diff extraction", 
     REQUIRE(initRes.has_value());
     REQUIRE(initRes->exitCode == 0);
 
-    // Configura autore locale di test
+    // Configure local test author identity
     gf::git::bo::GitCommand cfgNameCmd{
         .args = {"config", "user.name", "Diff Bot"},
         .workingDirectory = sandbox.root,
@@ -100,7 +100,7 @@ TEST_CASE("NativeRepositoryGitOps and GitDiffService real Git diff extraction", 
         REQUIRE(stagingService.stageAll(sandbox.root).has_value());
         REQUIRE(stagingService.createCommit(sandbox.root, gf::git::bo::CommitOptions{.message = "c1"}).has_value());
 
-        // Modifica la seconda riga
+        // Modify second line
         sandbox.writeFile("code.cpp", "int a = 1;\nint b = 200;\nint c = 3;\n");
 
         auto diffRes = diffService.getUnstagedFileDiff(sandbox.root, "code.cpp");

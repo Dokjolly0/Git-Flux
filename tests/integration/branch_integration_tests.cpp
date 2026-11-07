@@ -54,7 +54,7 @@ TEST_CASE("NativeRepositoryGitOps and GitBranchService real Git integration", "[
 
     BranchTestSandbox sandbox;
 
-    // Inizializza repository Git con branch iniziale 'main'
+    // Initialize Git repository with initial branch 'main'
     gf::git::bo::GitCommand initCmd{
         .args = {"init", "-b", "main"},
         .workingDirectory = sandbox.root,
@@ -64,7 +64,7 @@ TEST_CASE("NativeRepositoryGitOps and GitBranchService real Git integration", "[
     REQUIRE(initRes.has_value());
     REQUIRE(initRes->exitCode == 0);
 
-    // Configura autore locale di test
+    // Configure local test author identity
     gf::git::bo::GitCommand cfgNameCmd{
         .args = {"config", "user.name", "GitFlux TestBot"},
         .workingDirectory = sandbox.root,
@@ -79,7 +79,7 @@ TEST_CASE("NativeRepositoryGitOps and GitBranchService real Git integration", "[
     };
     REQUIRE(executor.execute(cfgMailCmd)->exitCode == 0);
 
-    // Creazione del primo commit su main
+    // Create initial commit on main
     sandbox.writeFile("README.md", "# Hello GitFlux\n");
     gf::git::bo::GitCommand addCmd{
         .args = {"add", "README.md"},
@@ -126,20 +126,20 @@ TEST_CASE("NativeRepositoryGitOps and GitBranchService real Git integration", "[
         REQUIRE(branches.has_value());
         REQUIRE(branches->size() == 2);
 
-        // Verifica che main rimanga quello attivo
+        // Verify that main remains active
         auto currentRes = branchService.getCurrentBranch(sandbox.root);
         REQUIRE(currentRes.has_value());
         REQUIRE(currentRes->has_value());
         CHECK((*currentRes)->name == "main");
 
-        // Rifiuto di nomi non validi
+        // Rejection of invalid names
         auto invalidRes = branchService.createBranch(sandbox.root, gf::git::bo::CreateBranchOptions{
             .name = "invalid..branch"
         });
         REQUIRE_FALSE(invalidRes.has_value());
         CHECK(invalidRes.error().kind == gf::git::ports::GitOpsError::Kind::InvalidBranchName);
 
-        // Rifiuto di creazione duplicata
+        // Rejection of duplicate creation
         auto duplicateRes = branchService.createBranch(sandbox.root, gf::git::bo::CreateBranchOptions{
             .name = "feature/test-1"
         });
@@ -162,7 +162,7 @@ TEST_CASE("NativeRepositoryGitOps and GitBranchService real Git integration", "[
         REQUIRE(currentRes->has_value());
         CHECK((*currentRes)->name == "feature/switch-target");
 
-        // Checkout di branch inesistente
+        // Checkout of non-existent branch
         auto badCheckout = branchService.checkoutBranch(sandbox.root, gf::git::bo::CheckoutOptions{
             .branchOrCommit = "nonexistent-branch-xyz"
         });
@@ -188,12 +188,12 @@ TEST_CASE("NativeRepositoryGitOps and GitBranchService real Git integration", "[
             .name = "temp/to-rename"
         }).has_value());
 
-        // Ridenomina con nome non valido -> errore
+        // Rename to invalid name -> error
         auto badRename = branchService.renameBranch(sandbox.root, "temp/to-rename", "bad branch space");
         REQUIRE_FALSE(badRename.has_value());
         CHECK(badRename.error().kind == gf::git::ports::GitOpsError::Kind::InvalidBranchName);
 
-        // Ridenomina verso nome valido
+        // Rename to valid name
         auto renameRes = branchService.renameBranch(sandbox.root, "temp/to-rename", "feature/renamed-ok");
         REQUIRE(renameRes.has_value());
 
@@ -214,12 +214,12 @@ TEST_CASE("NativeRepositoryGitOps and GitBranchService real Git integration", "[
             .name = "to-be-deleted"
         }).has_value());
 
-        // Non si può eliminare il branch corrente
+        // Cannot delete current branch
         auto deleteCurrentRes = branchService.deleteBranch(sandbox.root, "main");
         REQUIRE_FALSE(deleteCurrentRes.has_value());
         CHECK(deleteCurrentRes.error().kind == gf::git::ports::GitOpsError::Kind::InvalidOperation);
 
-        // Eliminazione di branch non corrente
+        // Delete non-current branch
         auto deleteRes = branchService.deleteBranch(sandbox.root, "to-be-deleted");
         REQUIRE(deleteRes.has_value());
 
@@ -229,14 +229,14 @@ TEST_CASE("NativeRepositoryGitOps and GitBranchService real Git integration", "[
             CHECK(b.name != "to-be-deleted");
         }
 
-        // Eliminazione branch inesistente
+        // Delete non-existent branch
         auto deleteNonExist = branchService.deleteBranch(sandbox.root, "ghost-branch");
         REQUIRE_FALSE(deleteNonExist.has_value());
         CHECK(deleteNonExist.error().kind == gf::git::ports::GitOpsError::Kind::BranchNotFound);
     }
 
     SECTION("7. Protezione dirty working tree durante checkout collidente") {
-        // Creiamo branch feature/divergent e committiamo una modifica a README.md
+        // Create branch feature/divergent and commit a change to README.md
         REQUIRE(branchService.checkoutBranch(sandbox.root, gf::git::bo::CheckoutOptions{
             .branchOrCommit = "feature/divergent",
             .createNewBranch = true
@@ -249,15 +249,15 @@ TEST_CASE("NativeRepositoryGitOps and GitBranchService real Git integration", "[
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard
         })->exitCode == 0);
 
-        // Torniamo su main
+        // Switch back to main
         REQUIRE(branchService.checkoutBranch(sandbox.root, gf::git::bo::CheckoutOptions{
             .branchOrCommit = "main"
         }).has_value());
 
-        // Modifichiamo localmente README.md senza fare commit (dirty working tree collidente)
+        // Locally modify README.md without committing (colliding dirty working tree)
         sandbox.writeFile("README.md", "# Uncommitted dirty change on main\n");
 
-        // Tentativo di checkout senza force -> deve fallire con DirtyWorkingTree
+        // Attempt checkout without force -> must fail with DirtyWorkingTree
         auto dirtyCheckout = branchService.checkoutBranch(sandbox.root, gf::git::bo::CheckoutOptions{
             .branchOrCommit = "feature/divergent",
             .force = false
@@ -265,7 +265,7 @@ TEST_CASE("NativeRepositoryGitOps and GitBranchService real Git integration", "[
         REQUIRE_FALSE(dirtyCheckout.has_value());
         CHECK(dirtyCheckout.error().kind == gf::git::ports::GitOpsError::Kind::DirtyWorkingTree);
 
-        // Checkout con force -> sovrascrive e ha successo
+        // Checkout with force -> overwrites and succeeds
         auto forceCheckout = branchService.checkoutBranch(sandbox.root, gf::git::bo::CheckoutOptions{
             .branchOrCommit = "feature/divergent",
             .force = true

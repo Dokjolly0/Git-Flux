@@ -383,7 +383,7 @@ TEST_CASE("RepositoryLockCoordinator per-repo serialization", "[git][concurrency
         });
 
         auto futB = std::async(std::launch::async, [&]() {
-            // Dovrebbe acquisire immediatamente senza attendere threadA
+            // Should acquire immediately without waiting for threadA
             while (!threadAEntered.load()) {
                 std::this_thread::yield();
             }

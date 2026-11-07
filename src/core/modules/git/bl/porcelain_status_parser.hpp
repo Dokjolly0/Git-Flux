@@ -10,7 +10,7 @@ namespace gf::git::bl {
 
 class PorcelainStatusParser {
 public:
-    /// Esegue il parsing dell'output di `git status --porcelain=v2 -z --branch`.
+    /// Parses the output of `git status --porcelain=v2 -z --branch`.
     [[nodiscard]] static std::expected<bo::GitRepositoryStatus, std::string>
     parse(std::string_view rawOutput);
 };

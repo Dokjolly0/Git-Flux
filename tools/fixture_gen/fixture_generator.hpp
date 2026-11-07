@@ -40,7 +40,7 @@ struct FleetResult {
     std::chrono::milliseconds elapsed{0};
 };
 
-/// Directory temporanea RAII per test e benchmark.
+/// RAII temporary directory for tests and benchmarks.
 class ScopedTempDir {
 public:
     explicit ScopedTempDir(std::string_view prefix = "gf_test_");
@@ -59,13 +59,13 @@ class FixtureGenerator {
 public:
     explicit FixtureGenerator(std::filesystem::path gitExecutablePath);
 
-    /// Genera in pochi secondi un repository sintetico deterministico (anche 50.000+ commit)
-    /// con branch paralleli, merge commit e path UTF-8 tramite `git fast-import`.
+    /// Generates in seconds a deterministic synthetic repository (even 50,000+ commits)
+    /// with parallel branches, merge commits, and UTF-8 paths using `git fast-import`.
     [[nodiscard]] std::expected<FastImportResult, std::string>
     generateFastImportRepo(const FastImportSpec& spec) const;
 
-    /// Genera una flotta di N repository (es. 30 o 100) con mix realistico di stati
-    /// (clean, unstaged/untracked, staged) clonando da un template locale pre-costruito.
+    /// Generates a fleet of N repositories (e.g. 30 or 100) with a realistic mix of states
+    /// (clean, unstaged/untracked, staged) by cloning from a pre-built local template.
     [[nodiscard]] std::expected<FleetResult, std::string>
     generateRepoFleet(const FleetSpec& spec) const;
 

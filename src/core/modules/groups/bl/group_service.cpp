@@ -36,7 +36,7 @@ GroupService::createGroup(std::string name, std::vector<RepositoryId> repoIds) {
         });
     }
 
-    // Verifica esistenza di tutti i repository passati
+    // Verify existence of all provided repositories
     for (const auto& rId : repoIds) {
         auto r = repoStore_.getById(rId);
         if (!r || !r->has_value()) {
@@ -243,7 +243,7 @@ GroupService::resolveQuickOpenContext(const std::vector<GroupId>& selectedGroupI
     for (const auto& gId : selectedGroupIds) {
         auto gRes = groupStore_.getById(gId);
         if (!gRes || !gRes->has_value()) {
-            continue; // salta gruppi non trovati
+            continue; // Skip missing groups
         }
 
         const auto& grp = **gRes;
@@ -251,7 +251,7 @@ GroupService::resolveQuickOpenContext(const std::vector<GroupId>& selectedGroupI
 
         for (const auto& rId : grp.repositoryIds) {
             if (seenRepoIds.insert(rId).second) {
-                // Primo incontro di questo repository: carica entità completa
+                // First encounter of this repository: load complete entity
                 auto repoRes = repoStore_.getById(rId);
                 if (repoRes && repoRes->has_value()) {
                     ctx.repositories.push_back(std::move(**repoRes));

@@ -103,7 +103,7 @@ QString WorkspaceSessionViewModel::activeRepoPath() const {
 void WorkspaceSessionViewModel::openRepository(const QString& repoId,
                                               const QString& name,
                                               const QString& path) {
-    // Se il path non è fornito, cerchiamo nel service dei repository
+    // If the path is not provided, look it up in the repository service
     QString resolvedName = name;
     QString resolvedPath = path;
 
@@ -115,7 +115,7 @@ void WorkspaceSessionViewModel::openRepository(const QString& repoId,
         }
     }
 
-    // Controlla se il repository è già aperto in un tab
+    // Check if repository is already open in an existing tab
     for (std::size_t i = 0; i < m_tabs.size(); ++i) {
         if (m_tabs[i].repoId == repoId || (!resolvedPath.isEmpty() && m_tabs[i].path == resolvedPath)) {
             setActiveTabIndex(static_cast<int>(i));

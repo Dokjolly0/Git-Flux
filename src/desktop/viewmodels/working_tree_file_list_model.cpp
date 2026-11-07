@@ -49,16 +49,16 @@ QVariant WorkingTreeFileListModel::data(const QModelIndex& index, int role) cons
         switch (item.kind) {
         case gf::git::bo::FileChangeKind::Added:
         case gf::git::bo::FileChangeKind::Untracked:
-            return QStringLiteral("#34D399"); // Verde emerald
+            return QStringLiteral("#34D399"); // Emerald green
         case gf::git::bo::FileChangeKind::Modified:
-            return QStringLiteral("#FBBF24"); // Giallo ambra
+            return QStringLiteral("#FBBF24"); // Amber yellow
         case gf::git::bo::FileChangeKind::Deleted:
-            return QStringLiteral("#F87171"); // Rosso corallo
+            return QStringLiteral("#F87171"); // Coral red
         case gf::git::bo::FileChangeKind::Renamed:
         case gf::git::bo::FileChangeKind::Copied:
-            return QStringLiteral("#60A5FA"); // Blu cielo
+            return QStringLiteral("#60A5FA"); // Sky blue
         case gf::git::bo::FileChangeKind::Conflicted:
-            return QStringLiteral("#F43F5E"); // Magenta rose
+            return QStringLiteral("#F43F5E"); // Rose magenta
         }
         return QStringLiteral("#94A3B8");
 

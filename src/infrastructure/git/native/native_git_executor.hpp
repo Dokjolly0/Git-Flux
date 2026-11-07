@@ -22,7 +22,7 @@ public:
     execute(const gf::git::bo::GitCommand& command,
             std::stop_token stopToken = {}) override;
 
-    /// Esposto per test unitari di sicurezza sul quoting della command line Windows.
+    /// Exposed for unit tests verifying Windows command line escaping and quoting security.
     [[nodiscard]] static std::wstring buildWindowsCommandLine(
         const std::filesystem::path& executable,
         const std::vector<std::string>& utf8Args);

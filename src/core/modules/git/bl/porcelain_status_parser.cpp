@@ -20,7 +20,7 @@ namespace {
 }
 
 void parseBranchHeader(std::string_view headerLine, bo::GitBranchHead& branch) noexcept {
-    // Formato: "# branch.<key> <value>"
+    // Format: "# branch.<key> <value>"
     constexpr std::string_view prefix = "# branch.";
     if (!headerLine.starts_with(prefix)) {
         return;

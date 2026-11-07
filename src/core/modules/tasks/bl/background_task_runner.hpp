@@ -66,7 +66,7 @@ private:
             if (priority != other.priority) {
                 return static_cast<int>(priority) < static_cast<int>(other.priority);
             }
-            return sequenceNumber > other.sequenceNumber; // FIFO a parità di priorità
+            return sequenceNumber > other.sequenceNumber; // FIFO ordering for same priority
         }
     };
 

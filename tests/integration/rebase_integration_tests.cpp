@@ -58,7 +58,7 @@ TEST_CASE("NativeRepositoryGitOps and GitRebaseService real Git rebase & cherry-
 
     RebaseTestSandbox sandbox;
 
-    // Inizializza repository Git con branch 'main'
+    // Initialize Git repository with branch 'main'
     REQUIRE(executor.execute(gf::git::bo::GitCommand{
         .args = {"init", "-b", "main"},
         .workingDirectory = sandbox.root,
@@ -88,7 +88,7 @@ TEST_CASE("NativeRepositoryGitOps and GitRebaseService real Git rebase & cherry-
     })->exitCode == 0);
 
     SECTION("Rebase lineare senza conflitti tra branch divergenti") {
-        // Crea branch 'feature'
+        // Create branch 'feature'
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"checkout", "-b", "feature"},
             .workingDirectory = sandbox.root
@@ -104,7 +104,7 @@ TEST_CASE("NativeRepositoryGitOps and GitRebaseService real Git rebase & cherry-
             .workingDirectory = sandbox.root
         })->exitCode == 0);
 
-        // Torna su main e crea un commit indipendente
+        // Switch back to main and create independent commit
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"checkout", "main"},
             .workingDirectory = sandbox.root
@@ -120,7 +120,7 @@ TEST_CASE("NativeRepositoryGitOps and GitRebaseService real Git rebase & cherry-
             .workingDirectory = sandbox.root
         })->exitCode == 0);
 
-        // Torna su feature ed esegui rebase su main
+        // Switch back to feature and execute rebase onto main
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"checkout", "feature"},
             .workingDirectory = sandbox.root
@@ -139,14 +139,14 @@ TEST_CASE("NativeRepositoryGitOps and GitRebaseService real Git rebase & cherry-
         REQUIRE(inProgAfter.has_value());
         CHECK_FALSE(*inProgAfter);
 
-        // Tutti e 3 i file sono presenti su feature
+        // All 3 files are present on feature
         CHECK(sandbox.fileExists("base.txt"));
         CHECK(sandbox.fileExists("feature.txt"));
         CHECK(sandbox.fileExists("main_only.txt"));
     }
 
     SECTION("Rebase con conflitti, risoluzione manuale e continueRebase") {
-        // Crea branch 'conflict_branch'
+        // Create branch 'conflict_branch'
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"checkout", "-b", "conflict_branch"},
             .workingDirectory = sandbox.root
@@ -158,7 +158,7 @@ TEST_CASE("NativeRepositoryGitOps and GitRebaseService real Git rebase & cherry-
             .workingDirectory = sandbox.root
         })->exitCode == 0);
 
-        // Torna su main e modifica la stessa riga
+        // Switch back to main and modify the same line
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"checkout", "main"},
             .workingDirectory = sandbox.root
@@ -170,7 +170,7 @@ TEST_CASE("NativeRepositoryGitOps and GitRebaseService real Git rebase & cherry-
             .workingDirectory = sandbox.root
         })->exitCode == 0);
 
-        // Torna su conflict_branch e avvia il rebase
+        // Switch back to conflict_branch and start rebase
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"checkout", "conflict_branch"},
             .workingDirectory = sandbox.root
@@ -182,19 +182,19 @@ TEST_CASE("NativeRepositoryGitOps and GitRebaseService real Git rebase & cherry-
         REQUIRE_FALSE(conflictRebaseRes->conflictedFiles.empty());
         CHECK(conflictRebaseRes->conflictedFiles[0] == "base.txt");
 
-        // Verifica che rebase sia in progress
+        // Verify rebase is in progress
         auto inProg = rebaseService.isRebaseInProgress(sandbox.root);
         REQUIRE(inProg.has_value());
         CHECK(*inProg == true);
 
-        // Risolvi il conflitto manualmente e fai stage
+        // Resolve conflict manually and stage
         sandbox.writeFile("base.txt", "resolved line manually merged\nbase line 2\n");
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"add", "base.txt"},
             .workingDirectory = sandbox.root
         })->exitCode == 0);
 
-        // Continua il rebase
+        // Continue rebase
         auto contRes = rebaseService.continueRebase(sandbox.root);
         REQUIRE(contRes.has_value());
         CHECK((contRes->status == gf::git::bo::RebaseStatus::Finished ||
@@ -244,7 +244,7 @@ TEST_CASE("NativeRepositoryGitOps and GitRebaseService real Git rebase & cherry-
         REQUIRE(abortRes.has_value());
         CHECK(*rebaseService.isRebaseInProgress(sandbox.root) == false);
 
-        // Controlla che abort_branch abbia ripristinato la versione pre-rebase
+        // Check that abort_branch restored the pre-rebase version
         CHECK(sandbox.readFile("base.txt") == "abort test line\nbase line 2\n");
     }
 
@@ -275,7 +275,7 @@ TEST_CASE("NativeRepositoryGitOps and GitRebaseService real Git rebase & cherry-
             donorSha.pop_back();
         }
 
-        // Torna su main
+        // Switch back to main
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"checkout", "main"},
             .workingDirectory = sandbox.root
@@ -291,7 +291,7 @@ TEST_CASE("NativeRepositoryGitOps and GitRebaseService real Git rebase & cherry-
         CHECK(sandbox.fileExists("donor.txt"));
         CHECK(sandbox.readFile("donor.txt") == "donor content\n");
 
-        // Cherry-pick con commit inesistente ritorna CommitNotFound
+        // Cherry-pick with non-existent commit returns CommitNotFound
         auto invalidCp = rebaseService.cherryPick(sandbox.root, {.commitSha = "0000000000000000000000000000000000000000"});
         REQUIRE_FALSE(invalidCp.has_value());
         CHECK(invalidCp.error().kind == gf::git::ports::GitOpsError::Kind::CommitNotFound);

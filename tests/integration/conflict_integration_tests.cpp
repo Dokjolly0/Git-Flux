@@ -54,7 +54,7 @@ TEST_CASE("NativeRepositoryGitOps and GitConflictService 3-way conflict extracti
 
     ConflictTestSandbox sandbox;
 
-    // 1. Inizializza repo Git
+    // 1. Initialize Git repo
     REQUIRE(executor.execute(gf::git::bo::GitCommand{
         .args = {"init", "-b", "main"},
         .workingDirectory = sandbox.root,
@@ -82,7 +82,7 @@ TEST_CASE("NativeRepositoryGitOps and GitConflictService 3-way conflict extracti
         .workingDirectory = sandbox.root
     })->exitCode == 0);
 
-    // 2. Branch 'feature_branch' con modifica divergente
+    // 2. Branch 'feature_branch' with divergent change
     REQUIRE(executor.execute(gf::git::bo::GitCommand{
         .args = {"checkout", "-b", "feature_branch"},
         .workingDirectory = sandbox.root
@@ -94,7 +94,7 @@ TEST_CASE("NativeRepositoryGitOps and GitConflictService 3-way conflict extracti
         .workingDirectory = sandbox.root
     })->exitCode == 0);
 
-    // 3. Torna su main e fai modifica confliggente
+    // 3. Switch back to main and make conflicting change
     REQUIRE(executor.execute(gf::git::bo::GitCommand{
         .args = {"checkout", "main"},
         .workingDirectory = sandbox.root
@@ -106,14 +106,14 @@ TEST_CASE("NativeRepositoryGitOps and GitConflictService 3-way conflict extracti
         .workingDirectory = sandbox.root
     })->exitCode == 0);
 
-    // 4. Esegui il merge che genera conflitto
+    // 4. Execute merge that triggers a conflict
     auto mergeRes = gitOps.mergeBranch(sandbox.root, {.sourceBranchOrCommit = "feature_branch"});
     REQUIRE(mergeRes.has_value());
     CHECK(mergeRes->status == gf::git::bo::MergeStatus::Conflict);
     REQUIRE_FALSE(mergeRes->conflictedFiles.empty());
     CHECK(mergeRes->conflictedFiles[0] == "conflict.txt");
 
-    // 5. Ispezione con GitConflictService
+    // 5. Inspect using GitConflictService
     auto cFileRes = conflictService.getConflictFile(sandbox.root, "conflict.txt");
     REQUIRE(cFileRes.has_value());
     const auto& cFile = *cFileRes;
@@ -123,7 +123,7 @@ TEST_CASE("NativeRepositoryGitOps and GitConflictService 3-way conflict extracti
     CHECK(cFile.hunks[0].oursContent.find("ours main branch content") != std::string::npos);
     CHECK(cFile.hunks[0].theirsContent.find("theirs feature branch content") != std::string::npos);
 
-    // 6. Recupero dei singoli stage (1=base, 2=ours, 3=theirs)
+    // 6. Retrieve individual stages (1=base, 2=ours, 3=theirs)
     auto stage1 = conflictService.getFileStageContent(sandbox.root, "conflict.txt", 1);
     REQUIRE(stage1.has_value());
     CHECK(stage1->find("common base content") != std::string::npos);
@@ -136,7 +136,7 @@ TEST_CASE("NativeRepositoryGitOps and GitConflictService 3-way conflict extracti
     REQUIRE(stage3.has_value());
     CHECK(stage3->find("theirs feature branch content") != std::string::npos);
 
-    // 7. Risoluzione guidata del conflitto
+    // 7. Guided conflict resolution
     auto hunks = cFile.hunks;
     hunks[0].isResolved = true;
     hunks[0].chosenSide = gf::git::bo::ConflictSide::Custom;
@@ -147,7 +147,7 @@ TEST_CASE("NativeRepositoryGitOps and GitConflictService 3-way conflict extracti
     std::string resolvedFileText = *recRes;
     CHECK(resolvedFileText == "line header\nresolved combined content line\nline footer\n");
 
-    // 8. Applicazione della risoluzione con auto-stage
+    // 8. Apply conflict resolution with auto-stage
     auto applyRes = conflictService.applyConflictResolution(sandbox.root, {
         .filePath = "conflict.txt",
         .resolvedContent = resolvedFileText,
@@ -155,22 +155,22 @@ TEST_CASE("NativeRepositoryGitOps and GitConflictService 3-way conflict extracti
     });
     REQUIRE(applyRes.has_value());
 
-    // Verifica file sul disco
+    // Verify file on disk
     CHECK(sandbox.readFile("conflict.txt") == resolvedFileText);
 
-    // Verifica status del working tree: nessun conflitto residuo, file staged
+    // Verify working tree status: no residual conflicts, file staged
     auto wtStatus = gitOps.getWorkingTreeStatus(sandbox.root);
     REQUIRE(wtStatus.has_value());
     CHECK(wtStatus->conflictedFiles.empty());
     CHECK(wtStatus->stagedFiles.size() == 1);
     CHECK(wtStatus->stagedFiles[0].path == "conflict.txt");
 
-    // 9. Conclude il merge commit
+    // 9. Conclude merge commit
     auto commitRes = gitOps.createCommit(sandbox.root, {.message = "Merge branch 'feature_branch' resolved"});
     REQUIRE(commitRes.has_value());
     CHECK_FALSE(commitRes->commitSha.empty());
 
-    // Working tree completamente pulito
+    // Completely clean working tree
     auto cleanStatus = gitOps.getWorkingTreeStatus(sandbox.root);
     REQUIRE(cleanStatus.has_value());
     CHECK(cleanStatus->isClean());

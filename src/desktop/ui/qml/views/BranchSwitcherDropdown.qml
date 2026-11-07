@@ -76,7 +76,7 @@ Rectangle {
             anchors.fill: parent
             spacing: 8
 
-            // Campo di ricerca branch
+            // Branch search input
             TextField {
                 id: searchField
                 Layout.fillWidth: true
@@ -92,7 +92,7 @@ Rectangle {
                 }
             }
 
-            // Lista branch
+            // Branch list
             ListView {
                 id: branchListView
                 Layout.fillWidth: true
@@ -131,7 +131,7 @@ Rectangle {
                             Layout.fillWidth: true
                         }
 
-                        // Badge Remote o Upstream
+                        // Remote or Upstream badge
                         Rectangle {
                             visible: model.isRemote
                             Layout.preferredHeight: 16
@@ -162,14 +162,14 @@ Rectangle {
                 }
             }
 
-            // Separatore
+            // Separator
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 1
                 color: "#334155"
             }
 
-            // Pulsante Nuovo Branch
+            // New Branch button
             Button {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 30

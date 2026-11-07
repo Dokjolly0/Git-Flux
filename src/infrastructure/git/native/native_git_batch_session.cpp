@@ -92,7 +92,7 @@ public:
             });
         }
 
-        // Formato atteso: "<oid> <type> <size>" oppure "<rev> missing"
+        // Expected format: "<oid> <type> <size>" or "<rev> missing"
         if (headerLine.ends_with(" missing")) {
             return std::unexpected(GitExecutionError{
                 .kind = GitErrorKind::ProtocolParseError,
@@ -133,7 +133,7 @@ public:
             });
         }
 
-        // Consuma il '\n' finale dopo il payload binario
+        // Consume trailing '\n' after binary payload
         char trailingLf = '\0';
         if (!readExact(&trailingLf, 1) || trailingLf != '\n') {
             return std::unexpected(GitExecutionError{
@@ -220,7 +220,7 @@ private:
                 bufPos_ += toCopy;
                 copied += toCopy;
             } else {
-                // Se il payload residuo è grande, leggiamo direttamente nel buffer di destinazione
+                // If remaining payload is large, read directly into destination buffer
                 const std::size_t remaining = totalBytes - copied;
                 if (remaining >= sizeof(readBuf_)) {
 #ifdef _WIN32

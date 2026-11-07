@@ -6,15 +6,15 @@ project(GitFlux
     LANGUAGES C CXX
 )
 
-option(GF_BUILD_DESKTOP "Abilita i target che dipendono da Qt 6 (adapter Qt e UI desktop)" OFF)
-option(GF_BUILD_TESTING "Compila unit e integration test" ON)
-option(GF_BUILD_BENCHMARKS "Compila le suite di benchmark di Fase 0" ON)
+option(GF_BUILD_DESKTOP "Enable targets depending on Qt 6 (Qt adapters and desktop UI)" OFF)
+option(GF_BUILD_TESTING "Build unit and integration tests" ON)
+option(GF_BUILD_BENCHMARKS "Build Phase 0 benchmark suites" ON)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Opzioni di compilazione comuni per un target Git Flux
+# Common compilation options for a Git Flux target
 function(gf_apply_compiler_warnings target_name)
     target_compile_options(${target_name} PRIVATE
         $<$<CXX_COMPILER_ID:MSVC>:/utf-8 /W4 /permissive- /EHsc>
@@ -25,7 +25,7 @@ function(gf_apply_compiler_warnings target_name)
     )
 endfunction()
 
-# Helper per copiare automaticamente le DLL di runtime (es. Qt6Core.dll su Windows)
+# Helper to automatically copy runtime DLLs (e.g. Qt6Core.dll on Windows)
 function(gf_deploy_runtime_dlls target_name)
     if(WIN32 AND GF_BUILD_DESKTOP)
         add_custom_command(TARGET ${target_name} POST_BUILD
@@ -178,7 +178,7 @@ if(GF_BUILD_DESKTOP)
     )
     gf_apply_compiler_warnings(gf_git_cli_qt)
 
-    # MVVM ViewModels e Desktop Composition Root
+    # MVVM ViewModels and Desktop Composition Root
     add_library(gf_desktop_viewmodels STATIC
         src/desktop/viewmodels/repository_list_model.cpp
         src/desktop/viewmodels/group_list_model.cpp
@@ -217,7 +217,7 @@ if(GF_BUILD_DESKTOP)
     )
     gf_apply_compiler_warnings(gf_desktop_viewmodels)
 
-    # Applicazione Desktop Eseguibile (Qt Quick 6)
+    # Desktop Executable Application (Qt Quick 6)
     qt_add_executable(git_flux
         src/desktop/main.cpp
     )
@@ -285,7 +285,7 @@ if(GF_BUILD_TESTING OR GF_BUILD_BENCHMARKS)
     find_package(Catch2 3 CONFIG QUIET)
     if(NOT Catch2_FOUND)
         include(FetchContent)
-        message(STATUS "Catch2 v3 non trovato nel sistema: recupero tramite FetchContent...")
+        message(STATUS "Catch2 v3 not found on system: fetching via FetchContent...")
         FetchContent_Declare(
             Catch2
             GIT_REPOSITORY https://github.com/catchorg/Catch2.git
@@ -297,7 +297,7 @@ if(GF_BUILD_TESTING OR GF_BUILD_BENCHMARKS)
 endif()
 
 if(GF_BUILD_TESTING)
-    # Unit test del Core (sempre ZERO Qt anche se GF_BUILD_DESKTOP=ON)
+    # Core Unit Tests (always ZERO Qt even if GF_BUILD_DESKTOP=ON)
     add_executable(gf_unit_tests
         tests/unit/core_git_unit_tests.cpp
         tests/unit/domain_entities_unit_tests.cpp
@@ -324,7 +324,7 @@ if(GF_BUILD_TESTING)
     gf_apply_compiler_warnings(gf_unit_tests)
     add_test(NAME gf_unit_tests COMMAND gf_unit_tests)
 
-    # Integration test (Git reale su repo temporanei + SQLite persistence)
+    # Integration Tests (real Git on temporary repos + SQLite persistence)
     add_executable(gf_integration_tests
         tests/integration/suite_a_git_integration_tests.cpp
         tests/integration/sqlite_stores_integration_tests.cpp
@@ -353,7 +353,7 @@ if(GF_BUILD_TESTING)
         target_compile_definitions(gf_integration_tests PRIVATE GF_HAS_QT_ADAPTER=1)
         gf_deploy_runtime_dlls(gf_integration_tests)
 
-        # Unit test per MVVM (ViewModels & Models con Catch2 + QSignalSpy)
+        # MVVM Unit Tests (ViewModels & Models with Catch2 + QSignalSpy)
         add_executable(gf_viewmodels_tests
             tests/unit/viewmodels_unit_tests.cpp
         )

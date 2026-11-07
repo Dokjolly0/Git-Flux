@@ -21,7 +21,7 @@ Dialog {
         spacing: 14
 
         // =====================================================================
-        // HEADER: Nome operazione e stato
+        // HEADER: Operation name and status
         // =====================================================================
         RowLayout {
             Layout.fillWidth: true
@@ -63,7 +63,7 @@ Dialog {
         }
 
         // =====================================================================
-        // PROGRESS BAR & PERCENTUALE
+        // PROGRESS BAR & PERCENTAGE
         // =====================================================================
         ColumnLayout {
             Layout.fillWidth: true
@@ -116,7 +116,7 @@ Dialog {
         }
 
         // =====================================================================
-        // LISTA DETTAGLIO REPOSITORY
+        // REPOSITORY DETAILS LIST
         // =====================================================================
         Rectangle {
             Layout.fillWidth: true

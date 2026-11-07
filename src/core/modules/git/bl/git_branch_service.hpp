@@ -16,38 +16,38 @@ public:
     explicit GitBranchService(ports::IRepositoryGitOps& gitOps) noexcept;
     ~GitBranchService() = default;
 
-    /// Verifica se un nome rispetta le regole git-check-ref-format per i branch.
+    /// Validates branch name according to git-check-ref-format rules.
     [[nodiscard]] static bool isValidBranchName(std::string_view name) noexcept;
 
-    /// Ritorna l'elenco completo dei branch locali e remoti.
+    /// Returns the complete list of local and remote branches.
     [[nodiscard]] std::expected<std::vector<bo::GitBranch>, ports::GitOpsError>
     listBranches(const std::filesystem::path& repoPath);
 
-    /// Ritorna solo i branch locali.
+    /// Returns only local branches.
     [[nodiscard]] std::expected<std::vector<bo::GitBranch>, ports::GitOpsError>
     getLocalBranches(const std::filesystem::path& repoPath);
 
-    /// Ritorna solo i branch remoti.
+    /// Returns only remote branches.
     [[nodiscard]] std::expected<std::vector<bo::GitBranch>, ports::GitOpsError>
     getRemoteBranches(const std::filesystem::path& repoPath);
 
-    /// Ritorna il branch correntemente attivo (HEAD), o nullopt se HEAD è detached o non trovato.
+    /// Returns the currently active branch (HEAD), or nullopt if HEAD is detached or missing.
     [[nodiscard]] std::expected<std::optional<bo::GitBranch>, ports::GitOpsError>
     getCurrentBranch(const std::filesystem::path& repoPath);
 
-    /// Crea un nuovo branch dopo aver validato il nome.
+    /// Creates a new branch after validating its name.
     [[nodiscard]] std::expected<void, ports::GitOpsError>
     createBranch(const std::filesystem::path& repoPath, const bo::CreateBranchOptions& options);
 
-    /// Esegue il checkout di un branch o commit.
+    /// Checks out a branch or commit.
     [[nodiscard]] std::expected<void, ports::GitOpsError>
     checkoutBranch(const std::filesystem::path& repoPath, const bo::CheckoutOptions& options);
 
-    /// Elimina un branch locale.
+    /// Deletes a local branch.
     [[nodiscard]] std::expected<void, ports::GitOpsError>
     deleteBranch(const std::filesystem::path& repoPath, const std::string& branchName, bool force = false);
 
-    /// Rinomina un branch locale dopo aver validato il nuovo nome.
+    /// Renames a local branch after validating the new name.
     [[nodiscard]] std::expected<void, ports::GitOpsError>
     renameBranch(const std::filesystem::path& repoPath, const std::string& oldName, const std::string& newName);
 

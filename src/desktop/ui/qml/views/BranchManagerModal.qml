@@ -22,7 +22,7 @@ Dialog {
     contentItem: ColumnLayout {
         spacing: 12
 
-        // Barra Superiore: Azioni Remote Rapide (Fetch, Pull, Push)
+        // Top Bar: Quick Remote Actions (Fetch, Pull, Push)
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 40
@@ -67,7 +67,7 @@ Dialog {
 
                 Item { Layout.fillWidth: true }
 
-                // Se ci sono conflitti di merge, mostra pulsante Abort
+                // If merge conflicts are present, show Abort button
                 Button {
                     visible: root.branchManager && root.branchManager.hasConflicts
                     text: "⚠ Annulla Merge (Abort)"
@@ -91,7 +91,7 @@ Dialog {
             }
         }
 
-        // Lista dei Branch con Dettagli
+        // Branch List with Details
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -146,7 +146,7 @@ Dialog {
                             }
                         }
 
-                        // Pulsante Checkout
+                        // Checkout button
                         Button {
                             visible: !model.isCurrent
                             text: "Switch"
@@ -156,7 +156,7 @@ Dialog {
                             }
                         }
 
-                        // Pulsante Merge
+                        // Merge button
                         Button {
                             visible: !model.isCurrent
                             text: "Merge"
@@ -166,7 +166,7 @@ Dialog {
                             }
                         }
 
-                        // Pulsante Elimina
+                        // Delete button
                         Button {
                             visible: !model.isCurrent
                             text: "🗑"
@@ -187,7 +187,7 @@ Dialog {
             }
         }
 
-        // Status bar inferiore
+        // Bottom status bar
         Text {
             Layout.fillWidth: true
             text: root.branchManager ? root.branchManager.statusMessage : ""

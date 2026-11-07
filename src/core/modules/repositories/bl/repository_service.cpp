@@ -57,7 +57,7 @@ RepositoryService::registerRepository(const RegisterRepositoryRequest& req) {
         });
     }
 
-    // Verifica se già registrato per path
+    // Check if already registered by path
     auto existingByPath = store_.getByPath(normalizedPath);
     if (!existingByPath) {
         return std::unexpected(RepositoryServiceError{
@@ -72,7 +72,7 @@ RepositoryService::registerRepository(const RegisterRepositoryRequest& req) {
         });
     }
 
-    // Calcola display name se omesso
+    // Compute display name if omitted
     std::string displayName;
     if (req.displayName && !req.displayName->empty()) {
         displayName = *req.displayName;

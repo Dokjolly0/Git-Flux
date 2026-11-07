@@ -13,31 +13,31 @@ public:
     explicit GitRebaseService(ports::IRepositoryGitOps& gitOps) noexcept;
     ~GitRebaseService() = default;
 
-    /// Avvia una sessione di rebase con lock per-repo.
+    /// Starts a rebase session under per-repo lock.
     [[nodiscard]] std::expected<bo::RebaseResult, ports::GitOpsError>
     startRebase(const std::filesystem::path& repoPath, const bo::RebaseOptions& options);
 
-    /// Continua un rebase in corso dopo aver risolto i conflitti con lock per-repo.
+    /// Continues an in-progress rebase after resolving conflicts under per-repo lock.
     [[nodiscard]] std::expected<bo::RebaseResult, ports::GitOpsError>
     continueRebase(const std::filesystem::path& repoPath);
 
-    /// Salta il commit corrente durante un rebase con lock per-repo.
+    /// Skips the current commit during a rebase under per-repo lock.
     [[nodiscard]] std::expected<bo::RebaseResult, ports::GitOpsError>
     skipRebase(const std::filesystem::path& repoPath);
 
-    /// Annulla un rebase in corso ripristinando lo stato precedente con lock per-repo.
+    /// Aborts an in-progress rebase restoring the previous state under per-repo lock.
     [[nodiscard]] std::expected<void, ports::GitOpsError>
     abortRebase(const std::filesystem::path& repoPath);
 
-    /// Verifica se una sessione di rebase è attualmente in corso.
+    /// Checks if a rebase session is currently in progress.
     [[nodiscard]] std::expected<bool, ports::GitOpsError>
     isRebaseInProgress(const std::filesystem::path& repoPath);
 
-    /// Esegue il cherry-pick di un commit specificato con lock per-repo.
+    /// Executes cherry-pick of a specified commit under per-repo lock.
     [[nodiscard]] std::expected<bo::CherryPickResult, ports::GitOpsError>
     cherryPick(const std::filesystem::path& repoPath, const bo::CherryPickOptions& options);
 
-    /// Annulla un cherry-pick in corso con lock per-repo.
+    /// Aborts an in-progress cherry-pick under per-repo lock.
     [[nodiscard]] std::expected<void, ports::GitOpsError>
     abortCherryPick(const std::filesystem::path& repoPath);
 

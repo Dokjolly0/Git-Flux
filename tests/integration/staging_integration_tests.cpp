@@ -60,7 +60,7 @@ TEST_CASE("NativeRepositoryGitOps and GitStagingService real Git integration", "
 
     StagingTestSandbox sandbox;
 
-    // Inizializza repository Git
+    // Initialize Git repository
     gf::git::bo::GitCommand initCmd{
         .args = {"init", "-b", "main"},
         .workingDirectory = sandbox.root,
@@ -70,7 +70,7 @@ TEST_CASE("NativeRepositoryGitOps and GitStagingService real Git integration", "
     REQUIRE(initRes.has_value());
     REQUIRE(initRes->exitCode == 0);
 
-    // Configura autore locale di test
+    // Configure local test author identity
     gf::git::bo::GitCommand cfgNameCmd{
         .args = {"config", "user.name", "GitFlux TestBot"},
         .workingDirectory = sandbox.root,
@@ -91,7 +91,7 @@ TEST_CASE("NativeRepositoryGitOps and GitStagingService real Git integration", "
         sandbox.writeFile("file_a.txt", "Contenuto A");
         sandbox.writeFile("file_b.txt", "Contenuto B");
 
-        // 1. Stage solo di file_a.txt
+        // 1. Stage only file_a.txt
         auto stageRes1 = stagingService.stageFiles(sandbox.root, {"file_a.txt"});
         REQUIRE(stageRes1.has_value());
 
@@ -102,7 +102,7 @@ TEST_CASE("NativeRepositoryGitOps and GitStagingService real Git integration", "
         REQUIRE(status1->untrackedFiles.size() == 1);
         CHECK(status1->untrackedFiles[0].path == "file_b.txt");
 
-        // 2. Unstage di file_a.txt su unborn HEAD (test fallback git rm --cached)
+        // 2. Unstage file_a.txt on unborn HEAD (tests git rm --cached fallback)
         auto unstageRes1 = stagingService.unstageFiles(sandbox.root, {"file_a.txt"});
         REQUIRE(unstageRes1.has_value());
 
@@ -120,7 +120,7 @@ TEST_CASE("NativeRepositoryGitOps and GitStagingService real Git integration", "
         CHECK(status3->stagedFiles.size() == 2);
         CHECK(status3->untrackedFiles.empty());
 
-        // 4. Unstage All su unborn HEAD
+        // 4. Unstage All on unborn HEAD
         auto unstageAllRes = stagingService.unstageAll(sandbox.root);
         REQUIRE(unstageAllRes.has_value());
 
@@ -133,14 +133,14 @@ TEST_CASE("NativeRepositoryGitOps and GitStagingService real Git integration", "
     SECTION("Commit e NothingToCommit") {
         sandbox.writeFile("first.txt", "Initial data");
 
-        // Tentativo di commit con staging vuoto
+        // Attempt commit with empty staging
         auto emptyCommit = stagingService.createCommit(sandbox.root, gf::git::bo::CommitOptions{
             .message = "Tentativo a vuoto"
         });
         REQUIRE_FALSE(emptyCommit.has_value());
         CHECK(emptyCommit.error().kind == gf::git::ports::GitOpsError::Kind::NothingToCommit);
 
-        // Mette in staging e committa
+        // Stage and commit
         auto stageRes = stagingService.stageAll(sandbox.root);
         REQUIRE(stageRes.has_value());
 
@@ -157,7 +157,7 @@ TEST_CASE("NativeRepositoryGitOps and GitStagingService real Git integration", "
         CHECK(commitRes->summary == "feat(test): initial commit");
         CHECK(commitRes->branch == "main");
 
-        // Working tree deve ora essere pulito
+        // Working tree must now be clean
         auto statusAfterCommit = statusService.getWorkingTreeStatus(sandbox.root);
         REQUIRE(statusAfterCommit.has_value());
         CHECK(statusAfterCommit->isClean());
@@ -168,7 +168,7 @@ TEST_CASE("NativeRepositoryGitOps and GitStagingService real Git integration", "
         REQUIRE(stagingService.stageAll(sandbox.root).has_value());
         REQUIRE(stagingService.createCommit(sandbox.root, gf::git::bo::CommitOptions{.message = "c1"}).has_value());
 
-        // Modifica file tracciato
+        // Modify tracked file
         sandbox.writeFile("tracked.txt", "Modifica non salvata");
         auto statusModified = statusService.getWorkingTreeStatus(sandbox.root);
         REQUIRE(statusModified.has_value());
@@ -183,11 +183,11 @@ TEST_CASE("NativeRepositoryGitOps and GitStagingService real Git integration", "
         REQUIRE(statusRestored.has_value());
         CHECK(statusRestored->isClean());
 
-        // Cancellazione file tracciato
+        // Delete tracked file
         sandbox.removeFile("tracked.txt");
         CHECK_FALSE(std::filesystem::exists(sandbox.root / "tracked.txt"));
 
-        // Discard del file cancellato -> deve ricomparire con il suo contenuto originale!
+        // Discard deleted file -> must reappear with original content!
         auto discardDelRes = stagingService.discardFiles(sandbox.root, {"tracked.txt"});
         REQUIRE(discardDelRes.has_value());
         CHECK(std::filesystem::exists(sandbox.root / "tracked.txt"));
@@ -199,7 +199,7 @@ TEST_CASE("NativeRepositoryGitOps and GitStagingService real Git integration", "
         REQUIRE(stagingService.stageAll(sandbox.root).has_value());
         REQUIRE(stagingService.createCommit(sandbox.root, gf::git::bo::CommitOptions{.message = "init"}).has_value());
 
-        // Crea file non tracciato
+        // Create untracked file
         sandbox.writeFile("untracked_temp.txt", "File da cestinare");
         CHECK(std::filesystem::exists(sandbox.root / "untracked_temp.txt"));
 
@@ -218,7 +218,7 @@ TEST_CASE("NativeRepositoryGitOps and GitStagingService real Git integration", "
         auto c1 = stagingService.createCommit(sandbox.root, gf::git::bo::CommitOptions{.message = "Commit iniziale errato"});
         REQUIRE(c1.has_value());
 
-        // Modifica e amend
+        // Modify and amend
         sandbox.writeFile("file.txt", "v1 revisionata");
         REQUIRE(stagingService.stageAll(sandbox.root).has_value());
 
@@ -229,7 +229,7 @@ TEST_CASE("NativeRepositoryGitOps and GitStagingService real Git integration", "
         REQUIRE(c2.has_value());
         CHECK(c2->summary == "Commit iniziale corretto");
 
-        // Verifica che ci sia solo 1 commit nella storia del branch
+        // Verify there is only 1 commit in branch history
         gf::git::bo::GitCommand logCmd{
             .args = {"rev-list", "--count", "HEAD"},
             .workingDirectory = sandbox.root,

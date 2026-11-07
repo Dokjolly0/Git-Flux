@@ -81,7 +81,7 @@ bool CommitBoxViewModel::executeCommit(const QString& repoPath) {
     QString sha = QString::fromStdString(result->commitSha);
     QString summary = QString::fromStdString(result->summary);
 
-    // Reset del messaggio al termine del commit riuscito
+    // Reset commit message upon successful commit
     m_commitMessage.clear();
     m_isAmend = false;
     emit commitMessageChanged();

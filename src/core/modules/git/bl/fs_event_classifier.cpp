@@ -43,7 +43,7 @@ bo::FsChangeClassification FsEventClassifier::classify(const std::filesystem::pa
     std::filesystem::path relPath = toRelativePath(repoRoot, changedPath);
     std::string norm = normalizePathString(relPath);
 
-    // Controlliamo se è un file temporaneo comune da ignorare ovunque
+    // Check if it is a common transient file to ignore everywhere
     std::string filename = relPath.filename().string();
     if (endsWith(filename, ".swp") || endsWith(filename, ".swo") ||
         endsWith(filename, ".tmp") || endsWith(filename, "~") ||
@@ -52,14 +52,14 @@ bo::FsChangeClassification FsEventClassifier::classify(const std::filesystem::pa
         return bo::FsChangeClassification::Ignored;
     }
 
-    // Lock file di Git o di editor vanno ignorati
+    // Git or editor lockfiles should be ignored
     if (endsWith(filename, ".lock")) {
         return bo::FsChangeClassification::Ignored;
     }
 
-    // Se si trova all'interno di .git
+    // If located inside .git
     if (norm == ".git" || startsWith(norm, ".git/")) {
-        // Ignora cache, pack, log, hook, info e commit message temporanei
+        // Ignore cache, pack, logs, hooks, info and temporary commit messages
         if (norm == ".git/objects" || startsWith(norm, ".git/objects/")) {
             return bo::FsChangeClassification::Ignored;
         }
@@ -81,7 +81,7 @@ bo::FsChangeClassification FsEventClassifier::classify(const std::filesystem::pa
             return bo::FsChangeClassification::GitHeadChanged;
         }
 
-        // Refs (branches, tags, remotes) o packed-refs
+        // Refs (branches, tags, remotes) or packed-refs
         if (norm == ".git/refs" || startsWith(norm, ".git/refs/") ||
             norm == ".git/packed-refs" || norm == ".git/FETCH_HEAD" || norm == ".git/ORIG_HEAD") {
             return bo::FsChangeClassification::GitRefsChanged;
@@ -92,7 +92,7 @@ bo::FsChangeClassification FsEventClassifier::classify(const std::filesystem::pa
             return bo::FsChangeClassification::GitIndexChanged;
         }
 
-        // Rebase, Merge, Cherry-Pick, Revert o Bisect
+        // Rebase, Merge, Cherry-Pick, Revert or Bisect
         if (norm == ".git/MERGE_HEAD" || norm == ".git/CHERRY_PICK_HEAD" ||
             norm == ".git/REVERT_HEAD" || norm == ".git/BISECT_LOG" ||
             norm == ".git/rebase-merge" || startsWith(norm, ".git/rebase-merge/") ||
@@ -100,11 +100,11 @@ bo::FsChangeClassification FsEventClassifier::classify(const std::filesystem::pa
             return bo::FsChangeClassification::GitOperationState;
         }
 
-        // Qualsiasi altro file interno a .git non esplicitamente rilevante
+        // Any other internal file in .git not explicitly relevant
         return bo::FsChangeClassification::Ignored;
     }
 
-    // File del working tree (codice sorgente, asset, ecc.)
+    // Working tree file (source code, assets, etc.)
     return bo::FsChangeClassification::WorkingTreeModified;
 }
 

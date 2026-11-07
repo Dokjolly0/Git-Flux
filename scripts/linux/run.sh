@@ -2,15 +2,15 @@
 # ==============================================================================
 # Git Flux — Linux Application Runner Script
 # ==============================================================================
-# Utilizzo:
-#   ./scripts/linux/run.sh [OPZIONI] [-- ARGOMENTI_APP...]
+# Usage:
+#   ./scripts/linux/run.sh [OPTIONS] [-- APP_ARGS...]
 #
-# Opzioni:
-#   -b, --build          Compila l'applicazione prima di avviarla
-#   -s, --smoke          Esegue in modalità headless smoke test (--test-startup)
-#   -d, --gdb            Avvia sotto il debugger GDB
-#   -v, --valgrind       Avvia sotto Valgrind (memcheck)
-#   -h, --help           Mostra questa guida
+# Options:
+#   -b, --build          Build application before launching
+#   -s, --smoke          Run in headless smoke test mode (--test-startup)
+#   -d, --gdb            Launch under GDB debugger
+#   -v, --valgrind       Launch under Valgrind (memcheck)
+#   -h, --help           Show this help message
 # ==============================================================================
 
 set -euo pipefail
@@ -34,24 +34,24 @@ APP_ARGS=()
 
 show_help() {
     cat << EOF
-${BOLD}Git Flux — Script di Avvio Applicazione Linux${NC}
+${BOLD}Git Flux — Linux Application Runner Script${NC}
 
-${CYAN}Utilizzo:${NC}
-  $0 [OPZIONI] [-- ARGOMENTI_PER_GIT_FLUX]
+${CYAN}Usage:${NC}
+  $0 [OPTIONS] [-- ARGS_FOR_GIT_FLUX]
 
-${CYAN}Opzioni:${NC}
-  -b, --build      Compila automaticamente il target git_flux prima di avviarlo
-  -s, --smoke      Esegue lo smoke test headless di avvio (--test-startup)
-  -d, --gdb        Esegue l'applicazione all'interno del debugger GDB
-  -v, --valgrind   Esegue l'applicazione sotto Valgrind Memcheck
-  -h, --help       Mostra questa guida
+${CYAN}Options:${NC}
+  -b, --build      Automatically build git_flux target before launching
+  -s, --smoke      Run headless startup smoke test (--test-startup)
+  -d, --gdb        Run application inside GDB debugger
+  -v, --valgrind   Run application under Valgrind Memcheck
+  -h, --help       Show this help message
 
-${CYAN}Esempi:${NC}
-  $0                         # Avvia l'interfaccia grafica desktop di Git Flux
-  $0 --build                 # Compila e poi avvia l'applicazione
-  $0 --smoke                 # Esegue lo smoke test headless rapido
-  $0 --gdb                   # Debug interattivo con GDB
-  $0 -- --help               # Passa flag e opzioni direttamente a Git Flux
+${CYAN}Examples:${NC}
+  $0                         # Launch Git Flux desktop graphical interface
+  $0 --build                 # Build and then launch application
+  $0 --smoke                 # Run fast headless smoke test
+  $0 --gdb                   # Interactive debugging with GDB
+  $0 -- --help               # Pass flags and options directly to Git Flux
 EOF
 }
 
@@ -92,22 +92,22 @@ done
 cd "${ROOT_DIR}"
 
 if [[ "${REBUILD_FIRST}" == true || ! -x "${BIN_PATH}" ]]; then
-    echo -e "${CYAN}🔨 Compilazione target git_flux...${NC}"
+    echo -e "${CYAN}🔨 Building target git_flux...${NC}"
     "${SCRIPT_DIR}/build.sh" -t git_flux
 fi
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BOLD}${CYAN}▶ Avvio Git Flux Desktop: ${YELLOW}${BIN_PATH}${NC}"
+echo -e "${BOLD}${CYAN}▶ Launching Git Flux Desktop: ${YELLOW}${BIN_PATH}${NC}"
 if [[ ${#APP_ARGS[@]} -gt 0 ]]; then
-    echo -e "${CYAN}  Argomenti: ${BOLD}${APP_ARGS[*]}${NC}"
+    echo -e "${CYAN}  Arguments: ${BOLD}${APP_ARGS[*]}${NC}"
 fi
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
 if [[ "${USE_GDB}" == true ]]; then
-    echo -e "${YELLOW}🐛 Avvio sotto GDB...${NC}"
+    echo -e "${YELLOW}🐛 Launching under GDB...${NC}"
     gdb --args "${BIN_PATH}" "${APP_ARGS[@]}"
 elif [[ "${USE_VALGRIND}" == true ]]; then
-    echo -e "${YELLOW}🔍 Avvio sotto Valgrind...${NC}"
+    echo -e "${YELLOW}🔍 Launching under Valgrind...${NC}"
     valgrind --leak-check=full --track-origins=yes "${BIN_PATH}" "${APP_ARGS[@]}"
 else
     "${BIN_PATH}" "${APP_ARGS[@]}"

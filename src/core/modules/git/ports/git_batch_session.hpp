@@ -22,8 +22,8 @@ struct GitBatchObject {
     std::string content;
 };
 
-/// Sessione persistente verso un processo `git cat-file --batch` associato a un repository.
-/// Evita di spawnare un nuovo processo Git per ogni lettura di commit/tree/blob.
+/// Persistent session to a `git cat-file --batch` process associated with a repository.
+/// Avoids spawning a new Git process for each commit/tree/blob read.
 class IGitBatchSession {
 public:
     virtual ~IGitBatchSession() = default;

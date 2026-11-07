@@ -72,22 +72,22 @@ TEST_CASE("RepositoryService gestisce validazione, registrazione e riconnessione
     const auto notGitPath = sandbox.dir / "regular_folder";
     std::filesystem::create_directories(notGitPath);
 
-    // 1. Percorso vuoto -> InvalidPath
+    // 1. Empty path -> InvalidPath
     auto emptyRes = service.registerRepository({.localPath = {}, .displayName = std::nullopt});
     REQUIRE_FALSE(emptyRes.has_value());
     REQUIRE(emptyRes.error().kind == RepositoryServiceError::Kind::InvalidPath);
 
-    // 2. Percorso inesistente -> PathNotFound
+    // 2. Non-existent path -> PathNotFound
     auto nonExistentRes = service.registerRepository({.localPath = sandbox.dir / "ghost_folder", .displayName = std::nullopt});
     REQUIRE_FALSE(nonExistentRes.has_value());
     REQUIRE(nonExistentRes.error().kind == RepositoryServiceError::Kind::PathNotFound);
 
-    // 3. Cartella senza .git -> NotAGitRepository
+    // 3. Folder without .git -> NotAGitRepository
     auto notGitRes = service.registerRepository({.localPath = notGitPath, .displayName = std::nullopt});
     REQUIRE_FALSE(notGitRes.has_value());
     REQUIRE(notGitRes.error().kind == RepositoryServiceError::Kind::NotAGitRepository);
 
-    // 4. Registrazione repository valido (senza display name esplicito: calcola da folder name)
+    // 4. Register valid repository (without explicit display name: computed from folder name)
     auto regRes = service.registerRepository({.localPath = validRepoPath, .displayName = std::nullopt});
     REQUIRE(regRes.has_value());
     REQUIRE(regRes->displayName == "my_project");
@@ -96,17 +96,17 @@ TEST_CASE("RepositoryService gestisce validazione, registrazione e riconnessione
 
     const auto repoId = regRes->id;
 
-    // 5. Tentativo di ri-registrare lo stesso path -> AlreadyRegistered
+    // 5. Attempt to re-register the same path -> AlreadyRegistered
     auto dupRes = service.registerRepository({.localPath = validRepoPath, .displayName = std::nullopt});
     REQUIRE_FALSE(dupRes.has_value());
     REQUIRE(dupRes.error().kind == RepositoryServiceError::Kind::AlreadyRegistered);
 
-    // 6. Verifica stato con path esistente
+    // 6. Verify status with existing path
     auto statusCheck = service.checkRepositoryStatus(repoId);
     REQUIRE(statusCheck.has_value());
     REQUIRE(statusCheck->pathStatus == RepositoryPathStatus::Valid);
 
-    // 7. Simula spostamento cartella (Missing Repo)
+    // 7. Simulate directory move (Missing Repo)
     const auto movedRepoPath = sandbox.dir / "project_renamed";
     std::filesystem::rename(validRepoPath, movedRepoPath);
 
@@ -114,7 +114,7 @@ TEST_CASE("RepositoryService gestisce validazione, registrazione e riconnessione
     REQUIRE(statusMissing.has_value());
     REQUIRE(statusMissing->pathStatus == RepositoryPathStatus::Missing);
 
-    // 8. Riconnessione percorso (mantenendo lo STESSO RepositoryId!)
+    // 8. Reconnect path (retaining the SAME RepositoryId!)
     auto reconnectRes = service.reconnectRepositoryPath(repoId, movedRepoPath);
     REQUIRE(reconnectRes.has_value());
     REQUIRE(reconnectRes->id == repoId);
@@ -145,12 +145,12 @@ TEST_CASE("GroupService gestisce membership e deduplicazione deterministica per 
     auto r2 = repoService.registerRepository({.localPath = p2, .displayName = "Repo B"}).value();
     auto r3 = repoService.registerRepository({.localPath = p3, .displayName = "Repo C"}).value();
 
-    // 1. Validazione nome vuoto
+    // 1. Empty name validation
     auto emptyRes = groupService.createGroup("");
     REQUIRE_FALSE(emptyRes.has_value());
     REQUIRE(emptyRes.error().kind == GroupServiceError::Kind::InvalidName);
 
-    // 2. Creazione gruppi con repository condiviso (r2 è sia in g1 sia in g2)
+    // 2. Create groups with shared repository (r2 is in both g1 and g2)
     auto g1 = groupService.createGroup("Cliente Alpha", {r1.id, r2.id});
     REQUIRE(g1.has_value());
     REQUIRE(g1->repositoryIds.size() == 2);
@@ -164,19 +164,19 @@ TEST_CASE("GroupService gestisce membership e deduplicazione deterministica per 
     REQUIRE_FALSE(dupNameRes.has_value());
     REQUIRE(dupNameRes.error().kind == GroupServiceError::Kind::DuplicateName);
 
-    // 4. Modifiche ai membri del gruppo (add, remove, reorder)
+    // 4. Modify group members (add, remove, reorder)
     auto reordered = groupService.reorderRepositories(g1->id, {r2.id, r1.id});
     REQUIRE(reordered.has_value());
     REQUIRE(reordered->repositoryIds[0] == r2.id);
     REQUIRE(reordered->repositoryIds[1] == r1.id);
 
-    // 5. Risoluzione contesto Quick Open multi-gruppo con deduplicazione!
+    // 5. Multi-group Quick Open context resolution with deduplication!
     auto quickOpenCtx = groupService.resolveQuickOpenContext({g1->id, g2->id});
     REQUIRE(quickOpenCtx.has_value());
     REQUIRE(quickOpenCtx->selectedGroupIds.size() == 2);
     REQUIRE(quickOpenCtx->totalRepositoryReferences == 4);
 
-    // I repository unici devono essere 3 (r2 appare una sola volta, rispettando Pagina 03 wireframe)
+    // Unique repositories must be 3 (r2 appears only once, matching Page 03 wireframe)
     REQUIRE(quickOpenCtx->repositories.size() == 3);
     REQUIRE(quickOpenCtx->repositories[0].id == r2.id);
     REQUIRE(quickOpenCtx->repositories[1].id == r1.id);
@@ -207,14 +207,14 @@ TEST_CASE("WorkspaceService gestisce composizione gruppi/repo, deduplicazione e 
 
     auto grp = groupService.createGroup("Backend Group", {r1.id, r2.id}).value();
 
-    // 1. Creazione Workspace con 1 gruppo (r1, r2) e 1 repo diretto sovrapposto (r2) + 1 nuovo (r3)
+    // 1. Create Workspace with 1 group (r1, r2) and 1 overlapping direct repo (r2) + 1 new (r3)
     auto wsRes = wsService.createWorkspace("Lavoro Alpha", {grp.id}, {r2.id, r3.id});
     REQUIRE(wsRes.has_value());
     REQUIRE(wsRes->name == "Lavoro Alpha");
 
     const auto wsId = wsRes->id;
 
-    // 2. Risoluzione repository effettivi (Deduplicati: r1, r2 da gruppo + r3 diretto)
+    // 2. Resolve effective repositories (Deduplicated: r1, r2 from group + r3 direct)
     auto effectiveRepos = wsService.resolveWorkspaceRepositories(wsId);
     REQUIRE(effectiveRepos.has_value());
     REQUIRE(effectiveRepos->size() == 3);
@@ -222,7 +222,7 @@ TEST_CASE("WorkspaceService gestisce composizione gruppi/repo, deduplicazione e 
     REQUIRE((*effectiveRepos)[1].id == r2.id);
     REQUIRE((*effectiveRepos)[2].id == r3.id);
 
-    // 3. Verifica sessione iniziale creata automaticamente
+    // 3. Verify initial session automatically created
     auto session = wsService.loadOrCreateSession(wsId);
     REQUIRE(session.has_value());
     REQUIRE(session->workspaceId == wsId);
@@ -230,7 +230,7 @@ TEST_CASE("WorkspaceService gestisce composizione gruppi/repo, deduplicazione e 
     REQUIRE(session->openedRepositoryIds.size() == 1);
     REQUIRE(session->openedRepositoryIds[0] == r1.id);
 
-    // 4. Modifica e salvataggio sessione
+    // 4. Modify and save session
     session->openedRepositoryIds.push_back(r3.id);
     session->activeRepositoryId = r3.id;
     session->layout.activeView = "changes";
@@ -244,7 +244,7 @@ TEST_CASE("WorkspaceService gestisce composizione gruppi/repo, deduplicazione e 
     REQUIRE(reloadedSession->layout.leftSidebarCollapsed);
     REQUIRE(reloadedSession->layout.activeView == "changes");
 
-    // 5. Eliminazione workspace
+    // 5. Delete workspace
     REQUIRE(wsService.deleteWorkspace(wsId).value_or(false));
     REQUIRE(wsService.getAllWorkspaces()->empty());
 }
