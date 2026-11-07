@@ -51,6 +51,36 @@ public:
         lastQueriedPath = repoPath;
         return resultToReturn;
     }
+
+    [[nodiscard]] std::expected<void, GitOpsError>
+    stageFiles(const std::filesystem::path&, const std::vector<std::string>&) override {
+        return {};
+    }
+
+    [[nodiscard]] std::expected<void, GitOpsError>
+    stageAll(const std::filesystem::path&) override {
+        return {};
+    }
+
+    [[nodiscard]] std::expected<void, GitOpsError>
+    unstageFiles(const std::filesystem::path&, const std::vector<std::string>&) override {
+        return {};
+    }
+
+    [[nodiscard]] std::expected<void, GitOpsError>
+    unstageAll(const std::filesystem::path&) override {
+        return {};
+    }
+
+    [[nodiscard]] std::expected<void, GitOpsError>
+    discardFiles(const std::filesystem::path&, const std::vector<std::string>&) override {
+        return {};
+    }
+
+    [[nodiscard]] std::expected<gf::git::bo::CommitResult, GitOpsError>
+    createCommit(const std::filesystem::path&, const gf::git::bo::CommitOptions&) override {
+        return gf::git::bo::CommitResult{};
+    }
 };
 
 } // namespace
