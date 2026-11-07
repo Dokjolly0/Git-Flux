@@ -37,7 +37,9 @@ jobs:
             libxkbcommon-dev \
             xvfb \
             qt6-base-dev \
+            qt6-base-dev-tools \
             qt6-declarative-dev \
+            qt6-declarative-dev-tools \
             qml6-module-qtquick \
             qml6-module-qtquick-controls \
             qml6-module-qtquick-layouts \
@@ -73,7 +75,9 @@ jobs:
             zstd \
             libgl1-mesa-dev \
             qt6-base-dev \
+            qt6-base-dev-tools \
             qt6-declarative-dev \
+            qt6-declarative-dev-tools \
             qml6-module-qtquick \
             qml6-module-qtquick-controls \
             qml6-module-qtquick-layouts \

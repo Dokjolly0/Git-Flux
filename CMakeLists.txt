@@ -164,8 +164,10 @@ if(GF_BUILD_DESKTOP)
     if(GF_BUILD_TESTING)
         find_package(Qt6 REQUIRED COMPONENTS Test)
     endif()
-    qt_policy(SET QTP0001 NEW)
-    qt_policy(SET QTP0004 OLD)
+    if(COMMAND qt_policy)
+        qt_policy(SET QTP0001 NEW)
+        qt_policy(SET QTP0004 OLD)
+    endif()
 
     add_library(gf_git_cli_qt STATIC
         src/infrastructure/git/qt/qt_git_executor.cpp
