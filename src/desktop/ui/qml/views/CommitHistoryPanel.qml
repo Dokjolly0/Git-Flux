@@ -14,6 +14,7 @@ Rectangle {
     property var commitFiles: []
     property var selectedFile: null
     property bool isDiffOpen: false
+    readonly property bool isWipSelected: (root.selectedCommit !== null && root.selectedCommit.sha === "WIP")
     property string fileViewMode: "path" // "path" | "tree"
     property string fileCategoryFilter: "all" // "all" | "M" | "A" | "D" | "R"
     property string fileSortOrder: "name_asc" // "name_asc" | "name_desc" | "git"
@@ -151,6 +152,16 @@ Rectangle {
         }
     }
 
+    // Refresh WIP files when working tree status changes
+    Connections {
+        target: (root.sessionVm && root.sessionVm.workingTree) ? root.sessionVm.workingTree : null
+        function onStatusChanged() {
+            if (root.isWipSelected) {
+                root.reloadWipFiles();
+            }
+        }
+    }
+
     onVisibleChanged: {
         if (visible && !root.selectedCommit) {
             root.autoSelectFirstCommit();
@@ -229,7 +240,19 @@ Rectangle {
             return;
         }
 
+        if (commit.sha === "WIP") {
+            root.reloadWipFiles();
+            return;
+        }
+
         var files = root.branchManager.getCommitFiles(commit.sha);
+        root.commitFiles = files || [];
+        root.updateTreeItems();
+    }
+
+    function reloadWipFiles() {
+        if (!root.sessionVm || !root.sessionVm.workingTree) return;
+        var files = root.sessionVm.workingTree.getAllWorkingFiles();
         root.commitFiles = files || [];
         root.updateTreeItems();
     }
@@ -320,6 +343,7 @@ Rectangle {
                     depth: depth,
                     file: fileObj,
                     status: fileObj.status || "M",
+                    isStaged: fileObj.isStaged || false,
                     additions: fileObj.additions || 0,
                     deletions: fileObj.deletions || 0
                 });
@@ -380,7 +404,33 @@ Rectangle {
         if (!file || !root.selectedCommit || !root.sessionVm) return;
         var repoPath = root.sessionVm.activeRepoPath;
         if (root.sessionVm.commitDiffViewer) {
-            root.sessionVm.commitDiffViewer.loadCommitFileDiff(repoPath, root.selectedCommit.sha, file.path);
+            if (root.selectedCommit.sha === "WIP") {
+                root.sessionVm.commitDiffViewer.loadDiff(repoPath, file.path, file.isStaged ? "staged" : "unstaged");
+            } else {
+                root.sessionVm.commitDiffViewer.loadCommitFileDiff(repoPath, root.selectedCommit.sha, file.path);
+            }
+        }
+    }
+
+    function createWipCommit() {
+        if (!root.sessionVm || !root.sessionVm.commitBox) return;
+        var summary = wipSummaryField.text.trim();
+        if (!summary) return;
+        var fullMsg = summary;
+        if (wipDescriptionField.text.trim().length > 0) {
+            fullMsg += "\n\n" + wipDescriptionField.text.trim();
+        }
+
+        // Auto-stage all if nothing is in staging
+        if (root.sessionVm.workingTree && root.sessionVm.workingTree.stagedCount === 0) {
+            root.sessionVm.workingTree.stageAll(root.sessionVm.activeRepoPath);
+        }
+
+        root.sessionVm.commitBox.setCommitMessage(fullMsg);
+        var ok = root.sessionVm.commitBox.executeCommit(root.sessionVm.activeRepoPath);
+        if (ok) {
+            wipSummaryField.text = "";
+            wipDescriptionField.text = "";
         }
     }
 
@@ -705,9 +755,29 @@ Rectangle {
                                     }
                                 }
 
+                                // 0. WIP Node: Dashed Amber Ring (20x20)
+                                Rectangle {
+                                    visible: commitRow.sha === "WIP"
+                                    x: (14 + (commitRow.graphLane !== undefined ? commitRow.graphLane : 0) * 22) - 10
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 20
+                                    height: 20
+                                    radius: 10
+                                    color: "#78350F"
+                                    border.color: "#F59E0B"
+                                    border.width: 2
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "✎"
+                                        color: "#FEF3C7"
+                                        font.pixelSize: 10
+                                        font.bold: true
+                                    }
+                                }
+
                                 // 1. Standard Commit Node: Circular Avatar or Initials (22x22)
                                 Rectangle {
-                                    visible: !commitRow.isMerge
+                                    visible: !commitRow.isMerge && commitRow.sha !== "WIP"
                                     x: (14 + (commitRow.graphLane !== undefined ? commitRow.graphLane : 0) * 22) - 11
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: 22
@@ -739,7 +809,7 @@ Rectangle {
 
                                 // 2. Merge Commit Node: Small Dot (10x10) in lane color
                                 Rectangle {
-                                    visible: commitRow.isMerge === true
+                                    visible: commitRow.isMerge === true && commitRow.sha !== "WIP"
                                     x: (14 + (commitRow.graphLane !== undefined ? commitRow.graphLane : 0) * 22) - 5
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: 10
@@ -765,7 +835,9 @@ Rectangle {
                                     anchors.rightMargin: 8
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: commitRow.subject || "(Nessun messaggio)"
-                                    color: commitRow.isSelected ? "#FFFFFF" : "#E2E8F0"
+                                    color: (commitRow.sha === "WIP") ? "#F59E0B" : (commitRow.isSelected ? "#FFFFFF" : "#E2E8F0")
+                                    font.bold: (commitRow.sha === "WIP") || commitRow.isSelected
+                                    font.italic: (commitRow.sha === "WIP")
                                     font.pixelSize: 12
                                     elide: Text.ElideRight
                                 }
@@ -783,8 +855,8 @@ Rectangle {
                                     anchors.right: parent.right
                                     anchors.leftMargin: 8
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: commitRow.authorName || ""
-                                    color: "#94A3B8"
+                                    text: (commitRow.sha === "WIP") ? "Modifiche locali" : (commitRow.authorName || "")
+                                    color: (commitRow.sha === "WIP") ? "#F59E0B" : "#94A3B8"
                                     font.pixelSize: 11
                                     elide: Text.ElideRight
                                 }
@@ -802,7 +874,7 @@ Rectangle {
                                     anchors.right: parent.right
                                     anchors.leftMargin: 8
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: commitRow.authorDateFormatted || commitRow.authorDate || ""
+                                    text: (commitRow.sha === "WIP") ? "Adesso" : (commitRow.authorDateFormatted || commitRow.authorDate || "")
                                     color: "#94A3B8"
                                     font.pixelSize: 11
                                     elide: Text.ElideRight
@@ -908,137 +980,172 @@ Rectangle {
                 spacing: 12
                 visible: root.selectedCommit !== null
 
-                // Top bar: commit sha & AI button
-                RowLayout {
+                // Commit info when NOT WIP
+                ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: 8
+                    spacing: 12
+                    visible: !root.isWipSelected
 
-                    Text {
-                        text: "commit: "
-                        color: "#8B949E"
-                        font.pixelSize: 12
+                    // Top bar: commit sha
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Text {
+                            text: "commit: "
+                            color: "#8B949E"
+                            font.pixelSize: 12
+                        }
+                        Text {
+                            text: root.selectedCommit ? root.selectedCommit.shortSha : ""
+                            color: "#E2E8F0"
+                            font.family: "monospace"
+                            font.pixelSize: 12
+                            font.bold: true
+                        }
                     }
+
+                    // Commit Message (large bold title)
                     Text {
-                        text: root.selectedCommit ? root.selectedCommit.shortSha : ""
-                        color: "#E2E8F0"
-                        font.family: "monospace"
-                        font.pixelSize: 12
+                        text: root.selectedCommit ? root.selectedCommit.subject : ""
+                        color: "#FFFFFF"
+                        font.pixelSize: 14
                         font.bold: true
+                        wrapMode: Text.Wrap
+                        Layout.fillWidth: true
+                        maximumLineCount: 3
+                        elide: Text.ElideRight
                     }
 
-                    Item { Layout.fillWidth: true }
+                    // Extended body (if present)
+                    Text {
+                        visible: root.selectedCommit && root.selectedCommit.body && root.selectedCommit.body.length > 0
+                        text: (root.selectedCommit && root.selectedCommit.body) ? root.selectedCommit.body : ""
+                        color: "#94A3B8"
+                        font.pixelSize: 11
+                        wrapMode: Text.Wrap
+                        Layout.fillWidth: true
+                        maximumLineCount: 3
+                        elide: Text.ElideRight
+                    }
+
+                    // Author Card (matching GitKraken author card with square rounded avatar)
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 52
+                        radius: 6
+                        color: "#0D1117"
+                        border.color: "#21262D"
+                        border.width: 1
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            spacing: 10
+
+                            // Square Author Avatar
+                            Rectangle {
+                                width: 36
+                                height: 36
+                                radius: 6
+                                color: root.selectedCommit ? (root.selectedCommit.authorColor || "#6366F1") : "#6366F1"
+                                clip: true
+
+                                Image {
+                                    id: cardAvatarImg
+                                    anchors.fill: parent
+                                    source: root.selectedCommit ? (root.selectedCommit.authorAvatarUrl || "") : ""
+                                    fillMode: Image.PreserveAspectCrop
+                                    smooth: true
+                                    mipmap: true
+                                }
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: root.selectedCommit ? (root.selectedCommit.authorInitials || "??") : "??"
+                                    color: "#FFFFFF"
+                                    font.pixelSize: 12
+                                    font.bold: true
+                                    visible: cardAvatarImg.status !== Image.Ready
+                                }
+                            }
+
+                            // Author Name & Date & Committer
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 2
+                                Text {
+                                    text: root.selectedCommit ? root.selectedCommit.authorName : ""
+                                    color: "#FFFFFF"
+                                    font.bold: true
+                                    font.pixelSize: 13
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    text: {
+                                        if (!root.selectedCommit) return "";
+                                        var txt = "authored " + (root.selectedCommit.authorDateFormatted || root.selectedCommit.authorDate || "");
+                                        if (root.selectedCommit.committerName && root.selectedCommit.committerName !== root.selectedCommit.authorName) {
+                                            txt += " • committed by " + root.selectedCommit.committerName;
+                                        }
+                                        return txt;
+                                    }
+                                    color: "#8B949E"
+                                    font.pixelSize: 11
+                                    elide: Text.ElideRight
+                                }
+                            }
+
+                            // Parent Short SHA
+                            RowLayout {
+                                spacing: 4
+                                Text {
+                                    text: "parent:"
+                                    color: "#8B949E"
+                                    font.pixelSize: 11
+                                }
+                                Text {
+                                    text: {
+                                        if (!root.selectedCommit || !root.selectedCommit.parents || root.selectedCommit.parents.length === 0) return "--";
+                                        var p = root.selectedCommit.parents[0];
+                                        return p.length > 7 ? p.substring(0, 7) : p;
+                                    }
+                                    color: "#38BDF8"
+                                    font.family: "monospace"
+                                    font.pixelSize: 11
+                                }
+                            }
+                        }
+                    }
                 }
 
-                // Commit Message (large bold title)
-                Text {
-                    text: root.selectedCommit ? root.selectedCommit.subject : ""
-                    color: "#FFFFFF"
-                    font.pixelSize: 14
-                    font.bold: true
-                    wrapMode: Text.Wrap
+                // WIP Header Info when WIP IS SELECTED
+                ColumnLayout {
                     Layout.fillWidth: true
-                    maximumLineCount: 3
-                    elide: Text.ElideRight
-                }
-
-                // Extended body (if present)
-                Text {
-                    visible: root.selectedCommit && root.selectedCommit.body && root.selectedCommit.body.length > 0
-                    text: (root.selectedCommit && root.selectedCommit.body) ? root.selectedCommit.body : ""
-                    color: "#94A3B8"
-                    font.pixelSize: 11
-                    wrapMode: Text.Wrap
-                    Layout.fillWidth: true
-                    maximumLineCount: 3
-                    elide: Text.ElideRight
-                }
-
-                // Author Card (matching GitKraken author card with square rounded avatar)
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 52
-                    radius: 6
-                    color: "#0D1117"
-                    border.color: "#21262D"
-                    border.width: 1
+                    spacing: 6
+                    visible: root.isWipSelected
 
                     RowLayout {
-                        anchors.fill: parent
-                        anchors.margins: 8
-                        spacing: 10
-
-                        // Square Author Avatar
+                        spacing: 8
                         Rectangle {
-                            width: 36
-                            height: 36
-                            radius: 6
-                            color: root.selectedCommit ? (root.selectedCommit.authorColor || "#6366F1") : "#6366F1"
-                            clip: true
-
-                            Image {
-                                id: cardAvatarImg
-                                anchors.fill: parent
-                                source: root.selectedCommit ? (root.selectedCommit.authorAvatarUrl || "") : ""
-                                fillMode: Image.PreserveAspectCrop
-                                smooth: true
-                                mipmap: true
-                            }
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: root.selectedCommit ? (root.selectedCommit.authorInitials || "??") : "??"
-                                color: "#FFFFFF"
-                                font.pixelSize: 12
-                                font.bold: true
-                                visible: cardAvatarImg.status !== Image.Ready
-                            }
+                            width: 10
+                            height: 10
+                            radius: 5
+                            color: "#F59E0B"
                         }
-
-                        // Author Name & Date & Committer
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 2
-                            Text {
-                                text: root.selectedCommit ? root.selectedCommit.authorName : ""
-                                color: "#FFFFFF"
-                                font.bold: true
-                                font.pixelSize: 13
-                                elide: Text.ElideRight
-                            }
-                            Text {
-                                text: {
-                                    if (!root.selectedCommit) return "";
-                                    var txt = "authored " + (root.selectedCommit.authorDateFormatted || root.selectedCommit.authorDate || "");
-                                    if (root.selectedCommit.committerName && root.selectedCommit.committerName !== root.selectedCommit.authorName) {
-                                        txt += " • committed by " + root.selectedCommit.committerName;
-                                    }
-                                    return txt;
-                                }
-                                color: "#8B949E"
-                                font.pixelSize: 11
-                                elide: Text.ElideRight
-                            }
+                        Text {
+                            text: "// WIP (Work In Progress)"
+                            color: "#F59E0B"
+                            font.bold: true
+                            font.pixelSize: 15
                         }
+                    }
 
-                        // Parent Short SHA
-                        RowLayout {
-                            spacing: 4
-                            Text {
-                                text: "parent:"
-                                color: "#8B949E"
-                                font.pixelSize: 11
-                            }
-                            Text {
-                                text: {
-                                    if (!root.selectedCommit || !root.selectedCommit.parents || root.selectedCommit.parents.length === 0) return "--";
-                                    var p = root.selectedCommit.parents[0];
-                                    return p.length > 7 ? p.substring(0, 7) : p;
-                                }
-                                color: "#38BDF8"
-                                font.family: "monospace"
-                                font.pixelSize: 11
-                            }
-                        }
+                    Text {
+                        text: "Modifiche locali non committate nell'area di lavoro (Working Directory). Metti in staging i file e crea il commit qui sotto."
+                        color: "#94A3B8"
+                        font.pixelSize: 11
+                        Layout.fillWidth: true
                     }
                 }
 
@@ -1284,6 +1391,70 @@ Rectangle {
 
                     Item { Layout.fillWidth: true }
 
+                    // WIP Action: Stage All
+                    Rectangle {
+                        visible: root.isWipSelected && (root.sessionVm && root.sessionVm.workingTree && (root.sessionVm.workingTree.unstagedCount > 0 || root.sessionVm.workingTree.untrackedCount > 0))
+                        Layout.preferredHeight: 24
+                        implicitWidth: stageAllText.implicitWidth + 14
+                        radius: 4
+                        color: stageAllMouse.containsMouse ? "#047857" : "#065F46"
+                        border.color: "#10B981"
+                        border.width: 1
+
+                        Text {
+                            id: stageAllText
+                            anchors.centerIn: parent
+                            text: "+ Stage All"
+                            color: "#FFFFFF"
+                            font.pixelSize: 10
+                            font.bold: true
+                        }
+
+                        MouseArea {
+                            id: stageAllMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (root.sessionVm && root.sessionVm.workingTree) {
+                                    root.sessionVm.workingTree.stageAll(root.sessionVm.activeRepoPath);
+                                }
+                            }
+                        }
+                    }
+
+                    // WIP Action: Unstage All
+                    Rectangle {
+                        visible: root.isWipSelected && (root.sessionVm && root.sessionVm.workingTree && root.sessionVm.workingTree.stagedCount > 0)
+                        Layout.preferredHeight: 24
+                        implicitWidth: unstageAllText.implicitWidth + 14
+                        radius: 4
+                        color: unstageAllMouse.containsMouse ? "#374151" : "#1F2937"
+                        border.color: "#4B5563"
+                        border.width: 1
+
+                        Text {
+                            id: unstageAllText
+                            anchors.centerIn: parent
+                            text: "- Unstage All"
+                            color: "#94A3B8"
+                            font.pixelSize: 10
+                            font.bold: true
+                        }
+
+                        MouseArea {
+                            id: unstageAllMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (root.sessionVm && root.sessionVm.workingTree) {
+                                    root.sessionVm.workingTree.unstageAll(root.sessionVm.activeRepoPath);
+                                }
+                            }
+                        }
+                    }
+
                     // Tree mode only: Expand/Collapse All toggle
                     Rectangle {
                         visible: root.fileViewMode === "tree" && root.treeItems.length > 0
@@ -1436,6 +1607,93 @@ Rectangle {
                                         visible: (modelData.deletions || 0) > 0
                                     }
                                 }
+
+                                // WIP Staging controls per file
+                                RowLayout {
+                                    visible: root.isWipSelected
+                                    spacing: 4
+
+                                    // Unstage button (-)
+                                    Rectangle {
+                                        visible: modelData.isStaged === true
+                                        width: 20
+                                        height: 20
+                                        radius: 3
+                                        color: unstageBtnMouse.containsMouse ? "#EF4444" : "#374151"
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "-"
+                                            color: "#FFFFFF"
+                                            font.bold: true
+                                            font.pixelSize: 13
+                                        }
+                                        MouseArea {
+                                            id: unstageBtnMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (root.sessionVm && root.sessionVm.workingTree) {
+                                                    root.sessionVm.workingTree.unstageFile(root.sessionVm.activeRepoPath, modelData.path);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Stage button (+)
+                                    Rectangle {
+                                        visible: modelData.isStaged !== true
+                                        width: 20
+                                        height: 20
+                                        radius: 3
+                                        color: stageBtnMouse.containsMouse ? "#059669" : "#065F46"
+                                        border.color: "#10B981"
+                                        border.width: 1
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "+"
+                                            color: "#FFFFFF"
+                                            font.bold: true
+                                            font.pixelSize: 13
+                                        }
+                                        MouseArea {
+                                            id: stageBtnMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (root.sessionVm && root.sessionVm.workingTree) {
+                                                    root.sessionVm.workingTree.stageFile(root.sessionVm.activeRepoPath, modelData.path);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Discard button (trash)
+                                    Rectangle {
+                                        visible: modelData.isStaged !== true
+                                        width: 20
+                                        height: 20
+                                        radius: 3
+                                        color: discardBtnMouse.containsMouse ? "#7F1D1D" : "transparent"
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "🗑️"
+                                            font.pixelSize: 10
+                                        }
+                                        MouseArea {
+                                            id: discardBtnMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (root.sessionVm && root.sessionVm.workingTree) {
+                                                    root.sessionVm.workingTree.discardFile(root.sessionVm.activeRepoPath, modelData.path);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
 
                             MouseArea {
@@ -1577,6 +1835,93 @@ Rectangle {
                                         visible: (modelData.deletions || 0) > 0
                                     }
                                 }
+
+                                // WIP Staging controls per file in Tree View
+                                RowLayout {
+                                    visible: !isFolder && root.isWipSelected
+                                    spacing: 4
+
+                                    // Unstage button (-)
+                                    Rectangle {
+                                        visible: modelData.isStaged === true
+                                        width: 20
+                                        height: 20
+                                        radius: 3
+                                        color: treeUnstageBtnMouse.containsMouse ? "#EF4444" : "#374151"
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "-"
+                                            color: "#FFFFFF"
+                                            font.bold: true
+                                            font.pixelSize: 13
+                                        }
+                                        MouseArea {
+                                            id: treeUnstageBtnMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (root.sessionVm && root.sessionVm.workingTree) {
+                                                    root.sessionVm.workingTree.unstageFile(root.sessionVm.activeRepoPath, modelData.path);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Stage button (+)
+                                    Rectangle {
+                                        visible: modelData.isStaged !== true
+                                        width: 20
+                                        height: 20
+                                        radius: 3
+                                        color: treeStageBtnMouse.containsMouse ? "#059669" : "#065F46"
+                                        border.color: "#10B981"
+                                        border.width: 1
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "+"
+                                            color: "#FFFFFF"
+                                            font.bold: true
+                                            font.pixelSize: 13
+                                        }
+                                        MouseArea {
+                                            id: treeStageBtnMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (root.sessionVm && root.sessionVm.workingTree) {
+                                                    root.sessionVm.workingTree.stageFile(root.sessionVm.activeRepoPath, modelData.path);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Discard button (trash)
+                                    Rectangle {
+                                        visible: modelData.isStaged !== true
+                                        width: 20
+                                        height: 20
+                                        radius: 3
+                                        color: treeDiscardBtnMouse.containsMouse ? "#7F1D1D" : "transparent"
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "🗑️"
+                                            font.pixelSize: 10
+                                        }
+                                        MouseArea {
+                                            id: treeDiscardBtnMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (root.sessionVm && root.sessionVm.workingTree) {
+                                                    root.sessionVm.workingTree.discardFile(root.sessionVm.activeRepoPath, modelData.path);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
 
                             MouseArea {
@@ -1605,6 +1950,99 @@ Rectangle {
                     horizontalAlignment: Text.AlignHCenter
                     Layout.alignment: Qt.AlignHCenter
                     Layout.topMargin: 20
+                }
+
+                // ==========================================
+                // WIP COMMIT CREATION BOX (At bottom when WIP is selected)
+                // ==========================================
+                Rectangle {
+                    visible: root.isWipSelected
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: commitBoxCol.implicitHeight + 16
+                    radius: 6
+                    color: "#0D1117"
+                    border.color: "#30363D"
+                    border.width: 1
+
+                    ColumnLayout {
+                        id: commitBoxCol
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        spacing: 6
+
+                        // Commit Title / Summary
+                        TextField {
+                            id: wipSummaryField
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 30
+                            placeholderText: "Riepilogo commit (es: feat: nuova funzionalità)"
+                            placeholderTextColor: "#64748B"
+                            color: "#FFFFFF"
+                            font.pixelSize: 11
+                            background: Rectangle {
+                                color: "#161B22"
+                                radius: 4
+                                border.color: wipSummaryField.activeFocus ? "#38BDF8" : "#30363D"
+                            }
+                        }
+
+                        // Commit Description (multiline optional)
+                        TextArea {
+                            id: wipDescriptionField
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 46
+                            placeholderText: "Descrizione dettagliata (opzionale)..."
+                            placeholderTextColor: "#64748B"
+                            color: "#E2E8F0"
+                            font.pixelSize: 10
+                            wrapMode: Text.Wrap
+                            background: Rectangle {
+                                color: "#161B22"
+                                radius: 4
+                                border.color: wipDescriptionField.activeFocus ? "#38BDF8" : "#30363D"
+                            }
+                        }
+
+                        // Commit Action Button
+                        Button {
+                            id: wipCommitButton
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 32
+                            enabled: wipSummaryField.text.trim().length > 0 && root.totalFilesCount > 0
+
+                            background: Rectangle {
+                                color: !wipCommitButton.enabled ? "#1E293B" : (wipCommitButton.hovered ? "#059669" : "#10B981")
+                                radius: 4
+                            }
+
+                            contentItem: RowLayout {
+                                anchors.centerIn: parent
+                                spacing: 6
+                                Text {
+                                    text: "✓"
+                                    color: wipCommitButton.enabled ? "#FFFFFF" : "#64748B"
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                }
+                                Text {
+                                    text: {
+                                        var staged = (root.sessionVm && root.sessionVm.workingTree) ? root.sessionVm.workingTree.stagedCount : 0;
+                                        if (staged > 0) {
+                                            return "Crea commit (" + staged + " file in staging)";
+                                        }
+                                        return "Metti in staging e crea commit (" + root.totalFilesCount + " file)";
+                                    }
+                                    color: wipCommitButton.enabled ? "#FFFFFF" : "#64748B"
+                                    font.bold: true
+                                    font.pixelSize: 11
+                                }
+                            }
+
+                            onClicked: {
+                                root.createWipCommit();
+                            }
+                        }
+                    }
                 }
             }
         }

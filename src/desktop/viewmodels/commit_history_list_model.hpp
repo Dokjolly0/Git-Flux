@@ -39,7 +39,8 @@ public:
         GraphLaneRole,
         GraphColorRole,
         GraphRoutesRole,
-        IsMergeRole
+        IsMergeRole,
+        IsWipRole
     };
 
     explicit CommitHistoryListModel(QObject* parent = nullptr);
@@ -50,6 +51,8 @@ public:
     [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
 
     void setCommits(std::vector<git::bo::GitCommitLogItem> commits);
+    void setWip(bool hasWip, int changedFilesCount = 0);
+    [[nodiscard]] bool hasWip() const noexcept { return m_hasWip; }
     [[nodiscard]] const std::vector<git::bo::GitCommitLogItem>& commits() const noexcept { return m_commits; }
 
     [[nodiscard]] int maxLanes() const noexcept { return m_maxLanes; }
@@ -65,10 +68,14 @@ private:
         QVariantList routes;
     };
 
+    void applyWipAndRebuild();
     void rebuildGraph();
 
+    std::vector<git::bo::GitCommitLogItem> m_rawCommits;
     std::vector<git::bo::GitCommitLogItem> m_commits;
     std::vector<GraphItem> m_graphItems;
+    bool m_hasWip = false;
+    int m_wipCount = 0;
     int m_maxLanes = 1;
 };
 

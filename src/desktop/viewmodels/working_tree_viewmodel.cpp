@@ -114,4 +114,76 @@ bool WorkingTreeViewModel::discardFile(const QString& repoPath, const QString& f
     return refresh(repoPath);
 }
 
+QVariantList WorkingTreeViewModel::getStagedFiles() const {
+    QVariantList list;
+    const auto& items = m_stagedModel.items();
+    list.reserve(static_cast<qsizetype>(items.size()));
+    for (const auto& item : items) {
+        QVariantMap map;
+        map[QStringLiteral("path")] = QString::fromStdString(item.path);
+        map[QStringLiteral("oldPath")] = QString::fromStdString(item.originalPath);
+        QString statusChar;
+        switch (item.kind) {
+        case git::bo::FileChangeKind::Added:
+        case git::bo::FileChangeKind::Untracked:
+            statusChar = QStringLiteral("A");
+            break;
+        case git::bo::FileChangeKind::Deleted:
+            statusChar = QStringLiteral("D");
+            break;
+        case git::bo::FileChangeKind::Renamed:
+        case git::bo::FileChangeKind::Copied:
+            statusChar = QStringLiteral("R");
+            break;
+        default:
+            statusChar = QStringLiteral("M");
+            break;
+        }
+        map[QStringLiteral("status")] = statusChar;
+        map[QStringLiteral("kind")] = QString::fromLatin1(git::bo::fileChangeKindToString(item.kind).data());
+        map[QStringLiteral("isStaged")] = true;
+        map[QStringLiteral("additions")] = 0;
+        map[QStringLiteral("deletions")] = 0;
+        list.append(map);
+    }
+    return list;
+}
+
+QVariantList WorkingTreeViewModel::getUnstagedFiles() const {
+    QVariantList list;
+    auto appendItems = [&list](const std::vector<git::bo::WorkingTreeFileItem>& items, bool isUntracked) {
+        for (const auto& item : items) {
+            QVariantMap map;
+            map[QStringLiteral("path")] = QString::fromStdString(item.path);
+            map[QStringLiteral("oldPath")] = QString::fromStdString(item.originalPath);
+            QString statusChar;
+            if (isUntracked || item.kind == git::bo::FileChangeKind::Added || item.kind == git::bo::FileChangeKind::Untracked) {
+                statusChar = QStringLiteral("A");
+            } else if (item.kind == git::bo::FileChangeKind::Deleted) {
+                statusChar = QStringLiteral("D");
+            } else if (item.kind == git::bo::FileChangeKind::Renamed || item.kind == git::bo::FileChangeKind::Copied) {
+                statusChar = QStringLiteral("R");
+            } else {
+                statusChar = QStringLiteral("M");
+            }
+            map[QStringLiteral("status")] = statusChar;
+            map[QStringLiteral("kind")] = QString::fromLatin1(git::bo::fileChangeKindToString(item.kind).data());
+            map[QStringLiteral("isStaged")] = false;
+            map[QStringLiteral("additions")] = 0;
+            map[QStringLiteral("deletions")] = 0;
+            list.append(map);
+        }
+    };
+    appendItems(m_unstagedModel.items(), false);
+    appendItems(m_untrackedModel.items(), true);
+    appendItems(m_conflictedModel.items(), false);
+    return list;
+}
+
+QVariantList WorkingTreeViewModel::getAllWorkingFiles() const {
+    QVariantList list = getStagedFiles();
+    list.append(getUnstagedFiles());
+    return list;
+}
+
 } // namespace gf::desktop

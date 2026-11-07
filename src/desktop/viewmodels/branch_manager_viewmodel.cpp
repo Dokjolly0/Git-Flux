@@ -333,16 +333,21 @@ bool BranchManagerViewModel::fetchRemote(const QString& remoteName) {
     return true;
 }
 
+void BranchManagerViewModel::setWipStatus(bool hasWip, int changedFilesCount) {
+    m_commitHistoryModel.setWip(hasWip, changedFilesCount);
+}
+
 bool BranchManagerViewModel::pullRemote(const QString& remoteName) {
     if (m_repoPath.empty()) {
         return false;
     }
 
     setBusy(true);
-    setStatusMessage(QStringLiteral("Pull da %1...").arg(remoteName));
+    setStatusMessage(QStringLiteral("Pull da %1 in corso...").arg(remoteName));
 
     git::bo::RemoteOperationOptions opts{
-        .remoteName = remoteName.toStdString()
+        .remoteName = remoteName.toStdString(),
+        .branchName = m_currentBranch.isEmpty() ? std::nullopt : std::make_optional(m_currentBranch.toStdString())
     };
 
     auto res = m_remoteMergeService.pullRemote(m_repoPath, opts);
@@ -354,9 +359,9 @@ bool BranchManagerViewModel::pullRemote(const QString& remoteName) {
         return false;
     }
 
-    setStatusMessage(QStringLiteral("Pull da %1 completato").arg(remoteName));
+    setStatusMessage(QStringLiteral("Pull da %1 completato con successo").arg(remoteName));
     refresh();
-    emit operationCompleted(true, QStringLiteral("Pull completato"));
+    emit operationCompleted(true, QStringLiteral("Pull da %1 completato con successo").arg(remoteName));
     return true;
 }
 
@@ -366,14 +371,23 @@ bool BranchManagerViewModel::pushRemote(const QString& remoteName, bool setUpstr
     }
 
     setBusy(true);
-    setStatusMessage(QStringLiteral("Push verso %1...").arg(remoteName));
+    setStatusMessage(QStringLiteral("Push verso %1 in corso...").arg(remoteName));
 
     git::bo::RemoteOperationOptions opts{
         .remoteName = remoteName.toStdString(),
+        .branchName = m_currentBranch.isEmpty() ? std::nullopt : std::make_optional(m_currentBranch.toStdString()),
         .setUpstream = setUpstream
     };
 
     auto res = m_remoteMergeService.pushRemote(m_repoPath, opts);
+
+    // Auto-retry with setUpstream if branch has no remote tracking branch
+    if (!res && !setUpstream && (res.error().message.find("no upstream branch") != std::string::npos ||
+                                 res.error().message.find("set-upstream") != std::string::npos)) {
+        opts.setUpstream = true;
+        res = m_remoteMergeService.pushRemote(m_repoPath, opts);
+    }
+
     setBusy(false);
 
     if (!res) {
@@ -382,9 +396,9 @@ bool BranchManagerViewModel::pushRemote(const QString& remoteName, bool setUpstr
         return false;
     }
 
-    setStatusMessage(QStringLiteral("Push verso %1 completato").arg(remoteName));
+    setStatusMessage(QStringLiteral("Push verso %1 completato con successo").arg(remoteName));
     refresh();
-    emit operationCompleted(true, QStringLiteral("Push completato"));
+    emit operationCompleted(true, QStringLiteral("Push verso %1 completato con successo").arg(remoteName));
     return true;
 }
 

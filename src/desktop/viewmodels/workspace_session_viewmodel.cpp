@@ -34,6 +34,13 @@ WorkspaceSessionViewModel::WorkspaceSessionViewModel(repositories::bl::Repositor
     connect(&m_commitBox, &CommitBoxViewModel::commitSucceeded,
             this, &WorkspaceSessionViewModel::onCommitSucceeded);
 
+    connect(&m_workingTree, &WorkingTreeViewModel::statusChanged,
+            this, [this]() {
+                bool hasWip = !m_workingTree.isClean();
+                int count = m_workingTree.stagedCount() + m_workingTree.unstagedCount() + m_workingTree.untrackedCount();
+                m_branchManager.setWipStatus(hasWip, count);
+            });
+
     connect(&m_branchManager, &BranchManagerViewModel::branchSwitched,
             this, [this](const QString&) { refreshActiveTab(); });
 
@@ -253,6 +260,9 @@ void WorkspaceSessionViewModel::refreshActiveTab() {
     }
 
     m_workingTree.refresh(path);
+    bool hasWip = !m_workingTree.isClean();
+    int count = m_workingTree.stagedCount() + m_workingTree.unstagedCount() + m_workingTree.untrackedCount();
+    m_branchManager.setWipStatus(hasWip, count);
     m_diffViewer.clear();
     m_commitDiffViewer.clear();
     m_branchManager.setRepositoryPath(path);
@@ -391,6 +401,9 @@ void WorkspaceSessionViewModel::onFsDebouncedBatch(const gf::git::bo::FsDebounce
         if (std::filesystem::path(currentActive.toStdString()) == batch.repositoryPath) {
             if (batch.requiresWorkingTreeRefresh()) {
                 m_workingTree.refresh(currentActive);
+                bool hasWip = !m_workingTree.isClean();
+                int count = m_workingTree.stagedCount() + m_workingTree.unstagedCount() + m_workingTree.untrackedCount();
+                m_branchManager.setWipStatus(hasWip, count);
                 checkRebaseStatus();
             }
             if (batch.requiresBranchRefresh()) {

@@ -7,7 +7,6 @@ Rectangle {
     color: "#0E1117"
 
     property var sessionVm: null
-    property string activeViewMode: "history" // Default to history (GitKraken-grade commit view)
 
     signal returnToHomeRequested()
     signal quickOpenRequested()
@@ -290,7 +289,8 @@ Rectangle {
                 }
 
                 Button {
-                    text: "⬇ Pull"
+                    text: (root.sessionVm && root.sessionVm.branchManager && root.sessionVm.branchManager.isBusy) ? "⏳ Pull..." : "⬇ Pull"
+                    enabled: !(root.sessionVm && root.sessionVm.branchManager && root.sessionVm.branchManager.isBusy)
                     Layout.preferredHeight: 32
                     background: Rectangle {
                         color: parent.hovered ? "#1E293B" : "transparent"
@@ -298,7 +298,7 @@ Rectangle {
                     }
                     contentItem: Text {
                         text: parent.text
-                        color: "#94A3B8"
+                        color: parent.enabled ? "#94A3B8" : "#475569"
                         font.pixelSize: 11
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
@@ -311,7 +311,8 @@ Rectangle {
                 }
 
                 Button {
-                    text: "⬆ Push"
+                    text: (root.sessionVm && root.sessionVm.branchManager && root.sessionVm.branchManager.isBusy) ? "⏳ Push..." : "⬆ Push"
+                    enabled: !(root.sessionVm && root.sessionVm.branchManager && root.sessionVm.branchManager.isBusy)
                     Layout.preferredHeight: 32
                     background: Rectangle {
                         color: parent.hovered ? "#1E293B" : "transparent"
@@ -319,7 +320,7 @@ Rectangle {
                     }
                     contentItem: Text {
                         text: parent.text
-                        color: "#94A3B8"
+                        color: parent.enabled ? "#94A3B8" : "#475569"
                         font.pixelSize: 11
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
@@ -376,72 +377,6 @@ Rectangle {
                     }
                 }
 
-                // Separator
-                Rectangle {
-                    Layout.preferredWidth: 1
-                    Layout.preferredHeight: 22
-                    color: "#334155"
-                }
-
-                // View Toggle: "History" vs "Changes"
-                RowLayout {
-                    spacing: 4
-
-                    Button {
-                        Layout.preferredHeight: 30
-                        checkable: true
-                        checked: root.activeViewMode === "history"
-                        background: Rectangle {
-                            color: root.activeViewMode === "history" ? "#2563EB" : (parent.hovered ? "#1E293B" : "#161B22")
-                            radius: 6
-                            border.color: root.activeViewMode === "history" ? "#3B82F6" : "#334155"
-                            border.width: 1
-                        }
-                        contentItem: RowLayout {
-                            spacing: 5
-                            Text { text: "📜"; font.pixelSize: 11 }
-                            Text {
-                                text: "Cronologia"
-                                color: root.activeViewMode === "history" ? "#FFFFFF" : "#94A3B8"
-                                font.bold: root.activeViewMode === "history"
-                                font.pixelSize: 11
-                            }
-                        }
-                        onClicked: root.activeViewMode = "history"
-                    }
-
-                    Button {
-                        Layout.preferredHeight: 30
-                        checkable: true
-                        checked: root.activeViewMode === "changes"
-                        background: Rectangle {
-                            color: root.activeViewMode === "changes" ? "#2563EB" : (parent.hovered ? "#1E293B" : "#161B22")
-                            radius: 6
-                            border.color: root.activeViewMode === "changes" ? "#3B82F6" : "#334155"
-                            border.width: 1
-                        }
-                        contentItem: RowLayout {
-                            spacing: 5
-                            Text { text: "📝"; font.pixelSize: 11 }
-                            Text {
-                                text: "Modifiche"
-                                color: root.activeViewMode === "changes" ? "#FFFFFF" : "#94A3B8"
-                                font.bold: root.activeViewMode === "changes"
-                                font.pixelSize: 11
-                            }
-                            // Dirty badge if there are uncommitted working tree changes
-                            Rectangle {
-                                width: 8
-                                height: 8
-                                radius: 4
-                                color: "#F59E0B"
-                                visible: root.sessionVm && root.sessionVm.workingTree && !root.sessionVm.workingTree.isClean
-                            }
-                        }
-                        onClicked: root.activeViewMode = "changes"
-                    }
-                }
-
                 // Background Activity / Batch Runner Indicator
                 Rectangle {
                     visible: batchOperationsVm && batchOperationsVm.isRunning
@@ -476,6 +411,68 @@ Rectangle {
                         onClicked: batchProgressModal.open()
                     }
                 }
+            }
+        }
+
+        // ==========================================
+        // 1.05. OPERATION NOTIFICATION TOAST BANNER (Push, Pull, etc.)
+        // ==========================================
+        Rectangle {
+            id: notificationBanner
+            Layout.fillWidth: true
+            Layout.preferredHeight: visible ? 34 : 0
+            visible: bannerText.text !== ""
+            color: bannerIsError ? "#7F1D1D" : "#064E3B"
+            border.color: bannerIsError ? "#EF4444" : "#10B981"
+            border.width: 1
+            clip: true
+
+            property bool bannerIsError: false
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 8
+
+                Text {
+                    text: notificationBanner.bannerIsError ? "⚠" : "✓"
+                    font.pixelSize: 13
+                }
+
+                Text {
+                    id: bannerText
+                    text: ""
+                    color: "#FFFFFF"
+                    font.bold: true
+                    font.pixelSize: 11
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
+
+                Button {
+                    text: "✕"
+                    Layout.preferredWidth: 24
+                    Layout.preferredHeight: 24
+                    background: Rectangle { color: "transparent" }
+                    contentItem: Text { text: "✕"; color: "#FFFFFF"; font.bold: true; horizontalAlignment: Text.AlignHCenter }
+                    onClicked: bannerText.text = ""
+                }
+            }
+
+            Timer {
+                id: bannerTimer
+                interval: 6000
+                onTriggered: bannerText.text = ""
+            }
+        }
+
+        Connections {
+            target: (root.sessionVm && root.sessionVm.branchManager) ? root.sessionVm.branchManager : null
+            function onOperationCompleted(success, message) {
+                notificationBanner.bannerIsError = !success;
+                bannerText.text = message;
+                bannerTimer.restart();
             }
         }
 
@@ -571,56 +568,12 @@ Rectangle {
         }
 
         // ==========================================
-        // 2. SESSION BODY (Changes vs History)
+        // 2. MAIN REPOSITORY VIEW (Unified GitKraken Graph + WIP + Details)
         // ==========================================
-        StackLayout {
+        CommitHistoryPanel {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            currentIndex: root.activeViewMode === "changes" ? 0 : 1
-
-            // View 0: Changes (Working Tree + Commit Box + Diff Viewer)
-            SplitView {
-                orientation: Qt.Horizontal
-
-                SplitView {
-                    SplitView.preferredWidth: 380
-                    SplitView.minimumWidth: 280
-                    SplitView.maximumWidth: 600
-                    orientation: Qt.Vertical
-
-                    WorkingTreePanel {
-                        SplitView.fillHeight: true
-                        SplitView.minimumHeight: 200
-                        sessionVm: root.sessionVm
-                        onViewHistoryRequested: {
-                            root.activeViewMode = "history";
-                        }
-                        onConflictResolveRequested: function(filePath) {
-                            conflictModal.open();
-                        }
-                    }
-
-                    CommitBox {
-                        SplitView.preferredHeight: 180
-                        SplitView.minimumHeight: 140
-                        SplitView.maximumHeight: 300
-                        sessionVm: root.sessionVm
-                    }
-                }
-
-                DiffViewerPanel {
-                    SplitView.fillWidth: true
-                    SplitView.minimumWidth: 400
-                    sessionVm: root.sessionVm
-                }
-            }
-
-            // View 1: History (Commit Graph / Log)
-            CommitHistoryPanel {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                sessionVm: root.sessionVm
-            }
+            sessionVm: root.sessionVm
         }
     }
 

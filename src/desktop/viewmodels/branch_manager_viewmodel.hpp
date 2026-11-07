@@ -58,6 +58,7 @@ public:
     Q_INVOKABLE bool pullRemote(const QString& remoteName = "origin");
     Q_INVOKABLE bool pushRemote(const QString& remoteName = "origin", bool setUpstream = false);
 
+    Q_INVOKABLE void setWipStatus(bool hasWip, int changedFilesCount = 0);
     Q_INVOKABLE QVariantList getCommitFiles(const QString& commitSha);
 
 signals:

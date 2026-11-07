@@ -6,6 +6,8 @@
 
 #include <QObject>
 #include <QString>
+#include <QVariantList>
+#include <QVariantMap>
 
 namespace gf::desktop {
 
@@ -60,6 +62,10 @@ public:
     Q_INVOKABLE bool unstageFile(const QString& repoPath, const QString& filePath);
     Q_INVOKABLE bool unstageAll(const QString& repoPath);
     Q_INVOKABLE bool discardFile(const QString& repoPath, const QString& filePath);
+
+    [[nodiscard]] Q_INVOKABLE QVariantList getStagedFiles() const;
+    [[nodiscard]] Q_INVOKABLE QVariantList getUnstagedFiles() const;
+    [[nodiscard]] Q_INVOKABLE QVariantList getAllWorkingFiles() const;
 
 signals:
     void statusChanged();

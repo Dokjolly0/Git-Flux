@@ -346,6 +346,8 @@ QVariant CommitHistoryListModel::data(const QModelIndex& index, int role) const 
         return (idx < m_graphItems.size()) ? m_graphItems[idx].routes : QVariantList{};
     case IsMergeRole:
         return c.parents.size() > 1;
+    case IsWipRole:
+        return c.sha == "WIP";
     default:
         return {};
     }
@@ -375,7 +377,8 @@ QHash<int, QByteArray> CommitHistoryListModel::roleNames() const {
         {GraphLaneRole, "graphLane"},
         {GraphColorRole, "graphColor"},
         {GraphRoutesRole, "graphRoutes"},
-        {IsMergeRole, "isMerge"}
+        {IsMergeRole, "isMerge"},
+        {IsWipRole, "isWip"}
     };
 }
 
@@ -421,6 +424,16 @@ QVariantMap CommitHistoryListModel::getCommit(int index) const {
         map[QStringLiteral("graphRoutes")] = m_graphItems[idx].routes;
     }
     map[QStringLiteral("isMerge")] = (c.parents.size() > 1);
+    map[QStringLiteral("isWip")] = (c.sha == "WIP");
+    if (c.sha == "WIP") {
+        QVariantMap wipDec;
+        wipDec[QStringLiteral("name")] = QStringLiteral("WIP");
+        wipDec[QStringLiteral("label")] = QStringLiteral("WIP");
+        wipDec[QStringLiteral("bgColor")] = QStringLiteral("#78350F");
+        wipDec[QStringLiteral("borderColor")] = QStringLiteral("#F59E0B");
+        wipDec[QStringLiteral("fgColor")] = QStringLiteral("#FDE68A");
+        map[QStringLiteral("structuredDecorations")] = QVariantList{wipDec};
+    }
     return map;
 }
 
@@ -470,7 +483,7 @@ void CommitHistoryListModel::rebuildGraph() {
             }
         }
 
-        QString nodeColor = laneColors[commitLane];
+        QString nodeColor = (commit.sha == "WIP") ? QStringLiteral("#F59E0B") : laneColors[commitLane];
         QVariantList routes;
 
         // 2. Pass-through routes for other active lanes
@@ -589,10 +602,43 @@ void CommitHistoryListModel::rebuildGraph() {
     emit maxLanesChanged();
 }
 
+void CommitHistoryListModel::applyWipAndRebuild() {
+    m_commits = m_rawCommits;
+    if (m_hasWip && !m_commits.empty()) {
+        git::bo::GitCommitLogItem wip;
+        wip.sha = "WIP";
+        wip.shortSha = "WIP";
+        wip.subject = QString("// WIP - %1 %2")
+            .arg(m_wipCount)
+            .arg(m_wipCount == 1 ? QStringLiteral("file modificato") : QStringLiteral("file modificati"))
+            .toStdString();
+        wip.authorName = "Modifiche locali";
+        wip.authorEmail = "";
+        wip.authorDateIso = QDateTime::currentDateTimeUtc().toString(Qt::ISODate).toStdString();
+        wip.committerName = "Modifiche locali";
+        wip.committerEmail = "";
+        wip.committerDateIso = wip.authorDateIso;
+        wip.parents = {m_commits[0].sha};
+        m_commits.insert(m_commits.begin(), std::move(wip));
+    }
+    rebuildGraph();
+}
+
 void CommitHistoryListModel::setCommits(std::vector<gf::git::bo::GitCommitLogItem> commits) {
     beginResetModel();
-    m_commits = std::move(commits);
-    rebuildGraph();
+    m_rawCommits = std::move(commits);
+    applyWipAndRebuild();
+    endResetModel();
+}
+
+void CommitHistoryListModel::setWip(bool hasWip, int changedFilesCount) {
+    if (m_hasWip == hasWip && m_wipCount == changedFilesCount) {
+        return;
+    }
+    beginResetModel();
+    m_hasWip = hasWip;
+    m_wipCount = changedFilesCount;
+    applyWipAndRebuild();
     endResetModel();
 }
 
