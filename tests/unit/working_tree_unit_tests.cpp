@@ -185,6 +185,36 @@ public:
     abortMerge(const std::filesystem::path&) override {
         return {};
     }
+
+    [[nodiscard]] std::expected<std::vector<gf::git::bo::GitStashItem>, GitOpsError>
+    listStashes(const std::filesystem::path&) override {
+        return std::vector<gf::git::bo::GitStashItem>{};
+    }
+
+    [[nodiscard]] std::expected<void, GitOpsError>
+    stashPush(const std::filesystem::path&, const gf::git::bo::StashPushOptions&) override {
+        return {};
+    }
+
+    [[nodiscard]] std::expected<void, GitOpsError>
+    stashPop(const std::filesystem::path&, const gf::git::bo::StashApplyOptions&) override {
+        return {};
+    }
+
+    [[nodiscard]] std::expected<void, GitOpsError>
+    stashApply(const std::filesystem::path&, const gf::git::bo::StashApplyOptions&) override {
+        return {};
+    }
+
+    [[nodiscard]] std::expected<void, GitOpsError>
+    stashDrop(const std::filesystem::path&, std::size_t) override {
+        return {};
+    }
+
+    [[nodiscard]] std::expected<void, GitOpsError>
+    stashClear(const std::filesystem::path&) override {
+        return {};
+    }
 };
 
 } // namespace

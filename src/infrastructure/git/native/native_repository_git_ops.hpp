@@ -107,6 +107,28 @@ public:
     [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
     abortMerge(const std::filesystem::path& repoPath) override;
 
+    [[nodiscard]] std::expected<std::vector<gf::git::bo::GitStashItem>, gf::git::ports::GitOpsError>
+    listStashes(const std::filesystem::path& repoPath) override;
+
+    [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+    stashPush(const std::filesystem::path& repoPath,
+              const gf::git::bo::StashPushOptions& options) override;
+
+    [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+    stashPop(const std::filesystem::path& repoPath,
+             const gf::git::bo::StashApplyOptions& options) override;
+
+    [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+    stashApply(const std::filesystem::path& repoPath,
+               const gf::git::bo::StashApplyOptions& options) override;
+
+    [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+    stashDrop(const std::filesystem::path& repoPath,
+              std::size_t stashIndex) override;
+
+    [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+    stashClear(const std::filesystem::path& repoPath) override;
+
 private:
     gf::git::ports::IGitCommandExecutor& m_executor;
 };

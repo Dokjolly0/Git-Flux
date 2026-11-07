@@ -6,6 +6,7 @@
 #include "core/modules/git/bo/history_models.hpp"
 #include "core/modules/git/bo/remote_merge_models.hpp"
 #include "core/modules/git/bo/repo_working_tree_status.hpp"
+#include "core/modules/git/bo/stash_models.hpp"
 
 #include <expected>
 #include <filesystem>
@@ -36,6 +37,8 @@ struct GitOpsError {
         NetworkAuthenticationFailed,
         RemoteRejected,
         MergeConflict,
+        StashNotFound,
+        NothingToStash,
         StorageError
     };
 
@@ -171,6 +174,34 @@ public:
     /// Annulla un merge in corso (`git merge --abort`).
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     abortMerge(const std::filesystem::path& repoPath) = 0;
+
+    /// Ritorna l'elenco degli stash presenti (`git stash list`).
+    [[nodiscard]] virtual std::expected<std::vector<bo::GitStashItem>, GitOpsError>
+    listStashes(const std::filesystem::path& repoPath) = 0;
+
+    /// Salva lo stato corrente in uno stash (`git stash push`).
+    [[nodiscard]] virtual std::expected<void, GitOpsError>
+    stashPush(const std::filesystem::path& repoPath,
+              const bo::StashPushOptions& options) = 0;
+
+    /// Applica e rimuove uno stash (`git stash pop`).
+    [[nodiscard]] virtual std::expected<void, GitOpsError>
+    stashPop(const std::filesystem::path& repoPath,
+             const bo::StashApplyOptions& options) = 0;
+
+    /// Applica uno stash mantenendolo nell'elenco (`git stash apply`).
+    [[nodiscard]] virtual std::expected<void, GitOpsError>
+    stashApply(const std::filesystem::path& repoPath,
+               const bo::StashApplyOptions& options) = 0;
+
+    /// Rimuove uno stash specifico (`git stash drop`).
+    [[nodiscard]] virtual std::expected<void, GitOpsError>
+    stashDrop(const std::filesystem::path& repoPath,
+              std::size_t stashIndex) = 0;
+
+    /// Rimuove tutti gli stash (`git stash clear`).
+    [[nodiscard]] virtual std::expected<void, GitOpsError>
+    stashClear(const std::filesystem::path& repoPath) = 0;
 };
 
 } // namespace gf::git::ports

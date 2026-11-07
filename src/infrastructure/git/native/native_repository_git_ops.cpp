@@ -43,6 +43,21 @@ namespace {
     return std::string(message.substr(0, newlinePos));
 }
 
+[[nodiscard]] bool isStashNotFoundError(std::string_view output) noexcept {
+    return output.find("is not a valid reference") != std::string_view::npos ||
+           output.find("is not a valid-object") != std::string_view::npos ||
+           output.find("No stash entries found") != std::string_view::npos ||
+           output.find("does not exist") != std::string_view::npos ||
+           output.find("non è un riferimento valido") != std::string_view::npos ||
+           output.find("non è un oggetto valido") != std::string_view::npos ||
+           output.find("Nessuna voce di stash trovata") != std::string_view::npos ||
+           output.find("non esiste") != std::string_view::npos ||
+           (output.find("stash@{") != std::string_view::npos &&
+            (output.find("not a valid") != std::string_view::npos ||
+             output.find("non è") != std::string_view::npos ||
+             output.find("not valid") != std::string_view::npos));
+}
+
 } // namespace
 
 NativeRepositoryGitOps::NativeRepositoryGitOps(gf::git::ports::IGitCommandExecutor& executor) noexcept
@@ -1681,6 +1696,342 @@ NativeRepositoryGitOps::abortMerge(const std::filesystem::path& repoPath) {
             .exitCode = execResult->exitCode,
             .message = execResult->stderrBytes,
             .command = "git merge --abort"
+        });
+    }
+
+    return {};
+}
+
+std::expected<std::vector<gf::git::bo::GitStashItem>, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::listStashes(const std::filesystem::path& repoPath) {
+    gf::git::bo::GitCommand cmd{
+        .args = {"stash", "list", "--format=%gd%x00%H%x00%aI%x00%gs%x1e"},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile recuperare l'elenco degli stash: " + execResult.error().message,
+            .command = "git stash list"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes,
+            .command = "git stash list"
+        });
+    }
+
+    std::vector<gf::git::bo::GitStashItem> stashes;
+    std::string_view raw = execResult->stdoutBytes;
+
+    std::size_t startPos = 0;
+    while (startPos < raw.size()) {
+        auto endPos = raw.find('\x1e', startPos);
+        std::string_view record = (endPos == std::string_view::npos)
+                                      ? raw.substr(startPos)
+                                      : raw.substr(startPos, endPos - startPos);
+
+        if (!record.empty()) {
+            std::vector<std::string_view> fields;
+            std::size_t fStart = 0;
+            while (fStart < record.size()) {
+                auto fEnd = record.find('\0', fStart);
+                if (fEnd == std::string_view::npos) {
+                    fields.push_back(record.substr(fStart));
+                    break;
+                }
+                fields.push_back(record.substr(fStart, fEnd - fStart));
+                fStart = fEnd + 1;
+            }
+
+            if (fields.size() >= 4) {
+                gf::git::bo::GitStashItem item;
+                item.selector = std::string(fields[0]);
+                item.commitSha = std::string(fields[1]);
+                item.dateIso = std::string(fields[2]);
+
+                auto openBrace = item.selector.find('{');
+                auto closeBrace = item.selector.find('}', openBrace);
+                if (openBrace != std::string::npos && closeBrace != std::string::npos && closeBrace > openBrace + 1) {
+                    auto numStr = item.selector.substr(openBrace + 1, closeBrace - openBrace - 1);
+                    try {
+                        item.index = std::stoul(numStr);
+                    } catch (...) {
+                        item.index = 0;
+                    }
+                }
+
+                std::string_view subject = fields[3];
+                constexpr std::string_view wipPrefix = "WIP on ";
+                constexpr std::string_view onPrefix = "On ";
+
+                if (subject.starts_with(wipPrefix)) {
+                    auto rest = subject.substr(wipPrefix.size());
+                    auto colonPos = rest.find(':');
+                    if (colonPos != std::string_view::npos) {
+                        item.branchName = trimString(std::string(rest.substr(0, colonPos)));
+                        item.message = trimString(std::string(rest.substr(colonPos + 1)));
+                    } else {
+                        item.branchName = trimString(std::string(rest));
+                        item.message = std::string(subject);
+                    }
+                } else if (subject.starts_with(onPrefix)) {
+                    auto rest = subject.substr(onPrefix.size());
+                    auto colonPos = rest.find(':');
+                    if (colonPos != std::string_view::npos) {
+                        item.branchName = trimString(std::string(rest.substr(0, colonPos)));
+                        item.message = trimString(std::string(rest.substr(colonPos + 1)));
+                    } else {
+                        item.branchName = trimString(std::string(rest));
+                        item.message = std::string(subject);
+                    }
+                } else {
+                    item.message = std::string(subject);
+                }
+
+                stashes.push_back(std::move(item));
+            }
+        }
+
+        if (endPos == std::string_view::npos) {
+            break;
+        }
+        startPos = endPos + 1;
+    }
+
+    return stashes;
+}
+
+std::expected<void, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::stashPush(const std::filesystem::path& repoPath,
+                                  const gf::git::bo::StashPushOptions& options) {
+    std::vector<std::string> args = {"stash", "push"};
+    if (options.includeUntracked) {
+        args.emplace_back("-u");
+    }
+    if (options.keepIndex) {
+        args.emplace_back("--keep-index");
+    }
+    if (options.message && !options.message->empty()) {
+        args.emplace_back("-m");
+        args.emplace_back(*options.message);
+    }
+    if (!options.paths.empty()) {
+        args.emplace_back("--");
+        for (const auto& path : options.paths) {
+            args.emplace_back(path);
+        }
+    }
+
+    gf::git::bo::GitCommand cmd{
+        .args = std::move(args),
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile salvare lo stash: " + execResult.error().message,
+            .command = "git stash push"
+        });
+    }
+
+    const std::string combinedOutput = execResult->stdoutBytes + "\n" + execResult->stderrBytes;
+    if (combinedOutput.find("No local changes to save") != std::string::npos ||
+        combinedOutput.find("Nessuna modifica locale da salvare") != std::string::npos) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::NothingToStash,
+            .exitCode = execResult->exitCode,
+            .message = "Nessuna modifica locale da salvare nello stash",
+            .command = "git stash push"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
+            .command = "git stash push"
+        });
+    }
+
+    return {};
+}
+
+std::expected<void, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::stashPop(const std::filesystem::path& repoPath,
+                                 const gf::git::bo::StashApplyOptions& options) {
+    std::vector<std::string> args = {"stash", "pop"};
+    if (options.restoreIndex) {
+        args.emplace_back("--index");
+    }
+    args.emplace_back("stash@{" + std::to_string(options.stashIndex) + "}");
+
+    gf::git::bo::GitCommand cmd{
+        .args = std::move(args),
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile applicare lo stash: " + execResult.error().message,
+            .command = "git stash pop"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        const std::string combinedOutput = execResult->stdoutBytes + "\n" + execResult->stderrBytes;
+        auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+
+        if (isStashNotFoundError(combinedOutput)) {
+            kind = gf::git::ports::GitOpsError::Kind::StashNotFound;
+        } else if (combinedOutput.find("CONFLICT") != std::string::npos ||
+                   combinedOutput.find("conflict") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::MergeConflict;
+        }
+
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = kind,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
+            .command = "git stash pop"
+        });
+    }
+
+    return {};
+}
+
+std::expected<void, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::stashApply(const std::filesystem::path& repoPath,
+                                   const gf::git::bo::StashApplyOptions& options) {
+    std::vector<std::string> args = {"stash", "apply"};
+    if (options.restoreIndex) {
+        args.emplace_back("--index");
+    }
+    args.emplace_back("stash@{" + std::to_string(options.stashIndex) + "}");
+
+    gf::git::bo::GitCommand cmd{
+        .args = std::move(args),
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile applicare lo stash: " + execResult.error().message,
+            .command = "git stash apply"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        const std::string combinedOutput = execResult->stdoutBytes + "\n" + execResult->stderrBytes;
+        auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+
+        if (isStashNotFoundError(combinedOutput)) {
+            kind = gf::git::ports::GitOpsError::Kind::StashNotFound;
+        } else if (combinedOutput.find("CONFLICT") != std::string::npos ||
+                   combinedOutput.find("conflict") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::MergeConflict;
+        }
+
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = kind,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
+            .command = "git stash apply"
+        });
+    }
+
+    return {};
+}
+
+std::expected<void, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::stashDrop(const std::filesystem::path& repoPath,
+                                  std::size_t stashIndex) {
+    gf::git::bo::GitCommand cmd{
+        .args = {"stash", "drop", "stash@{" + std::to_string(stashIndex) + "}"},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile eliminare lo stash: " + execResult.error().message,
+            .command = "git stash drop"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        const std::string combinedOutput = execResult->stdoutBytes + "\n" + execResult->stderrBytes;
+        auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+
+        if (isStashNotFoundError(combinedOutput)) {
+            kind = gf::git::ports::GitOpsError::Kind::StashNotFound;
+        }
+
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = kind,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
+            .command = "git stash drop"
+        });
+    }
+
+    return {};
+}
+
+std::expected<void, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::stashClear(const std::filesystem::path& repoPath) {
+    gf::git::bo::GitCommand cmd{
+        .args = {"stash", "clear"},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile svuotare gli stash: " + execResult.error().message,
+            .command = "git stash clear"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
+            .command = "git stash clear"
         });
     }
 
