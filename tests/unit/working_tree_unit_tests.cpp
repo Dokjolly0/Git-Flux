@@ -215,6 +215,41 @@ public:
     stashClear(const std::filesystem::path&) override {
         return {};
     }
+
+    [[nodiscard]] std::expected<gf::git::bo::RebaseResult, GitOpsError>
+    startRebase(const std::filesystem::path&, const gf::git::bo::RebaseOptions&) override {
+        return gf::git::bo::RebaseResult{.status = gf::git::bo::RebaseStatus::Applied};
+    }
+
+    [[nodiscard]] std::expected<gf::git::bo::RebaseResult, GitOpsError>
+    continueRebase(const std::filesystem::path&) override {
+        return gf::git::bo::RebaseResult{.status = gf::git::bo::RebaseStatus::Finished};
+    }
+
+    [[nodiscard]] std::expected<gf::git::bo::RebaseResult, GitOpsError>
+    skipRebase(const std::filesystem::path&) override {
+        return gf::git::bo::RebaseResult{.status = gf::git::bo::RebaseStatus::Skipped};
+    }
+
+    [[nodiscard]] std::expected<void, GitOpsError>
+    abortRebase(const std::filesystem::path&) override {
+        return {};
+    }
+
+    [[nodiscard]] std::expected<bool, GitOpsError>
+    isRebaseInProgress(const std::filesystem::path&) override {
+        return false;
+    }
+
+    [[nodiscard]] std::expected<gf::git::bo::CherryPickResult, GitOpsError>
+    cherryPick(const std::filesystem::path&, const gf::git::bo::CherryPickOptions&) override {
+        return gf::git::bo::CherryPickResult{.success = true};
+    }
+
+    [[nodiscard]] std::expected<void, GitOpsError>
+    abortCherryPick(const std::filesystem::path&) override {
+        return {};
+    }
 };
 
 } // namespace

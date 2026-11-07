@@ -1,6 +1,6 @@
 # Git Flux — Specifica e Stato di Avanzamento Fase 4 (Stashing, Rebase & Advanced Conflict Resolution)
 
-> **Stato:** Completato Task 4.1 — Stashing Engine | Prossimo: Task 4.2 — Rebase & Cherry-Pick Engine  
+> **Stato:** Completato Task 4.2 — Rebase & Cherry-Pick Engine | Prossimo: Task 4.3 — 3-Way Conflict Resolver Engine  
 > **Architettura di riferimento:** [plan.md](plan.md) (Sezioni 2.1, 7, 8, 15)  
 > **Wireframe UI di riferimento:** [`docs/ui/git-flux-ui-v2.drawio`](ui/git-flux-ui-v2.drawio) (Pagine 05, 07)  
 
@@ -13,7 +13,7 @@ La Fase 4 completa le capacità avanzate di gestione dell'albero di lavoro, risc
 | Task | Area / Modulo | Descrizione | Stato |
 | :--- | :--- | :--- | :---: |
 | **4.1** | **Stashing Engine** | Domain BO (`GitStashItem`, `StashPushOptions`), port `IRepositoryGitOps`, service `GitStashService` (validazione, per-repo locking), esecuzione nativa `git stash list/push/pop/apply/drop/clear` con parser formattato deterministico. | **Completato** |
-| **4.2** | **Rebase & Cherry-Pick Engine** | Domain BO (`RebaseOptions`, `RebaseResult`, `RebaseStatus`, `CherryPickOptions`), port `IRepositoryGitOps`, service `GitRebaseService` con gestione stati in-progress (`rebase --continue/abort/skip`) e cherry-pick atomico. | *In coda* |
+| **4.2** | **Rebase & Cherry-Pick Engine** | Domain BO (`RebaseOptions`, `RebaseResult`, `RebaseStatus`, `CherryPickOptions`), port `IRepositoryGitOps`, service `GitRebaseService` con gestione stati in-progress (`rebase --continue/abort/skip`) e cherry-pick atomico. | **Completato** |
 | **4.3** | **3-Way Conflict Resolver Engine** | Domain BO (`ConflictFile`, `ConflictHunk`, `ConflictSide`, `ConflictResolution`), estrazione precisa degli stage 1 (base), 2 (ours), 3 (theirs) tramite `git show :stage:path` o marker di conflitto, applicazione risoluzioni e staging atomico. | *In coda* |
 | **4.4** | **Stash Manager & 3-Way Conflict Resolver UI** | ViewModels MVVM (`StashListModel`, `ConflictResolverViewModel`) e viste QML (`StashManagerModal`, `ConflictResolverModal`). | *In coda* |
 
@@ -61,4 +61,42 @@ La Fase 4 completa le capacità avanzate di gestione dell'albero di lavoro, risc
   - `src/infrastructure/git/native/native_repository_git_ops.hpp` e `.cpp`: implementazione comandi nativi git stash con parsing delimitato e gestione errori bilingue (EN/IT).
   - `CMakeLists.txt`: registrazione di `git_stash_service.cpp`, `stash_unit_tests.cpp`, `stash_integration_tests.cpp`.
 - **Metriche Test:** 105 asserzioni superate (46 unitari + 59 integrazione). Zero errori, zero warning con `-Werror`.
+
+---
+
+## 3. Dettaglio Task 4.2 — Rebase & Cherry-Pick Engine
+
+### Obiettivi e Principi Architetturali
+- **Zero-Qt nel Core:** Modelli BO puri (`RebaseStatus`, `RebaseOptions`, `RebaseResult`, `CherryPickOptions`, `CherryPickResult`) e service applicativo `GitRebaseService` privi di dipendenze Qt.
+- **Rilevamento Rebase In-Progress O(1):**
+  Rilevamento immediato dell'esistenza di `.git/rebase-merge` o `.git/rebase-apply` senza invocazione di sottoprocessi lenti.
+- **Telemetria di Progresso Dettagliata:**
+  Estrazione automatica dello step corrente (`msgnum`), del numero totale di commit da applicare (`end`) e dell'hash del commit interrotto (`stopped-sha`) direttamente dallo stato di Git in caso di conflitto.
+- **Isolamento Editor Headless:**
+  Configurazione centralizzata dell'ambiente di esecuzione con `GIT_EDITOR=true` e passaggio di `-c core.editor=true` per impedire blocchi interattivi su rebase continue/skip e cherry-pick.
+- **Operazioni Implementate:**
+  - `startRebase`: avvia rebase con opzioni `upstream`, `onto`, `branch`, `autostash`.
+  - `continueRebase`: prosegue il rebase dopo la risoluzione dei conflitti.
+  - `skipRebase`: salta il commit corrente.
+  - `abortRebase`: annulla la sessione di rebase e ripristina lo stato precedente.
+  - `isRebaseInProgress`: verifica stato attivo.
+  - `cherryPick`: applica un commit singolo (`--no-commit` opzionale).
+  - `abortCherryPick`: annulla il cherry-pick in conflitto.
+- **Protezione Concorrenza:**
+  Tutte le mutazioni protette da `RepositoryLockCoordinator` per-repo.
+
+### Risultati del Task 4.2
+- **File Creati:**
+  - `src/core/modules/git/bo/rebase_models.hpp`: modelli di dominio puri per rebase e cherry-pick.
+  - `src/core/modules/git/bl/git_rebase_service.hpp` e `.cpp`: service applicativo di rebase & cherry-pick.
+  - `tests/unit/rebase_unit_tests.cpp`: test unitari isolati con mock (52 asserzioni Catch2).
+  - `tests/integration/rebase_integration_tests.cpp`: test di integrazione su repository Git reale (83 asserzioni Catch2).
+- **File Modificati:**
+  - `src/core/modules/git/ports/repository_git_ops.hpp`: estensione port con errori `NoRebaseInProgress`, `CherryPickConflict`, `CommitNotFound` e 7 metodi virtuali puri.
+  - `src/infrastructure/git/native/native_repository_git_ops.hpp` e `.cpp`: implementazione nativa dei 7 metodi con telemetria e gestione conflitti.
+  - `src/infrastructure/git/native/native_git_executor.cpp`: configurazione centralizzata dell'ambiente Linux (filtraggio e forzatura `GIT_EDITOR=true`).
+  - `src/infrastructure/git/qt/qt_git_executor.cpp`: allineamento variabili ambiente.
+  - `CMakeLists.txt`: registrazione di `git_rebase_service.cpp`, `rebase_unit_tests.cpp`, `rebase_integration_tests.cpp`.
+- **Metriche Test:** 135 asserzioni superate (52 unitari + 83 integrazione). Zero errori, zero warning con `-Werror`.
+
 

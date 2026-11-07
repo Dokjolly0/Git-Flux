@@ -129,6 +129,29 @@ public:
     [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
     stashClear(const std::filesystem::path& repoPath) override;
 
+    [[nodiscard]] std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
+    startRebase(const std::filesystem::path& repoPath,
+                const gf::git::bo::RebaseOptions& options) override;
+
+    [[nodiscard]] std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
+    continueRebase(const std::filesystem::path& repoPath) override;
+
+    [[nodiscard]] std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
+    skipRebase(const std::filesystem::path& repoPath) override;
+
+    [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+    abortRebase(const std::filesystem::path& repoPath) override;
+
+    [[nodiscard]] std::expected<bool, gf::git::ports::GitOpsError>
+    isRebaseInProgress(const std::filesystem::path& repoPath) override;
+
+    [[nodiscard]] std::expected<gf::git::bo::CherryPickResult, gf::git::ports::GitOpsError>
+    cherryPick(const std::filesystem::path& repoPath,
+               const gf::git::bo::CherryPickOptions& options) override;
+
+    [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+    abortCherryPick(const std::filesystem::path& repoPath) override;
+
 private:
     gf::git::ports::IGitCommandExecutor& m_executor;
 };

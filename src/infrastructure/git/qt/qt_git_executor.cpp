@@ -31,6 +31,7 @@ QtGitCommandExecutor::QtGitCommandExecutor(std::filesystem::path gitExecutablePa
     envStandard_.insert(QStringLiteral("GIT_TERMINAL_PROMPT"), QStringLiteral("0"));
     envStandard_.insert(QStringLiteral("GCM_INTERACTIVE"), QStringLiteral("never"));
     envStandard_.insert(QStringLiteral("LC_ALL"), QStringLiteral("C"));
+    envStandard_.insert(QStringLiteral("GIT_EDITOR"), QStringLiteral("true"));
 
     envNoOptionalLocks_ = envStandard_;
     envNoOptionalLocks_.insert(QStringLiteral("GIT_OPTIONAL_LOCKS"), QStringLiteral("0"));

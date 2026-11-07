@@ -221,6 +221,7 @@ struct AsyncPipeChannel {
                 entry.starts_with(L"GIT_TERMINAL_PROMPT=") ||
                 entry.starts_with(L"GCM_INTERACTIVE=") ||
                 entry.starts_with(L"GIT_OPTIONAL_LOCKS=") ||
+                entry.starts_with(L"GIT_EDITOR=") ||
                 entry.starts_with(L"LC_ALL=");
             if (!skip) {
                 block.append(entry);
@@ -237,12 +238,41 @@ struct AsyncPipeChannel {
     block.push_back(L'\0');
     block.append(L"LC_ALL=C");
     block.push_back(L'\0');
+    block.append(L"GIT_EDITOR=true");
+    block.push_back(L'\0');
     if (noOptionalLocks) {
         block.append(L"GIT_OPTIONAL_LOCKS=0");
         block.push_back(L'\0');
     }
     block.push_back(L'\0');
     return block;
+}
+#else
+[[nodiscard]] std::vector<std::string> buildLinuxEnvironment(bool noOptionalLocks) {
+    std::vector<std::string> envStrings;
+    if (environ) {
+        for (char** env = environ; *env != nullptr; ++env) {
+            std::string_view entry(*env);
+            const bool skip =
+                entry.starts_with("GIT_TERMINAL_PROMPT=") ||
+                entry.starts_with("GCM_INTERACTIVE=") ||
+                entry.starts_with("GIT_OPTIONAL_LOCKS=") ||
+                entry.starts_with("GIT_EDITOR=") ||
+                entry.starts_with("LC_ALL=");
+            if (!skip) {
+                envStrings.emplace_back(entry);
+            }
+        }
+    }
+
+    envStrings.emplace_back("GIT_TERMINAL_PROMPT=0");
+    envStrings.emplace_back("GCM_INTERACTIVE=never");
+    envStrings.emplace_back("LC_ALL=C");
+    envStrings.emplace_back("GIT_EDITOR=true");
+    if (noOptionalLocks) {
+        envStrings.emplace_back("GIT_OPTIONAL_LOCKS=0");
+    }
+    return envStrings;
 }
 #endif
 
@@ -481,9 +511,17 @@ NativeGitCommandExecutor::execute(const gf::git::bo::GitCommand& command,
     }
     argvPtrs.push_back(nullptr);
 
+    std::vector<std::string> envStorage = buildLinuxEnvironment(noOptLocks);
+    std::vector<char*> envPtrs;
+    envPtrs.reserve(envStorage.size() + 1);
+    for (auto& s : envStorage) {
+        envPtrs.push_back(s.data());
+    }
+    envPtrs.push_back(nullptr);
+
     pid_t pid = 0;
     const int spawnRc = ::posix_spawn(&pid, gitExecutablePath_.c_str(), &actions, nullptr,
-                                      argvPtrs.data(), environ);
+                                      argvPtrs.data(), envPtrs.data());
     ::posix_spawn_file_actions_destroy(&actions);
     ::close(outPipe[1]);
     ::close(errPipe[1]);

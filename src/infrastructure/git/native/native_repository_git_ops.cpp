@@ -5,6 +5,7 @@
 #include "core/modules/git/bo/git_command.hpp"
 
 #include <algorithm>
+#include <fstream>
 #include <unordered_map>
 
 namespace gf::infra::git {
@@ -56,6 +57,73 @@ namespace {
             (output.find("not a valid") != std::string_view::npos ||
              output.find("non è") != std::string_view::npos ||
              output.find("not valid") != std::string_view::npos));
+}
+
+void populateRebaseProgressAndConflicts(const std::filesystem::path& repoPath,
+                                       gf::git::ports::IGitCommandExecutor& executor,
+                                       gf::git::bo::RebaseResult& result) {
+    auto readFirstWord = [](const std::filesystem::path& p) -> std::string {
+        std::error_code ec;
+        if (!std::filesystem::exists(p, ec)) return {};
+        std::ifstream ifs(p);
+        std::string s;
+        if (ifs >> s) return s;
+        return {};
+    };
+
+    auto rebaseMergeDir = repoPath / ".git" / "rebase-merge";
+    auto rebaseApplyDir = repoPath / ".git" / "rebase-apply";
+
+    std::error_code ec;
+    if (std::filesystem::exists(rebaseMergeDir, ec)) {
+        std::string msgnumStr = readFirstWord(rebaseMergeDir / "msgnum");
+        std::string endStr = readFirstWord(rebaseMergeDir / "end");
+        std::string stoppedSha = readFirstWord(rebaseMergeDir / "stopped-sha");
+        if (!msgnumStr.empty()) {
+            try { result.currentStep = std::stoul(msgnumStr); } catch (...) {}
+        }
+        if (!endStr.empty()) {
+            try { result.totalSteps = std::stoul(endStr); } catch (...) {}
+        }
+        if (!stoppedSha.empty()) {
+            result.currentCommitSha = stoppedSha;
+        }
+    } else if (std::filesystem::exists(rebaseApplyDir, ec)) {
+        std::string nextStr = readFirstWord(rebaseApplyDir / "next");
+        std::string lastStr = readFirstWord(rebaseApplyDir / "last");
+        std::string origCommit = readFirstWord(rebaseApplyDir / "original-commit");
+        if (!nextStr.empty()) {
+            try { result.currentStep = std::stoul(nextStr); } catch (...) {}
+        }
+        if (!lastStr.empty()) {
+            try { result.totalSteps = std::stoul(lastStr); } catch (...) {}
+        }
+        if (!origCommit.empty()) {
+            result.currentCommitSha = origCommit;
+        }
+    }
+
+    auto diffUCmd = executor.execute(gf::git::bo::GitCommand{
+        .args = {"diff", "--name-only", "--diff-filter=U"},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
+        .timeout = std::chrono::milliseconds{10'000}
+    });
+
+    if (diffUCmd && diffUCmd->exitCode == 0) {
+        std::string_view out(diffUCmd->stdoutBytes);
+        while (!out.empty()) {
+            auto nl = out.find('\n');
+            std::string_view line = (nl == std::string_view::npos) ? out : out.substr(0, nl);
+            out = (nl == std::string_view::npos) ? std::string_view{} : out.substr(nl + 1);
+            if (!line.empty() && line.back() == '\r') {
+                line.remove_suffix(1);
+            }
+            if (!line.empty()) {
+                result.conflictedFiles.emplace_back(line);
+            }
+        }
+    }
 }
 
 } // namespace
@@ -2032,6 +2100,402 @@ NativeRepositoryGitOps::stashClear(const std::filesystem::path& repoPath) {
             .exitCode = execResult->exitCode,
             .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
             .command = "git stash clear"
+        });
+    }
+
+    return {};
+}
+
+std::expected<bool, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::isRebaseInProgress(const std::filesystem::path& repoPath) {
+    std::error_code ec;
+    bool inProgress = std::filesystem::exists(repoPath / ".git" / "rebase-merge", ec) ||
+                      std::filesystem::exists(repoPath / ".git" / "rebase-apply", ec);
+    return inProgress;
+}
+
+std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::startRebase(const std::filesystem::path& repoPath,
+                                    const gf::git::bo::RebaseOptions& options) {
+    std::vector<std::string> args = {"rebase"};
+    if (options.autostash) {
+        args.emplace_back("--autostash");
+    }
+    if (options.onto && !options.onto->empty()) {
+        args.emplace_back("--onto");
+        args.emplace_back(*options.onto);
+    }
+    args.emplace_back(options.upstream);
+    if (options.branch && !options.branch->empty()) {
+        args.emplace_back(*options.branch);
+    }
+
+    gf::git::bo::GitCommand cmd{
+        .args = std::move(args),
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{60'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile avviare il rebase: " + execResult.error().message,
+            .command = "git rebase"
+        });
+    }
+
+    gf::git::bo::RebaseResult result;
+    const std::string combinedOutput = execResult->stdoutBytes + "\n" + execResult->stderrBytes;
+
+    if (execResult->exitCode == 0) {
+        if (combinedOutput.find("is up to date") != std::string::npos ||
+            combinedOutput.find("è aggiornato") != std::string::npos) {
+            result.status = gf::git::bo::RebaseStatus::UpToDate;
+        } else {
+            result.status = gf::git::bo::RebaseStatus::Finished;
+        }
+        result.message = execResult->stdoutBytes;
+        return result;
+    }
+
+    if (combinedOutput.find("CONFLICT") != std::string::npos ||
+        combinedOutput.find("Automatic merge failed") != std::string::npos ||
+        combinedOutput.find("conflitti") != std::string::npos ||
+        combinedOutput.find("Resolve all conflicts") != std::string::npos ||
+        combinedOutput.find("could not apply") != std::string::npos) {
+        result.status = gf::git::bo::RebaseStatus::Conflict;
+        result.message = combinedOutput;
+        populateRebaseProgressAndConflicts(repoPath, m_executor, result);
+        return result;
+    }
+
+    if (combinedOutput.find("cannot rebase: You have unstaged changes") != std::string::npos ||
+        combinedOutput.find("working tree clean") != std::string::npos ||
+        combinedOutput.find("unstaged changes") != std::string::npos) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::DirtyWorkingTree,
+            .exitCode = execResult->exitCode,
+            .message = combinedOutput,
+            .command = "git rebase"
+        });
+    }
+
+    return std::unexpected(gf::git::ports::GitOpsError{
+        .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+        .exitCode = execResult->exitCode,
+        .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
+        .command = "git rebase"
+    });
+}
+
+std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::continueRebase(const std::filesystem::path& repoPath) {
+    gf::git::bo::GitCommand cmd{
+        .args = {"-c", "core.editor=true", "rebase", "--continue"},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{60'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile continuare il rebase: " + execResult.error().message,
+            .command = "git rebase --continue"
+        });
+    }
+
+    gf::git::bo::RebaseResult result;
+    const std::string combinedOutput = execResult->stdoutBytes + "\n" + execResult->stderrBytes;
+
+    if (execResult->exitCode == 0) {
+        auto inProgress = isRebaseInProgress(repoPath);
+        if (inProgress && *inProgress) {
+            result.status = gf::git::bo::RebaseStatus::Applied;
+        } else {
+            result.status = gf::git::bo::RebaseStatus::Finished;
+        }
+        result.message = execResult->stdoutBytes;
+        return result;
+    }
+
+    if (combinedOutput.find("no rebase in progress") != std::string::npos ||
+        combinedOutput.find("nessun rebase in corso") != std::string::npos) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::NoRebaseInProgress,
+            .exitCode = execResult->exitCode,
+            .message = combinedOutput,
+            .command = "git rebase --continue"
+        });
+    }
+
+    if (combinedOutput.find("CONFLICT") != std::string::npos ||
+        combinedOutput.find("Automatic merge failed") != std::string::npos ||
+        combinedOutput.find("conflitti") != std::string::npos ||
+        combinedOutput.find("Resolve all conflicts") != std::string::npos ||
+        combinedOutput.find("could not apply") != std::string::npos ||
+        combinedOutput.find("unmerged") != std::string::npos) {
+        result.status = gf::git::bo::RebaseStatus::Conflict;
+        result.message = combinedOutput;
+        populateRebaseProgressAndConflicts(repoPath, m_executor, result);
+        return result;
+    }
+
+    return std::unexpected(gf::git::ports::GitOpsError{
+        .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+        .exitCode = execResult->exitCode,
+        .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
+        .command = "git rebase --continue"
+    });
+}
+
+std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::skipRebase(const std::filesystem::path& repoPath) {
+    gf::git::bo::GitCommand cmd{
+        .args = {"-c", "core.editor=true", "rebase", "--skip"},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{60'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile saltare il commit nel rebase: " + execResult.error().message,
+            .command = "git rebase --skip"
+        });
+    }
+
+    gf::git::bo::RebaseResult result;
+    const std::string combinedOutput = execResult->stdoutBytes + "\n" + execResult->stderrBytes;
+
+    if (execResult->exitCode == 0) {
+        auto inProgress = isRebaseInProgress(repoPath);
+        if (inProgress && *inProgress) {
+            result.status = gf::git::bo::RebaseStatus::Skipped;
+        } else {
+            result.status = gf::git::bo::RebaseStatus::Finished;
+        }
+        result.message = execResult->stdoutBytes;
+        return result;
+    }
+
+    if (combinedOutput.find("no rebase in progress") != std::string::npos ||
+        combinedOutput.find("nessun rebase in corso") != std::string::npos) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::NoRebaseInProgress,
+            .exitCode = execResult->exitCode,
+            .message = combinedOutput,
+            .command = "git rebase --skip"
+        });
+    }
+
+    if (combinedOutput.find("CONFLICT") != std::string::npos ||
+        combinedOutput.find("Automatic merge failed") != std::string::npos ||
+        combinedOutput.find("conflitti") != std::string::npos ||
+        combinedOutput.find("Resolve all conflicts") != std::string::npos ||
+        combinedOutput.find("could not apply") != std::string::npos) {
+        result.status = gf::git::bo::RebaseStatus::Conflict;
+        result.message = combinedOutput;
+        populateRebaseProgressAndConflicts(repoPath, m_executor, result);
+        return result;
+    }
+
+    return std::unexpected(gf::git::ports::GitOpsError{
+        .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+        .exitCode = execResult->exitCode,
+        .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
+        .command = "git rebase --skip"
+    });
+}
+
+std::expected<void, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::abortRebase(const std::filesystem::path& repoPath) {
+    gf::git::bo::GitCommand cmd{
+        .args = {"rebase", "--abort"},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile annullare il rebase: " + execResult.error().message,
+            .command = "git rebase --abort"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        const std::string combinedOutput = execResult->stdoutBytes + "\n" + execResult->stderrBytes;
+        auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+        if (combinedOutput.find("no rebase in progress") != std::string::npos ||
+            combinedOutput.find("nessun rebase in corso") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::NoRebaseInProgress;
+        }
+
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = kind,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
+            .command = "git rebase --abort"
+        });
+    }
+
+    return {};
+}
+
+std::expected<gf::git::bo::CherryPickResult, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::cherryPick(const std::filesystem::path& repoPath,
+                                   const gf::git::bo::CherryPickOptions& options) {
+    std::vector<std::string> args = {"-c", "core.editor=true", "cherry-pick"};
+    if (options.noCommit) {
+        args.emplace_back("-n");
+    }
+    args.emplace_back(options.commitSha);
+
+    gf::git::bo::GitCommand cmd{
+        .args = std::move(args),
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{60'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile eseguire cherry-pick: " + execResult.error().message,
+            .command = "git cherry-pick"
+        });
+    }
+
+    gf::git::bo::CherryPickResult result;
+    const std::string combinedOutput = execResult->stdoutBytes + "\n" + execResult->stderrBytes;
+
+    if (execResult->exitCode == 0) {
+        result.success = true;
+        result.hasConflicts = false;
+        result.message = execResult->stdoutBytes;
+
+        if (!options.noCommit) {
+            auto revCmd = m_executor.execute(gf::git::bo::GitCommand{
+                .args = {"rev-parse", "HEAD"},
+                .workingDirectory = repoPath,
+                .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
+                .timeout = std::chrono::milliseconds{5'000}
+            });
+            if (revCmd && revCmd->exitCode == 0) {
+                result.newCommitSha = trimString(revCmd->stdoutBytes);
+            }
+        }
+        return result;
+    }
+
+    if (combinedOutput.find("CONFLICT") != std::string::npos ||
+        combinedOutput.find("could not apply") != std::string::npos ||
+        combinedOutput.find("conflict") != std::string::npos ||
+        combinedOutput.find("conflitti") != std::string::npos) {
+        result.success = false;
+        result.hasConflicts = true;
+        result.message = combinedOutput;
+
+        auto diffUCmd = m_executor.execute(gf::git::bo::GitCommand{
+            .args = {"diff", "--name-only", "--diff-filter=U"},
+            .workingDirectory = repoPath,
+            .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
+            .timeout = std::chrono::milliseconds{10'000}
+        });
+
+        if (diffUCmd && diffUCmd->exitCode == 0) {
+            std::string_view out(diffUCmd->stdoutBytes);
+            while (!out.empty()) {
+                auto nl = out.find('\n');
+                std::string_view line = (nl == std::string_view::npos) ? out : out.substr(0, nl);
+                out = (nl == std::string_view::npos) ? std::string_view{} : out.substr(nl + 1);
+                if (!line.empty() && line.back() == '\r') {
+                    line.remove_suffix(1);
+                }
+                if (!line.empty()) {
+                    result.conflictedFiles.emplace_back(line);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    if (combinedOutput.find("bad object") != std::string::npos ||
+        combinedOutput.find("could not resolve") != std::string::npos ||
+        combinedOutput.find("non è un oggetto valido") != std::string::npos) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::CommitNotFound,
+            .exitCode = execResult->exitCode,
+            .message = combinedOutput,
+            .command = "git cherry-pick"
+        });
+    }
+
+    if (combinedOutput.find("unstaged changes") != std::string::npos ||
+        combinedOutput.find("dirty") != std::string::npos) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::DirtyWorkingTree,
+            .exitCode = execResult->exitCode,
+            .message = combinedOutput,
+            .command = "git cherry-pick"
+        });
+    }
+
+    return std::unexpected(gf::git::ports::GitOpsError{
+        .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+        .exitCode = execResult->exitCode,
+        .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
+        .command = "git cherry-pick"
+    });
+}
+
+std::expected<void, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::abortCherryPick(const std::filesystem::path& repoPath) {
+    gf::git::bo::GitCommand cmd{
+        .args = {"cherry-pick", "--abort"},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile annullare il cherry-pick: " + execResult.error().message,
+            .command = "git cherry-pick --abort"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        const std::string combinedOutput = execResult->stdoutBytes + "\n" + execResult->stderrBytes;
+        auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+        if (combinedOutput.find("no cherry-pick or revert in progress") != std::string::npos ||
+            combinedOutput.find("nessun cherry-pick") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::InvalidOperation;
+        }
+
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = kind,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
+            .command = "git cherry-pick --abort"
         });
     }
 

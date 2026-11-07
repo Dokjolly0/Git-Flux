@@ -7,6 +7,7 @@
 #include "core/modules/git/bo/remote_merge_models.hpp"
 #include "core/modules/git/bo/repo_working_tree_status.hpp"
 #include "core/modules/git/bo/stash_models.hpp"
+#include "core/modules/git/bo/rebase_models.hpp"
 
 #include <expected>
 #include <filesystem>
@@ -39,6 +40,10 @@ struct GitOpsError {
         MergeConflict,
         StashNotFound,
         NothingToStash,
+        RebaseInProgress,
+        NoRebaseInProgress,
+        CherryPickConflict,
+        CommitNotFound,
         StorageError
     };
 
@@ -202,6 +207,36 @@ public:
     /// Rimuove tutti gli stash (`git stash clear`).
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     stashClear(const std::filesystem::path& repoPath) = 0;
+
+    /// Avvia una sessione di rebase (`git rebase`).
+    [[nodiscard]] virtual std::expected<bo::RebaseResult, GitOpsError>
+    startRebase(const std::filesystem::path& repoPath,
+                const bo::RebaseOptions& options) = 0;
+
+    /// Continua un rebase in corso dopo aver risolto i conflitti (`git rebase --continue`).
+    [[nodiscard]] virtual std::expected<bo::RebaseResult, GitOpsError>
+    continueRebase(const std::filesystem::path& repoPath) = 0;
+
+    /// Salta il commit corrente durante un rebase (`git rebase --skip`).
+    [[nodiscard]] virtual std::expected<bo::RebaseResult, GitOpsError>
+    skipRebase(const std::filesystem::path& repoPath) = 0;
+
+    /// Annulla un rebase in corso ripristinando lo stato precedente (`git rebase --abort`).
+    [[nodiscard]] virtual std::expected<void, GitOpsError>
+    abortRebase(const std::filesystem::path& repoPath) = 0;
+
+    /// Verifica se è attualmente in corso un rebase (`.git/rebase-merge` o `.git/rebase-apply`).
+    [[nodiscard]] virtual std::expected<bool, GitOpsError>
+    isRebaseInProgress(const std::filesystem::path& repoPath) = 0;
+
+    /// Esegue il cherry-pick di un commit (`git cherry-pick`).
+    [[nodiscard]] virtual std::expected<bo::CherryPickResult, GitOpsError>
+    cherryPick(const std::filesystem::path& repoPath,
+               const bo::CherryPickOptions& options) = 0;
+
+    /// Annulla un cherry-pick in corso (`git cherry-pick --abort`).
+    [[nodiscard]] virtual std::expected<void, GitOpsError>
+    abortCherryPick(const std::filesystem::path& repoPath) = 0;
 };
 
 } // namespace gf::git::ports
