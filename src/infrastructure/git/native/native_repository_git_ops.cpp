@@ -135,7 +135,7 @@ NativeRepositoryGitOps::NativeRepositoryGitOps(gf::git::ports::IGitCommandExecut
 std::expected<gf::git::bo::RepoWorkingTreeStatus, gf::git::ports::GitOpsError>
 NativeRepositoryGitOps::getWorkingTreeStatus(const std::filesystem::path& repoPath) {
     gf::git::bo::GitCommand cmd{
-        .args = {"status", "--porcelain=v2", "-z", "--branch", "--ahead-behind"},
+        .args = {"status", "--porcelain=v2", "-z", "--branch", "--ahead-behind", "--untracked-files=all"},
         .workingDirectory = repoPath,
         .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
         .timeout = std::chrono::milliseconds{30'000}
@@ -576,6 +576,13 @@ NativeRepositoryGitOps::getFileDiff(const std::filesystem::path& repoPath,
     } else if (scope == gf::git::bo::DiffScope::Unstaged) {
         args = {"diff", "--no-color", "-p", "--", filePath};
     } else {
+        std::error_code ec;
+        if (filePath.ends_with('/') || std::filesystem::is_directory(repoPath / filePath, ec)) {
+            return gf::git::bo::FileDiff{
+                .oldPath = filePath,
+                .newPath = filePath
+            };
+        }
         // Untracked: use --no-index against /dev/null
         args = {"diff", "--no-index", "--no-color", "-p", "--", "/dev/null", filePath};
     }
