@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Git Flux
+GenericName=Git Client
+Comment=Git Flux — Modern local-first desktop Git client
+Exec=git_flux %U
+Icon=git-flux
+Terminal=false
+Categories=Development;RevisionControl;
+Keywords=git;version;control;diff;merge;branch;history;commit;
+StartupWMClass=GitFlux
+MimeType=x-scheme-handler/gitflux;

@@ -1,0 +1,258 @@
+name: Test, Package & Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # ==============================================================================
+  # 1. QUALITY GATE — Run all test suites before any packaging/release
+  # ==============================================================================
+  quality-gate-test:
+    name: 🧪 Run Full Test Suite (Linux)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install System Dependencies & Qt 6
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            git \
+            libgl1-mesa-dev \
+            libxkbcommon-dev \
+            xvfb \
+            qt6-base-dev \
+            qt6-declarative-dev \
+            libqt6quickdialogs2-6-dev \
+            qml6-module-qtquick \
+            qml6-module-qtquick-controls \
+            qml6-module-qtquick-layouts \
+            qml6-module-qtquick-templates \
+            qml6-module-qtquick-window
+
+      - name: Run Full Health Check (scripts/linux/check.sh)
+        run: |
+          xvfb-run -a bash scripts/linux/check.sh
+
+  # ==============================================================================
+  # 2. LINUX DISTRIBUTIONS (Debian, Ubuntu, Fedora, Arch Linux, Portable Tarball)
+  # ==============================================================================
+  build-linux:
+    name: 🐧 Package Linux (Debian, Ubuntu, Fedora, Arch)
+    needs: quality-gate-test
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Build & Packaging Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            git \
+            rpm \
+            zstd \
+            libgl1-mesa-dev \
+            qt6-base-dev \
+            qt6-declarative-dev \
+            libqt6quickdialogs2-6-dev \
+            qml6-module-qtquick \
+            qml6-module-qtquick-controls \
+            qml6-module-qtquick-layouts
+
+      - name: Build Desktop Application (git_flux)
+        run: |
+          cmake --preset linux-qt-release
+          cmake --build --preset linux-qt-release -j $(nproc) --target git_flux
+
+      - name: Package for Debian / Ubuntu (.deb)
+        run: |
+          bash scripts/package/package_deb.sh
+
+      - name: Package for Fedora / RHEL (.rpm)
+        run: |
+          bash scripts/package/package_rpm.sh
+
+      - name: Package for Arch Linux (.pkg.tar.zst)
+        run: |
+          bash scripts/package/package_arch.sh
+
+      - name: Package Generic Linux Tarball (.tar.gz)
+        run: |
+          bash scripts/package/package_tarball.sh
+
+      - name: Upload Linux Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-linux
+          path: build/packages/*
+          if-no-files-found: error
+
+  # ==============================================================================
+  # 3. WINDOWS PACKAGING (x64 ZIP with windeployqt)
+  # ==============================================================================
+  build-windows:
+    name: 🪟 Package Windows (x64)
+    needs: quality-gate-test
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Ninja
+        uses: ashutoshvarma/setup-ninja@master
+        with:
+          version: 1.11.1
+
+      - name: Set up MSVC Developer Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Qt 6
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: '6.7.2'
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2022_64'
+          modules: 'qtdeclarative'
+
+      - name: Configure CMake
+        run: |
+          cmake -B build/qt-msvc -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DGF_BUILD_DESKTOP=ON `
+            -DGF_BUILD_TESTING=OFF `
+            -DGF_BUILD_BENCHMARKS=OFF
+
+      - name: Build git_flux
+        run: |
+          cmake --build build/qt-msvc --target git_flux
+
+      - name: Run Windows Packaging Script
+        shell: pwsh
+        run: |
+          .\scripts\package\package_windows.ps1 -BuildDir "build/qt-msvc" -OutputDir "build/packages" -Version "0.1.0"
+
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-windows
+          path: build/packages/*.zip
+          if-no-files-found: error
+
+  # ==============================================================================
+  # 4. MACOS PACKAGING (.dmg & .zip with macdeployqt)
+  # ==============================================================================
+  build-macos:
+    name: 🍏 Package macOS (.dmg & .zip)
+    needs: quality-gate-test
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Qt 6 & Ninja via Homebrew
+        run: |
+          brew install qt@6 ninja
+          echo "$(brew --prefix qt@6)/bin" >> $GITHUB_PATH
+
+      - name: Build and Package macOS App & DMG
+        run: |
+          CMAKE_PREFIX_PATH="$(brew --prefix qt@6)" bash scripts/package/package_macos.sh
+
+      - name: Upload macOS Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-macos
+          path: build/packages/*macos*
+          if-no-files-found: error
+
+  # ==============================================================================
+  # 5. CREATE GITHUB RELEASE & UPLOAD ALL DISTRO PACKAGES
+  # ==============================================================================
+  publish-release:
+    name: 🚀 Create GitHub Release & Upload Packages
+    needs: [quality-gate-test, build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download All Package Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-release
+          merge-multiple: true
+
+      - name: Compute Checksums (SHA256)
+        working-directory: dist-release
+        run: |
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Determine Release Tag and Name
+        id: release_info
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+            RELEASE_NAME="Git Flux ${TAG_NAME}"
+            PRERELEASE="false"
+          else
+            SHORT_SHA=$(git rev-parse --short HEAD)
+            TAG_NAME="v0.1.0-build.${{ github.run_number }}"
+            RELEASE_NAME="Git Flux v0.1.0 (Build ${{ github.run_number }} - ${SHORT_SHA})"
+            PRERELEASE="false"
+          fi
+          echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "release_name=${RELEASE_NAME}" >> $GITHUB_OUTPUT
+          echo "prerelease=${PRERELEASE}" >> $GITHUB_OUTPUT
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_info.outputs.tag_name }}
+          name: ${{ steps.release_info.outputs.release_name }}
+          draft: false
+          prerelease: ${{ steps.release_info.outputs.prerelease == 'true' }}
+          generate_release_notes: true
+          files: |
+            dist-release/*
+          body: |
+            ## Git Flux — Official Multi-Platform Distribution Packages
+
+            Automated release built and tested against main branch commit `${{ github.sha }}`.
+
+            ### Available Distribution Packages:
+            - **Ubuntu / Debian**: `.deb` package
+            - **Fedora / Red Hat**: `.rpm` package
+            - **Arch Linux / Manjaro**: `.pkg.tar.zst` package
+            - **Generic Linux**: `.tar.gz` portable standalone archive
+            - **Windows**: `.zip` standalone portable bundle (includes Qt runtime)
+            - **macOS**: `.dmg` installer & `.zip` bundle
+
+            ### Integrity:
+            All packages are verified with SHA-256 checksums available in `SHA256SUMS.txt`.

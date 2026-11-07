@@ -1,0 +1,47 @@
+# Maintainer: GitFlux Team <support@gitflux.org>
+pkgname=git-flux
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Git Flux — Modern local-first desktop Git client"
+arch=('x86_64')
+url="https://github.com/dokjolly/GitFlux"
+license=('MIT')
+depends=(
+    'qt6-base'
+    'qt6-declarative'
+    'git'
+    'sqlite'
+)
+makedepends=(
+    'cmake'
+    'ninja'
+    'gcc'
+)
+source=()
+sha256sums=()
+
+build() {
+    local src_root="${startdir}/../.."
+    if [ ! -f "${src_root}/CMakeLists.txt" ]; then
+        src_root="${srcdir}/git-flux"
+    fi
+
+    cmake -B "${src_root}/build/arch-build" -G Ninja \
+        -S "${src_root}" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DGF_BUILD_DESKTOP=ON \
+        -DGF_BUILD_TESTING=OFF \
+        -DGF_BUILD_BENCHMARKS=OFF \
+        -DCMAKE_INSTALL_PREFIX=/usr
+
+    cmake --build "${src_root}/build/arch-build" --target git_flux
+}
+
+package() {
+    local src_root="${startdir}/../.."
+    if [ ! -f "${src_root}/CMakeLists.txt" ]; then
+        src_root="${srcdir}/git-flux"
+    fi
+
+    DESTDIR="${pkgdir}" cmake --install "${src_root}/build/arch-build"
+}

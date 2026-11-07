@@ -265,6 +265,31 @@ if(GF_BUILD_DESKTOP)
     )
     gf_apply_compiler_warnings(git_flux)
     gf_deploy_runtime_dlls(git_flux)
+
+    # Installation rules
+    include(GNUInstallDirs)
+    install(TARGETS git_flux
+        BUNDLE DESTINATION .
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+
+    if(UNIX AND NOT APPLE)
+        install(FILES packaging/linux/git-flux.desktop
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
+        )
+        install(FILES assets/logo.png
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps
+            RENAME git-flux.png
+        )
+        install(FILES assets/logo.png
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/pixmaps
+            RENAME git-flux.png
+        )
+        install(FILES packaging/linux/com.gitflux.GitFlux.metainfo.xml
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo
+            OPTIONAL
+        )
+    endif()
 endif()
 
 # ==============================================================================
@@ -397,4 +422,54 @@ if(GF_BUILD_BENCHMARKS)
         gf_deploy_runtime_dlls(gf_bench_suite_a)
     endif()
     gf_apply_compiler_warnings(gf_bench_suite_a)
+endif()
+
+# ==============================================================================
+# 6. PACKAGING & DISTRIBUTION (CPack: DEB, RPM, TGZ, NSIS, ZIP, DragNDrop)
+# ==============================================================================
+if(GF_BUILD_DESKTOP)
+    include(GNUInstallDirs)
+
+    set(CPACK_PACKAGE_NAME "git-flux")
+    set(CPACK_PACKAGE_VENDOR "GitFlux")
+    set(CPACK_PACKAGE_CONTACT "GitFlux Team <support@gitflux.org>")
+    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Git Flux — Modern local-first desktop Git client")
+    set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/dokjolly/GitFlux")
+    set(CPACK_PACKAGE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
+    set(CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
+    set(CPACK_PACKAGE_VERSION_PATCH ${PROJECT_VERSION_PATCH})
+    set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+    set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+
+    # Debian / Ubuntu (.deb)
+    set(CPACK_DEBIAN_PACKAGE_NAME "git-flux")
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "GitFlux Team <support@gitflux.org>")
+    set(CPACK_DEBIAN_PACKAGE_SECTION "devel")
+    set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+    set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "git")
+    set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/dokjolly/GitFlux")
+
+    # Fedora / Red Hat (.rpm)
+    set(CPACK_RPM_PACKAGE_NAME "git-flux")
+    set(CPACK_RPM_PACKAGE_SUMMARY ${CPACK_PACKAGE_DESCRIPTION_SUMMARY})
+    set(CPACK_RPM_PACKAGE_GROUP "Development/Tools")
+    set(CPACK_RPM_PACKAGE_LICENSE "MIT")
+    set(CPACK_RPM_PACKAGE_URL "https://github.com/dokjolly/GitFlux")
+    set(CPACK_RPM_PACKAGE_AUTOREQPROV ON)
+    set(CPACK_RPM_PACKAGE_REQUIRES "git")
+
+    # Windows (NSIS / ZIP)
+    set(CPACK_NSIS_DISPLAY_NAME "Git Flux")
+    set(CPACK_NSIS_PACKAGE_NAME "Git Flux")
+    set(CPACK_NSIS_MUI_ICON "${CMAKE_CURRENT_SOURCE_DIR}/assets/logo.png")
+    set(CPACK_NSIS_MUI_UNIICON "${CMAKE_CURRENT_SOURCE_DIR}/assets/logo.png")
+    set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
+    set(CPACK_NSIS_MODIFY_PATH ON)
+
+    # macOS (DragNDrop / DMG)
+    set(CPACK_DMG_VOLUME_NAME "Git Flux")
+    set(CPACK_BUNDLE_NAME "Git Flux")
+
+    include(CPack)
 endif()
