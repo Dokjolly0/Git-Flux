@@ -693,9 +693,9 @@ NativeRepositoryGitOps::getCommitFiles(const std::filesystem::path& repoPath,
         return std::vector<gf::git::bo::CommitFileChange>{};
     }
 
-    // 1. Run git diff-tree --no-commit-id --name-status -r --root <commitSha>
+    // 1. Run git show -m --first-parent --name-status --format="" <commitSha>
     gf::git::bo::GitCommand diffTreeCmd{
-        .args = {"diff-tree", "--no-commit-id", "--name-status", "-r", "--root", commitSha},
+        .args = {"show", "-m", "--first-parent", "--name-status", "--format=", commitSha},
         .workingDirectory = repoPath,
         .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
         .timeout = std::chrono::milliseconds{30'000}
@@ -707,13 +707,13 @@ NativeRepositoryGitOps::getCommitFiles(const std::filesystem::path& repoPath,
             .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
             .exitCode = diffTreeRes ? diffTreeRes->exitCode : -1,
             .message = diffTreeRes ? diffTreeRes->stderrBytes : "Execution failed",
-            .command = "git diff-tree"
+            .command = "git show"
         });
     }
 
-    // 2. Run git show --numstat --format="" <commitSha>
+    // 2. Run git show -m --first-parent --numstat --format="" <commitSha>
     gf::git::bo::GitCommand numstatCmd{
-        .args = {"show", "--numstat", "--format=", commitSha},
+        .args = {"show", "-m", "--first-parent", "--numstat", "--format=", commitSha},
         .workingDirectory = repoPath,
         .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
         .timeout = std::chrono::milliseconds{30'000}
@@ -823,7 +823,7 @@ NativeRepositoryGitOps::getCommitFileDiff(const std::filesystem::path& repoPath,
     }
 
     gf::git::bo::GitCommand cmd{
-        .args = {"show", "--format=", "--no-color", "-p", commitSha, "--", filePath},
+        .args = {"show", "-m", "--first-parent", "--format=", "--no-color", "-p", commitSha, "--", filePath},
         .workingDirectory = repoPath,
         .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
         .timeout = std::chrono::milliseconds{30'000}

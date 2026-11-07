@@ -1084,10 +1084,12 @@ TEST_CASE("BranchListModel and CommitHistoryListModel MVVM representations", "[v
         CHECK(model.maxLanes() >= 1);
         CHECK(model.data(idx0, CommitHistoryListModel::GraphLaneRole).toInt() == 0);
         CHECK_FALSE(model.data(idx0, CommitHistoryListModel::GraphColorRole).toString().isEmpty());
+        CHECK(model.data(idx0, CommitHistoryListModel::IsMergeRole).toBool() == true);
 
         auto commitMap = model.getCommit(0);
         CHECK(commitMap["sha"].toString() == "1234567890abcdef");
         CHECK(commitMap["subject"].toString() == "Commit Subject");
+        CHECK(commitMap["isMerge"].toBool() == true);
     }
 
     SECTION("CommitHistoryListModel avatar fallback to committer handle when author has full name") {
@@ -1119,6 +1121,7 @@ TEST_CASE("BranchListModel and CommitHistoryListModel MVVM representations", "[v
         // Avatar should resolve to Dokjolly0's GitHub avatar because authorName has spaces while committerName is a GitHub handle
         CHECK(model.data(idx, CommitHistoryListModel::AuthorAvatarUrlRole).toString() == "https://github.com/Dokjolly0.png?size=64");
         CHECK(model.data(idx, CommitHistoryListModel::CommitterAvatarUrlRole).toString() == "https://github.com/Dokjolly0.png?size=64");
+        CHECK(model.data(idx, CommitHistoryListModel::IsMergeRole).toBool() == false);
     }
 }
 

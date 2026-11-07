@@ -344,6 +344,8 @@ QVariant CommitHistoryListModel::data(const QModelIndex& index, int role) const 
         return (idx < m_graphItems.size()) ? m_graphItems[idx].color : QStringLiteral("#06B6D4");
     case GraphRoutesRole:
         return (idx < m_graphItems.size()) ? m_graphItems[idx].routes : QVariantList{};
+    case IsMergeRole:
+        return c.parents.size() > 1;
     default:
         return {};
     }
@@ -372,7 +374,8 @@ QHash<int, QByteArray> CommitHistoryListModel::roleNames() const {
         {CommitterInitialsRole, "committerInitials"},
         {GraphLaneRole, "graphLane"},
         {GraphColorRole, "graphColor"},
-        {GraphRoutesRole, "graphRoutes"}
+        {GraphRoutesRole, "graphRoutes"},
+        {IsMergeRole, "isMerge"}
     };
 }
 
@@ -417,6 +420,7 @@ QVariantMap CommitHistoryListModel::getCommit(int index) const {
         map[QStringLiteral("graphColor")] = m_graphItems[idx].color;
         map[QStringLiteral("graphRoutes")] = m_graphItems[idx].routes;
     }
+    map[QStringLiteral("isMerge")] = (c.parents.size() > 1);
     return map;
 }
 

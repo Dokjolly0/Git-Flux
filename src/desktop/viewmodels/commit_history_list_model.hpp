@@ -38,7 +38,8 @@ public:
         CommitterInitialsRole,
         GraphLaneRole,
         GraphColorRole,
-        GraphRoutesRole
+        GraphRoutesRole,
+        IsMergeRole
     };
 
     explicit CommitHistoryListModel(QObject* parent = nullptr);

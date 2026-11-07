@@ -70,6 +70,7 @@ Rectangle {
 
     property int maxGraphLanes: (root.branchManager && root.branchManager.commitHistory) ? root.branchManager.commitHistory.maxLanes : 1
     property int graphColWidth: Math.max(50, Math.min(260, 24 + root.maxGraphLanes * 22))
+    property int branchTagColWidth: 180
 
     // Keyboard navigation and shortcut to close diff view
     focus: true
@@ -198,12 +199,12 @@ Rectangle {
 
                         // Col 1: BRANCH / TAG
                         Rectangle {
-                            Layout.preferredWidth: 150
+                            Layout.preferredWidth: root.branchTagColWidth
                             Layout.fillHeight: true
                             color: "transparent"
                             Text {
-                                anchors.left: parent.left
-                                anchors.leftMargin: 12
+                                anchors.right: parent.right
+                                anchors.rightMargin: 8
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "BRANCH / TAG"
                                 color: "#8B949E"
@@ -332,6 +333,7 @@ Rectangle {
                         required property int graphLane
                         required property string graphColor
                         required property var graphRoutes
+                        required property bool isMerge
                         required property int index
 
                         width: commitTableListView.width
@@ -361,21 +363,24 @@ Rectangle {
                             // COL 1: BRANCH / TAG
                             // ------------------------------------------
                             Item {
-                                Layout.preferredWidth: 150
+                                id: branchTagCol
+                                Layout.preferredWidth: root.branchTagColWidth
                                 Layout.fillHeight: true
+                                clip: true
 
-                                RowLayout {
+                                Row {
                                     anchors.right: parent.right
                                     anchors.rightMargin: 0
                                     anchors.verticalCenter: parent.verticalCenter
                                     spacing: 4
+                                    x: Math.max(6, parent.width - width)
 
                                     Repeater {
                                         model: commitRow.structuredDecorations || []
 
                                         delegate: Rectangle {
                                             height: 22
-                                            implicitWidth: decText.implicitWidth + 14
+                                            width: Math.min(branchTagCol.width - 24, decText.implicitWidth + 14)
                                             radius: 4
                                             color: modelData.bgColor || "#0E7490"
                                             border.color: modelData.borderColor || "#06B6D4"
@@ -384,10 +389,13 @@ Rectangle {
                                             Text {
                                                 id: decText
                                                 anchors.centerIn: parent
+                                                width: parent.width - 8
                                                 text: modelData.label || modelData.name || ""
                                                 color: modelData.fgColor || "#FFFFFF"
                                                 font.pixelSize: 11
                                                 font.bold: true
+                                                elide: Text.ElideMiddle
+                                                horizontalAlignment: Text.AlignHCenter
                                             }
                                         }
                                     }
@@ -396,6 +404,7 @@ Rectangle {
                                     Rectangle {
                                         width: 14 + (commitRow.graphLane !== undefined ? commitRow.graphLane : 0) * 22
                                         height: 2
+                                        anchors.verticalCenter: parent.verticalCenter
                                         color: commitRow.graphColor || "#06B6D4"
                                         visible: (commitRow.structuredDecorations && commitRow.structuredDecorations.length > 0)
                                     }
@@ -465,8 +474,9 @@ Rectangle {
                                     }
                                 }
 
-                                // Circular Avatar Node centered on the commit's lane
+                                // 1. Standard Commit Node: Circular Avatar or Initials (22x22)
                                 Rectangle {
+                                    visible: !commitRow.isMerge
                                     x: (14 + (commitRow.graphLane !== undefined ? commitRow.graphLane : 0) * 22) - 11
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: 22
@@ -494,6 +504,19 @@ Rectangle {
                                         font.bold: true
                                         visible: nodeAvatarImg.status !== Image.Ready
                                     }
+                                }
+
+                                // 2. Merge Commit Node: Small Dot (10x10) in lane color
+                                Rectangle {
+                                    visible: commitRow.isMerge === true
+                                    x: (14 + (commitRow.graphLane !== undefined ? commitRow.graphLane : 0) * 22) - 5
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 10
+                                    height: 10
+                                    radius: 5
+                                    color: commitRow.graphColor || "#06B6D4"
+                                    border.color: commitRow.isSelected ? "#FFFFFF" : "#0E1117"
+                                    border.width: commitRow.isSelected ? 2 : 1
                                 }
                             }
 
@@ -673,29 +696,6 @@ Rectangle {
                     }
 
                     Item { Layout.fillWidth: true }
-
-                    // GitKraken AI button replica
-                    Rectangle {
-                        Layout.preferredHeight: 26
-                        implicitWidth: aiRow.implicitWidth + 14
-                        radius: 4
-                        color: "#6D28D9"
-                        border.color: "#8B5CF6"
-                        border.width: 1
-
-                        RowLayout {
-                            id: aiRow
-                            anchors.centerIn: parent
-                            spacing: 4
-                            Text { text: "✨"; font.pixelSize: 10 }
-                            Text {
-                                text: "Recompose commit with AI ▾"
-                                color: "#FFFFFF"
-                                font.pixelSize: 10
-                                font.bold: true
-                            }
-                        }
-                    }
                 }
 
                 // Commit Message (large bold title)
