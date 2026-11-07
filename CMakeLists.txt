@@ -36,6 +36,9 @@ target_include_directories(gf_domain INTERFACE
 add_library(gf_application STATIC
     src/core/modules/git/bl/porcelain_status_parser.cpp
     src/core/modules/git/bl/operation_coordinator.cpp
+    src/core/modules/repositories/bl/repository_service.cpp
+    src/core/modules/groups/bl/group_service.cpp
+    src/core/modules/workspaces/bl/workspace_service.cpp
 )
 target_include_directories(gf_application PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
@@ -168,9 +171,11 @@ if(GF_BUILD_TESTING)
     add_executable(gf_unit_tests
         tests/unit/core_git_unit_tests.cpp
         tests/unit/domain_entities_unit_tests.cpp
+        tests/unit/services_unit_tests.cpp
     )
     target_link_libraries(gf_unit_tests PRIVATE
         gf_git_cli_native
+        gf_persistence_sqlite
         Catch2::Catch2WithMain
     )
     gf_apply_compiler_warnings(gf_unit_tests)
