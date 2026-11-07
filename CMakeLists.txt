@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.25)
 project(GitFlux
     VERSION 0.1.0
     DESCRIPTION "Git Flux — Modern local-first desktop Git client"
-    LANGUAGES CXX
+    LANGUAGES C CXX
 )
 
 option(GF_BUILD_DESKTOP "Abilita i target che dipendono da Qt 6 (adapter Qt e UI desktop)" OFF)
@@ -44,7 +44,46 @@ target_link_libraries(gf_application PUBLIC gf_domain)
 gf_apply_compiler_warnings(gf_application)
 
 # ==============================================================================
-# 2. INFRASTRUCTURE — Git CLI Adapter (Native OS vs Qt 6)
+# 2. INFRASTRUCTURE — Persistence (SQLite 3 — Zero-Qt)
+# ==============================================================================
+add_library(gf_sqlite3 STATIC
+    third_party/sqlite/sqlite3.c
+)
+target_include_directories(gf_sqlite3 PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/sqlite"
+)
+target_compile_definitions(gf_sqlite3 PRIVATE
+    SQLITE_ENABLE_JSON1
+    SQLITE_ENABLE_RTREE
+    SQLITE_THREADSAFE=1
+)
+target_compile_options(gf_sqlite3 PRIVATE
+    $<$<C_COMPILER_ID:MSVC>:/w>
+    $<$<NOT:$<C_COMPILER_ID:MSVC>>:-w>
+)
+if(NOT MSVC)
+    target_link_libraries(gf_sqlite3 PRIVATE ${CMAKE_DL_LIBS} pthread)
+endif()
+
+add_library(gf_persistence_sqlite STATIC
+    src/infrastructure/persistence/sqlite/connection/sqlite_connection.cpp
+    src/infrastructure/persistence/sqlite/connection/sqlite_statement.cpp
+    src/infrastructure/persistence/sqlite/migrations/schema_migrator.cpp
+    src/infrastructure/persistence/repositories/sqlite_repository_store.cpp
+    src/infrastructure/persistence/groups/sqlite_group_store.cpp
+    src/infrastructure/persistence/workspaces/sqlite_workspace_store.cpp
+)
+target_include_directories(gf_persistence_sqlite PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
+target_link_libraries(gf_persistence_sqlite PUBLIC
+    gf_domain
+    gf_sqlite3
+)
+gf_apply_compiler_warnings(gf_persistence_sqlite)
+
+# ==============================================================================
+# 3. INFRASTRUCTURE — Git CLI Adapter (Native OS vs Qt 6)
 # ==============================================================================
 add_library(gf_git_cli_native STATIC
     src/infrastructure/git/git_discovery.cpp
@@ -75,7 +114,7 @@ if(GF_BUILD_DESKTOP)
 endif()
 
 # ==============================================================================
-# 3. TOOLS — Deterministic Synthetic Git Fixture Generator
+# 4. TOOLS — Deterministic Synthetic Git Fixture Generator
 # ==============================================================================
 add_library(gf_fixture_gen_lib STATIC
     tools/fixture_gen/fixture_generator.cpp
@@ -106,7 +145,7 @@ function(gf_deploy_runtime_dlls target_name)
 endfunction()
 
 # ==============================================================================
-# 4. TESTS & BENCHMARKS (Catch2 v3)
+# 5. TESTS & BENCHMARKS (Catch2 v3)
 # ==============================================================================
 if(GF_BUILD_TESTING OR GF_BUILD_BENCHMARKS)
     include(CTest)
@@ -137,12 +176,14 @@ if(GF_BUILD_TESTING)
     gf_apply_compiler_warnings(gf_unit_tests)
     add_test(NAME gf_unit_tests COMMAND gf_unit_tests)
 
-    # Integration test Suite A (Git reale su repository temporanei)
+    # Integration test (Git reale su repo temporanei + SQLite persistence)
     add_executable(gf_integration_tests
         tests/integration/suite_a_git_integration_tests.cpp
+        tests/integration/sqlite_stores_integration_tests.cpp
     )
     target_link_libraries(gf_integration_tests PRIVATE
         gf_git_cli_native
+        gf_persistence_sqlite
         gf_fixture_gen_lib
         Catch2::Catch2WithMain
     )
