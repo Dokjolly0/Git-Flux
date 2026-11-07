@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/modules/git/bo/branch_models.hpp"
 #include "core/modules/git/bo/commit_options.hpp"
 #include "core/modules/git/bo/diff_models.hpp"
 #include "core/modules/git/bo/repo_working_tree_status.hpp"
@@ -20,6 +21,11 @@ struct GitOpsError {
         ConflictPresent,
         EmptyCommitMessage,
         NothingToCommit,
+        BranchAlreadyExists,
+        BranchNotFound,
+        InvalidBranchName,
+        DirtyWorkingTree,
+        InvalidOperation,
         StorageError
     };
 
@@ -71,6 +77,32 @@ public:
     [[nodiscard]] virtual std::expected<std::vector<bo::FileDiff>, GitOpsError>
     getAllDiffs(const std::filesystem::path& repoPath,
                 bo::DiffScope scope) = 0;
+
+    /// Ritorna l'elenco dei branch locali e remoti del repository.
+    [[nodiscard]] virtual std::expected<std::vector<bo::GitBranch>, GitOpsError>
+    listBranches(const std::filesystem::path& repoPath) = 0;
+
+    /// Crea un nuovo branch a partire da un punto di partenza opzionale.
+    [[nodiscard]] virtual std::expected<void, GitOpsError>
+    createBranch(const std::filesystem::path& repoPath,
+                 const bo::CreateBranchOptions& options) = 0;
+
+    /// Esegue il checkout / switch a un branch o commit.
+    [[nodiscard]] virtual std::expected<void, GitOpsError>
+    checkoutBranch(const std::filesystem::path& repoPath,
+                   const bo::CheckoutOptions& options) = 0;
+
+    /// Elimina un branch esistente (con flag force per branch non mergiati).
+    [[nodiscard]] virtual std::expected<void, GitOpsError>
+    deleteBranch(const std::filesystem::path& repoPath,
+                 const std::string& branchName,
+                 bool force) = 0;
+
+    /// Rinomina un branch esistente.
+    [[nodiscard]] virtual std::expected<void, GitOpsError>
+    renameBranch(const std::filesystem::path& repoPath,
+                 const std::string& oldName,
+                 const std::string& newName) = 0;
 };
 
 } // namespace gf::git::ports

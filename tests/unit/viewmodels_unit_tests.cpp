@@ -408,6 +408,31 @@ public:
     getAllDiffs(const std::filesystem::path&, gf::git::bo::DiffScope) override {
         return std::vector<gf::git::bo::FileDiff>{diffToReturn};
     }
+
+    std::expected<std::vector<gf::git::bo::GitBranch>, gf::git::ports::GitOpsError>
+    listBranches(const std::filesystem::path&) override {
+        return std::vector<gf::git::bo::GitBranch>{};
+    }
+
+    std::expected<void, gf::git::ports::GitOpsError>
+    createBranch(const std::filesystem::path&, const gf::git::bo::CreateBranchOptions&) override {
+        return {};
+    }
+
+    std::expected<void, gf::git::ports::GitOpsError>
+    checkoutBranch(const std::filesystem::path&, const gf::git::bo::CheckoutOptions&) override {
+        return {};
+    }
+
+    std::expected<void, gf::git::ports::GitOpsError>
+    deleteBranch(const std::filesystem::path&, const std::string&, bool) override {
+        return {};
+    }
+
+    std::expected<void, gf::git::ports::GitOpsError>
+    renameBranch(const std::filesystem::path&, const std::string&, const std::string&) override {
+        return {};
+    }
 };
 
 TEST_CASE("WorkingTreeFileListModel and DiffLineListModel MVVM models", "[viewmodel][models]") {

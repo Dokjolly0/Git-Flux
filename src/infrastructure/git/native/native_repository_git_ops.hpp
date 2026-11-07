@@ -40,6 +40,27 @@ public:
     getAllDiffs(const std::filesystem::path& repoPath,
                 gf::git::bo::DiffScope scope) override;
 
+    [[nodiscard]] std::expected<std::vector<gf::git::bo::GitBranch>, gf::git::ports::GitOpsError>
+    listBranches(const std::filesystem::path& repoPath) override;
+
+    [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+    createBranch(const std::filesystem::path& repoPath,
+                 const gf::git::bo::CreateBranchOptions& options) override;
+
+    [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+    checkoutBranch(const std::filesystem::path& repoPath,
+                   const gf::git::bo::CheckoutOptions& options) override;
+
+    [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+    deleteBranch(const std::filesystem::path& repoPath,
+                 const std::string& branchName,
+                 bool force) override;
+
+    [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+    renameBranch(const std::filesystem::path& repoPath,
+                 const std::string& oldName,
+                 const std::string& newName) override;
+
 private:
     gf::git::ports::IGitCommandExecutor& m_executor;
 };

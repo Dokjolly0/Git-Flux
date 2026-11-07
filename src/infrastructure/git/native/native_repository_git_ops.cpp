@@ -600,4 +600,351 @@ NativeRepositoryGitOps::getAllDiffs(const std::filesystem::path& repoPath,
     return gf::git::bl::UnifiedDiffParser::parse(execResult->stdoutBytes);
 }
 
+std::expected<std::vector<gf::git::bo::GitBranch>, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::listBranches(const std::filesystem::path& repoPath) {
+    gf::git::bo::GitCommand cmd{
+        .args = {"for-each-ref", "--format=%(refname)%09%(objectname)%09%(HEAD)%09%(upstream:short)%09%(upstream:track)", "refs/heads", "refs/remotes"},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile recuperare i branch: " + execResult.error().message,
+            .command = "git for-each-ref"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes,
+            .command = "git for-each-ref"
+        });
+    }
+
+    std::vector<gf::git::bo::GitBranch> branches;
+    std::string_view output = execResult->stdoutBytes;
+
+    std::size_t startPos = 0;
+    while (startPos < output.size()) {
+        auto endPos = output.find('\n', startPos);
+        std::string_view line = (endPos == std::string_view::npos)
+                                    ? output.substr(startPos)
+                                    : output.substr(startPos, endPos - startPos);
+        startPos = (endPos == std::string_view::npos) ? output.size() : endPos + 1;
+
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) {
+            line.remove_suffix(1);
+        }
+        if (line.empty()) {
+            continue;
+        }
+
+        std::vector<std::string_view> fields;
+        std::size_t fStart = 0;
+        while (fStart < line.size()) {
+            auto fEnd = line.find('\t', fStart);
+            if (fEnd == std::string_view::npos) {
+                fields.push_back(line.substr(fStart));
+                break;
+            }
+            fields.push_back(line.substr(fStart, fEnd - fStart));
+            fStart = fEnd + 1;
+        }
+
+        if (fields.size() < 2) {
+            continue;
+        }
+
+        std::string_view refname = fields[0];
+        std::string_view objname = fields[1];
+        std::string_view headMark = fields.size() > 2 ? fields[2] : "";
+        std::string_view upstream = fields.size() > 3 ? fields[3] : "";
+        std::string_view track = fields.size() > 4 ? fields[4] : "";
+
+        gf::git::bo::GitBranch b;
+        b.fullName = std::string(refname);
+        b.targetCommitSha = std::string(objname);
+        b.isCurrent = (headMark.find('*') != std::string_view::npos);
+        b.upstream = std::string(upstream);
+
+        if (refname.starts_with("refs/heads/")) {
+            b.type = gf::git::bo::BranchType::Local;
+            b.name = std::string(refname.substr(11));
+            b.shortName = b.name;
+        } else if (refname.starts_with("refs/remotes/")) {
+            b.type = gf::git::bo::BranchType::Remote;
+            b.name = std::string(refname.substr(13));
+            auto slash = b.name.find('/');
+            b.shortName = (slash != std::string::npos) ? b.name.substr(slash + 1) : b.name;
+            if (b.shortName == "HEAD") {
+                continue;
+            }
+        } else {
+            b.type = gf::git::bo::BranchType::Local;
+            b.name = std::string(refname);
+            b.shortName = b.name;
+        }
+
+        // Parsing ahead/behind da track (es. "[ahead 2, behind 1]")
+        if (!track.empty()) {
+            auto aheadPos = track.find("ahead ");
+            if (aheadPos != std::string_view::npos) {
+                int val = 0;
+                std::size_t p = aheadPos + 6;
+                while (p < track.size() && track[p] >= '0' && track[p] <= '9') {
+                    val = val * 10 + (track[p] - '0');
+                    ++p;
+                }
+                b.ahead = val;
+            }
+
+            auto behindPos = track.find("behind ");
+            if (behindPos != std::string_view::npos) {
+                int val = 0;
+                std::size_t p = behindPos + 7;
+                while (p < track.size() && track[p] >= '0' && track[p] <= '9') {
+                    val = val * 10 + (track[p] - '0');
+                    ++p;
+                }
+                b.behind = val;
+            }
+        }
+
+        branches.push_back(std::move(b));
+    }
+
+    // Se la lista è vuota (es. repository appena inizializzato con unborn HEAD)
+    if (branches.empty()) {
+        gf::git::bo::GitCommand branchCheckCmd{
+            .args = {"rev-parse", "--abbrev-ref", "HEAD"},
+            .workingDirectory = repoPath,
+            .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
+            .timeout = std::chrono::milliseconds{10'000}
+        };
+        auto bcRes = m_executor.execute(branchCheckCmd);
+        if (bcRes && bcRes->exitCode == 0) {
+            std::string currentHead = trimString(bcRes->stdoutBytes);
+            if (!currentHead.empty() && currentHead != "HEAD") {
+                branches.push_back(gf::git::bo::GitBranch{
+                    .name = currentHead,
+                    .shortName = currentHead,
+                    .fullName = "refs/heads/" + currentHead,
+                    .targetCommitSha = {},
+                    .upstream = {},
+                    .ahead = 0,
+                    .behind = 0,
+                    .isCurrent = true,
+                    .isDetached = false,
+                    .type = gf::git::bo::BranchType::Local
+                });
+            }
+        }
+    }
+
+    return branches;
+}
+
+std::expected<void, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::createBranch(const std::filesystem::path& repoPath,
+                                     const gf::git::bo::CreateBranchOptions& options) {
+    std::vector<std::string> args;
+    if (options.checkoutAfterCreate) {
+        args = {"checkout", "-b", options.name};
+    } else {
+        args = {"branch", options.name};
+    }
+
+    if (options.startPoint.has_value() && !options.startPoint->empty()) {
+        args.push_back(*options.startPoint);
+    }
+
+    gf::git::bo::GitCommand cmd{
+        .args = std::move(args),
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile creare il branch: " + execResult.error().message,
+            .command = "git branch"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+        if (execResult->stderrBytes.find("already exists") != std::string::npos ||
+            execResult->stderrBytes.find("esiste già") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::BranchAlreadyExists;
+        } else if (execResult->stderrBytes.find("not found") != std::string::npos ||
+                   execResult->stderrBytes.find("non trovato") != std::string::npos ||
+                   execResult->stderrBytes.find("No branch named") != std::string::npos ||
+                   execResult->stderrBytes.find("Nessun branch denominato") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::BranchNotFound;
+        }
+
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = kind,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes,
+            .command = "git branch"
+        });
+    }
+
+    return {};
+}
+
+std::expected<void, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::checkoutBranch(const std::filesystem::path& repoPath,
+                                       const gf::git::bo::CheckoutOptions& options) {
+    std::vector<std::string> args{"checkout"};
+    if (options.createNewBranch) {
+        args.emplace_back("-b");
+    }
+    if (options.force) {
+        args.emplace_back("-f");
+    }
+    args.push_back(options.branchOrCommit);
+
+    gf::git::bo::GitCommand cmd{
+        .args = std::move(args),
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile eseguire il checkout: " + execResult.error().message,
+            .command = "git checkout"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+        if (execResult->stderrBytes.find("would be overwritten by checkout") != std::string::npos ||
+            execResult->stderrBytes.find("sarebbero sovrascritte con il checkout") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::DirtyWorkingTree;
+        } else if (execResult->stderrBytes.find("did not match any") != std::string::npos ||
+                   execResult->stderrBytes.find("non corrisponde ad alcun") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::BranchNotFound;
+        } else if (execResult->stderrBytes.find("already exists") != std::string::npos ||
+                   execResult->stderrBytes.find("esiste già") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::BranchAlreadyExists;
+        }
+
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = kind,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes,
+            .command = "git checkout"
+        });
+    }
+
+    return {};
+}
+
+std::expected<void, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::deleteBranch(const std::filesystem::path& repoPath,
+                                     const std::string& branchName,
+                                     bool force) {
+    gf::git::bo::GitCommand cmd{
+        .args = {"branch", force ? "-D" : "-d", branchName},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile eliminare il branch: " + execResult.error().message,
+            .command = "git branch -d"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+        if (execResult->stderrBytes.find("cannot delete") != std::string::npos ||
+            execResult->stderrBytes.find("impossibile eliminare") != std::string::npos ||
+            execResult->stderrBytes.find("not fully merged") != std::string::npos ||
+            execResult->stderrBytes.find("sottoposto a merge") != std::string::npos ||
+            execResult->stderrBytes.find("used by worktree") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::InvalidOperation;
+        } else if (execResult->stderrBytes.find("not found") != std::string::npos ||
+                   execResult->stderrBytes.find("non trovato") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::BranchNotFound;
+        }
+
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = kind,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes,
+            .command = "git branch -d"
+        });
+    }
+
+    return {};
+}
+
+std::expected<void, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::renameBranch(const std::filesystem::path& repoPath,
+                                     const std::string& oldName,
+                                     const std::string& newName) {
+    gf::git::bo::GitCommand cmd{
+        .args = {"branch", "-m", oldName, newName},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile rinominare il branch: " + execResult.error().message,
+            .command = "git branch -m"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+        if (execResult->stderrBytes.find("already exists") != std::string::npos ||
+            execResult->stderrBytes.find("esiste già") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::BranchAlreadyExists;
+        } else if (execResult->stderrBytes.find("not found") != std::string::npos ||
+                   execResult->stderrBytes.find("non trovato") != std::string::npos ||
+                   execResult->stderrBytes.find("No branch named") != std::string::npos ||
+                   execResult->stderrBytes.find("Nessun branch denominato") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::BranchNotFound;
+        }
+
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = kind,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes,
+            .command = "git branch -m"
+        });
+    }
+
+    return {};
+}
+
 } // namespace gf::infra::git
