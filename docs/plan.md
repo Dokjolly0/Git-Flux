@@ -841,6 +841,8 @@ La roadmap segue **priorità e dipendenze**, non date vincolanti. La progression
 
 ### Fase 1 — Fondamenta della V1
 
+> **Documento di dettaglio ed avanzamento:** [`docs/phase1-foundation.md`](phase1-foundation.md)
+
 - Repository Registry, ID stabili e path management.
 - Gruppi e modalità rapida con più gruppi aperti.
 - Workspace e sessioni persistenti.

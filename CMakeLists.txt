@@ -128,6 +128,7 @@ if(GF_BUILD_TESTING)
     # Unit test del Core (sempre ZERO Qt anche se GF_BUILD_DESKTOP=ON)
     add_executable(gf_unit_tests
         tests/unit/core_git_unit_tests.cpp
+        tests/unit/domain_entities_unit_tests.cpp
     )
     target_link_libraries(gf_unit_tests PRIVATE
         gf_git_cli_native
