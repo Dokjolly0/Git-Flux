@@ -15,6 +15,18 @@ Rectangle {
     property var selectedFile: null
     property bool isDiffOpen: false
     property string fileViewMode: "path" // "path" | "tree"
+    property string fileCategoryFilter: "all" // "all" | "M" | "A" | "D" | "R"
+    property string fileSortOrder: "name_asc" // "name_asc" | "name_desc" | "git"
+    property var treeItems: []
+    property var collapsedFolders: ({})
+
+    readonly property bool hasCollapsedFolders: {
+        var keys = Object.keys(root.collapsedFolders);
+        for (var i = 0; i < keys.length; ++i) {
+            if (root.collapsedFolders[keys[i]]) return true;
+        }
+        return false;
+    }
 
     // Statistics on commit touched files
     readonly property int totalFilesCount: root.commitFiles ? root.commitFiles.length : 0
@@ -49,6 +61,48 @@ Rectangle {
             if (root.commitFiles[i].status === "R" || root.commitFiles[i].status === "C") count++;
         }
         return count;
+    }
+
+    // Filtered files according to category chip selection
+    readonly property var filteredCommitFiles: {
+        if (!root.commitFiles) return [];
+        if (root.fileCategoryFilter === "all") return root.commitFiles;
+        var res = [];
+        for (var i = 0; i < root.commitFiles.length; ++i) {
+            var f = root.commitFiles[i];
+            if (!f) continue;
+            if (root.fileCategoryFilter === "M" && f.status === "M") res.push(f);
+            else if (root.fileCategoryFilter === "A" && f.status === "A") res.push(f);
+            else if (root.fileCategoryFilter === "D" && f.status === "D") res.push(f);
+            else if ((root.fileCategoryFilter === "R" || root.fileCategoryFilter === "C") && (f.status === "R" || f.status === "C")) res.push(f);
+        }
+        return res;
+    }
+
+    // Sorted flat files list for Path View
+    readonly property var sortedPathFiles: {
+        var list = (root.filteredCommitFiles || []).slice(0);
+        if (root.fileSortOrder === "name_asc") {
+            list.sort(function(a, b) {
+                var fa = root.getFilename(a.path).toLowerCase();
+                var fb = root.getFilename(b.path).toLowerCase();
+                return fa.localeCompare(fb);
+            });
+        } else if (root.fileSortOrder === "name_desc") {
+            list.sort(function(a, b) {
+                var fa = root.getFilename(a.path).toLowerCase();
+                var fb = root.getFilename(b.path).toLowerCase();
+                return fb.localeCompare(fa);
+            });
+        }
+        return list;
+    }
+
+    onFileCategoryFilterChanged: {
+        root.updateTreeItems();
+    }
+    onFileSortOrderChanged: {
+        root.updateTreeItems();
     }
 
     // Helper to split path into directory and filename
@@ -145,6 +199,7 @@ Rectangle {
             root.commitFiles = [];
             root.selectedFile = null;
             root.isDiffOpen = false;
+            root.updateTreeItems();
             return;
         }
         var model = root.branchManager.commitHistory;
@@ -155,6 +210,7 @@ Rectangle {
             root.commitFiles = [];
             root.selectedFile = null;
             root.isDiffOpen = false;
+            root.updateTreeItems();
         }
     }
 
@@ -163,15 +219,155 @@ Rectangle {
         root.selectedFile = null;
         root.isDiffOpen = false;
         root.commitFiles = [];
+        root.fileCategoryFilter = "all";
+        root.collapsedFolders = ({});
         if (!commit || !root.branchManager) {
             if (root.sessionVm && root.sessionVm.commitDiffViewer) {
                 root.sessionVm.commitDiffViewer.clear();
             }
+            root.updateTreeItems();
             return;
         }
 
         var files = root.branchManager.getCommitFiles(commit.sha);
         root.commitFiles = files || [];
+        root.updateTreeItems();
+    }
+
+    function updateTreeItems() {
+        var files = root.filteredCommitFiles;
+        if (!files || files.length === 0) {
+            root.treeItems = [];
+            return;
+        }
+
+        var rootNode = { name: "", fullPath: "", children: {}, files: [], fileCount: 0 };
+        for (var i = 0; i < files.length; ++i) {
+            var f = files[i];
+            if (!f || !f.path) continue;
+            var cleanPath = f.path.replace(/\\/g, '/');
+            var parts = cleanPath.split('/').filter(function(p) { return p.length > 0; });
+            var filename = parts.pop();
+            var curr = rootNode;
+            var currPath = "";
+            for (var p = 0; p < parts.length; ++p) {
+                var part = parts[p];
+                currPath = currPath ? (currPath + "/" + part) : part;
+                if (!curr.children[part]) {
+                    curr.children[part] = {
+                        name: part,
+                        fullPath: currPath,
+                        children: {},
+                        files: [],
+                        fileCount: 0
+                    };
+                }
+                curr.children[part].fileCount++;
+                curr = curr.children[part];
+            }
+            curr.files.push(f);
+            rootNode.fileCount++;
+        }
+
+        var items = [];
+        function traverse(node, depth) {
+            var childKeys = Object.keys(node.children);
+            if (root.fileSortOrder === "name_desc") {
+                childKeys.sort(function(a, b) { return b.toLowerCase().localeCompare(a.toLowerCase()); });
+            } else {
+                childKeys.sort(function(a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); });
+            }
+
+            for (var k = 0; k < childKeys.length; ++k) {
+                var key = childKeys[k];
+                var child = node.children[key];
+                var isCollapsed = !!root.collapsedFolders[child.fullPath];
+                items.push({
+                    isFolder: true,
+                    name: child.name,
+                    fullPath: child.fullPath,
+                    depth: depth,
+                    fileCount: child.fileCount,
+                    isCollapsed: isCollapsed
+                });
+                if (!isCollapsed) {
+                    traverse(child, depth + 1);
+                }
+            }
+
+            var nodeFiles = node.files.slice(0);
+            if (root.fileSortOrder === "name_desc") {
+                nodeFiles.sort(function(a, b) {
+                    var fa = root.getFilename(a.path).toLowerCase();
+                    var fb = root.getFilename(b.path).toLowerCase();
+                    return fb.localeCompare(fa);
+                });
+            } else if (root.fileSortOrder === "name_asc") {
+                nodeFiles.sort(function(a, b) {
+                    var fa = root.getFilename(a.path).toLowerCase();
+                    var fb = root.getFilename(b.path).toLowerCase();
+                    return fa.localeCompare(fb);
+                });
+            }
+
+            for (var fIdx = 0; fIdx < nodeFiles.length; ++fIdx) {
+                var fileObj = nodeFiles[fIdx];
+                var fname = root.getFilename(fileObj.path);
+                items.push({
+                    isFolder: false,
+                    name: fname,
+                    path: fileObj.path,
+                    depth: depth,
+                    file: fileObj,
+                    status: fileObj.status || "M",
+                    additions: fileObj.additions || 0,
+                    deletions: fileObj.deletions || 0
+                });
+            }
+        }
+
+        traverse(rootNode, 0);
+        root.treeItems = items;
+    }
+
+    function toggleFolder(fullPath) {
+        var c = Object.assign({}, root.collapsedFolders);
+        c[fullPath] = !c[fullPath];
+        root.collapsedFolders = c;
+        root.updateTreeItems();
+    }
+
+    function expandAllFolders() {
+        root.collapsedFolders = ({});
+        root.updateTreeItems();
+    }
+
+    function collapseAllFolders() {
+        var files = root.filteredCommitFiles;
+        var c = {};
+        for (var i = 0; i < files.length; ++i) {
+            var cleanPath = files[i].path.replace(/\\/g, '/');
+            var parts = cleanPath.split('/').filter(function(p) { return p.length > 0; });
+            parts.pop();
+            var pStr = "";
+            for (var p = 0; p < parts.length; ++p) {
+                pStr = pStr ? (pStr + "/" + parts[p]) : parts[p];
+                c[pStr] = true;
+            }
+        }
+        root.collapsedFolders = c;
+        root.updateTreeItems();
+    }
+
+    function cycleFileSort() {
+        if (root.fileSortOrder === "name_asc") {
+            root.fileSortOrder = "name_desc";
+        } else if (root.fileSortOrder === "name_desc") {
+            root.fileSortOrder = "git";
+        } else {
+            root.fileSortOrder = "name_asc";
+        }
+        root.updateTreeItems();
     }
 
     function openFileDiff(file) {
@@ -853,117 +1049,182 @@ Rectangle {
                     color: "#21262D"
                 }
 
-                // Files Header Bar (Total touched files + breakdown by category)
+                // ==========================================
+                // RIGA 1: STATISTICHE E TIPOLOGIE FILE MODIFICATI
+                // ==========================================
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    // Badge: Totale / Tutte le categorie
+                    Rectangle {
+                        height: 24
+                        implicitWidth: totalChipRow.implicitWidth + 14
+                        radius: 4
+                        color: root.fileCategoryFilter === "all" ? "#1E293B" : "#0D1117"
+                        border.color: root.fileCategoryFilter === "all" ? "#38BDF8" : "#30363D"
+                        border.width: 1
+
+                        RowLayout {
+                            id: totalChipRow
+                            anchors.centerIn: parent
+                            spacing: 5
+                            Text { text: "📁"; font.pixelSize: 11 }
+                            Text {
+                                text: root.totalFilesCount + (root.totalFilesCount === 1 ? " file" : " file")
+                                color: root.fileCategoryFilter === "all" ? "#F1F5F9" : "#94A3B8"
+                                font.bold: true
+                                font.pixelSize: 11
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.fileCategoryFilter = "all"
+                        }
+                    }
+
+                    // Badge: Modificati (✏️)
+                    Rectangle {
+                        visible: root.modifiedFilesCount > 0
+                        height: 24
+                        implicitWidth: modChipRow.implicitWidth + 14
+                        radius: 4
+                        color: root.fileCategoryFilter === "M" ? "#854D0E" : "#1A170F"
+                        border.color: root.fileCategoryFilter === "M" ? "#F59E0B" : "#451A03"
+                        border.width: 1
+
+                        RowLayout {
+                            id: modChipRow
+                            anchors.centerIn: parent
+                            spacing: 4
+                            Text { text: "✏️"; font.pixelSize: 10 }
+                            Text {
+                                text: root.modifiedFilesCount + " mod"
+                                color: "#FBBF24"
+                                font.bold: true
+                                font.pixelSize: 11
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                root.fileCategoryFilter = (root.fileCategoryFilter === "M" ? "all" : "M");
+                            }
+                        }
+                    }
+
+                    // Badge: Creati / Aggiunti (➕)
+                    Rectangle {
+                        visible: root.addedFilesCount > 0
+                        height: 24
+                        implicitWidth: addChipRow.implicitWidth + 14
+                        radius: 4
+                        color: root.fileCategoryFilter === "A" ? "#064E3B" : "#0F1A15"
+                        border.color: root.fileCategoryFilter === "A" ? "#10B981" : "#064E3B"
+                        border.width: 1
+
+                        RowLayout {
+                            id: addChipRow
+                            anchors.centerIn: parent
+                            spacing: 4
+                            Text { text: "➕"; font.pixelSize: 10 }
+                            Text {
+                                text: root.addedFilesCount + " creati"
+                                color: "#34D399"
+                                font.bold: true
+                                font.pixelSize: 11
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                root.fileCategoryFilter = (root.fileCategoryFilter === "A" ? "all" : "A");
+                            }
+                        }
+                    }
+
+                    // Badge: Eliminati (🗑️)
+                    Rectangle {
+                        visible: root.deletedFilesCount > 0
+                        height: 24
+                        implicitWidth: delChipRow.implicitWidth + 14
+                        radius: 4
+                        color: root.fileCategoryFilter === "D" ? "#7F1D1D" : "#1C1113"
+                        border.color: root.fileCategoryFilter === "D" ? "#EF4444" : "#7F1D1D"
+                        border.width: 1
+
+                        RowLayout {
+                            id: delChipRow
+                            anchors.centerIn: parent
+                            spacing: 4
+                            Text { text: "🗑️"; font.pixelSize: 10 }
+                            Text {
+                                text: root.deletedFilesCount + " del"
+                                color: "#F87171"
+                                font.bold: true
+                                font.pixelSize: 11
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                root.fileCategoryFilter = (root.fileCategoryFilter === "D" ? "all" : "D");
+                            }
+                        }
+                    }
+
+                    // Badge: Rinominati (⇄)
+                    Rectangle {
+                        visible: root.renamedFilesCount > 0
+                        height: 24
+                        implicitWidth: renChipRow.implicitWidth + 14
+                        radius: 4
+                        color: root.fileCategoryFilter === "R" ? "#0C4A6E" : "#0C1B24"
+                        border.color: root.fileCategoryFilter === "R" ? "#38BDF8" : "#075985"
+                        border.width: 1
+
+                        RowLayout {
+                            id: renChipRow
+                            anchors.centerIn: parent
+                            spacing: 4
+                            Text { text: "⇄"; font.pixelSize: 10 }
+                            Text {
+                                text: root.renamedFilesCount + " rinominati"
+                                color: "#38BDF8"
+                                font.bold: true
+                                font.pixelSize: 11
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                root.fileCategoryFilter = (root.fileCategoryFilter === "R" ? "all" : "R");
+                            }
+                        }
+                    }
+                }
+
+                // ==========================================
+                // RIGA 2: MODALITÀ DI VISUALIZZAZIONE E CONTROLLI
+                // ==========================================
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 8
 
-                    // Total files touched
-                    RowLayout {
-                        spacing: 5
-                        Text {
-                            text: "📁"
-                            font.pixelSize: 12
-                        }
-                        Text {
-                            text: root.totalFilesCount + (root.totalFilesCount === 1 ? " file toccato" : " file toccati")
-                            color: "#F1F5F9"
-                            font.bold: true
-                            font.pixelSize: 12
-                        }
-                    }
-
-                    // Divider dot
-                    Text {
-                        text: "•"
-                        color: "#475569"
-                        font.pixelSize: 10
-                        visible: root.totalFilesCount > 0
-                    }
-
-                    // Category breakdown badges
-                    RowLayout {
-                        spacing: 6
-                        visible: root.totalFilesCount > 0
-
-                        // Modified (✏️)
-                        RowLayout {
-                            spacing: 3
-                            visible: root.modifiedFilesCount > 0 || (root.addedFilesCount === 0 && root.deletedFilesCount === 0 && root.renamedFilesCount === 0)
-                            Text {
-                                text: "✏️"
-                                font.pixelSize: 10
-                            }
-                            Text {
-                                text: root.modifiedFilesCount + " mod"
-                                color: "#F59E0B"
-                                font.pixelSize: 11
-                                font.bold: true
-                            }
-                        }
-
-                        // Added / Created (➕)
-                        RowLayout {
-                            spacing: 3
-                            visible: root.addedFilesCount > 0
-                            Text {
-                                text: "➕"
-                                font.pixelSize: 10
-                            }
-                            Text {
-                                text: root.addedFilesCount + " creati"
-                                color: "#10B981"
-                                font.pixelSize: 11
-                                font.bold: true
-                            }
-                        }
-
-                        // Deleted (🗑️)
-                        RowLayout {
-                            spacing: 3
-                            visible: root.deletedFilesCount > 0
-                            Text {
-                                text: "🗑️"
-                                font.pixelSize: 10
-                            }
-                            Text {
-                                text: root.deletedFilesCount + " del"
-                                color: "#EF4444"
-                                font.pixelSize: 11
-                                font.bold: true
-                            }
-                        }
-
-                        // Renamed (⇄)
-                        RowLayout {
-                            spacing: 3
-                            visible: root.renamedFilesCount > 0
-                            Text {
-                                text: "⇄"
-                                font.pixelSize: 10
-                            }
-                            Text {
-                                text: root.renamedFilesCount + " rinominati"
-                                color: "#38BDF8"
-                                font.pixelSize: 11
-                                font.bold: true
-                            }
-                        }
-                    }
-
-                    Item { Layout.fillWidth: true }
-
-                    // Sort button
-                    Text {
-                        text: "⇅"
-                        color: "#8B949E"
-                        font.pixelSize: 13
-                    }
-
-                    // Path / Tree Segmented Control
+                    // Segmented Mode Switcher: [ ☰ Path | 🌲 Tree ]
                     Rectangle {
-                        Layout.preferredHeight: 22
-                        Layout.preferredWidth: 100
+                        Layout.preferredHeight: 24
+                        Layout.preferredWidth: 140
                         radius: 4
                         color: "#0D1117"
                         border.color: "#30363D"
@@ -972,74 +1233,136 @@ Rectangle {
                             anchors.fill: parent
                             spacing: 0
 
+                            // Path view tab
                             Rectangle {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 radius: 4
-                                color: root.fileViewMode === "path" ? "#2563EB" : "transparent"
+                                color: root.fileViewMode === "path" ? "#2563EB" : (pathTabMouse.containsMouse ? "#1F242C" : "transparent")
                                 Text {
                                     anchors.centerIn: parent
                                     text: "☰ Path"
-                                    color: root.fileViewMode === "path" ? "#FFFFFF" : "#8B949E"
-                                    font.pixelSize: 10
-                                    font.bold: true
+                                    color: root.fileViewMode === "path" ? "#FFFFFF" : "#94A3B8"
+                                    font.pixelSize: 11
+                                    font.bold: root.fileViewMode === "path"
                                 }
                                 MouseArea {
+                                    id: pathTabMouse
                                     anchors.fill: parent
+                                    hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: root.fileViewMode = "path"
                                 }
                             }
 
+                            // Tree view tab
                             Rectangle {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 radius: 4
-                                color: root.fileViewMode === "tree" ? "#2563EB" : "transparent"
+                                color: root.fileViewMode === "tree" ? "#2563EB" : (treeTabMouse.containsMouse ? "#1F242C" : "transparent")
                                 Text {
                                     anchors.centerIn: parent
                                     text: "🌲 Tree"
-                                    color: root.fileViewMode === "tree" ? "#FFFFFF" : "#8B949E"
-                                    font.pixelSize: 10
-                                    font.bold: true
+                                    color: root.fileViewMode === "tree" ? "#FFFFFF" : "#94A3B8"
+                                    font.pixelSize: 11
+                                    font.bold: root.fileViewMode === "tree"
                                 }
                                 MouseArea {
+                                    id: treeTabMouse
                                     anchors.fill: parent
+                                    hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: root.fileViewMode = "tree"
+                                    onClicked: {
+                                        root.fileViewMode = "tree";
+                                        root.updateTreeItems();
+                                    }
                                 }
                             }
                         }
                     }
 
-                    // View all files checkbox
-                    RowLayout {
-                        spacing: 4
-                        Rectangle {
-                            width: 12
-                            height: 12
-                            radius: 2
-                            color: "#0D1117"
-                            border.color: "#30363D"
-                        }
+                    Item { Layout.fillWidth: true }
+
+                    // Tree mode only: Expand/Collapse All toggle
+                    Rectangle {
+                        visible: root.fileViewMode === "tree" && root.treeItems.length > 0
+                        Layout.preferredHeight: 24
+                        implicitWidth: expText.implicitWidth + 14
+                        radius: 4
+                        color: expMouse.containsMouse ? "#1E293B" : "#0D1117"
+                        border.color: "#30363D"
+                        border.width: 1
+
                         Text {
-                            text: "View all files"
-                            color: "#8B949E"
+                            id: expText
+                            anchors.centerIn: parent
+                            text: root.hasCollapsedFolders ? "⊞ Espandi" : "⊟ Comprimi"
+                            color: "#94A3B8"
                             font.pixelSize: 10
+                            font.bold: true
+                        }
+
+                        MouseArea {
+                            id: expMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (root.hasCollapsedFolders) {
+                                    root.expandAllFolders();
+                                } else {
+                                    root.collapseAllFolders();
+                                }
+                            }
+                        }
+                    }
+
+                    // Sort button (cycles: A-Z, Z-A, Git)
+                    Rectangle {
+                        Layout.preferredHeight: 24
+                        implicitWidth: sortText.implicitWidth + 14
+                        radius: 4
+                        color: sortMouse.containsMouse ? "#1E293B" : "#0D1117"
+                        border.color: root.fileSortOrder !== "git" ? "#38BDF8" : "#30363D"
+                        border.width: 1
+
+                        Text {
+                            id: sortText
+                            anchors.centerIn: parent
+                            text: {
+                                if (root.fileSortOrder === "name_asc") return "⇅ A-Z";
+                                if (root.fileSortOrder === "name_desc") return "⇅ Z-A";
+                                return "⇅ Git";
+                            }
+                            color: root.fileSortOrder !== "git" ? "#38BDF8" : "#94A3B8"
+                            font.pixelSize: 10
+                            font.bold: true
+                        }
+
+                        MouseArea {
+                            id: sortMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.cycleFileSort()
                         }
                     }
                 }
 
-                // Modified Files List (GitKraken style: directory dimmed, filename bright)
+                // ==========================================
+                // 1. PATH VIEW (Flat list)
+                // ==========================================
                 ScrollView {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
+                    visible: root.fileViewMode === "path"
 
                     ListView {
                         id: gitKrakenFilesList
-                        width: parent.width
-                        model: root.commitFiles
+                        anchors.fill: parent
+                        model: root.sortedPathFiles
                         spacing: 2
                         boundsBehavior: Flickable.StopAtBounds
 
@@ -1069,7 +1392,7 @@ Rectangle {
                                     text: {
                                         if (modelData.status === "A") return "➕";
                                         if (modelData.status === "D") return "🗑️";
-                                        if (modelData.status === "R") return "⇄";
+                                        if (modelData.status === "R" || modelData.status === "C") return "⇄";
                                         return "✏️";
                                     }
                                     font.pixelSize: 11
@@ -1081,7 +1404,7 @@ Rectangle {
                                     color: "#64748B"
                                     font.pixelSize: 11
                                     elide: Text.ElideMiddle
-                                    Layout.maximumWidth: Math.max(60, Math.floor(fDelegate.width * 0.5))
+                                    Layout.maximumWidth: Math.max(60, Math.floor(fDelegate.width * 0.45))
                                     visible: text !== ""
                                 }
 
@@ -1126,6 +1449,162 @@ Rectangle {
                             }
                         }
                     }
+                }
+
+                // ==========================================
+                // 2. TREE VIEW (Hierarchical folder tree)
+                // ==========================================
+                ScrollView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    visible: root.fileViewMode === "tree"
+
+                    ListView {
+                        id: gitKrakenTreeList
+                        anchors.fill: parent
+                        model: root.treeItems
+                        spacing: 2
+                        boundsBehavior: Flickable.StopAtBounds
+
+                        delegate: Rectangle {
+                            id: treeDelegate
+                            width: gitKrakenTreeList.width
+                            height: 26
+                            radius: 4
+
+                            property bool isFolder: modelData.isFolder
+                            property bool isSelected: (!isFolder && root.selectedFile && root.selectedFile.path === modelData.path)
+
+                            color: isSelected
+                                   ? "#1E3A8A55"
+                                   : (treeRowMouse.containsMouse ? "#1F242C" : "transparent")
+
+                            border.color: isSelected ? "#38BDF8" : "transparent"
+                            border.width: 1
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 6 + (isFolder ? (modelData.depth * 14) : ((modelData.depth + 1) * 14))
+                                anchors.rightMargin: 8
+                                spacing: 6
+
+                                // ==========================
+                                // FOLDER ROW CONTENT
+                                // ==========================
+                                Text {
+                                    visible: isFolder
+                                    text: modelData.isCollapsed ? "▸" : "▾"
+                                    color: "#94A3B8"
+                                    font.pixelSize: 11
+                                    Layout.preferredWidth: 12
+                                }
+
+                                Text {
+                                    visible: isFolder
+                                    text: "📁"
+                                    font.pixelSize: 11
+                                }
+
+                                Text {
+                                    visible: isFolder
+                                    text: modelData.name || ""
+                                    color: "#E2E8F0"
+                                    font.bold: true
+                                    font.pixelSize: 11
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+
+                                // File count badge for folder
+                                Rectangle {
+                                    visible: isFolder
+                                    height: 16
+                                    implicitWidth: folderCountText.implicitWidth + 8
+                                    radius: 8
+                                    color: "#21262D"
+
+                                    Text {
+                                        id: folderCountText
+                                        anchors.centerIn: parent
+                                        text: "" + (modelData.fileCount || 0)
+                                        color: "#94A3B8"
+                                        font.pixelSize: 9
+                                        font.bold: true
+                                    }
+                                }
+
+                                // ==========================
+                                // FILE ROW CONTENT
+                                // ==========================
+                                Text {
+                                    visible: !isFolder
+                                    text: {
+                                        if (modelData.status === "A") return "➕";
+                                        if (modelData.status === "D") return "🗑️";
+                                        if (modelData.status === "R" || modelData.status === "C") return "⇄";
+                                        return "✏️";
+                                    }
+                                    font.pixelSize: 11
+                                }
+
+                                Text {
+                                    visible: !isFolder
+                                    text: modelData.name || ""
+                                    color: treeDelegate.isSelected ? "#38BDF8" : "#F1F5F9"
+                                    font.bold: true
+                                    font.pixelSize: 11
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+
+                                // Additions & Deletions
+                                RowLayout {
+                                    visible: !isFolder
+                                    spacing: 4
+                                    Text {
+                                        text: "+" + (modelData.additions || 0)
+                                        color: "#34D399"
+                                        font.pixelSize: 10
+                                        font.bold: true
+                                        visible: (modelData.additions || 0) > 0
+                                    }
+                                    Text {
+                                        text: "-" + (modelData.deletions || 0)
+                                        color: "#F87171"
+                                        font.pixelSize: 10
+                                        font.bold: true
+                                        visible: (modelData.deletions || 0) > 0
+                                    }
+                                }
+                            }
+
+                            MouseArea {
+                                id: treeRowMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (treeDelegate.isFolder) {
+                                        root.toggleFolder(modelData.fullPath);
+                                    } else {
+                                        root.openFileDiff(modelData.file);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Empty state if filtered or no files
+                Text {
+                    visible: (root.fileViewMode === "path" ? gitKrakenFilesList.count === 0 : gitKrakenTreeList.count === 0)
+                    text: root.totalFilesCount === 0 ? "Nessun file modificato in questo commit" : "Nessun file corrisponde al filtro selezionato"
+                    color: "#64748B"
+                    font.pixelSize: 11
+                    horizontalAlignment: Text.AlignHCenter
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.topMargin: 20
                 }
             }
         }
