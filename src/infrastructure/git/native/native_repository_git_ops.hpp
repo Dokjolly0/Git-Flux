@@ -184,6 +184,20 @@ public:
     applyConflictResolution(const std::filesystem::path& repoPath,
                             const gf::git::bo::ApplyConflictResolutionOptions& options) override;
 
+    [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+    resetCommit(const std::filesystem::path& repoPath,
+                const std::string& commitSha,
+                const std::string& mode) override;
+
+    [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+    revertCommit(const std::filesystem::path& repoPath,
+                 const std::string& commitSha) override;
+
+    [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+    createWorktree(const std::filesystem::path& repoPath,
+                   const std::filesystem::path& worktreePath,
+                   const std::string& commitOrBranch) override;
+
 private:
     gf::git::ports::IGitCommandExecutor& m_executor;
 };

@@ -27,7 +27,7 @@ WorkspaceSessionViewModel::WorkspaceSessionViewModel(repositories::bl::Repositor
     , m_commitBox(stagingService, this)
     , m_diffViewer(diffService, this)
     , m_commitDiffViewer(diffService, this)
-    , m_branchManager(branchService, historyService, remoteMergeService, this)
+    , m_branchManager(branchService, historyService, remoteMergeService, &rebaseService, this)
     , m_stashManager(stashService, this)
     , m_conflictResolver(conflictService, this) {
 

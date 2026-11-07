@@ -22,6 +22,14 @@ Rectangle {
     property var collapsedFolders: ({})
 
     signal createBranchRequested(string startPoint)
+    signal createPullRequestRequested(string sourceBranch, string targetBranch)
+    signal createTagRequested(string commitSha)
+    signal createWorktreeRequested(string target)
+    signal stashModalRequested()
+
+    property string draggingBranchName: ""
+    property string draggingBranchType: ""
+    property string hoveredTargetBranch: ""
 
     readonly property bool hasCollapsedFolders: {
         var keys = Object.keys(root.collapsedFolders);
@@ -722,12 +730,21 @@ Rectangle {
                                         model: commitRow.structuredDecorations || []
 
                                         delegate: Rectangle {
+                                            id: branchBadge
                                             height: 22
                                             width: Math.min(branchTagCol.width - 24, decText.implicitWidth + 14)
                                             radius: 4
-                                            color: modelData.bgColor || "#0E7490"
-                                            border.color: modelData.borderColor || "#06B6D4"
-                                            border.width: 1
+                                            color: (root.hoveredTargetBranch === modelData.name && root.draggingBranchName !== "" && root.draggingBranchName !== modelData.name)
+                                                   ? "#1E3A8A"
+                                                   : (modelData.bgColor || "#0E7490")
+                                            border.color: (root.hoveredTargetBranch === modelData.name && root.draggingBranchName !== "" && root.draggingBranchName !== modelData.name)
+                                                   ? "#60A5FA"
+                                                   : (modelData.borderColor || "#06B6D4")
+                                            border.width: (root.hoveredTargetBranch === modelData.name && root.draggingBranchName !== "" && root.draggingBranchName !== modelData.name) ? 2 : 1
+                                            z: 10
+
+                                            property string badgeBranchName: modelData.name || ""
+                                            property string badgeType: modelData.type || "local"
 
                                             Text {
                                                 id: decText
@@ -739,6 +756,99 @@ Rectangle {
                                                 font.bold: true
                                                 elide: Text.ElideMiddle
                                                 horizontalAlignment: Text.AlignHCenter
+                                            }
+
+                                            DropArea {
+                                                id: badgeDropArea
+                                                anchors.fill: parent
+                                                enabled: (modelData.type === "local" || modelData.type === "remote")
+                                                onEntered: {
+                                                    if (root.draggingBranchName !== "" && root.draggingBranchName !== modelData.name) {
+                                                        root.hoveredTargetBranch = modelData.name;
+                                                    }
+                                                }
+                                                onExited: {
+                                                    if (root.hoveredTargetBranch === modelData.name) {
+                                                        root.hoveredTargetBranch = "";
+                                                    }
+                                                }
+                                                onDropped: function(drop) {
+                                                    var src = root.draggingBranchName;
+                                                    var tgt = modelData.name;
+                                                    root.hoveredTargetBranch = "";
+                                                    root.draggingBranchName = "";
+                                                    dragGhostBadge.visible = false;
+                                                    if (src && tgt && src !== tgt) {
+                                                        branchDropMenu.sourceBranch = src;
+                                                        branchDropMenu.targetBranch = tgt;
+                                                        var pt = mapToItem(root, drop.x, drop.y);
+                                                        branchDropMenu.popup(root, pt.x, pt.y);
+                                                    }
+                                                }
+                                            }
+
+                                            MouseArea {
+                                                id: badgeMouse
+                                                anchors.fill: parent
+                                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                                hoverEnabled: true
+                                                cursorShape: (modelData.type === "local" || modelData.type === "remote") ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                                preventStealing: true
+
+                                                property point startPos: Qt.point(0, 0)
+                                                property bool isDraggingBadge: false
+
+                                                onPressed: function(mouse) {
+                                                    if (mouse.button === Qt.LeftButton && (modelData.type === "local" || modelData.type === "remote")) {
+                                                        startPos = Qt.point(mouse.x, mouse.y);
+                                                        isDraggingBadge = false;
+                                                    }
+                                                }
+
+                                                onPositionChanged: function(mouse) {
+                                                    if (pressed && (mouse.buttons & Qt.LeftButton) && (modelData.type === "local" || modelData.type === "remote")) {
+                                                        var dx = mouse.x - startPos.x;
+                                                        var dy = mouse.y - startPos.y;
+                                                        if (!isDraggingBadge && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+                                                            isDraggingBadge = true;
+                                                            root.draggingBranchName = modelData.name;
+                                                            root.draggingBranchType = modelData.type;
+                                                        }
+                                                        if (isDraggingBadge) {
+                                                            var pt = mapToItem(root, mouse.x, mouse.y);
+                                                            dragGhostBadge.x = pt.x + 12;
+                                                            dragGhostBadge.y = pt.y + 12;
+                                                            dragGhostBadge.visible = true;
+                                                        }
+                                                    }
+                                                }
+
+                                                onReleased: function(mouse) {
+                                                    if (isDraggingBadge) {
+                                                        isDraggingBadge = false;
+                                                        dragGhostBadge.visible = false;
+                                                        var src = root.draggingBranchName;
+                                                        var tgt = root.hoveredTargetBranch;
+                                                        root.draggingBranchName = "";
+                                                        root.hoveredTargetBranch = "";
+                                                        if (src && tgt && src !== tgt) {
+                                                            branchDropMenu.sourceBranch = src;
+                                                            branchDropMenu.targetBranch = tgt;
+                                                            var dpt = mapToItem(root, mouse.x, mouse.y);
+                                                            branchDropMenu.popup(root, dpt.x, dpt.y);
+                                                        }
+                                                    } else if (mouse.button === Qt.RightButton) {
+                                                        badgeContextMenu.targetName = modelData.name || "";
+                                                        badgeContextMenu.badgeType = modelData.type || "local";
+                                                        badgeContextMenu.isCurrentHead = modelData.isHead || false;
+                                                        badgeContextMenu.targetCommitSha = commitRow.sha;
+                                                        var bpt = mapToItem(root, mouse.x, mouse.y);
+                                                        badgeContextMenu.popup(root, bpt.x, bpt.y);
+                                                    } else if (mouse.button === Qt.LeftButton) {
+                                                        commitTableListView.forceActiveFocus();
+                                                        root.selectCommitByIndex(commitRow.index);
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -947,11 +1057,19 @@ Rectangle {
                         MouseArea {
                             id: rowMouse
                             anchors.fill: parent
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: {
+                            onClicked: function(mouse) {
                                 commitTableListView.forceActiveFocus();
                                 root.selectCommitByIndex(commitRow.index);
+                                if (mouse.button === Qt.RightButton) {
+                                    commitContextMenu.targetSha = commitRow.sha;
+                                    commitContextMenu.targetSubject = commitRow.subject;
+                                    commitContextMenu.isWip = (commitRow.sha === "WIP");
+                                    var pt = mapToItem(root, mouse.x, mouse.y);
+                                    commitContextMenu.popup(root, pt.x, pt.y);
+                                }
                             }
                         }
                     }
@@ -2200,6 +2318,526 @@ Rectangle {
                                 root.createWipCommit();
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    // ==========================================
+    // FLOATING DRAG GHOST (Badge Drag & Drop)
+    // ==========================================
+    Rectangle {
+        id: dragGhostBadge
+        visible: false
+        z: 99999
+        width: Math.max(120, dragGhostLabel.implicitWidth + 24)
+        height: 24
+        radius: 4
+        color: "#0E7490"
+        border.color: "#38BDF8"
+        border.width: 1.5
+        opacity: 0.92
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 8
+            anchors.rightMargin: 8
+            spacing: 6
+
+            Text {
+                text: "🌿"
+                font.pixelSize: 11
+            }
+
+            Text {
+                id: dragGhostLabel
+                text: root.draggingBranchName
+                color: "#FFFFFF"
+                font.pixelSize: 11
+                font.bold: true
+                elide: Text.ElideMiddle
+                Layout.fillWidth: true
+            }
+        }
+    }
+
+    // ==========================================
+    // COMMIT CONTEXT MENU
+    // ==========================================
+    Menu {
+        id: commitContextMenu
+        property string targetSha: ""
+        property string targetSubject: ""
+        property bool isWip: false
+
+        MenuItem {
+            text: "📌 Checkout commit (" + (commitContextMenu.targetSha ? commitContextMenu.targetSha.substring(0, 7) : "") + ")"
+            visible: !commitContextMenu.isWip && commitContextMenu.targetSha.length > 0
+            font.pixelSize: 11
+            onClicked: {
+                if (root.branchManager) root.branchManager.checkoutCommit(commitContextMenu.targetSha);
+            }
+        }
+
+        MenuItem {
+            text: "🌿 Crea branch a questo commit..."
+            visible: !commitContextMenu.isWip && commitContextMenu.targetSha.length > 0
+            font.pixelSize: 11
+            onClicked: {
+                root.createBranchRequested(commitContextMenu.targetSha);
+            }
+        }
+
+        MenuItem {
+            text: "🏷 Crea tag a questo commit..."
+            visible: !commitContextMenu.isWip && commitContextMenu.targetSha.length > 0
+            font.pixelSize: 11
+            onClicked: {
+                root.createTagRequested(commitContextMenu.targetSha);
+            }
+        }
+
+        MenuSeparator {
+            visible: !commitContextMenu.isWip
+        }
+
+        Menu {
+            title: "🔄 Reset branch corrente a questo commit"
+            visible: !commitContextMenu.isWip && commitContextMenu.targetSha.length > 0
+
+            MenuItem {
+                text: "🟡 Soft (--soft): mantieni file modificati in staging"
+                font.pixelSize: 11
+                onClicked: {
+                    if (root.branchManager) root.branchManager.resetCommit(commitContextMenu.targetSha, "soft");
+                }
+            }
+            MenuItem {
+                text: "🔵 Misto (--mixed): mantieni file nell'albero di lavoro"
+                font.pixelSize: 11
+                onClicked: {
+                    if (root.branchManager) root.branchManager.resetCommit(commitContextMenu.targetSha, "mixed");
+                }
+            }
+            MenuItem {
+                text: "🔴 Hard (--hard): scarta tutte le modifiche"
+                font.pixelSize: 11
+                onClicked: {
+                    if (root.branchManager) root.branchManager.resetCommit(commitContextMenu.targetSha, "hard");
+                }
+            }
+        }
+
+        MenuItem {
+            text: "🍒 Cherry-pick di questo commit"
+            visible: !commitContextMenu.isWip && commitContextMenu.targetSha.length > 0
+            font.pixelSize: 11
+            onClicked: {
+                if (root.branchManager) root.branchManager.cherryPickCommit(commitContextMenu.targetSha);
+            }
+        }
+
+        MenuItem {
+            text: "⏪ Revert di questo commit"
+            visible: !commitContextMenu.isWip && commitContextMenu.targetSha.length > 0
+            font.pixelSize: 11
+            onClicked: {
+                if (root.branchManager) root.branchManager.revertCommit(commitContextMenu.targetSha);
+            }
+        }
+
+        MenuItem {
+            text: "📁 Crea Git Worktree a questo commit..."
+            visible: !commitContextMenu.isWip && commitContextMenu.targetSha.length > 0
+            font.pixelSize: 11
+            onClicked: {
+                root.createWorktreeRequested(commitContextMenu.targetSha);
+            }
+        }
+
+        MenuSeparator {
+            visible: !commitContextMenu.isWip
+        }
+
+        MenuItem {
+            text: "📋 Copia SHA (" + (commitContextMenu.targetSha ? commitContextMenu.targetSha.substring(0, 7) : "") + ")"
+            visible: !commitContextMenu.isWip && commitContextMenu.targetSha.length > 0
+            font.pixelSize: 11
+            onClicked: {
+                if (root.branchManager) root.branchManager.copyToClipboard(commitContextMenu.targetSha);
+            }
+        }
+
+        MenuItem {
+            text: "📋 Copia messaggio del commit"
+            visible: !commitContextMenu.isWip && commitContextMenu.targetSubject.length > 0
+            font.pixelSize: 11
+            onClicked: {
+                if (root.branchManager) root.branchManager.copyToClipboard(commitContextMenu.targetSubject);
+            }
+        }
+
+        // WIP options
+        MenuItem {
+            text: "🧹 Scarta tutte le modifiche locali"
+            visible: commitContextMenu.isWip
+            font.pixelSize: 11
+            onClicked: {
+                if (root.sessionVm) root.sessionVm.discardAllWorkingTreeChanges();
+            }
+        }
+
+        MenuItem {
+            text: "📦 Salva modifiche in Stash..."
+            visible: commitContextMenu.isWip
+            font.pixelSize: 11
+            onClicked: {
+                root.stashModalRequested();
+            }
+        }
+    }
+
+    // ==========================================
+    // BRANCH BADGE CONTEXT MENU
+    // ==========================================
+    Menu {
+        id: badgeContextMenu
+        property string targetName: ""
+        property string badgeType: "local"
+        property bool isCurrentHead: false
+        property string targetCommitSha: ""
+
+        MenuItem {
+            text: "📌 Checkout branch (" + badgeContextMenu.targetName + ")"
+            visible: badgeContextMenu.badgeType !== "tag" && !badgeContextMenu.isCurrentHead
+            font.pixelSize: 11
+            onClicked: {
+                if (root.branchManager) root.branchManager.checkoutBranch(badgeContextMenu.targetName);
+            }
+        }
+
+        MenuItem {
+            text: "📌 Checkout tag (" + badgeContextMenu.targetName + ")"
+            visible: badgeContextMenu.badgeType === "tag"
+            font.pixelSize: 11
+            onClicked: {
+                if (root.branchManager) root.branchManager.checkoutBranch(badgeContextMenu.targetName);
+            }
+        }
+
+        MenuItem {
+            text: "🔀 Merge '" + badgeContextMenu.targetName + "' nel branch corrente"
+            visible: badgeContextMenu.badgeType !== "tag" && !badgeContextMenu.isCurrentHead
+            font.pixelSize: 11
+            onClicked: {
+                if (root.branchManager) root.branchManager.mergeBranch(badgeContextMenu.targetName);
+            }
+        }
+
+        MenuItem {
+            text: "🔄 Rebase del branch corrente su '" + badgeContextMenu.targetName + "'"
+            visible: badgeContextMenu.badgeType !== "tag" && !badgeContextMenu.isCurrentHead
+            font.pixelSize: 11
+            onClicked: {
+                if (root.branchManager) root.branchManager.rebaseOnto(badgeContextMenu.targetName);
+            }
+        }
+
+        MenuItem {
+            text: "🚀 Crea Pull Request..."
+            visible: badgeContextMenu.badgeType !== "tag"
+            font.pixelSize: 11
+            onClicked: {
+                var current = (root.branchManager && root.branchManager.currentBranch && root.branchManager.currentBranch !== badgeContextMenu.targetName)
+                              ? root.branchManager.currentBranch : "main";
+                root.createPullRequestRequested(badgeContextMenu.targetName, current);
+            }
+        }
+
+        MenuSeparator {
+            visible: badgeContextMenu.badgeType !== "tag"
+        }
+
+        MenuItem {
+            text: "🌿 Crea branch da qui..."
+            font.pixelSize: 11
+            onClicked: {
+                root.createBranchRequested(badgeContextMenu.targetName);
+            }
+        }
+
+        MenuItem {
+            text: "🏷 Crea tag da qui..."
+            font.pixelSize: 11
+            onClicked: {
+                root.createTagRequested(badgeContextMenu.targetCommitSha || badgeContextMenu.targetName);
+            }
+        }
+
+        MenuItem {
+            text: "📁 Crea Git Worktree..."
+            font.pixelSize: 11
+            onClicked: {
+                root.createWorktreeRequested(badgeContextMenu.targetName);
+            }
+        }
+
+        MenuSeparator {}
+
+        MenuItem {
+            text: "✏ Rinomina branch..."
+            visible: badgeContextMenu.badgeType === "local"
+            font.pixelSize: 11
+            onClicked: {
+                renameBranchModal.openWithBranch(badgeContextMenu.targetName);
+            }
+        }
+
+        MenuItem {
+            text: "🗑 Elimina branch..."
+            visible: badgeContextMenu.badgeType === "local" && !badgeContextMenu.isCurrentHead
+            font.pixelSize: 11
+            onClicked: {
+                deleteBranchConfirmDialog.openWithBranch(badgeContextMenu.targetName);
+            }
+        }
+
+        MenuItem {
+            text: "🗑 Elimina tag..."
+            visible: badgeContextMenu.badgeType === "tag"
+            font.pixelSize: 11
+            onClicked: {
+                deleteTagConfirmDialog.openWithTag(badgeContextMenu.targetName);
+            }
+        }
+
+        MenuItem {
+            text: "📋 Copia nome"
+            font.pixelSize: 11
+            onClicked: {
+                if (root.branchManager) root.branchManager.copyToClipboard(badgeContextMenu.targetName);
+            }
+        }
+    }
+
+    // ==========================================
+    // BRANCH DROP ACTION MENU (Drag & Drop Targhetta)
+    // ==========================================
+    Menu {
+        id: branchDropMenu
+        property string sourceBranch: ""
+        property string targetBranch: ""
+
+        MenuItem {
+            text: "🔀 Merge '" + branchDropMenu.sourceBranch + "' in '" + branchDropMenu.targetBranch + "'"
+            font.pixelSize: 11
+            font.bold: true
+            onClicked: {
+                if (root.branchManager) {
+                    root.branchManager.mergeBranchInto(branchDropMenu.sourceBranch, branchDropMenu.targetBranch);
+                }
+            }
+        }
+
+        MenuItem {
+            text: "🔄 Rebase '" + branchDropMenu.sourceBranch + "' su '" + branchDropMenu.targetBranch + "'"
+            font.pixelSize: 11
+            font.bold: true
+            onClicked: {
+                if (root.branchManager) {
+                    root.branchManager.rebaseBranch(branchDropMenu.sourceBranch, branchDropMenu.targetBranch);
+                }
+            }
+        }
+
+        MenuItem {
+            text: "🚀 Crea Pull Request ('" + branchDropMenu.sourceBranch + "' ➔ '" + branchDropMenu.targetBranch + "')..."
+            font.pixelSize: 11
+            font.bold: true
+            onClicked: {
+                root.createPullRequestRequested(branchDropMenu.sourceBranch, branchDropMenu.targetBranch);
+            }
+        }
+    }
+
+    // ==========================================
+    // RENAME BRANCH MODAL
+    // ==========================================
+    Dialog {
+        id: renameBranchModal
+        title: "Rinomina Branch"
+        modal: true
+        width: 380
+        height: 180
+        anchors.centerIn: Overlay.overlay
+
+        property string targetBranch: ""
+
+        function openWithBranch(name) {
+            targetBranch = name;
+            newBranchNameField.text = name;
+            renameErrorText.text = "";
+            open();
+            newBranchNameField.forceActiveFocus();
+        }
+
+        background: Rectangle {
+            color: "#0F172A"
+            radius: 8
+            border.color: "#334155"
+            border.width: 1
+        }
+
+        header: Rectangle {
+            color: "#1E293B"
+            height: 38
+            radius: 8
+            Text {
+                anchors.centerIn: parent
+                text: "✏ Rinomina Branch: " + renameBranchModal.targetBranch
+                color: "#F8FAFC"
+                font.bold: true
+                font.pixelSize: 12
+            }
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 8
+            TextField {
+                id: newBranchNameField
+                Layout.fillWidth: true
+                Layout.preferredHeight: 32
+                color: "#F8FAFC"
+                font.pixelSize: 12
+                background: Rectangle { color: "#020617"; radius: 4; border.color: "#334155" }
+                onAccepted: confirmRenameBtn.clicked()
+            }
+            Text {
+                id: renameErrorText
+                color: "#EF4444"
+                font.pixelSize: 11
+                visible: text.length > 0
+            }
+        }
+
+        footer: Rectangle {
+            color: "#1E293B"
+            height: 44
+            radius: 8
+            RowLayout {
+                anchors.fill: parent
+                anchors.rightMargin: 12
+                spacing: 8
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Annulla"
+                    onClicked: renameBranchModal.close()
+                }
+                Button {
+                    id: confirmRenameBtn
+                    text: "Rinomina"
+                    onClicked: {
+                        var newName = newBranchNameField.text.trim();
+                        if (!newName || newName === renameBranchModal.targetBranch) {
+                            renameBranchModal.close();
+                            return;
+                        }
+                        if (root.branchManager) {
+                            var ok = root.branchManager.renameBranch(renameBranchModal.targetBranch, newName);
+                            if (ok) renameBranchModal.close();
+                            else renameErrorText.text = root.branchManager.statusMessage;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ==========================================
+    // DELETE BRANCH CONFIRM DIALOG
+    // ==========================================
+    Dialog {
+        id: deleteBranchConfirmDialog
+        title: "Conferma Eliminazione Branch"
+        modal: true
+        width: 380
+        height: 180
+        anchors.centerIn: Overlay.overlay
+
+        property string targetBranch: ""
+
+        function openWithBranch(name) {
+            targetBranch = name;
+            open();
+        }
+
+        background: Rectangle { color: "#0F172A"; radius: 8; border.color: "#334155"; border.width: 1 }
+        header: Rectangle {
+            color: "#1E293B"; height: 38; radius: 8
+            Text { anchors.centerIn: parent; text: "🗑 Elimina Branch"; color: "#EF4444"; font.bold: true; font.pixelSize: 12 }
+        }
+        contentItem: Text {
+            text: "Sei sicuro di voler eliminare definitivamente il branch '" + deleteBranchConfirmDialog.targetBranch + "'?"
+            color: "#F8FAFC"; font.pixelSize: 12; wrapMode: Text.WordWrap
+        }
+        footer: Rectangle {
+            color: "#1E293B"; height: 44; radius: 8
+            RowLayout {
+                anchors.fill: parent; anchors.rightMargin: 12; spacing: 8
+                Item { Layout.fillWidth: true }
+                Button { text: "Annulla"; onClicked: deleteBranchConfirmDialog.close() }
+                Button {
+                    text: "Elimina"
+                    contentItem: Text { text: "Elimina"; color: "#EF4444"; font.bold: true; horizontalAlignment: Text.AlignHCenter }
+                    onClicked: {
+                        if (root.branchManager) root.branchManager.deleteBranch(deleteBranchConfirmDialog.targetBranch, false);
+                        deleteBranchConfirmDialog.close();
+                    }
+                }
+            }
+        }
+    }
+
+    // ==========================================
+    // DELETE TAG CONFIRM DIALOG
+    // ==========================================
+    Dialog {
+        id: deleteTagConfirmDialog
+        title: "Conferma Eliminazione Tag"
+        modal: true
+        width: 380
+        height: 180
+        anchors.centerIn: Overlay.overlay
+
+        property string targetTag: ""
+
+        function openWithTag(name) {
+            targetTag = name;
+            open();
+        }
+
+        background: Rectangle { color: "#0F172A"; radius: 8; border.color: "#334155"; border.width: 1 }
+        header: Rectangle {
+            color: "#1E293B"; height: 38; radius: 8
+            Text { anchors.centerIn: parent; text: "🗑 Elimina Tag"; color: "#EF4444"; font.bold: true; font.pixelSize: 12 }
+        }
+        contentItem: Text {
+            text: "Sei sicuro di voler eliminare il tag '" + deleteTagConfirmDialog.targetTag + "'?"
+            color: "#F8FAFC"; font.pixelSize: 12; wrapMode: Text.WordWrap
+        }
+        footer: Rectangle {
+            color: "#1E293B"; height: 44; radius: 8
+            RowLayout {
+                anchors.fill: parent; anchors.rightMargin: 12; spacing: 8
+                Item { Layout.fillWidth: true }
+                Button { text: "Annulla"; onClicked: deleteTagConfirmDialog.close() }
+                Button {
+                    text: "Elimina"
+                    contentItem: Text { text: "Elimina"; color: "#EF4444"; font.bold: true; horizontalAlignment: Text.AlignHCenter }
+                    onClicked: {
+                        if (root.branchManager) root.branchManager.deleteTag(deleteTagConfirmDialog.targetTag);
+                        deleteTagConfirmDialog.close();
                     }
                 }
             }

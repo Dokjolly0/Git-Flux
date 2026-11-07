@@ -815,7 +815,34 @@ Rectangle {
             onCreateBranchRequested: function(startPoint) {
                 createBranchModal.openWithStartPoint(startPoint);
             }
+            onCreatePullRequestRequested: function(sourceBranch, targetBranch) {
+                pullRequestModal.openWithBranches(sourceBranch, targetBranch);
+            }
+            onCreateTagRequested: function(commitSha) {
+                createTagModal.openWithCommit(commitSha);
+            }
+            onCreateWorktreeRequested: function(target) {
+                createWorktreeModal.openWithTarget(target);
+            }
+            onStashModalRequested: function() {
+                stashModal.open();
+            }
         }
+    }
+
+    PullRequestModal {
+        id: pullRequestModal
+        branchManager: (root.sessionVm && root.sessionVm.branchManager) ? root.sessionVm.branchManager : null
+    }
+
+    CreateTagModal {
+        id: createTagModal
+        branchManager: (root.sessionVm && root.sessionVm.branchManager) ? root.sessionVm.branchManager : null
+    }
+
+    CreateWorktreeModal {
+        id: createWorktreeModal
+        branchManager: (root.sessionVm && root.sessionVm.branchManager) ? root.sessionVm.branchManager : null
     }
 
     CreateBranchModal {

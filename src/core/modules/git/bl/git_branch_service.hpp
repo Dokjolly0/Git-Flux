@@ -51,6 +51,18 @@ public:
     [[nodiscard]] std::expected<void, ports::GitOpsError>
     renameBranch(const std::filesystem::path& repoPath, const std::string& oldName, const std::string& newName);
 
+    /// Resets the current branch to a specific commit.
+    [[nodiscard]] std::expected<void, ports::GitOpsError>
+    resetCommit(const std::filesystem::path& repoPath, const std::string& commitSha, const std::string& mode);
+
+    /// Reverts a specific commit on the current branch.
+    [[nodiscard]] std::expected<void, ports::GitOpsError>
+    revertCommit(const std::filesystem::path& repoPath, const std::string& commitSha);
+
+    /// Creates a worktree for a commit or branch.
+    [[nodiscard]] std::expected<void, ports::GitOpsError>
+    createWorktree(const std::filesystem::path& repoPath, const std::filesystem::path& worktreePath, const std::string& commitOrBranch);
+
 private:
     [[nodiscard]] std::expected<void, ports::GitOpsError>
     validateRepoPath(const std::filesystem::path& repoPath) const;

@@ -2978,4 +2978,112 @@ NativeRepositoryGitOps::applyConflictResolution(const std::filesystem::path& rep
     return {};
 }
 
+std::expected<void, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::resetCommit(const std::filesystem::path& repoPath,
+                                    const std::string& commitSha,
+                                    const std::string& mode) {
+    std::string flag = "--mixed";
+    if (mode == "soft") flag = "--soft";
+    else if (mode == "hard") flag = "--hard";
+    else if (mode == "mixed") flag = "--mixed";
+
+    gf::git::bo::GitCommand cmd{
+        .args = {"reset", flag, commitSha},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile eseguire il reset: " + execResult.error().message,
+            .command = "git reset"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
+            .command = "git reset"
+        });
+    }
+
+    return {};
+}
+
+std::expected<void, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::revertCommit(const std::filesystem::path& repoPath,
+                                     const std::string& commitSha) {
+    gf::git::bo::GitCommand cmd{
+        .args = {"-c", "core.editor=true", "revert", "--no-edit", commitSha},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile eseguire revert: " + execResult.error().message,
+            .command = "git revert"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
+            .command = "git revert"
+        });
+    }
+
+    return {};
+}
+
+std::expected<void, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::createWorktree(const std::filesystem::path& repoPath,
+                                       const std::filesystem::path& worktreePath,
+                                       const std::string& commitOrBranch) {
+    std::vector<std::string> args = {"worktree", "add", worktreePath.string()};
+    if (!commitOrBranch.empty()) {
+        args.push_back(commitOrBranch);
+    }
+
+    gf::git::bo::GitCommand cmd{
+        .args = std::move(args),
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{30'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile creare il worktree: " + execResult.error().message,
+            .command = "git worktree"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
+            .command = "git worktree"
+        });
+    }
+
+    return {};
+}
+
 } // namespace gf::infra::git

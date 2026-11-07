@@ -225,4 +225,60 @@ GitBranchService::renameBranch(const std::filesystem::path& repoPath,
     return m_gitOps.renameBranch(repoPath, oldName, newName);
 }
 
+std::expected<void, ports::GitOpsError>
+GitBranchService::resetCommit(const std::filesystem::path& repoPath,
+                              const std::string& commitSha,
+                              const std::string& mode) {
+    if (auto valid = validateRepoPath(repoPath); !valid) {
+        return valid;
+    }
+    if (commitSha.empty()) {
+        return std::unexpected(ports::GitOpsError{
+            .kind = ports::GitOpsError::Kind::InvalidOperation,
+            .exitCode = -1,
+            .message = "SHA del commit non può essere vuoto",
+            .command = "reset"
+        });
+    }
+    auto lock = RepositoryLockCoordinator::instance().acquire(repoPath);
+    return m_gitOps.resetCommit(repoPath, commitSha, mode);
+}
+
+std::expected<void, ports::GitOpsError>
+GitBranchService::revertCommit(const std::filesystem::path& repoPath,
+                               const std::string& commitSha) {
+    if (auto valid = validateRepoPath(repoPath); !valid) {
+        return valid;
+    }
+    if (commitSha.empty()) {
+        return std::unexpected(ports::GitOpsError{
+            .kind = ports::GitOpsError::Kind::InvalidOperation,
+            .exitCode = -1,
+            .message = "SHA del commit non può essere vuoto",
+            .command = "revert"
+        });
+    }
+    auto lock = RepositoryLockCoordinator::instance().acquire(repoPath);
+    return m_gitOps.revertCommit(repoPath, commitSha);
+}
+
+std::expected<void, ports::GitOpsError>
+GitBranchService::createWorktree(const std::filesystem::path& repoPath,
+                                 const std::filesystem::path& worktreePath,
+                                 const std::string& commitOrBranch) {
+    if (auto valid = validateRepoPath(repoPath); !valid) {
+        return valid;
+    }
+    if (worktreePath.empty()) {
+        return std::unexpected(ports::GitOpsError{
+            .kind = ports::GitOpsError::Kind::InvalidOperation,
+            .exitCode = -1,
+            .message = "Percorso della directory del worktree non specificato",
+            .command = "worktree"
+        });
+    }
+    auto lock = RepositoryLockCoordinator::instance().acquire(repoPath);
+    return m_gitOps.createWorktree(repoPath, worktreePath, commitOrBranch);
+}
+
 } // namespace gf::git::bl

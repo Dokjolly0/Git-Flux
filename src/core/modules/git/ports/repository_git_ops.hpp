@@ -296,6 +296,37 @@ public:
     [[nodiscard]] virtual std::expected<void, GitOpsError>
     applyConflictResolution(const std::filesystem::path& repoPath,
                             const bo::ApplyConflictResolutionOptions& options) = 0;
+
+    /// Resets the current HEAD to a specified commit with the given mode (soft, mixed, hard).
+    [[nodiscard]] virtual std::expected<void, GitOpsError>
+    resetCommit(const std::filesystem::path& repoPath,
+                const std::string& commitSha,
+                const std::string& mode) {
+        (void)repoPath;
+        (void)commitSha;
+        (void)mode;
+        return {};
+    }
+
+    /// Reverts a commit (`git revert --no-edit <sha>`).
+    [[nodiscard]] virtual std::expected<void, GitOpsError>
+    revertCommit(const std::filesystem::path& repoPath,
+                 const std::string& commitSha) {
+        (void)repoPath;
+        (void)commitSha;
+        return {};
+    }
+
+    /// Creates a new git worktree (`git worktree add <worktreePath> <commitOrBranch>`).
+    [[nodiscard]] virtual std::expected<void, GitOpsError>
+    createWorktree(const std::filesystem::path& repoPath,
+                   const std::filesystem::path& worktreePath,
+                   const std::string& commitOrBranch) {
+        (void)repoPath;
+        (void)worktreePath;
+        (void)commitOrBranch;
+        return {};
+    }
 };
 
 } // namespace gf::git::ports

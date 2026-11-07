@@ -1,15 +1,22 @@
 #include "desktop/viewmodels/branch_manager_viewmodel.hpp"
 
+#include <QClipboard>
+#include <QGuiApplication>
+#include <QUrl>
+#include <QUrlQuery>
+
 namespace gf::desktop {
 
 BranchManagerViewModel::BranchManagerViewModel(git::bl::GitBranchService& branchService,
                                                git::bl::GitHistoryService& historyService,
                                                git::bl::GitRemoteMergeService& remoteMergeService,
+                                               git::bl::GitRebaseService* rebaseService,
                                                QObject* parent)
     : QObject(parent)
     , m_branchService(branchService)
     , m_historyService(historyService)
     , m_remoteMergeService(remoteMergeService)
+    , m_rebaseService(rebaseService)
     , m_branchListModel(this)
     , m_commitHistoryModel(this) {}
 
@@ -501,6 +508,370 @@ bool BranchManagerViewModel::convertRemoteToSsh(const QString& remoteName) {
 
     emit operationCompleted(false, QStringLiteral("L'URL remoto non è in formato HTTP/HTTPS valido da convertire: %1").arg(url));
     return false;
+}
+
+bool BranchManagerViewModel::checkoutCommit(const QString& commitSha) {
+    return checkoutBranch(commitSha);
+}
+
+bool BranchManagerViewModel::resetCommit(const QString& commitSha, const QString& mode) {
+    if (m_repoPath.empty() || commitSha.isEmpty()) {
+        return false;
+    }
+
+    setBusy(true);
+    setStatusMessage(QStringLiteral("Reset al commit %1 (%2) in corso...").arg(commitSha.left(7), mode));
+
+    auto res = m_branchService.resetCommit(m_repoPath, commitSha.toStdString(), mode.toStdString());
+    setBusy(false);
+
+    if (!res) {
+        setStatusMessage(QString::fromStdString(res.error().message));
+        emit operationCompleted(false, QString::fromStdString(res.error().message));
+        return false;
+    }
+
+    setStatusMessage(QStringLiteral("Reset al commit %1 (%2) completato").arg(commitSha.left(7), mode));
+    refresh();
+    emit branchSwitched(m_currentBranch);
+    emit operationCompleted(true, QStringLiteral("Reset al commit %1 completato con successo").arg(commitSha.left(7)));
+    return true;
+}
+
+bool BranchManagerViewModel::revertCommit(const QString& commitSha) {
+    if (m_repoPath.empty() || commitSha.isEmpty()) {
+        return false;
+    }
+
+    setBusy(true);
+    setStatusMessage(QStringLiteral("Revert del commit %1 in corso...").arg(commitSha.left(7)));
+
+    auto res = m_branchService.revertCommit(m_repoPath, commitSha.toStdString());
+    setBusy(false);
+
+    if (!res) {
+        setStatusMessage(QString::fromStdString(res.error().message));
+        emit operationCompleted(false, QString::fromStdString(res.error().message));
+        return false;
+    }
+
+    setStatusMessage(QStringLiteral("Revert del commit %1 completato").arg(commitSha.left(7)));
+    refresh();
+    emit branchSwitched(m_currentBranch);
+    emit operationCompleted(true, QStringLiteral("Revert del commit %1 completato con successo").arg(commitSha.left(7)));
+    return true;
+}
+
+bool BranchManagerViewModel::cherryPickCommit(const QString& commitSha) {
+    if (m_repoPath.empty() || commitSha.isEmpty()) {
+        return false;
+    }
+
+    if (!m_rebaseService) {
+        emit operationCompleted(false, QStringLiteral("Servizio cherry-pick/rebase non disponibile"));
+        return false;
+    }
+
+    setBusy(true);
+    setStatusMessage(QStringLiteral("Cherry-pick del commit %1 in corso...").arg(commitSha.left(7)));
+
+    git::bo::CherryPickOptions opts{
+        .commitSha = commitSha.toStdString()
+    };
+
+    auto res = m_rebaseService->cherryPick(m_repoPath, opts);
+    setBusy(false);
+
+    if (!res || !res->success) {
+        QString err = res ? QString::fromStdString(res->message) : QString::fromStdString(res.error().message);
+        setStatusMessage(err);
+        emit operationCompleted(false, err);
+        return false;
+    }
+
+    setStatusMessage(QStringLiteral("Cherry-pick del commit %1 completato con successo").arg(commitSha.left(7)));
+    refresh();
+    emit branchSwitched(m_currentBranch);
+    emit operationCompleted(true, QStringLiteral("Cherry-pick del commit %1 completato con successo").arg(commitSha.left(7)));
+    return true;
+}
+
+bool BranchManagerViewModel::createTag(const QString& tagName, const QString& targetCommit, const QString& message) {
+    if (m_repoPath.empty() || tagName.trimmed().isEmpty()) {
+        return false;
+    }
+
+    setBusy(true);
+    setStatusMessage(QStringLiteral("Creazione del tag %1 in corso...").arg(tagName));
+
+    git::bo::CreateTagOptions opts;
+    opts.name = tagName.trimmed().toStdString();
+    if (!targetCommit.trimmed().isEmpty()) {
+        opts.targetCommit = targetCommit.trimmed().toStdString();
+    }
+    if (!message.trimmed().isEmpty()) {
+        opts.message = message.trimmed().toStdString();
+    }
+
+    auto res = m_historyService.createTag(m_repoPath, opts);
+    setBusy(false);
+
+    if (!res) {
+        setStatusMessage(QString::fromStdString(res.error().message));
+        emit operationCompleted(false, QString::fromStdString(res.error().message));
+        return false;
+    }
+
+    setStatusMessage(QStringLiteral("Tag %1 creato con successo").arg(tagName));
+    refresh();
+    emit operationCompleted(true, QStringLiteral("Tag %1 creato con successo").arg(tagName));
+    return true;
+}
+
+bool BranchManagerViewModel::deleteTag(const QString& tagName) {
+    if (m_repoPath.empty() || tagName.trimmed().isEmpty()) {
+        return false;
+    }
+
+    setBusy(true);
+    setStatusMessage(QStringLiteral("Eliminazione del tag %1 in corso...").arg(tagName));
+
+    auto res = m_historyService.deleteTag(m_repoPath, tagName.trimmed().toStdString());
+    setBusy(false);
+
+    if (!res) {
+        setStatusMessage(QString::fromStdString(res.error().message));
+        emit operationCompleted(false, QString::fromStdString(res.error().message));
+        return false;
+    }
+
+    setStatusMessage(QStringLiteral("Tag %1 eliminato").arg(tagName));
+    refresh();
+    emit operationCompleted(true, QStringLiteral("Tag %1 eliminato con successo").arg(tagName));
+    return true;
+}
+
+bool BranchManagerViewModel::createWorktree(const QString& targetPath, const QString& commitOrBranch) {
+    if (m_repoPath.empty() || targetPath.trimmed().isEmpty()) {
+        return false;
+    }
+
+    setBusy(true);
+    setStatusMessage(QStringLiteral("Creazione del worktree in %1...").arg(targetPath));
+
+    auto res = m_branchService.createWorktree(m_repoPath, targetPath.toStdString(), commitOrBranch.trimmed().toStdString());
+    setBusy(false);
+
+    if (!res) {
+        setStatusMessage(QString::fromStdString(res.error().message));
+        emit operationCompleted(false, QString::fromStdString(res.error().message));
+        return false;
+    }
+
+    setStatusMessage(QStringLiteral("Worktree creato con successo in %1").arg(targetPath));
+    emit operationCompleted(true, QStringLiteral("Worktree creato con successo in %1").arg(targetPath));
+    return true;
+}
+
+bool BranchManagerViewModel::rebaseOnto(const QString& targetBranch) {
+    if (m_repoPath.empty() || targetBranch.isEmpty()) {
+        return false;
+    }
+
+    if (!m_rebaseService) {
+        emit operationCompleted(false, QStringLiteral("Servizio rebase non disponibile"));
+        return false;
+    }
+
+    setBusy(true);
+    setStatusMessage(QStringLiteral("Rebase su %1 in corso...").arg(targetBranch));
+
+    git::bo::RebaseOptions opts{
+        .upstream = targetBranch.toStdString(),
+        .autostash = true
+    };
+    if (!m_currentBranch.isEmpty()) {
+        opts.branch = m_currentBranch.toStdString();
+    }
+
+    auto res = m_rebaseService->startRebase(m_repoPath, opts);
+    setBusy(false);
+
+    if (!res) {
+        setStatusMessage(QString::fromStdString(res.error().message));
+        emit operationCompleted(false, QString::fromStdString(res.error().message));
+        return false;
+    }
+
+    if (res->status == git::bo::RebaseStatus::Conflict) {
+        m_conflictedFiles.clear();
+        for (const auto& f : res->conflictedFiles) {
+            m_conflictedFiles.append(QString::fromStdString(f));
+        }
+        emit conflictsChanged();
+        setStatusMessage(QStringLiteral("Conflitti rilevati durante il rebase"));
+        emit operationCompleted(false, QStringLiteral("Conflitti rilevati durante il rebase"));
+        return false;
+    }
+
+    setStatusMessage(QStringLiteral("Rebase su %1 completato con successo").arg(targetBranch));
+    refresh();
+    emit branchSwitched(m_currentBranch);
+    emit operationCompleted(true, QStringLiteral("Rebase su %1 completato con successo").arg(targetBranch));
+    return true;
+}
+
+bool BranchManagerViewModel::rebaseBranch(const QString& sourceBranch, const QString& targetBranch) {
+    if (m_repoPath.empty() || sourceBranch.isEmpty() || targetBranch.isEmpty()) {
+        return false;
+    }
+
+    if (!m_rebaseService) {
+        emit operationCompleted(false, QStringLiteral("Servizio rebase non disponibile"));
+        return false;
+    }
+
+    setBusy(true);
+    setStatusMessage(QStringLiteral("Rebase di %1 su %2 in corso...").arg(sourceBranch, targetBranch));
+
+    git::bo::RebaseOptions opts{
+        .upstream = targetBranch.toStdString(),
+        .branch = sourceBranch.toStdString(),
+        .autostash = true
+    };
+
+    auto res = m_rebaseService->startRebase(m_repoPath, opts);
+    setBusy(false);
+
+    if (!res) {
+        setStatusMessage(QString::fromStdString(res.error().message));
+        emit operationCompleted(false, QString::fromStdString(res.error().message));
+        return false;
+    }
+
+    if (res->status == git::bo::RebaseStatus::Conflict) {
+        m_conflictedFiles.clear();
+        for (const auto& f : res->conflictedFiles) {
+            m_conflictedFiles.append(QString::fromStdString(f));
+        }
+        emit conflictsChanged();
+        setStatusMessage(QStringLiteral("Conflitti rilevati durante il rebase"));
+        emit operationCompleted(false, QStringLiteral("Conflitti rilevati durante il rebase"));
+        return false;
+    }
+
+    setStatusMessage(QStringLiteral("Rebase di %1 su %2 completato con successo").arg(sourceBranch, targetBranch));
+    refresh();
+    emit branchSwitched(sourceBranch);
+    emit operationCompleted(true, QStringLiteral("Rebase di %1 su %2 completato con successo").arg(sourceBranch, targetBranch));
+    return true;
+}
+
+bool BranchManagerViewModel::mergeBranchInto(const QString& sourceBranch, const QString& targetBranch) {
+    if (m_repoPath.empty() || sourceBranch.isEmpty() || targetBranch.isEmpty()) {
+        return false;
+    }
+
+    if (m_currentBranch == targetBranch) {
+        return mergeBranch(sourceBranch);
+    }
+
+    if (!checkoutBranch(targetBranch)) {
+        return false;
+    }
+
+    return mergeBranch(sourceBranch);
+}
+
+void BranchManagerViewModel::copyToClipboard(const QString& text) {
+    if (auto* cb = QGuiApplication::clipboard()) {
+        cb->setText(text);
+    }
+}
+
+QString BranchManagerViewModel::buildPullRequestUrl(const QString& sourceBranch,
+                                                   const QString& targetBranch,
+                                                   const QString& title,
+                                                   const QString& body) const {
+    if (m_remoteUrl.isEmpty() || sourceBranch.isEmpty() || targetBranch.isEmpty()) {
+        return {};
+    }
+
+    QString cleanSource = sourceBranch;
+    if (cleanSource.startsWith(QLatin1String("origin/"))) {
+        cleanSource = cleanSource.mid(7);
+    }
+    QString cleanTarget = targetBranch;
+    if (cleanTarget.startsWith(QLatin1String("origin/"))) {
+        cleanTarget = cleanTarget.mid(7);
+    }
+
+    QString rawUrl = m_remoteUrl.trimmed();
+    QString host;
+    QString repoPath;
+
+    if (rawUrl.startsWith(QLatin1String("git@"))) {
+        int colon = rawUrl.indexOf(':');
+        if (colon != -1) {
+            host = rawUrl.mid(4, colon - 4);
+            repoPath = rawUrl.mid(colon + 1);
+        }
+    } else {
+        QUrl parsed(rawUrl);
+        host = parsed.host();
+        repoPath = parsed.path();
+        if (repoPath.startsWith('/')) {
+            repoPath = repoPath.mid(1);
+        }
+    }
+
+    if (repoPath.endsWith(QLatin1String(".git"), Qt::CaseInsensitive)) {
+        repoPath.chop(4);
+    }
+
+    if (host.isEmpty() || repoPath.isEmpty()) {
+        return {};
+    }
+
+    QString finalUrl;
+    if (host.contains(QLatin1String("github.com"), Qt::CaseInsensitive)) {
+        QUrl url(QStringLiteral("https://%1/%2/compare/%3...%4").arg(host, repoPath, cleanTarget, cleanSource));
+        QUrlQuery query;
+        query.addQueryItem(QStringLiteral("expand"), QStringLiteral("1"));
+        if (!title.isEmpty()) {
+            query.addQueryItem(QStringLiteral("title"), title);
+        }
+        if (!body.isEmpty()) {
+            query.addQueryItem(QStringLiteral("body"), body);
+        }
+        url.setQuery(query);
+        finalUrl = url.toString();
+    } else if (host.contains(QLatin1String("gitlab.com"), Qt::CaseInsensitive)) {
+        QUrl url(QStringLiteral("https://%1/%2/-/merge_requests/new").arg(host, repoPath));
+        QUrlQuery query;
+        query.addQueryItem(QStringLiteral("merge_request[source_branch]"), cleanSource);
+        query.addQueryItem(QStringLiteral("merge_request[target_branch]"), cleanTarget);
+        if (!title.isEmpty()) {
+            query.addQueryItem(QStringLiteral("merge_request[title]"), title);
+        }
+        if (!body.isEmpty()) {
+            query.addQueryItem(QStringLiteral("merge_request[description]"), body);
+        }
+        url.setQuery(query);
+        finalUrl = url.toString();
+    } else if (host.contains(QLatin1String("bitbucket.org"), Qt::CaseInsensitive)) {
+        QUrl url(QStringLiteral("https://%1/%2/pull-requests/new").arg(host, repoPath));
+        QUrlQuery query;
+        query.addQueryItem(QStringLiteral("source"), cleanSource);
+        query.addQueryItem(QStringLiteral("dest"), cleanTarget);
+        url.setQuery(query);
+        finalUrl = url.toString();
+    } else {
+        // Generic git server fallback
+        finalUrl = QStringLiteral("https://%1/%2/compare/%3...%4").arg(host, repoPath, cleanTarget, cleanSource);
+    }
+
+    return finalUrl;
 }
 
 } // namespace gf::desktop

@@ -1193,6 +1193,45 @@ TEST_CASE("BranchManagerViewModel operations and signal propagation", "[viewmode
 
     CHECK(branchVm.convertRemoteToSsh("origin"));
     CHECK(branchVm.remoteUrl() == "git@github.com:Dokjolly0/Git-Flux.git");
+
+    // Pull Request URL Generation
+    QString githubPrUrl = branchVm.buildPullRequestUrl("feature/drag-and-drop", "main", "Feature PR", "PR Description");
+    CHECK(githubPrUrl.contains("https://github.com/Dokjolly0/Git-Flux/compare/main...feature/drag-and-drop"));
+    CHECK(githubPrUrl.contains("expand=1"));
+    CHECK(githubPrUrl.contains("title=Feature"));
+
+    // GitLab PR URL
+    CHECK(branchVm.setRemoteUrl("origin", "https://gitlab.com/group/my-project.git"));
+    QString gitlabPrUrl = branchVm.buildPullRequestUrl("feature/x", "main", "Title", "Body");
+    CHECK(gitlabPrUrl.contains("https://gitlab.com/group/my-project/-/merge_requests/new"));
+    CHECK(gitlabPrUrl.contains("source_branch"));
+    CHECK(gitlabPrUrl.contains("feature/x"));
+
+    // Bitbucket PR URL
+    CHECK(branchVm.setRemoteUrl("origin", "git@bitbucket.org:org/repo.git"));
+    QString bitbucketPrUrl = branchVm.buildPullRequestUrl("feature/y", "main");
+    CHECK(bitbucketPrUrl.contains("https://bitbucket.org/org/repo/pull-requests/new"));
+    CHECK(bitbucketPrUrl.contains("source=feature/y"));
+
+    // Git operations: Checkout commit, Reset, Revert, Tag, Worktree, Cherry-pick, Rebase
+    gf::git::bl::GitRebaseService rebaseService(mockOps);
+    BranchManagerViewModel branchVmWithRebase(branchService, historyService, remoteMergeService, &rebaseService);
+    branchVmWithRebase.setRepositoryPath(QString::fromStdString(tempDir.string()));
+
+    CHECK(branchVmWithRebase.checkoutCommit("c0ffee1"));
+    CHECK(branchVmWithRebase.resetCommit("c0ffee1", "soft"));
+    CHECK(branchVmWithRebase.resetCommit("c0ffee1", "mixed"));
+    CHECK(branchVmWithRebase.resetCommit("c0ffee1", "hard"));
+    CHECK(branchVmWithRebase.revertCommit("c0ffee1"));
+    CHECK(branchVmWithRebase.cherryPickCommit("c0ffee1"));
+    CHECK(branchVmWithRebase.createTag("v1.0.0", "c0ffee1", "Annotated tag"));
+    CHECK(branchVmWithRebase.deleteTag("v1.0.0"));
+    CHECK(branchVmWithRebase.createWorktree(QString::fromStdString((tempDir / "wt_test").string()), "c0ffee1"));
+    CHECK(branchVmWithRebase.rebaseOnto("main"));
+    CHECK(branchVmWithRebase.rebaseBranch("feature/test", "main"));
+    CHECK(branchVmWithRebase.mergeBranchInto("feature/test", "main"));
+
+    branchVmWithRebase.copyToClipboard("sample commit sha");
 }
 
 TEST_CASE("StashListModel and StashManagerViewModel operations", "[viewmodel][stash]") {
