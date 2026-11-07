@@ -160,6 +160,12 @@ if(GF_BUILD_DESKTOP)
         src/desktop/viewmodels/repository_list_model.cpp
         src/desktop/viewmodels/group_list_model.cpp
         src/desktop/viewmodels/workspace_list_model.cpp
+        src/desktop/viewmodels/working_tree_file_list_model.cpp
+        src/desktop/viewmodels/diff_line_list_model.cpp
+        src/desktop/viewmodels/diff_viewmodel.cpp
+        src/desktop/viewmodels/commit_box_viewmodel.cpp
+        src/desktop/viewmodels/working_tree_viewmodel.cpp
+        src/desktop/viewmodels/workspace_session_viewmodel.cpp
         src/desktop/viewmodels/home_hub_viewmodel.cpp
         src/desktop/viewmodels/quick_open_viewmodel.cpp
         src/desktop/bootstrap/app_bootstrap.cpp
@@ -170,6 +176,7 @@ if(GF_BUILD_DESKTOP)
     target_link_libraries(gf_desktop_viewmodels PUBLIC
         gf_application
         gf_persistence_sqlite
+        gf_git_cli_native
         Qt6::Core
         Qt6::Gui
         Qt6::Quick
@@ -191,6 +198,10 @@ if(GF_BUILD_DESKTOP)
             src/desktop/ui/qml/themes/FluxTheme.qml
             src/desktop/ui/qml/views/HomeHubView.qml
             src/desktop/ui/qml/views/QuickOpenModal.qml
+            src/desktop/ui/qml/views/WorkspaceSessionView.qml
+            src/desktop/ui/qml/views/WorkingTreePanel.qml
+            src/desktop/ui/qml/views/CommitBox.qml
+            src/desktop/ui/qml/views/DiffViewerPanel.qml
     )
     target_include_directories(git_flux PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"

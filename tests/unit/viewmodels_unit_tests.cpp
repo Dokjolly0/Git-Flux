@@ -5,6 +5,16 @@
 #include "desktop/viewmodels/workspace_list_model.hpp"
 #include "desktop/viewmodels/home_hub_viewmodel.hpp"
 #include "desktop/viewmodels/quick_open_viewmodel.hpp"
+#include "desktop/viewmodels/working_tree_file_list_model.hpp"
+#include "desktop/viewmodels/diff_line_list_model.hpp"
+#include "desktop/viewmodels/working_tree_viewmodel.hpp"
+#include "desktop/viewmodels/commit_box_viewmodel.hpp"
+#include "desktop/viewmodels/diff_viewmodel.hpp"
+#include "desktop/viewmodels/workspace_session_viewmodel.hpp"
+#include "core/modules/git/ports/repository_git_ops.hpp"
+#include "core/modules/git/bl/git_working_tree_service.hpp"
+#include "core/modules/git/bl/git_staging_service.hpp"
+#include "core/modules/git/bl/git_diff_service.hpp"
 
 #include "infrastructure/persistence/sqlite/connection/sqlite_connection.hpp"
 #include "infrastructure/persistence/sqlite/migrations/schema_migrator.hpp"
@@ -332,4 +342,276 @@ TEST_CASE("QuickOpenViewModel provides multi-group selection and deterministic d
     QSignalSpy errorSpy(&vm, &QuickOpenViewModel::errorOccurred);
     CHECK_FALSE(vm.openQuickSession());
     CHECK(errorSpy.count() == 1);
+}
+
+class MockFullGitOps final : public gf::git::ports::IRepositoryGitOps {
+public:
+    gf::git::bo::RepoWorkingTreeStatus statusToReturn;
+    gf::git::bo::FileDiff diffToReturn;
+    bool stageCalled = false;
+    bool unstageCalled = false;
+    bool discardCalled = false;
+    bool commitCalled = false;
+
+    std::expected<gf::git::bo::RepoWorkingTreeStatus, gf::git::ports::GitOpsError>
+    getWorkingTreeStatus(const std::filesystem::path&) override {
+        return statusToReturn;
+    }
+
+    std::expected<void, gf::git::ports::GitOpsError>
+    stageFiles(const std::filesystem::path&, const std::vector<std::string>&) override {
+        stageCalled = true;
+        return {};
+    }
+
+    std::expected<void, gf::git::ports::GitOpsError>
+    stageAll(const std::filesystem::path&) override {
+        stageCalled = true;
+        return {};
+    }
+
+    std::expected<void, gf::git::ports::GitOpsError>
+    unstageFiles(const std::filesystem::path&, const std::vector<std::string>&) override {
+        unstageCalled = true;
+        return {};
+    }
+
+    std::expected<void, gf::git::ports::GitOpsError>
+    unstageAll(const std::filesystem::path&) override {
+        unstageCalled = true;
+        return {};
+    }
+
+    std::expected<void, gf::git::ports::GitOpsError>
+    discardFiles(const std::filesystem::path&, const std::vector<std::string>&) override {
+        discardCalled = true;
+        return {};
+    }
+
+    std::expected<gf::git::bo::CommitResult, gf::git::ports::GitOpsError>
+    createCommit(const std::filesystem::path&, const gf::git::bo::CommitOptions&) override {
+        commitCalled = true;
+        return gf::git::bo::CommitResult{
+            .commitSha = "1234567890123456789012345678901234567890",
+            .shortSha = "12345678",
+            .summary = "Commit test",
+            .branch = "main"
+        };
+    }
+
+    std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
+    getFileDiff(const std::filesystem::path&, const std::string&, gf::git::bo::DiffScope) override {
+        return diffToReturn;
+    }
+
+    std::expected<std::vector<gf::git::bo::FileDiff>, gf::git::ports::GitOpsError>
+    getAllDiffs(const std::filesystem::path&, gf::git::bo::DiffScope) override {
+        return std::vector<gf::git::bo::FileDiff>{diffToReturn};
+    }
+};
+
+TEST_CASE("WorkingTreeFileListModel and DiffLineListModel MVVM models", "[viewmodel][models]") {
+    ensureQtApp();
+
+    SECTION("WorkingTreeFileListModel handles items and roles correctly") {
+        WorkingTreeFileListModel model;
+        CHECK(model.rowCount() == 0);
+
+        std::vector<gf::git::bo::WorkingTreeFileItem> items = {
+            gf::git::bo::WorkingTreeFileItem{
+                .path = "src/app.cpp",
+                .originalPath = {},
+                .kind = gf::git::bo::FileChangeKind::Modified,
+                .statusCode = 'M'
+            },
+            gf::git::bo::WorkingTreeFileItem{
+                .path = "new_doc.md",
+                .originalPath = {},
+                .kind = gf::git::bo::FileChangeKind::Added,
+                .statusCode = 'A'
+            }
+        };
+
+        model.setItems(std::move(items));
+        REQUIRE(model.rowCount() == 2);
+
+        QModelIndex idx0 = model.index(0, 0);
+        CHECK(model.data(idx0, WorkingTreeFileListModel::PathRole).toString().toStdString() == "src/app.cpp");
+        CHECK(model.data(idx0, WorkingTreeFileListModel::KindRole).toString().toStdString() == "Modified");
+        CHECK(model.data(idx0, WorkingTreeFileListModel::StatusCodeRole).toString().toStdString() == "M");
+
+        QModelIndex idx1 = model.index(1, 0);
+        CHECK(model.data(idx1, WorkingTreeFileListModel::KindRole).toString().toStdString() == "Added");
+        CHECK(model.data(idx1, WorkingTreeFileListModel::BadgeColorRole).toString().toStdString() == "#34D399");
+
+        model.clear();
+        CHECK(model.rowCount() == 0);
+    }
+
+    SECTION("DiffLineListModel creates flat representation with line numbers") {
+        DiffLineListModel diffModel;
+        CHECK(diffModel.rowCount() == 0);
+
+        gf::git::bo::FileDiff diff;
+        diff.oldPath = "file.txt";
+        diff.newPath = "file.txt";
+        gf::git::bo::DiffHunk hunk;
+        hunk.header = "@@ -1,2 +1,3 @@";
+        hunk.lines.push_back(gf::git::bo::DiffLine{
+            .kind = gf::git::bo::DiffLineKind::Context,
+            .oldLineNumber = 1,
+            .newLineNumber = 1,
+            .content = "line 1"
+        });
+        hunk.lines.push_back(gf::git::bo::DiffLine{
+            .kind = gf::git::bo::DiffLineKind::Addition,
+            .oldLineNumber = std::nullopt,
+            .newLineNumber = 2,
+            .content = "line 2 added"
+        });
+        diff.hunks.push_back(std::move(hunk));
+
+        diffModel.setDiff(diff);
+        // 1 hunk header + 2 righe = 3
+        REQUIRE(diffModel.rowCount() == 3);
+
+        QModelIndex hIdx = diffModel.index(0, 0);
+        CHECK(diffModel.data(hIdx, DiffLineListModel::LineKindRole).toString().toStdString() == "header");
+
+        QModelIndex lIdx = diffModel.index(2, 0);
+        CHECK(diffModel.data(lIdx, DiffLineListModel::LineKindRole).toString().toStdString() == "addition");
+        CHECK(diffModel.data(lIdx, DiffLineListModel::NewLineNumberRole).toString().toStdString() == "2");
+        CHECK(diffModel.data(lIdx, DiffLineListModel::OldLineNumberRole).toString().isEmpty());
+
+        diffModel.clear();
+        CHECK(diffModel.rowCount() == 0);
+    }
+}
+
+TEST_CASE("WorkingTreeViewModel and CommitBoxViewModel reactive behavior", "[viewmodel][session]") {
+    ensureQtApp();
+
+    MockFullGitOps mockOps;
+    gf::git::bl::GitWorkingTreeService statusService(mockOps);
+    gf::git::bl::GitStagingService stagingService(mockOps);
+
+    auto validTempDir = std::filesystem::temp_directory_path();
+
+    SECTION("WorkingTreeViewModel refreshes and manages changes") {
+        WorkingTreeViewModel wtVm(statusService, stagingService);
+
+        mockOps.statusToReturn.branch.headName = "feature/phase2";
+        mockOps.statusToReturn.branch.ahead = 2;
+        mockOps.statusToReturn.stagedFiles.push_back(gf::git::bo::WorkingTreeFileItem{
+            .path = "a.txt",
+            .originalPath = {},
+            .kind = gf::git::bo::FileChangeKind::Added,
+            .statusCode = 'A'
+        });
+
+        QSignalSpy statusSpy(&wtVm, &WorkingTreeViewModel::statusChanged);
+        bool refreshed = wtVm.refresh(QString::fromStdString(validTempDir.string()));
+        REQUIRE(refreshed);
+        CHECK(statusSpy.count() == 1);
+        CHECK(wtVm.branchName().toStdString() == "feature/phase2");
+        CHECK(wtVm.aheadCount() == 2);
+        CHECK(wtVm.stagedCount() == 1);
+        CHECK(wtVm.stagedModel()->rowCount() == 1);
+        CHECK_FALSE(wtVm.isClean());
+
+        // Stage file trigger
+        CHECK(wtVm.stageFile(QString::fromStdString(validTempDir.string()), "b.txt"));
+        CHECK(mockOps.stageCalled);
+
+        // Unstage file trigger
+        CHECK(wtVm.unstageFile(QString::fromStdString(validTempDir.string()), "a.txt"));
+        CHECK(mockOps.unstageCalled);
+    }
+
+    SECTION("CommitBoxViewModel validates message and triggers commit") {
+        CommitBoxViewModel commitVm(stagingService);
+
+        CHECK_FALSE(commitVm.canCommit());
+
+        QSignalSpy canCommitSpy(&commitVm, &CommitBoxViewModel::canCommitChanged);
+        commitVm.setCommitMessage("feat(core): initial implementation");
+        CHECK(commitVm.canCommit());
+        CHECK(canCommitSpy.count() >= 1);
+
+        QSignalSpy successSpy(&commitVm, &CommitBoxViewModel::commitSucceeded);
+        bool committed = commitVm.executeCommit(QString::fromStdString(validTempDir.string()));
+        REQUIRE(committed);
+        CHECK(mockOps.commitCalled);
+        CHECK(successSpy.count() == 1);
+
+        // Al termine del commit il messaggio viene resettato
+        CHECK(commitVm.commitMessage().isEmpty());
+        CHECK_FALSE(commitVm.canCommit());
+    }
+}
+
+TEST_CASE("WorkspaceSessionViewModel multi-tab orchestration", "[viewmodel][session][tabs]") {
+    ensureQtApp();
+
+    TestContext ctx;
+    auto r1Res = ctx.repoService->registerRepository({
+        .localPath = ctx.repoAPath,
+        .displayName = "Repo 1"
+    });
+    REQUIRE(r1Res.has_value());
+
+    auto r2Res = ctx.repoService->registerRepository({
+        .localPath = ctx.repoBPath,
+        .displayName = "Repo 2"
+    });
+    REQUIRE(r2Res.has_value());
+
+    MockFullGitOps mockOps;
+    gf::git::bl::GitWorkingTreeService statusService(mockOps);
+    gf::git::bl::GitStagingService stagingService(mockOps);
+    gf::git::bl::GitDiffService diffService(mockOps);
+
+    WorkspaceSessionViewModel sessionVm(
+        *ctx.repoService,
+        *ctx.workspaceService,
+        statusService,
+        stagingService,
+        diffService
+    );
+
+    CHECK_FALSE(sessionVm.hasOpenTabs());
+    CHECK(sessionVm.activeTabIndex() == -1);
+
+    QSignalSpy tabsSpy(&sessionVm, &WorkspaceSessionViewModel::tabsChanged);
+    QSignalSpy activeSpy(&sessionVm, &WorkspaceSessionViewModel::activeTabChanged);
+
+    // Open Repo 1
+    sessionVm.openRepository(QString::fromStdString(r1Res->id.value()), "Repo 1", QString::fromStdString(ctx.repoAPath.string()));
+    CHECK(sessionVm.hasOpenTabs());
+    CHECK(sessionVm.tabs().size() == 1);
+    CHECK(sessionVm.activeTabIndex() == 0);
+    CHECK(sessionVm.activeRepoName().toStdString() == "Repo 1");
+    CHECK(sessionVm.activeRepoPath().toStdString() == ctx.repoAPath.string());
+
+    // Open Repo 2
+    sessionVm.openRepository(QString::fromStdString(r2Res->id.value()), "Repo 2", QString::fromStdString(ctx.repoBPath.string()));
+    CHECK(sessionVm.tabs().size() == 2);
+    CHECK(sessionVm.activeTabIndex() == 1);
+    CHECK(sessionVm.activeRepoName().toStdString() == "Repo 2");
+
+    // Re-opening Repo 1 switches to existing tab
+    sessionVm.openRepository(QString::fromStdString(r1Res->id.value()), "Repo 1", QString::fromStdString(ctx.repoAPath.string()));
+    CHECK(sessionVm.tabs().size() == 2);
+    CHECK(sessionVm.activeTabIndex() == 0);
+
+    // Close active tab
+    sessionVm.closeTab(0);
+    CHECK(sessionVm.tabs().size() == 1);
+    CHECK(sessionVm.activeTabIndex() == 0);
+    CHECK(sessionVm.activeRepoName().toStdString() == "Repo 2");
+
+    // Close last tab
+    sessionVm.closeTab(0);
+    CHECK_FALSE(sessionVm.hasOpenTabs());
+    CHECK(sessionVm.activeTabIndex() == -1);
 }

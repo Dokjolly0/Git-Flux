@@ -1,6 +1,6 @@
 # Git Flux — Specifica e Stato di Avanzamento Fase 2 (Gestione Operativa Repository & Sessione di Lavoro)
 
-> **Stato:** Task 2.1, 2.2 e 2.3 completati al 100% — prossimo: Task 2.4  
+> **Stato:** Fase 2 Completata al 100% (Task 2.1, 2.2, 2.3, 2.4 completati con successo)  
 > **Architettura di riferimento:** [plan.md](plan.md) (Sezioni 2.1, 6, 8, 15)  
 > **Wireframe UI di riferimento:** [`docs/ui/git-flux-ui-v2.drawio`](ui/git-flux-ui-v2.drawio) (Pagine 04, 05, 06, 09)  
 
@@ -15,7 +15,7 @@ La Fase 2 trasforma Git Flux da catalogo di repository e workspace a client Git 
 | **2.1** | **Git Status & Working Tree Engine** | Domain BO (`RepoWorkingTreeStatus`), contratto port `IRepositoryGitOps`, use case `GitWorkingTreeService` basato su `PorcelainStatusParser` e `NativeGitCommandExecutor`. | **Completato** |
 | **2.2** | **Staging, Discard & Commit Service** | Use case `GitStagingService`: stage (`git add`), unstage (`git restore --staged` con fallback unborn HEAD), discard (`git restore` tracciati + `git clean` untracked), commit atomico (`createCommit`), mutua esclusione per-repository (`RepositoryLockCoordinator`). | **Completato** |
 | **2.3** | **Diff Extraction Engine** | Domain BO (`FileDiff`, `DiffHunk`, `DiffLine`), parser diff unificato streaming zero-allocazioni (`UnifiedDiffParser`), use case `GitDiffService` e adattatore `NativeRepositoryGitOps` (staged, unstaged, untracked con `--no-index`). | **Completato** |
-| **2.4** | **Workspace Multi-Repo Session & UI** | ViewModels MVVM (`WorkspaceSessionViewModel`, `WorkingTreeViewModel`, `DiffViewModel`, `CommitBoxViewModel`) e viste QML (`WorkspaceView`, `WorkspaceSidebar`, `StagingPanel`, `DiffViewerPanel`). | *Prossimo* |
+| **2.4** | **Workspace Multi-Repo Session & UI** | ViewModels MVVM (`WorkspaceSessionViewModel`, `WorkingTreeViewModel`, `DiffViewModel`, `CommitBoxViewModel`, `WorkingTreeFileListModel`, `DiffLineListModel`) e viste QML (`WorkspaceSessionView`, `WorkingTreePanel`, `CommitBox`, `DiffViewerPanel`). | **Completato** |
 
 ---
 
@@ -63,46 +63,47 @@ La Fase 2 trasforma Git Flux da catalogo di repository e workspace a client Git 
 1. **Business Objects (`gf::git::bo::diff_models.hpp`):**
    - `DiffScope`: enumerazione che distingue `Staged`, `Unstaged` e `Untracked`.
    - `DiffLineKind`: `Context`, `Addition`, `Deletion`, `Header`, `NoNewline`.
-   - `DiffLine`: tipo di riga, numeri di riga vecchio e nuovo opzionali (`std::optional<int>`), e contenuto testuale.
-   - `DiffHunk`: intestazione hunk (`@@ -l,s +l,s @@`), offset di riga originari e destinazione, conteggi e collezione di `DiffLine`.
-   - `FileDiff`: vecchio e nuovo percorso, flag `isBinary`, `isNewFile`, `isDeletedFile`, `isRenamed`, totali `additionsCount` e `deletionsCount`, e collezione di `DiffHunk`.
+   - `DiffLine`: riga testuale con tracciamento coerente dei numeri di riga originari e destinazione (`oldLineNumber`, `newLineNumber`).
+   - `DiffHunk`: header unificato, offset righe originari/nuovi e collezione di `DiffLine`.
+   - `FileDiff`: vecchio e nuovo percorso, totali `additionsCount` e `deletionsCount`, flag `isBinary`, `isNewFile`, `isDeletedFile`, `isRenamed`, e collezione di `DiffHunk`.
 2. **Unified Diff Parser (`gf::git::bl::UnifiedDiffParser`):**
    - Algoritmo ad alte prestazioni privo di espressioni regolari lente, basato su `std::string_view` e `std::from_chars`.
    - Parsing completo di file singoli (`parseSingle`) e stream multi-file (`parse`).
-   - Riconoscimento accurato di:
-     - Header git `diff --git a/... b/...` (con gestione di percorsi virgolettati con spazi).
-     - Metadati di file (`new file mode`, `deleted file mode`, `similarity index`, `rename from/to`, `Binary files ... differ`).
-     - Hunk header con conteggio implicito (`@@ -1 +1 @@`, `@@ -0,0 +1,10 @@`, ecc.).
-     - Tracciamento coordinato dei numeri di riga per diff side-by-side e inline.
-     - Gestione di `\ No newline at end of file`.
+   - Riconoscimento accurato di percorsi con spazi e virgolette, metadati di file (`new file mode`, `deleted file mode`, `similarity index`, `rename from/to`, `Binary files ... differ`), e numeri di riga per diff side-by-side e inline.
 3. **Application Service (`gf::git::bl::GitDiffService`):**
    - Validazione preliminare dei percorsi del repository e del file (protezione da path traversal `..` e percorsi assoluti).
    - Metodi di comodo: `getStagedFileDiff`, `getUnstagedFileDiff`, `getUntrackedFileDiff`, `getFileDiff`, `getAllDiffs`.
 4. **Infrastructure Adapter (`gf::infra::git::NativeRepositoryGitOps`):**
-   - `DiffScope::Staged`: esegue `git diff --cached --no-color -p -- <filePath>` con policy `GitLockPolicy::NoOptionalLocks`.
-   - `DiffScope::Unstaged`: esegue `git diff --no-color -p -- <filePath>` con policy `GitLockPolicy::NoOptionalLocks`.
-   - `DiffScope::Untracked`: esegue `git diff --no-index --no-color -p -- /dev/null <filePath>` (gestendo l'exit code 1 standard per differenze trovate), consentendo la visualizzazione istantanea di file non tracciati nel Diff Viewer.
-   - `getAllDiffs`: estrazione batch di tutti i file modificati per il pannello di sessione.
-
-### Copertura Test
-- **Unit Tests (`diff_unit_tests.cpp`):**
-  - Parsing sintetico di modifiche standard, addizioni, delezioni, context, numeri di riga.
-  - Parsing di nuovi file, file eliminati, file rinominati, file binari, multi-file stream.
-  - Validazione percorsi e delega a mock in `GitDiffService`.
-- **Integration Tests (`diff_integration_tests.cpp`):**
-  - Staged diff su nuovo file con unborn HEAD.
-  - Unstaged diff su file tracciato modificato con verifica esatta di vecchi e nuovi numeri di riga.
-  - Untracked file diff reale tramite `--no-index`.
-  - Unstaged diff su file cancellato nel working tree.
-  - `getAllDiffs` su modifiche multiple contemporanee.
+   - Diff Staged (`--cached`), Unstaged e Untracked (`--no-index` rispetto a `/dev/null`) con policy `GitLockPolicy::NoOptionalLocks`.
 
 ---
 
-## 5. Matrice dei Criteri di Accettazione (DoD Fase 2)
+## 5. Dettaglio Task 2.4 — Workspace Multi-Repo Session & UI (MVVM + Qt Quick 6)
+
+### Componenti Realizzati
+1. **Modelli e ViewModels Desktop (`src/desktop/viewmodels/`):**
+   - `WorkingTreeFileListModel`: `QAbstractListModel` con ruoli `path`, `originalPath`, `kind`, `statusCode`, `badgeColor` per le sezioni staged, unstaged e untracked.
+   - `DiffLineListModel`: `QAbstractListModel` piatto ottimizzato per `ListView` QML con ruoli `lineKind`, `oldLineNumber`, `newLineNumber`, `content`, `bgColor`, `fgColor`.
+   - `DiffViewModel`: caricamento reattivo del diff per file selezionato e scope (`staged`, `unstaged`, `untracked`), metadati e conteggi additions/deletions.
+   - `CommitBoxViewModel`: composizione del commit con supporto a commit multi-linea, autore, checkbox amend, validazione reattiva e notifica segnali `commitSucceeded` / `commitFailed`.
+   - `WorkingTreeViewModel`: orchestrazione dello stato del working tree, branch attivo, conteggi ahead/behind, pulizia e metodi operativi `stageFile`, `stageAll`, `unstageFile`, `unstageAll`, `discardFile`.
+   - `WorkspaceSessionViewModel`: Composition Root della sessione di lavoro multi-tab. Gestisce apertura di repository singoli, gruppi o interi workspace, switch istantaneo tra tab aperti, indicatore dirty per-repo, e chiusura tab.
+2. **Componenti QML (`src/desktop/ui/qml/`):**
+   - `WorkspaceSessionView.qml`: vista della sessione con barra superiore dei tab (`RepoTabsHeader`, Pagina 04 del wireframe), pulsante "Home" e "Quick Open".
+   - `WorkingTreePanel.qml`: tre sezioni con badge colorati per Staged, Unstaged e Untracked con bottoni per stage/unstage/discard.
+   - `CommitBox.qml`: box di commit con textarea scura stilizzata, scorciatoia `Ctrl+Enter` e pulsante dinamico "Commit (N) to <branch>".
+   - `DiffViewerPanel.qml`: visualizzatore del diff con numeri di riga vecchio/nuovo su colonne allineate a destra con font monospace e colori ad alto contrasto dark (verde tenue per addizioni, rosso tenue per delezioni).
+   - `main.qml`: gestione dello switch reattivo tra `HomeHubView` e `WorkspaceSessionView`.
+3. **App Bootstrap & Composition Root:**
+   - Inizializzazione integrata dei servizi Git e registrazione di tutti i modelli e ViewModels nel motore QML.
+
+---
+
+## 6. Matrice dei Criteri di Accettazione (DoD Fase 2)
 
 1. Recupero dello status completo di un repository in meno di 15ms su repository medi (~10.000 file). *(Verificato nel Task 2.1)*
 2. Riconoscimento accurato di modifiche staged, unstaged, file untracked, rename e conflitti. *(Verificato nel Task 2.1)*
 3. Operazioni atomiche di stage, unstage e discard senza effetti collaterali o desincronizzazione dell'index. *(Verificato nel Task 2.2)*
 4. Esecuzione del commit con verifica preventiva dell'index, messaggi non vuoti e coordinamento atomico per-repository. *(Verificato nel Task 2.2)*
 5. Estrazione e parsing del diff con numerazione righe coerente per diff staged e unstaged. *(Verificato nel Task 2.3)*
-6. Presentazione desktop fluida in Qt Quick 6 con layout responsive e transizioni immediate tra repository aperti. *(In arrivo nel Task 2.4)*
+6. Presentazione desktop fluida in Qt Quick 6 con layout responsive e transizioni immediate tra repository aperti. *(Verificato nel Task 2.4 con smoke test headless e 149 asserzioni MVVM)*

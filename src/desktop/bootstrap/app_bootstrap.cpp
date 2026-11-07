@@ -1,5 +1,6 @@
 #include "desktop/bootstrap/app_bootstrap.hpp"
 #include "infrastructure/persistence/sqlite/migrations/schema_migrator.hpp"
+#include "infrastructure/git/git_discovery.hpp"
 
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -45,8 +46,27 @@ void AppBootstrap::initialize() {
     m_groupService = std::make_unique<groups::bl::GroupService>(*m_groupStore, *m_repoStore);
     m_workspaceService = std::make_unique<workspaces::bl::WorkspaceService>(*m_workspaceStore, *m_groupStore, *m_repoStore);
 
+    auto gitDiscovery = infra::git::GitDiscovery::discover();
+    std::filesystem::path gitExe = gitDiscovery
+        ? (gitDiscovery->directBinaryPath.empty() ? gitDiscovery->discoveredInPath : gitDiscovery->directBinaryPath)
+        : "git";
+
+    m_gitExecutor = std::make_unique<infra::git::NativeGitCommandExecutor>(gitExe);
+    m_gitOps = std::make_unique<infra::git::NativeRepositoryGitOps>(*m_gitExecutor);
+
+    m_workingTreeService = std::make_unique<git::bl::GitWorkingTreeService>(*m_gitOps);
+    m_stagingService = std::make_unique<git::bl::GitStagingService>(*m_gitOps);
+    m_diffService = std::make_unique<git::bl::GitDiffService>(*m_gitOps);
+
     m_homeHubVm = std::make_unique<HomeHubViewModel>(*m_repoService, *m_groupService, *m_workspaceService);
     m_quickOpenVm = std::make_unique<QuickOpenViewModel>(*m_groupService, *m_repoService);
+    m_workspaceSessionVm = std::make_unique<WorkspaceSessionViewModel>(
+        *m_repoService,
+        *m_workspaceService,
+        *m_workingTreeService,
+        *m_stagingService,
+        *m_diffService
+    );
 }
 
 void AppBootstrap::registerWithQml(QQmlApplicationEngine& engine) {
@@ -56,14 +76,28 @@ void AppBootstrap::registerWithQml(QQmlApplicationEngine& engine) {
         "Modello fornito da HomeHubViewModel");
     qmlRegisterUncreatableType<WorkspaceListModel>("GitFlux.Desktop", 1, 0, "WorkspaceListModel",
         "Modello fornito da HomeHubViewModel");
+    qmlRegisterUncreatableType<WorkingTreeFileListModel>("GitFlux.Desktop", 1, 0, "WorkingTreeFileListModel",
+        "Modello fornito da WorkingTreeViewModel");
+    qmlRegisterUncreatableType<DiffLineListModel>("GitFlux.Desktop", 1, 0, "DiffLineListModel",
+        "Modello fornito da DiffViewModel");
+
     qmlRegisterUncreatableType<HomeHubViewModel>("GitFlux.Desktop", 1, 0, "HomeHubViewModel",
         "ViewModel gestito dal bootstrap");
     qmlRegisterUncreatableType<QuickOpenViewModel>("GitFlux.Desktop", 1, 0, "QuickOpenViewModel",
+        "ViewModel gestito dal bootstrap");
+    qmlRegisterUncreatableType<WorkingTreeViewModel>("GitFlux.Desktop", 1, 0, "WorkingTreeViewModel",
+        "ViewModel gestito da WorkspaceSessionViewModel");
+    qmlRegisterUncreatableType<CommitBoxViewModel>("GitFlux.Desktop", 1, 0, "CommitBoxViewModel",
+        "ViewModel gestito da WorkspaceSessionViewModel");
+    qmlRegisterUncreatableType<DiffViewModel>("GitFlux.Desktop", 1, 0, "DiffViewModel",
+        "ViewModel gestito da WorkspaceSessionViewModel");
+    qmlRegisterUncreatableType<WorkspaceSessionViewModel>("GitFlux.Desktop", 1, 0, "WorkspaceSessionViewModel",
         "ViewModel gestito dal bootstrap");
 
     auto* rootCtx = engine.rootContext();
     rootCtx->setContextProperty(QStringLiteral("homeHubVm"), m_homeHubVm.get());
     rootCtx->setContextProperty(QStringLiteral("quickOpenVm"), m_quickOpenVm.get());
+    rootCtx->setContextProperty(QStringLiteral("workspaceSessionVm"), m_workspaceSessionVm.get());
 }
 
 HomeHubViewModel& AppBootstrap::homeHubViewModel() noexcept {
@@ -72,6 +106,10 @@ HomeHubViewModel& AppBootstrap::homeHubViewModel() noexcept {
 
 QuickOpenViewModel& AppBootstrap::quickOpenViewModel() noexcept {
     return *m_quickOpenVm;
+}
+
+WorkspaceSessionViewModel& AppBootstrap::workspaceSessionViewModel() noexcept {
+    return *m_workspaceSessionVm;
 }
 
 repositories::bl::RepositoryService& AppBootstrap::repositoryService() noexcept {
