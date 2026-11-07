@@ -1,12 +1,15 @@
 #include "desktop/bootstrap/app_bootstrap.hpp"
 
+#include <QCommandLineOption>
+#include <QCommandLineParser>
+#include <QFileInfo>
 #include <QGuiApplication>
-#include <QQmlApplicationEngine>
-#include <QQmlNetworkAccessManagerFactory>
+#include <QIcon>
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
-#include <QCommandLineParser>
-#include <QCommandLineOption>
+#include <QQmlApplicationEngine>
+#include <QQmlNetworkAccessManagerFactory>
+#include <QQuickWindow>
 #include <iostream>
 
 namespace {
@@ -27,6 +30,19 @@ int main(int argc, char* argv[]) {
     app.setApplicationName(QStringLiteral("GitFlux"));
     app.setOrganizationName(QStringLiteral("GitFlux"));
     app.setApplicationVersion(QStringLiteral("0.1.0"));
+
+    // Set application icon from assets
+    QIcon appIcon;
+    if (QFileInfo::exists(QStringLiteral(":/qt/qml/GitFlux/Desktop/assets/logo.png"))) {
+        appIcon = QIcon(QStringLiteral(":/qt/qml/GitFlux/Desktop/assets/logo.png"));
+    } else if (QFileInfo::exists(QStringLiteral("assets/logo.png"))) {
+        appIcon = QIcon(QStringLiteral("assets/logo.png"));
+    } else if (QFileInfo::exists(QStringLiteral("../assets/logo.png"))) {
+        appIcon = QIcon(QStringLiteral("../assets/logo.png"));
+    }
+    if (!appIcon.isNull()) {
+        app.setWindowIcon(appIcon);
+    }
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("Git Flux — Modern local-first desktop Git client"));
@@ -85,6 +101,14 @@ int main(int argc, char* argv[]) {
         if (engine.rootObjects().isEmpty()) {
             std::cerr << "Error: no QML root objects loaded." << std::endl;
             return 1;
+        }
+
+        if (!appIcon.isNull()) {
+            for (auto* rootObj : engine.rootObjects()) {
+                if (auto* win = qobject_cast<QQuickWindow*>(rootObj)) {
+                    win->setIcon(appIcon);
+                }
+            }
         }
 
         if (parser.isSet(smokeTestOption)) {

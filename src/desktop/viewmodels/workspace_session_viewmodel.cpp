@@ -283,15 +283,28 @@ void WorkspaceSessionViewModel::checkWorkingTreeUpdates() {
         return;
     }
 
+    QString previousHeadOid = m_workingTree.headOid();
+    QString previousBranchName = m_workingTree.branchName();
+
     m_workingTree.refresh(path);
     bool hasWip = !m_workingTree.isClean();
     int count = m_workingTree.stagedCount() + m_workingTree.unstagedCount() + m_workingTree.untrackedCount();
     m_branchManager.setWipStatus(hasWip, count);
 
+    // If HEAD commit SHA changed (commit made externally or locally, rebased, checked out, reset, etc.)
+    // or branch name changed, refresh the branch manager and commit history immediately!
+    if ((!previousHeadOid.isEmpty() && m_workingTree.headOid() != previousHeadOid) ||
+        (!previousBranchName.isEmpty() && m_workingTree.branchName() != previousBranchName)) {
+        m_branchManager.refresh();
+        checkRebaseStatus();
+    }
+
     if (m_activeTabIndex >= 0 && m_activeTabIndex < static_cast<int>(m_tabs.size())) {
         bool dirty = !m_workingTree.isClean();
-        if (m_tabs[static_cast<std::size_t>(m_activeTabIndex)].isDirty != dirty) {
+        if (m_tabs[static_cast<std::size_t>(m_activeTabIndex)].isDirty != dirty ||
+            m_tabs[static_cast<std::size_t>(m_activeTabIndex)].branch != m_workingTree.branchName()) {
             m_tabs[static_cast<std::size_t>(m_activeTabIndex)].isDirty = dirty;
+            m_tabs[static_cast<std::size_t>(m_activeTabIndex)].branch = m_workingTree.branchName();
             emit tabsChanged();
         }
     }

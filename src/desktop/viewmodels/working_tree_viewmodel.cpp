@@ -27,6 +27,7 @@ bool WorkingTreeViewModel::refresh(const QString& repoPath) {
         m_conflictedCount = 0;
         m_isClean = true;
         m_branchName.clear();
+        m_headOid.clear();
         m_aheadCount = 0;
         m_behindCount = 0;
         m_isDetached = false;
@@ -55,6 +56,7 @@ bool WorkingTreeViewModel::refresh(const QString& repoPath) {
     m_isClean = status.isClean();
 
     m_branchName = QString::fromStdString(status.branch.headName);
+    m_headOid = QString::fromStdString(status.branch.oid);
     m_aheadCount = status.branch.ahead;
     m_behindCount = status.branch.behind;
     m_isDetached = status.branch.detached;

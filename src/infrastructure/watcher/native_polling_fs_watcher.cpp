@@ -15,6 +15,24 @@ std::filesystem::file_time_type safeGetMtime(const std::filesystem::path& p) noe
     return t;
 }
 
+std::filesystem::file_time_type safeGetMaxRefsMtime(const std::filesystem::path& refsDir) noexcept {
+    std::error_code ec;
+    auto maxTime = safeGetMtime(refsDir);
+    if (!std::filesystem::exists(refsDir, ec)) {
+        return maxTime;
+    }
+    for (std::filesystem::recursive_directory_iterator it(refsDir, std::filesystem::directory_options::skip_permission_denied, ec), end;
+         it != end && !ec; it.increment(ec)) {
+        if (!ec && it->is_regular_file(ec)) {
+            auto t = it->last_write_time(ec);
+            if (!ec && t > maxTime) {
+                maxTime = t;
+            }
+        }
+    }
+    return maxTime;
+}
+
 } // namespace
 
 NativePollingFsWatcher::NativePollingFsWatcher(Milliseconds pollInterval)
@@ -44,7 +62,8 @@ NativePollingFsWatcher::watchRepository(const std::filesystem::path& repoPath) {
         snap.repoPath = repoPath;
         snap.headMtime = safeGetMtime(repoPath / ".git" / "HEAD");
         snap.indexMtime = safeGetMtime(repoPath / ".git" / "index");
-        snap.refsMtime = safeGetMtime(repoPath / ".git" / "refs");
+        snap.refsMtime = safeGetMaxRefsMtime(repoPath / ".git" / "refs");
+        snap.packedRefsMtime = safeGetMtime(repoPath / ".git" / "packed-refs");
         snap.rootMtime = safeGetMtime(repoPath);
         snap.initialized = true;
 
@@ -103,13 +122,15 @@ void NativePollingFsWatcher::pollOnce() {
         for (auto& [key, snap] : m_watched) {
             auto currentHead = safeGetMtime(snap.repoPath / ".git" / "HEAD");
             auto currentIndex = safeGetMtime(snap.repoPath / ".git" / "index");
-            auto currentRefs = safeGetMtime(snap.repoPath / ".git" / "refs");
+            auto currentRefs = safeGetMaxRefsMtime(snap.repoPath / ".git" / "refs");
+            auto currentPackedRefs = safeGetMtime(snap.repoPath / ".git" / "packed-refs");
             auto currentRoot = safeGetMtime(snap.repoPath);
 
             if (!snap.initialized) {
                 snap.headMtime = currentHead;
                 snap.indexMtime = currentIndex;
                 snap.refsMtime = currentRefs;
+                snap.packedRefsMtime = currentPackedRefs;
                 snap.rootMtime = currentRoot;
                 snap.initialized = true;
                 continue;
@@ -138,6 +159,15 @@ void NativePollingFsWatcher::pollOnce() {
                 eventsToEmit.push_back(gf::git::bo::FsRawEvent{
                     .repositoryPath = snap.repoPath,
                     .changedPath = snap.repoPath / ".git" / "refs",
+                    .changeType = gf::git::bo::FsChangeType::Modified
+                });
+            }
+
+            if (currentPackedRefs != snap.packedRefsMtime) {
+                snap.packedRefsMtime = currentPackedRefs;
+                eventsToEmit.push_back(gf::git::bo::FsRawEvent{
+                    .repositoryPath = snap.repoPath,
+                    .changedPath = snap.repoPath / ".git" / "packed-refs",
                     .changeType = gf::git::bo::FsChangeType::Modified
                 });
             }

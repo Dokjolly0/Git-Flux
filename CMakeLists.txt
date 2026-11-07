@@ -245,6 +245,8 @@ if(GF_BUILD_DESKTOP)
             src/desktop/ui/qml/views/PullRequestModal.qml
             src/desktop/ui/qml/views/CreateTagModal.qml
             src/desktop/ui/qml/views/CreateWorktreeModal.qml
+        RESOURCES
+            assets/logo.png
     )
     target_include_directories(git_flux PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"

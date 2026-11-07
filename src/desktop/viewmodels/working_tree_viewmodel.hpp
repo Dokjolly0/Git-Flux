@@ -50,6 +50,7 @@ public:
     [[nodiscard]] bool isClean() const noexcept { return m_isClean; }
 
     [[nodiscard]] QString branchName() const noexcept { return m_branchName; }
+    [[nodiscard]] QString headOid() const noexcept { return m_headOid; }
     [[nodiscard]] int aheadCount() const noexcept { return m_aheadCount; }
     [[nodiscard]] int behindCount() const noexcept { return m_behindCount; }
     [[nodiscard]] bool isDetached() const noexcept { return m_isDetached; }
@@ -89,6 +90,7 @@ private:
     bool m_isClean = true;
 
     QString m_branchName;
+    QString m_headOid;
     int m_aheadCount = 0;
     int m_behindCount = 0;
     bool m_isDetached = false;

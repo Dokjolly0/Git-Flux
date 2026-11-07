@@ -46,6 +46,7 @@ private:
         std::filesystem::file_time_type headMtime{};
         std::filesystem::file_time_type indexMtime{};
         std::filesystem::file_time_type refsMtime{};
+        std::filesystem::file_time_type packedRefsMtime{};
         std::filesystem::file_time_type rootMtime{};
         bool initialized{false};
     };

@@ -60,21 +60,13 @@ Item {
                 // Git Flux Logo & Branding
                 RowLayout {
                     spacing: 10
-                    Rectangle {
+                    Image {
                         width: 28
                         height: 28
-                        radius: 6
-                        gradient: Gradient {
-                            GradientStop { position: 0.0; color: "#00E5FF" }
-                            GradientStop { position: 1.0; color: "#7C4DFF" }
-                        }
-                        Text {
-                            anchors.centerIn: parent
-                            text: "⎇"
-                            color: "#0E1117"
-                            font.pixelSize: 16
-                            font.bold: true
-                        }
+                        source: "qrc:/qt/qml/GitFlux/Desktop/assets/logo.png"
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true
+                        mipmap: true
                     }
 
                     Text {

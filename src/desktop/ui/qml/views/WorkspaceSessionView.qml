@@ -37,10 +37,14 @@ Rectangle {
                         radius: 5
                     }
                     contentItem: RowLayout {
-                        spacing: 5
-                        Text {
-                            text: "🏠"
-                            font.pixelSize: 13
+                        spacing: 6
+                        Image {
+                            width: 16
+                            height: 16
+                            source: "qrc:/qt/qml/GitFlux/Desktop/assets/logo.png"
+                            fillMode: Image.PreserveAspectFit
+                            smooth: true
+                            mipmap: true
                         }
                         Text {
                             text: "Home"
