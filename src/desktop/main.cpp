@@ -101,6 +101,7 @@ int main(int argc, char* argv[]) {
 
     QGuiApplication app(argc, argv);
     app.setApplicationDisplayName(QStringLiteral("Git Flux"));
+    app.setDesktopFileName(QStringLiteral("git-flux"));
 
     // Set application icon from assets
     QIcon appIcon(QStringLiteral(":/qt/qml/GitFlux/Desktop/assets/logo.png"));
