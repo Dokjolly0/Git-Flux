@@ -181,21 +181,24 @@ void GitProviderApiClient::fetchBitbucket(
         return;
     }
 
-    const QUrl url(QStringLiteral("https://api.bitbucket.org/2.0/repositories?role=member&pagelen=100&sort=-updated_on"));
-    QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("GitFlux-Desktop"));
-    request.setRawHeader("Accept", "application/json");
-
+    QByteArray authHeaderVal;
     if (!profile.username.empty()) {
         const QString credentials = QStringLiteral("%1:%2").arg(QString::fromStdString(profile.username), token);
-        const QString authHeader = QStringLiteral("Basic %1").arg(QString::fromLatin1(credentials.toUtf8().toBase64()));
-        request.setRawHeader("Authorization", authHeader.toUtf8());
+        authHeaderVal = QStringLiteral("Basic %1").arg(QString::fromLatin1(credentials.toUtf8().toBase64())).toUtf8();
     } else {
-        request.setRawHeader("Authorization", QStringLiteral("Bearer %1").arg(token).toUtf8());
+        authHeaderVal = QStringLiteral("Bearer %1").arg(token).toUtf8();
     }
 
+    // Bitbucket Cloud API 2.0 requires workspace-scoped repository listing.
+    // Step 1: Discover workspaces accessible to the user via /2.0/user/workspaces
+    const QUrl workspacesUrl(QStringLiteral("https://api.bitbucket.org/2.0/user/workspaces?pagelen=100"));
+    QNetworkRequest request(workspacesUrl);
+    request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("GitFlux-Desktop"));
+    request.setRawHeader("Accept", "application/json");
+    request.setRawHeader("Authorization", authHeaderVal);
+
     auto* reply = m_nam->get(request);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, profileId]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, profileId, authHeaderVal, profile]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
             const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
@@ -229,46 +232,105 @@ void GitProviderApiClient::fetchBitbucket(
         }
 
         const auto doc = QJsonDocument::fromJson(reply->readAll());
-        if (!doc.isObject()) {
-            emit fetchFailed(profileId, QStringLiteral("Risposta JSON Bitbucket non valida"));
+        QStringList workspaceSlugs;
+        if (doc.isObject()) {
+            const auto rootObj = doc.object();
+            const auto arr = rootObj.value(QStringLiteral("values")).toArray();
+            for (const auto& val : arr) {
+                if (!val.isObject()) continue;
+                const auto wObj = val.toObject().value(QStringLiteral("workspace")).toObject();
+                const auto slug = wObj.value(QStringLiteral("slug")).toString();
+                if (!slug.isEmpty() && !workspaceSlugs.contains(slug)) {
+                    workspaceSlugs.append(slug);
+                }
+            }
+        }
+
+        if (workspaceSlugs.isEmpty() && !profile.username.empty()) {
+            workspaceSlugs.append(QString::fromStdString(profile.username));
+        }
+
+        if (workspaceSlugs.isEmpty()) {
+            emit repositoriesFetched(profileId, {});
             return;
         }
 
-        const auto rootObj = doc.object();
-        const auto arr = rootObj.value(QStringLiteral("values")).toArray();
+        struct WorkspaceFetchState {
+            int remaining = 0;
+            std::vector<core::git::bo::RemoteRepositoryItem> allItems;
+            QString lastError;
+        };
 
-        std::vector<core::git::bo::RemoteRepositoryItem> items;
-        items.reserve(arr.size());
+        auto state = std::make_shared<WorkspaceFetchState>();
+        state->remaining = workspaceSlugs.size();
 
-        for (const auto& val : arr) {
-            if (!val.isObject()) continue;
-            const auto obj = val.toObject();
+        for (const auto& slug : workspaceSlugs) {
+            const QUrl repoUrl(QStringLiteral("https://api.bitbucket.org/2.0/repositories/%1?pagelen=100&sort=-updated_on").arg(slug));
+            QNetworkRequest repoReq(repoUrl);
+            repoReq.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("GitFlux-Desktop"));
+            repoReq.setRawHeader("Accept", "application/json");
+            repoReq.setRawHeader("Authorization", authHeaderVal);
 
-            core::git::bo::RemoteRepositoryItem item;
-            item.name = obj.value(QStringLiteral("name")).toString().toStdString();
-            item.fullName = obj.value(QStringLiteral("full_name")).toString().toStdString();
-            const auto desc = obj.value(QStringLiteral("description")).toString();
-            item.description = desc.toStdString();
-            item.isPrivate = obj.value(QStringLiteral("is_private")).toBool();
+            auto* repoReply = m_nam->get(repoReq);
+            connect(repoReply, &QNetworkReply::finished, this, [this, repoReply, profileId, state]() {
+                repoReply->deleteLater();
+                state->remaining--;
 
-            const auto links = obj.value(QStringLiteral("links")).toObject();
-            const auto cloneLinks = links.value(QStringLiteral("clone")).toArray();
-            for (const auto& cl : cloneLinks) {
-                const auto cObj = cl.toObject();
-                const auto cName = cObj.value(QStringLiteral("name")).toString();
-                const auto href = cObj.value(QStringLiteral("href")).toString().toStdString();
-                if (cName == QStringLiteral("https")) {
-                    item.httpsUrl = href;
-                } else if (cName == QStringLiteral("ssh")) {
-                    item.sshUrl = href;
+                if (repoReply->error() == QNetworkReply::NoError) {
+                    const auto rDoc = QJsonDocument::fromJson(repoReply->readAll());
+                    if (rDoc.isObject()) {
+                        const auto arr = rDoc.object().value(QStringLiteral("values")).toArray();
+                        for (const auto& val : arr) {
+                            if (!val.isObject()) continue;
+                            const auto obj = val.toObject();
+
+                            core::git::bo::RemoteRepositoryItem item;
+                            item.name = obj.value(QStringLiteral("name")).toString().toStdString();
+                            item.fullName = obj.value(QStringLiteral("full_name")).toString().toStdString();
+                            const auto desc = obj.value(QStringLiteral("description")).toString();
+                            item.description = desc.toStdString();
+                            item.isPrivate = obj.value(QStringLiteral("is_private")).toBool();
+
+                            const auto links = obj.value(QStringLiteral("links")).toObject();
+                            const auto cloneLinks = links.value(QStringLiteral("clone")).toArray();
+                            for (const auto& cl : cloneLinks) {
+                                const auto cObj = cl.toObject();
+                                const auto cName = cObj.value(QStringLiteral("name")).toString();
+                                const auto href = cObj.value(QStringLiteral("href")).toString().toStdString();
+                                if (cName == QStringLiteral("https")) {
+                                    item.httpsUrl = href;
+                                } else if (cName == QStringLiteral("ssh")) {
+                                    item.sshUrl = href;
+                                }
+                            }
+
+                            if (item.sshUrl.empty() && !item.fullName.empty()) {
+                                item.sshUrl = "git@bitbucket.org:" + item.fullName + ".git";
+                            }
+                            if (item.httpsUrl.empty() && !item.fullName.empty()) {
+                                item.httpsUrl = "https://bitbucket.org/" + item.fullName + ".git";
+                            }
+
+                            item.updatedAt = obj.value(QStringLiteral("updated_on")).toString().toStdString();
+                            state->allItems.push_back(std::move(item));
+                        }
+                    }
+                } else {
+                    state->lastError = repoReply->errorString();
                 }
-            }
 
-            item.updatedAt = obj.value(QStringLiteral("updated_on")).toString().toStdString();
-            items.push_back(std::move(item));
+                if (state->remaining <= 0) {
+                    if (state->allItems.empty() && !state->lastError.isEmpty()) {
+                        emit fetchFailed(profileId, QStringLiteral("Errore caricamento repository Bitbucket: %1").arg(state->lastError));
+                    } else {
+                        std::sort(state->allItems.begin(), state->allItems.end(), [](const auto& a, const auto& b) {
+                            return a.updatedAt > b.updatedAt;
+                        });
+                        emit repositoriesFetched(profileId, state->allItems);
+                    }
+                }
+            });
         }
-
-        emit repositoriesFetched(profileId, items);
     });
 }
 
