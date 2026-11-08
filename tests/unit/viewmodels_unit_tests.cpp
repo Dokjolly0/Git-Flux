@@ -357,6 +357,12 @@ TEST_CASE("HomeHubViewModel handles explorer paths, .git suffix, and comprehensi
     vm.clearFeedback();
     CHECK(vm.lastError().isEmpty());
     CHECK(vm.lastSuccessMessage().isEmpty());
+
+    // 8. Extract repository name from URL helper
+    CHECK(vm.extractRepoNameFromUrl("https://github.com/torvalds/linux.git") == "linux");
+    CHECK(vm.extractRepoNameFromUrl("git@github.com:dokjolly/GitFlux.git") == "GitFlux");
+    CHECK(vm.extractRepoNameFromUrl("https://gitlab.com/org/sub/cool-service") == "cool-service");
+    CHECK(vm.extractRepoNameFromUrl("") == "repository");
 }
 
 TEST_CASE("HomeHubViewModel interactive operations: renaming, group repo association, and group opening", "[desktop][mvvm]") {

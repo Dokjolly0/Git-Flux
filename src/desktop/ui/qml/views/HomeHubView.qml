@@ -11,6 +11,14 @@ Item {
     signal groupOpened(string groupId, string groupName, var repoIds)
     signal workspaceOpened(string workspaceId)
 
+    function openAddRepoDialog() {
+        repoFolderDialog.open();
+    }
+
+    function openCloneModal() {
+        cloneRepoModal.openWithDefaultFolder("");
+    }
+
     Connections {
         target: (typeof homeHubVm !== "undefined") ? homeHubVm : null
         function onErrorOccurred(message) {
@@ -154,6 +162,30 @@ Item {
                             color: parent.hovered ? "#30363D" : "#21262D"
                             radius: 6
                             border.color: "#30363D"
+                        }
+                    }
+
+                    Button {
+                        text: "⬇ Clona"
+                        onClicked: cloneRepoModal.openWithDefaultFolder("")
+                        contentItem: RowLayout {
+                            spacing: 4
+                            Text {
+                                text: "⬇"
+                                color: "#38BDF8"
+                                font.pixelSize: 12
+                            }
+                            Text {
+                                text: "Clona"
+                                color: "#F0F6FC"
+                                font.pixelSize: 12
+                                font.bold: true
+                            }
+                        }
+                        background: Rectangle {
+                            color: parent.hovered ? "#30363D" : "#21262D"
+                            radius: 6
+                            border.color: parent.hovered ? "#38BDF8" : "#30363D"
                         }
                     }
 
@@ -1162,6 +1194,12 @@ Item {
     // =========================================================================
     // QUICK CREATION DIALOGS
     // =========================================================================
+
+    // Dialog: Clone Remote Repository Modal
+    CloneRepositoryModal {
+        id: cloneRepoModal
+        homeHubVm: (typeof homeHubVm !== "undefined") ? homeHubVm : null
+    }
 
     // Native Folder Dialog: Add Repository (Direct Explorer Navigation)
     FolderDialog {

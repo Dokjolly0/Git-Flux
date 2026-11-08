@@ -60,6 +60,7 @@ void AppBootstrap::initialize() {
     m_branchService = std::make_unique<git::bl::GitBranchService>(*m_gitOps);
     m_historyService = std::make_unique<git::bl::GitHistoryService>(*m_gitOps);
     m_remoteMergeService = std::make_unique<git::bl::GitRemoteMergeService>(*m_gitOps);
+    m_cloneService = std::make_unique<git::bl::GitCloneService>(*m_gitOps, *m_repoService);
     m_stashService = std::make_unique<git::bl::GitStashService>(*m_gitOps);
     m_rebaseService = std::make_unique<git::bl::GitRebaseService>(*m_gitOps);
     m_conflictService = std::make_unique<git::bl::GitConflictService>(*m_gitOps);
@@ -77,7 +78,7 @@ void AppBootstrap::initialize() {
         *m_remoteMergeService, *m_workingTreeService, *m_taskRunner
     );
 
-    m_homeHubVm = std::make_unique<HomeHubViewModel>(*m_repoService, *m_groupService, *m_workspaceService);
+    m_homeHubVm = std::make_unique<HomeHubViewModel>(*m_repoService, *m_groupService, *m_workspaceService, m_cloneService.get());
     m_quickOpenVm = std::make_unique<QuickOpenViewModel>(*m_groupService, *m_repoService);
     m_workspaceSessionVm = std::make_unique<WorkspaceSessionViewModel>(
         *m_repoService,
