@@ -156,12 +156,14 @@ struct AsyncPipeChannel {
     OVERLAPPED ov{};
     char buffer[16384]{};
     std::string* destination = nullptr;
+    std::function<void(std::string_view)> onChunk;
     bool pending = false;
     bool eof = false;
 
-    bool init(HANDLE pipeHandle, std::string* dest) {
+    bool init(HANDLE pipeHandle, std::string* dest, std::function<void(std::string_view)> chunkCb = {}) {
         pipe = pipeHandle;
         destination = dest;
+        onChunk = std::move(chunkCb);
         HANDLE ev = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
         if (!ev) {
             return false;
@@ -182,6 +184,9 @@ struct AsyncPipeChannel {
                     eof = true;
                 } else {
                     destination->append(buffer, bytesRead);
+                    if (onChunk) {
+                        onChunk(std::string_view(buffer, bytesRead));
+                    }
                 }
             } else {
                 const DWORD err = ::GetLastError();
@@ -206,6 +211,9 @@ struct AsyncPipeChannel {
             return;
         }
         destination->append(buffer, bytesTransferred);
+        if (onChunk) {
+            onChunk(std::string_view(buffer, bytesTransferred));
+        }
         pumpReads();
     }
 };
@@ -407,8 +415,8 @@ NativeGitCommandExecutor::execute(const gf::git::bo::GitCommand& command,
 
     AsyncPipeChannel outCh;
     AsyncPipeChannel errCh;
-    if (!outCh.init(stdoutPipe.parentRead.h, &result.stdoutBytes) ||
-        !errCh.init(stderrPipe.parentRead.h, &result.stderrBytes)) {
+    if (!outCh.init(stdoutPipe.parentRead.h, &result.stdoutBytes, command.onStdoutChunk) ||
+        !errCh.init(stderrPipe.parentRead.h, &result.stderrBytes, command.onStderrChunk)) {
         ::TerminateProcess(procHandle.h, 1);
         return std::unexpected(GitExecutionError{
             .kind = GitErrorKind::PipeIoError,
@@ -543,11 +551,14 @@ NativeGitCommandExecutor::execute(const gf::git::bo::GitCommand& command,
         ::kill(pid, SIGTERM);
     });
 
-    std::jthread errThread([fd = errPipe[0], &result]() {
+    std::jthread errThread([fd = errPipe[0], &result, onChunk = command.onStderrChunk]() {
         char buf[8192];
         ssize_t n = 0;
         while ((n = ::read(fd, buf, sizeof(buf))) > 0) {
             result.stderrBytes.append(buf, static_cast<std::size_t>(n));
+            if (onChunk) {
+                onChunk(std::string_view(buf, static_cast<std::size_t>(n)));
+            }
         }
         ::close(fd);
     });
@@ -556,6 +567,9 @@ NativeGitCommandExecutor::execute(const gf::git::bo::GitCommand& command,
     ssize_t n = 0;
     while ((n = ::read(outPipe[0], buf, sizeof(buf))) > 0) {
         result.stdoutBytes.append(buf, static_cast<std::size_t>(n));
+        if (command.onStdoutChunk) {
+            command.onStdoutChunk(std::string_view(buf, static_cast<std::size_t>(n)));
+        }
     }
     ::close(outPipe[0]);
     errThread.join();

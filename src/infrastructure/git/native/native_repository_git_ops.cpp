@@ -3133,7 +3133,7 @@ NativeRepositoryGitOps::cloneRepository(const gf::git::bo::CloneRepositoryOption
         std::filesystem::create_directories(parentDir, ec);
     }
 
-    std::vector<std::string> args = {"clone"};
+    std::vector<std::string> args = {"clone", "--progress"};
     if (options.recursiveSubmodules) {
         args.emplace_back("--recurse-submodules");
     }
@@ -3148,11 +3148,53 @@ NativeRepositoryGitOps::cloneRepository(const gf::git::bo::CloneRepositoryOption
                                 ? parentDir
                                 : std::filesystem::temp_directory_path();
 
+    std::string lineBuffer;
+    auto parseProgressChunk = [&lineBuffer, &options](std::string_view chunk) {
+        if (!options.progressCallback) return;
+        lineBuffer.append(chunk);
+
+        size_t pos = 0;
+        while (pos < lineBuffer.size()) {
+            size_t delim = lineBuffer.find_first_of("\r\n", pos);
+            if (delim == std::string::npos) {
+                break;
+            }
+
+            std::string_view line(lineBuffer.data() + pos, delim - pos);
+            while (!line.empty() && (line.front() == ' ' || line.front() == '\t')) line.remove_prefix(1);
+            while (!line.empty() && (line.back() == ' ' || line.back() == '\t')) line.remove_suffix(1);
+
+            if (!line.empty()) {
+                int percent = -1;
+                auto pctPos = line.find('%');
+                if (pctPos != std::string_view::npos && pctPos > 0) {
+                    size_t startDigits = pctPos;
+                    while (startDigits > 0 && std::isdigit(static_cast<unsigned char>(line[startDigits - 1]))) {
+                        --startDigits;
+                    }
+                    if (startDigits < pctPos) {
+                        try {
+                            percent = std::stoi(std::string(line.substr(startDigits, pctPos - startDigits)));
+                        } catch (...) {}
+                    }
+                }
+                options.progressCallback(percent, line);
+            }
+
+            pos = delim + 1;
+        }
+
+        if (pos > 0) {
+            lineBuffer.erase(0, pos);
+        }
+    };
+
     gf::git::bo::GitCommand cmd{
         .args = std::move(args),
         .workingDirectory = workingDir,
         .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-        .timeout = options.timeout
+        .timeout = options.timeout,
+        .onStderrChunk = std::move(parseProgressChunk)
     };
 
     auto execResult = m_executor.execute(cmd);

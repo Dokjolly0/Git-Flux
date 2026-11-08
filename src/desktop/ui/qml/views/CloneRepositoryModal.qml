@@ -1207,33 +1207,121 @@ Dialog {
                     }
 
                     // Destination Path Preview
-                    Text {
-                        visible: destFolderField.text.trim().length > 0 && dirNameField.text.trim().length > 0
-                        text: "📁 Salvataggio in: " + destFolderField.text.trim() + "/" + dirNameField.text.trim()
-                        color: "#38BDF8"
-                        font.pixelSize: 11
-                        font.bold: true
-                        elide: Text.ElideMiddle
+                    Rectangle {
                         Layout.fillWidth: true
+                        Layout.preferredHeight: 38
+                        visible: destFolderField.text.trim().length > 0 && dirNameField.text.trim().length > 0 && !(root.homeHubVm && root.homeHubVm.isCloning)
+                        color: "#0F172A"
+                        radius: 6
+                        border.color: "#1E293B"
+                        border.width: 1
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 10
+                            anchors.rightMargin: 10
+                            spacing: 8
+
+                            Text {
+                                text: "📍 Cartella finale:"
+                                color: "#94A3B8"
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+
+                            Text {
+                                text: destFolderField.text.trim() + "/" + dirNameField.text.trim()
+                                color: "#38BDF8"
+                                font.pixelSize: 11
+                                font.bold: true
+                                elide: Text.ElideMiddle
+                                Layout.fillWidth: true
+                            }
+
+                            Text {
+                                text: "(Premi 'Avvia Clonazione' per iniziare)"
+                                color: "#64748B"
+                                font.pixelSize: 10
+                                font.italic: true
+                            }
+                        }
                     }
 
-                    // Progress Indicator
-                    ColumnLayout {
+                    // Progress Indicator with Real-Time Percentage
+                    Rectangle {
                         Layout.fillWidth: true
                         visible: root.homeHubVm ? root.homeHubVm.isCloning : false
-                        spacing: 6
+                        color: "#0B132B"
+                        radius: 8
+                        border.color: "#0284C7"
+                        border.width: 1
+                        implicitHeight: progressCol.implicitHeight + 24
 
-                        ProgressBar {
-                            Layout.fillWidth: true
-                            indeterminate: true
-                        }
+                        ColumnLayout {
+                            id: progressCol
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            spacing: 8
 
-                        Text {
-                            text: root.homeHubVm ? root.homeHubVm.cloneStatusMessage : ""
-                            color: "#38BDF8"
-                            font.pixelSize: 12
-                            wrapMode: Text.Wrap
-                            Layout.fillWidth: true
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                Text {
+                                    text: "⬇ Clonazione repository in corso..."
+                                    color: "#F8FAFC"
+                                    font.pixelSize: 12
+                                    font.bold: true
+                                    Layout.fillWidth: true
+                                }
+
+                                Text {
+                                    visible: Boolean(root.homeHubVm && root.homeHubVm.cloneProgressPercent > 0)
+                                    text: root.homeHubVm ? (root.homeHubVm.cloneProgressPercent + "%") : ""
+                                    color: "#38BDF8"
+                                    font.pixelSize: 13
+                                    font.bold: true
+                                }
+                            }
+
+                            ProgressBar {
+                                id: cloneProgressBar
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 8
+                                from: 0
+                                to: 100
+                                value: (root.homeHubVm && root.homeHubVm.cloneProgressPercent > 0)
+                                       ? root.homeHubVm.cloneProgressPercent
+                                       : 0
+                                indeterminate: (root.homeHubVm && root.homeHubVm.cloneProgressPercent <= 0)
+                                background: Rectangle {
+                                    implicitHeight: 8
+                                    color: "#1E293B"
+                                    radius: 4
+                                }
+                                contentItem: Item {
+                                    implicitHeight: 8
+                                    Rectangle {
+                                        width: parent.width * (cloneProgressBar.visualPosition)
+                                        height: parent.height
+                                        radius: 4
+                                        gradient: Gradient {
+                                            orientation: Gradient.Horizontal
+                                            GradientStop { position: 0.0; color: "#0284C7" }
+                                            GradientStop { position: 1.0; color: "#38BDF8" }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Text {
+                                text: root.homeHubVm ? root.homeHubVm.cloneStatusMessage : ""
+                                color: "#94A3B8"
+                                font.pixelSize: 11
+                                font.family: "monospace"
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
                         }
                     }
 
@@ -1305,8 +1393,8 @@ Dialog {
 
                 Button {
                     id: cloneButton
-                    text: "⬇ Avvia Clonazione"
-                    Layout.preferredHeight: 34
+                    text: (root.homeHubVm && root.homeHubVm.isCloning) ? "⏳ Clonazione in corso..." : "⬇ Avvia Clonazione"
+                    Layout.preferredHeight: 36
                     enabled: !(root.homeHubVm && root.homeHubVm.isCloning) &&
                              urlField.text.trim().length > 0 &&
                              destFolderField.text.trim().length > 0
@@ -1321,7 +1409,11 @@ Dialog {
                         }
                     }
                     contentItem: Text {
-                        text: (root.homeHubVm && root.homeHubVm.isCloning) ? "Clonazione in corso..." : "⬇ Avvia Clonazione"
+                        text: (root.homeHubVm && root.homeHubVm.isCloning)
+                              ? (root.homeHubVm.cloneProgressPercent > 0
+                                 ? ("⏳ " + root.homeHubVm.cloneProgressPercent + "% In corso...")
+                                 : "⏳ Clonazione in corso...")
+                              : "⬇ Avvia Clonazione"
                         color: cloneButton.enabled ? "#FFFFFF" : "#64748B"
                         font.pixelSize: 13
                         font.bold: true
@@ -1331,6 +1423,8 @@ Dialog {
                     background: Rectangle {
                         color: cloneButton.enabled ? (cloneButton.hovered ? "#0284C7" : "#0369A1") : "#1E293B"
                         radius: 6
+                        border.color: cloneButton.enabled ? "#38BDF8" : "transparent"
+                        border.width: cloneButton.enabled ? 1 : 0
                     }
                 }
             }

@@ -300,8 +300,10 @@ void HomeHubViewModel::cloneRepositoryAsync(const QString& remoteUrl,
     const std::filesystem::path targetPath = std::filesystem::path(cleanParent.toStdString()) / finalDirName.toStdString();
 
     m_isCloning = true;
+    m_cloneProgressPercent = 0;
     emit isCloningChanged(true);
-    m_cloneStatusMessage = QStringLiteral("Clonazione in corso da %1...").arg(cleanUrl);
+    emit cloneProgressPercentChanged(0);
+    m_cloneStatusMessage = QStringLiteral("Avvio clonazione da %1...").arg(cleanUrl);
     emit cloneStatusMessageChanged(m_cloneStatusMessage);
     setStatus(m_cloneStatusMessage);
     setLastError(QString());
@@ -313,7 +315,20 @@ void HomeHubViewModel::cloneRepositoryAsync(const QString& remoteUrl,
         gf::git::bo::CloneRepositoryOptions opts{
             .remoteUrl = cleanUrlStd,
             .destinationPath = targetPath,
-            .timeout = std::chrono::milliseconds{180'000}
+            .timeout = std::chrono::milliseconds{180'000},
+            .progressCallback = [this](int percent, std::string_view statusText) {
+                QMetaObject::invokeMethod(this, [this, percent, txt = QString::fromUtf8(statusText.data(), static_cast<qsizetype>(statusText.size()))]() {
+                    if (percent >= 0) {
+                        m_cloneProgressPercent = percent;
+                        emit cloneProgressPercentChanged(percent);
+                    }
+                    if (!txt.isEmpty()) {
+                        m_cloneStatusMessage = txt;
+                        emit cloneStatusMessageChanged(m_cloneStatusMessage);
+                        setStatus(m_cloneStatusMessage);
+                    }
+                }, Qt::QueuedConnection);
+            }
         };
 
         std::optional<std::string> optDisp;
@@ -325,7 +340,9 @@ void HomeHubViewModel::cloneRepositoryAsync(const QString& remoteUrl,
 
         QMetaObject::invokeMethod(this, [this, result, targetPath]() {
             m_isCloning = false;
+            m_cloneProgressPercent = result ? 100 : 0;
             emit isCloningChanged(false);
+            emit cloneProgressPercentChanged(m_cloneProgressPercent);
 
             if (!result) {
                 QString errStr;

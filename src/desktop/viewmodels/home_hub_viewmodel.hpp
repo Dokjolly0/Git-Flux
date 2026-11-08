@@ -44,6 +44,7 @@ class HomeHubViewModel : public QObject {
 
     Q_PROPERTY(bool isCloning READ isCloning NOTIFY isCloningChanged)
     Q_PROPERTY(QString cloneStatusMessage READ cloneStatusMessage NOTIFY cloneStatusMessageChanged)
+    Q_PROPERTY(int cloneProgressPercent READ cloneProgressPercent NOTIFY cloneProgressPercentChanged)
 
 public:
     explicit HomeHubViewModel(gf::repositories::bl::RepositoryService& repoService,
@@ -69,6 +70,7 @@ public:
 
     [[nodiscard]] bool isCloning() const noexcept { return m_isCloning; }
     [[nodiscard]] QString cloneStatusMessage() const noexcept { return m_cloneStatusMessage; }
+    [[nodiscard]] int cloneProgressPercent() const noexcept { return m_cloneProgressPercent; }
 
     Q_INVOKABLE void refreshAll();
     Q_INVOKABLE void clearFeedback();
@@ -111,6 +113,7 @@ signals:
 
     void isCloningChanged(bool isCloning);
     void cloneStatusMessageChanged(const QString& message);
+    void cloneProgressPercentChanged(int percent);
     void cloneCompleted(bool success, const QString& message);
 
     void repositoryOpened(const QString& repoId, const QString& name, const QString& path);
@@ -142,6 +145,7 @@ private:
 
     bool m_isCloning{false};
     QString m_cloneStatusMessage;
+    int m_cloneProgressPercent{0};
 };
 
 } // namespace gf::desktop
