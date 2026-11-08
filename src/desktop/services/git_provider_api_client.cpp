@@ -62,12 +62,19 @@ void GitProviderApiClient::fetchGitHub(
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
             const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            const auto errData = reply->readAll();
+            QString apiMsg;
+            const auto errDoc = QJsonDocument::fromJson(errData);
+            if (errDoc.isObject() && errDoc.object().contains(QStringLiteral("message"))) {
+                apiMsg = errDoc.object().value(QStringLiteral("message")).toString();
+            }
+
             if (statusCode == 401) {
-                emit fetchFailed(profileId, QStringLiteral("Token non valido o scaduto (HTTP 401). Verifica il token inserito."));
+                emit fetchFailed(profileId, apiMsg.isEmpty() ? QStringLiteral("Token non valido o scaduto (HTTP 401). Verifica il token inserito.") : QStringLiteral("GitHub: %1 (HTTP 401)").arg(apiMsg));
             } else if (statusCode == 403) {
-                emit fetchFailed(profileId, QStringLiteral("Permessi insufficienti (HTTP 403). Assicurati che il token abbia lo scope 'repo' per visualizzare i repository privati."));
+                emit fetchFailed(profileId, apiMsg.isEmpty() ? QStringLiteral("Permessi insufficienti (HTTP 403). Assicurati che il token abbia lo scope 'repo' per visualizzare i repository privati.") : QStringLiteral("GitHub: %1 (HTTP 403)").arg(apiMsg));
             } else {
-                emit fetchFailed(profileId, QStringLiteral("Errore API GitHub (%1): %2").arg(statusCode).arg(reply->errorString()));
+                emit fetchFailed(profileId, QStringLiteral("Errore API GitHub (%1): %2").arg(statusCode).arg(apiMsg.isEmpty() ? reply->errorString() : apiMsg));
             }
             return;
         }
@@ -192,8 +199,27 @@ void GitProviderApiClient::fetchBitbucket(
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
             const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-            if (statusCode == 401) {
-                emit fetchFailed(profileId, QStringLiteral("Autenticazione fallita (HTTP 401). Verifica Bitbucket Username e App Password (in Personal settings > App passwords con permesso 'Repositories: Read')."));
+            const auto errData = reply->readAll();
+            QString apiMsg;
+            const auto errDoc = QJsonDocument::fromJson(errData);
+            if (errDoc.isObject()) {
+                const auto errObj = errDoc.object();
+                if (errObj.contains(QStringLiteral("error"))) {
+                    const auto subErr = errObj.value(QStringLiteral("error"));
+                    if (subErr.isObject()) {
+                        apiMsg = subErr.toObject().value(QStringLiteral("message")).toString();
+                    } else if (subErr.isString()) {
+                        apiMsg = subErr.toString();
+                    }
+                } else if (errObj.contains(QStringLiteral("message"))) {
+                    apiMsg = errObj.value(QStringLiteral("message")).toString();
+                }
+            }
+
+            if (!apiMsg.isEmpty()) {
+                emit fetchFailed(profileId, QStringLiteral("Bitbucket: %1 (HTTP %2). Crea una 'App Password' con permesso 'Repositories: Read' su bitbucket.org.").arg(apiMsg).arg(statusCode));
+            } else if (statusCode == 401) {
+                emit fetchFailed(profileId, QStringLiteral("Autenticazione fallita (HTTP 401). Su Bitbucket occorre una 'App Password' creata in Personal settings > App passwords con permesso 'Repositories: Read'."));
             } else if (statusCode == 403) {
                 emit fetchFailed(profileId, QStringLiteral("Accesso negato (HTTP 403). Assicurati che l'App Password abbia i permessi di lettura per i repository."));
             } else {
