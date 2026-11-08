@@ -25,14 +25,43 @@ Dialog {
     property string selectedRepoFullName: ""
     property bool selectedRepoIsPrivate: false
 
-    function openWithDefaultFolder(defaultParentFolder) {
+    function resetFormAndCache() {
+        console.log("[CloneModal] Reset completo del form e della cache...");
         urlField.text = "";
+        destFolderField.text = "";
         dirNameField.text = "";
         displayNameField.text = "";
         selectedRepoFullName = "";
         selectedRepoIsPrivate = false;
         showTokenConfig = false;
+        showRepoPicker = false;
         dirNameField.propertyModified = false;
+
+        if (typeof searchField !== "undefined" && searchField) {
+            searchField.text = "";
+        }
+        if (typeof tokenSecretInput !== "undefined" && tokenSecretInput) {
+            tokenSecretInput.text = "";
+        }
+
+        if (root.profilesVm) {
+            if (root.profilesVm.remoteReposModel) {
+                root.profilesVm.remoteReposModel.searchFilter = "";
+            }
+            root.profilesVm.clearCache();
+        }
+
+        if (root.effectiveHubVm) {
+            root.effectiveHubVm.resetCloneState();
+        }
+    }
+
+    onClosed: {
+        root.resetFormAndCache();
+    }
+
+    function openWithDefaultFolder(defaultParentFolder) {
+        root.resetFormAndCache();
 
         if (defaultParentFolder && defaultParentFolder.length > 0) {
             destFolderField.text = defaultParentFolder;
@@ -41,14 +70,14 @@ Dialog {
         if (root.profilesVm) {
             if (!root.profilesVm.activeProfileId || root.profilesVm.activeProfileId.length === 0 || root.profilesVm.activeProfileId === "url") {
                 root.profilesVm.selectProfile("bitbucket");
+            } else {
+                root.profilesVm.refreshRepositories();
             }
-            showRepoPicker = (root.profilesVm.activeProfileId !== "url");
+            showRepoPicker = false;
         }
 
         root.open();
-        if (typeof searchField !== "undefined" && searchField && searchField.visible) {
-            searchField.forceActiveFocus();
-        } else if (typeof urlField !== "undefined" && urlField && urlField.visible) {
+        if (typeof urlField !== "undefined" && urlField && urlField.visible) {
             urlField.forceActiveFocus();
         }
     }
@@ -57,6 +86,7 @@ Dialog {
         target: root.effectiveHubVm
         function onCloneCompleted(success, message) {
             if (success) {
+                root.resetFormAndCache();
                 root.close();
             }
         }
@@ -121,7 +151,10 @@ Dialog {
                     Layout.preferredWidth: 28
                     Layout.preferredHeight: 28
                     enabled: !(root.effectiveHubVm && root.effectiveHubVm.isCloning)
-                    onClicked: root.close()
+                    onClicked: {
+                        root.resetFormAndCache();
+                        root.close();
+                    }
                     contentItem: Text {
                         text: "✕"
                         color: parent.hovered ? "#EF4444" : "#94A3B8"
@@ -1458,7 +1491,10 @@ Dialog {
                     text: "Annulla"
                     Layout.preferredHeight: 34
                     enabled: !(root.effectiveHubVm && root.effectiveHubVm.isCloning)
-                    onClicked: root.close()
+                    onClicked: {
+                        root.resetFormAndCache();
+                        root.close();
+                    }
                     contentItem: Text {
                         text: "Annulla"
                         color: "#94A3B8"

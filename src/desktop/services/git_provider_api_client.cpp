@@ -50,6 +50,7 @@ void GitProviderApiClient::fetchGitHub(
     }
 
     QNetworkRequest request(url);
+    request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
     request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("GitFlux-Desktop"));
     request.setRawHeader("Accept", "application/vnd.github+json");
     request.setRawHeader("X-GitHub-Api-Version", "2022-11-28");
@@ -126,6 +127,7 @@ void GitProviderApiClient::fetchGitLab(
 
     const QUrl url(QStringLiteral("%1/projects?membership=true&per_page=100&order_by=updated_at").arg(baseUrl));
     QNetworkRequest request(url);
+    request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
     request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("GitFlux-Desktop"));
     if (!token.isEmpty()) {
         request.setRawHeader("PRIVATE-TOKEN", token.toUtf8());
@@ -193,6 +195,7 @@ void GitProviderApiClient::fetchBitbucket(
     // Step 1: Discover workspaces accessible to the user via /2.0/user/workspaces
     const QUrl workspacesUrl(QStringLiteral("https://api.bitbucket.org/2.0/user/workspaces?pagelen=100"));
     QNetworkRequest request(workspacesUrl);
+    request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
     request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("GitFlux-Desktop"));
     request.setRawHeader("Accept", "application/json");
     request.setRawHeader("Authorization", authHeaderVal);
@@ -267,6 +270,7 @@ void GitProviderApiClient::fetchBitbucket(
         for (const auto& slug : workspaceSlugs) {
             const QUrl repoUrl(QStringLiteral("https://api.bitbucket.org/2.0/repositories/%1?pagelen=100&sort=-updated_on").arg(slug));
             QNetworkRequest repoReq(repoUrl);
+            repoReq.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
             repoReq.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("GitFlux-Desktop"));
             repoReq.setRawHeader("Accept", "application/json");
             repoReq.setRawHeader("Authorization", authHeaderVal);
@@ -363,6 +367,7 @@ void GitProviderApiClient::fetchCustom(
     }
 
     QNetworkRequest request(url);
+    request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
     request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("GitFlux-Desktop"));
     request.setRawHeader("Accept", "application/json");
     if (!token.isEmpty()) {

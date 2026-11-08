@@ -66,6 +66,7 @@ public:
     Q_INVOKABLE void saveProfileToken(const QString& profileId, const QString& token, const QString& username);
     Q_INVOKABLE void clearProfileToken(const QString& profileId);
     Q_INVOKABLE void refreshRepositories();
+    Q_INVOKABLE void clearCache();
     Q_INVOKABLE void addCustomProfile(const QString& host, const QString& displayName, const QString& token, const QString& apiUrl);
 
 signals:

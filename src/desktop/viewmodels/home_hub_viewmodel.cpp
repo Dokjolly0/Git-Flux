@@ -403,6 +403,17 @@ void HomeHubViewModel::cloneRepositoryAsync(const QString& remoteUrl,
     }).detach();
 }
 
+void HomeHubViewModel::resetCloneState() {
+    m_isCloning = false;
+    m_cloneProgressPercent = 0;
+    m_cloneStatusMessage.clear();
+    emit isCloningChanged(false);
+    emit cloneProgressPercentChanged(0);
+    emit cloneStatusMessageChanged(QString());
+    setLastError(QString());
+    clearFeedback();
+}
+
 bool HomeHubViewModel::reconnectRepository(const QString& repoId, const QString& newPath) {
     if (repoId.trimmed().isEmpty() || newPath.trimmed().isEmpty()) {
         const QString err = QStringLiteral("Parametri non validi per la riconnessione");

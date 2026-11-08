@@ -1886,6 +1886,36 @@ TEST_CASE("RemoteRepoListModel: Real-Time Filtering and Protocol Switching", "[d
     model.setSearchFilter("");
     CHECK(model.rowCount() == 3);
     CHECK(model.filteredCount() == 3);
+
+    // Clear entire cache
+    model.setSearchFilter("Git");
+    CHECK(model.searchFilter() == "Git");
+    model.clear();
+    CHECK(model.rowCount() == 0);
+    CHECK(model.totalCount() == 0);
+    CHECK(model.filteredCount() == 0);
+    CHECK(model.searchFilter().isEmpty());
+}
+
+TEST_CASE("HomeHubViewModel: resetCloneState Resets All Progress and Cache", "[desktop][viewmodels][clone_reset]") {
+    TestContext ctx;
+
+    HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService, nullptr);
+    CHECK_FALSE(vm.isCloning());
+    CHECK(vm.cloneProgressPercent() == 0);
+    CHECK(vm.cloneStatusMessage().isEmpty());
+
+    // Trigger clone with invalid URL to populate error and status
+    vm.cloneRepositoryAsync("", "/tmp", "test");
+    CHECK(vm.lastError().length() > 0);
+    CHECK(vm.statusMessage().length() > 0);
+
+    // Reset clone state
+    vm.resetCloneState();
+    CHECK_FALSE(vm.isCloning());
+    CHECK(vm.cloneProgressPercent() == 0);
+    CHECK(vm.cloneStatusMessage().isEmpty());
+    CHECK(vm.lastError().isEmpty());
 }
 
 

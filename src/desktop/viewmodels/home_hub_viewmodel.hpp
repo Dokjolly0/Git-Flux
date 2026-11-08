@@ -79,6 +79,7 @@ public:
     Q_INVOKABLE void openInTerminal(const QString& path);
     Q_INVOKABLE void copyToClipboard(const QString& text);
 
+    Q_INVOKABLE void resetCloneState();
     Q_INVOKABLE bool addRepository(const QString& path, const QString& displayName = QString());
     Q_INVOKABLE void cloneRepositoryAsync(const QString& remoteUrl,
                                           const QString& destinationParentFolder,

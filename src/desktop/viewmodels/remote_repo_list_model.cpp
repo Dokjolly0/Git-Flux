@@ -103,7 +103,9 @@ void RemoteRepoListModel::clear() {
     beginResetModel();
     m_allRepos.clear();
     m_filteredIndices.clear();
+    m_searchFilter.clear();
     endResetModel();
+    emit searchFilterChanged();
     emit countChanged();
 }
 

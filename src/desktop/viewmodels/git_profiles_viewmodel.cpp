@@ -294,6 +294,14 @@ void GitProfilesViewModel::refreshRepositories() {
     fetchActiveProfileRepos();
 }
 
+void GitProfilesViewModel::clearCache() {
+    if (m_repoModel) {
+        m_repoModel->clear();
+    }
+    m_fetchError.clear();
+    emit fetchErrorChanged();
+}
+
 void GitProfilesViewModel::saveProfileToken(const QString& profileId, const QString& token, const QString& username) {
     auto* p = findProfileMut(profileId);
     if (!p) return;
