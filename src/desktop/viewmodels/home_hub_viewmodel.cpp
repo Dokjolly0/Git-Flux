@@ -8,6 +8,7 @@
 #include <thread>
 #include <iostream>
 #include <QUrl>
+#include <QSettings>
 #include <QDesktopServices>
 #include <QProcess>
 #include <QClipboard>
@@ -30,6 +31,14 @@ HomeHubViewModel::HomeHubViewModel(gf::repositories::bl::RepositoryService& repo
       m_repoModel(std::make_unique<RepositoryListModel>(this)),
       m_groupModel(std::make_unique<GroupListModel>(this)),
       m_workspaceModel(std::make_unique<WorkspaceListModel>(this)) {
+    QSettings settings;
+    m_lastCloneDestinationPath = settings.value(QStringLiteral("clone/lastDestinationParentFolder"), QString()).toString();
+    if (m_lastCloneDestinationPath.isEmpty()) {
+        auto allRepos = m_repoService.getAllRepositories();
+        if (allRepos.has_value() && !allRepos->empty()) {
+            m_lastCloneDestinationPath = QString::fromStdString(allRepos->front().localPath.parent_path().string());
+        }
+    }
     refreshAll();
 }
 
@@ -324,7 +333,8 @@ void HomeHubViewModel::cloneRepositoryAsync(const QString& remoteUrl,
     std::thread([this,
                  cleanUrlStd = cleanUrl.toStdString(),
                  targetPath,
-                 dispNameStd = displayName.trimmed().toStdString()]() {
+                 dispNameStd = displayName.trimmed().toStdString(),
+                 cleanParent]() {
         gf::git::bo::CloneRepositoryOptions opts{
             .remoteUrl = cleanUrlStd,
             .destinationPath = targetPath,
@@ -351,7 +361,7 @@ void HomeHubViewModel::cloneRepositoryAsync(const QString& remoteUrl,
 
         auto result = m_cloneService->cloneAndRegister(opts, optDisp);
 
-        QMetaObject::invokeMethod(this, [this, result, targetPath]() {
+        QMetaObject::invokeMethod(this, [this, result, targetPath, cleanParent]() {
             m_isCloning = false;
             m_cloneProgressPercent = result ? 100 : 0;
             emit isCloningChanged(false);
@@ -397,10 +407,20 @@ void HomeHubViewModel::cloneRepositoryAsync(const QString& remoteUrl,
 
                 emit repositoryAdded(repoName, repoSavedPath);
                 emit cloneCompleted(true, successMsg);
+                setLastCloneDestinationPath(cleanParent);
                 refreshAll();
             }
         }, Qt::QueuedConnection);
     }).detach();
+}
+
+void HomeHubViewModel::setLastCloneDestinationPath(const QString& path) {
+    const QString trimmed = path.trimmed();
+    if (trimmed.isEmpty() || m_lastCloneDestinationPath == trimmed) return;
+    m_lastCloneDestinationPath = trimmed;
+    QSettings settings;
+    settings.setValue(QStringLiteral("clone/lastDestinationParentFolder"), m_lastCloneDestinationPath);
+    emit lastCloneDestinationPathChanged(m_lastCloneDestinationPath);
 }
 
 void HomeHubViewModel::resetCloneState() {

@@ -24,7 +24,9 @@ Dialog {
     property bool showRepoPicker: false
     property string selectedRepoFullName: ""
     property bool selectedRepoIsPrivate: false
-    property bool cloneAttempted: false
+    property bool repoTouched: false
+    property bool destFolderMissing: false
+    property bool urlMissing: false
 
     function resetFormAndCache() {
         console.log("[CloneModal] Reset completo del form e della cache...");
@@ -36,7 +38,9 @@ Dialog {
         selectedRepoIsPrivate = false;
         showTokenConfig = false;
         showRepoPicker = false;
-        cloneAttempted = false;
+        repoTouched = false;
+        destFolderMissing = false;
+        urlMissing = false;
         dirNameField.propertyModified = false;
 
         if (typeof searchField !== "undefined" && searchField) {
@@ -62,12 +66,22 @@ Dialog {
         root.resetFormAndCache();
     }
 
+    onAboutToShow: {
+        if (destFolderField.text.trim().length === 0 && root.effectiveHubVm && root.effectiveHubVm.lastCloneDestinationPath && root.effectiveHubVm.lastCloneDestinationPath.length > 0) {
+            destFolderField.text = root.effectiveHubVm.lastCloneDestinationPath;
+        }
+    }
+
     function openWithDefaultFolder(defaultParentFolder) {
         root.resetFormAndCache();
 
+        var initialFolder = "";
         if (defaultParentFolder && defaultParentFolder.length > 0) {
-            destFolderField.text = defaultParentFolder;
+            initialFolder = defaultParentFolder;
+        } else if (root.effectiveHubVm && root.effectiveHubVm.lastCloneDestinationPath && root.effectiveHubVm.lastCloneDestinationPath.length > 0) {
+            initialFolder = root.effectiveHubVm.lastCloneDestinationPath;
         }
+        destFolderField.text = initialFolder;
 
         if (root.profilesVm) {
             if (!root.profilesVm.activeProfileId || root.profilesVm.activeProfileId.length === 0 || root.profilesVm.activeProfileId === "url") {
@@ -97,13 +111,21 @@ Dialog {
     FolderDialog {
         id: cloneParentFolderDialog
         title: "Seleziona cartella di destinazione locale"
-        currentFolder: destFolderField.text.length > 0 ? ("file://" + destFolderField.text) : ""
+        currentFolder: destFolderField.text.length > 0
+                       ? ("file://" + destFolderField.text)
+                       : (root.effectiveHubVm && root.effectiveHubVm.lastCloneDestinationPath && root.effectiveHubVm.lastCloneDestinationPath.length > 0
+                          ? ("file://" + root.effectiveHubVm.lastCloneDestinationPath)
+                          : "")
         onAccepted: {
             var selected = cloneParentFolderDialog.selectedFolder.toString();
             if (selected.startsWith("file://")) {
                 selected = selected.substring(7);
             }
             destFolderField.text = selected;
+            root.destFolderMissing = false;
+            if (root.effectiveHubVm) {
+                root.effectiveHubVm.setLastCloneDestinationPath(selected);
+            }
         }
     }
 
@@ -739,10 +761,10 @@ Dialog {
                             height: 42
                             radius: 6
                             color: repoSelectorMouse.containsMouse ? "#1E293B" : "#0B1120"
-                            border.color: (root.cloneAttempted && root.selectedRepoFullName.length === 0)
+                            border.color: (root.repoTouched && !root.showRepoPicker && root.selectedRepoFullName.length === 0)
                                           ? "#F59E0B"
                                           : (root.showRepoPicker ? "#38BDF8" : (root.selectedRepoFullName.length > 0 ? "#0284C7" : "#334155"))
-                            border.width: (root.showRepoPicker || (root.cloneAttempted && root.selectedRepoFullName.length === 0)) ? 2 : 1
+                            border.width: (root.showRepoPicker || (root.repoTouched && !root.showRepoPicker && root.selectedRepoFullName.length === 0)) ? 2 : 1
 
                             RowLayout {
                                 anchors.fill: parent
@@ -805,10 +827,48 @@ Dialog {
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
+                                    root.repoTouched = true;
                                     root.showRepoPicker = !root.showRepoPicker;
-                                    if (root.showRepoPicker) {
+                                    if (root.showRepoPicker && typeof searchField !== "undefined") {
                                         searchField.forceActiveFocus();
                                     }
+                                }
+                            }
+                        }
+
+                        // Warning if user touched/opened repo selector and closed it without choosing
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 32
+                            visible: root.repoTouched && !root.showRepoPicker && root.selectedRepoFullName.length === 0 && (root.profilesVm && root.profilesVm.activeProfileId !== "url")
+                            color: "#451A03"
+                            radius: 6
+                            border.color: "#D97706"
+                            border.width: 1
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 10
+                                anchors.rightMargin: 10
+                                spacing: 8
+
+                                Text {
+                                    text: "⚠️ Nessun repository selezionato. Clicca sul riquadro sopra per sceglierne uno."
+                                    color: "#FDE68A"
+                                    font.pixelSize: 11
+                                    font.bold: true
+                                    Layout.fillWidth: true
+                                }
+
+                                Button {
+                                    text: "Scegli ▼"
+                                    Layout.preferredHeight: 22
+                                    onClicked: {
+                                        root.showRepoPicker = true;
+                                        if (typeof searchField !== "undefined") searchField.forceActiveFocus();
+                                    }
+                                    contentItem: Text { text: "Scegli ▼"; color: "#FDE68A"; font.pixelSize: 10; font.bold: true }
+                                    background: Rectangle { color: "#78350F"; radius: 4 }
                                 }
                             }
                         }
@@ -1054,7 +1114,7 @@ Dialog {
                                                     dirNameField.text = defaultName;
                                                     dirNameField.propertyModified = true;
                                                     root.showRepoPicker = false;
-                                                    root.cloneAttempted = false;
+                                                    root.repoTouched = false;
                                                     console.log("[CloneModal] Repo selezionato:", model.fullName, "URL:", targetUrl, "Cartella:", defaultName);
                                                 }
                                             }
@@ -1102,15 +1162,15 @@ Dialog {
                             font.pixelSize: 13
                             selectByMouse: true
                             background: Rectangle {
-                                color: "#0B1120"
+                                color: (root.urlMissing && urlField.text.trim().length === 0) ? "#2A0808" : "#0B1120"
                                 radius: 6
-                                border.color: (root.cloneAttempted && urlField.text.trim().length === 0)
-                                              ? "#F59E0B"
+                                border.color: (root.urlMissing && urlField.text.trim().length === 0)
+                                              ? "#DC2626"
                                               : (urlField.activeFocus ? "#38BDF8" : "#334155")
-                                border.width: 1
+                                border.width: (root.urlMissing && urlField.text.trim().length === 0) ? 2 : 1
                             }
                             onTextChanged: {
-                                if (root.cloneAttempted && text.trim().length > 0) root.cloneAttempted = false;
+                                if (root.urlMissing && text.trim().length > 0) root.urlMissing = false;
                                 if (root.effectiveHubVm && text.length > 0 && root.profilesVm && root.profilesVm.activeProfileId === "url") {
                                     var extracted = root.effectiveHubVm.extractRepoNameFromUrl(text);
                                     if (dirNameField.text.length === 0 || dirNameField.propertyModified !== true) {
@@ -1120,6 +1180,32 @@ Dialog {
                             }
                             onAccepted: {
                                 if (cloneButton.enabled) cloneButton.clicked();
+                            }
+                        }
+
+                        // Warning when URL is missing in direct URL mode
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 32
+                            visible: root.urlMissing && urlField.text.trim().length === 0 && (root.profilesVm && root.profilesVm.activeProfileId === "url")
+                            color: "#450A0A"
+                            radius: 6
+                            border.color: "#DC2626"
+                            border.width: 1
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 10
+                                anchors.rightMargin: 10
+                                spacing: 8
+
+                                Text {
+                                    text: "⚠️ Inserisci l'URL del repository remoto da clonare."
+                                    color: "#FECACA"
+                                    font.pixelSize: 11
+                                    font.bold: true
+                                    Layout.fillWidth: true
+                                }
                             }
                         }
                     }
@@ -1153,15 +1239,15 @@ Dialog {
                                 font.pixelSize: 13
                                 selectByMouse: true
                                 background: Rectangle {
-                                    color: "#0B1120"
+                                    color: (root.destFolderMissing && destFolderField.text.trim().length === 0) ? "#2A0808" : "#0B1120"
                                     radius: 6
-                                    border.color: (root.cloneAttempted && destFolderField.text.trim().length === 0)
-                                                  ? "#F59E0B"
+                                    border.color: (root.destFolderMissing && destFolderField.text.trim().length === 0)
+                                                  ? "#DC2626"
                                                   : (destFolderField.activeFocus ? "#38BDF8" : "#334155")
-                                    border.width: 1
+                                    border.width: (root.destFolderMissing && destFolderField.text.trim().length === 0) ? 2 : 1
                                 }
                                 onTextChanged: {
-                                    if (root.cloneAttempted && text.trim().length > 0) root.cloneAttempted = false;
+                                    if (root.destFolderMissing && text.trim().length > 0) root.destFolderMissing = false;
                                 }
                                 onAccepted: {
                                     if (cloneButton.enabled) cloneButton.clicked();
@@ -1191,11 +1277,41 @@ Dialog {
                             }
                         }
 
-                        Text {
-                            visible: root.cloneAttempted && destFolderField.text.trim().length === 0
-                            text: "⚠️ Specifica una cartella di destinazione prima di avviare la clonazione"
-                            color: "#FCA5A5"
-                            font.pixelSize: 11
+                        // Prominent alert when destination folder is missing on clone attempt
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 38
+                            visible: root.destFolderMissing && destFolderField.text.trim().length === 0
+                            color: "#450A0A"
+                            radius: 6
+                            border.color: "#DC2626"
+                            border.width: 1
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 12
+                                anchors.rightMargin: 12
+                                spacing: 8
+
+                                Text {
+                                    text: "⚠️ Cartella di destinazione mancante! Seleziona dove scaricare il repository:"
+                                    color: "#FECACA"
+                                    font.pixelSize: 11
+                                    font.bold: true
+                                    Layout.fillWidth: true
+                                }
+
+                                Button {
+                                    text: "📁 Sfoglia..."
+                                    Layout.preferredHeight: 26
+                                    onClicked: {
+                                        root.destFolderMissing = false;
+                                        cloneParentFolderDialog.open();
+                                    }
+                                    contentItem: Text { text: "📁 Sfoglia..."; color: "#FFFFFF"; font.pixelSize: 11; font.bold: true }
+                                    background: Rectangle { color: "#7F1D1D"; radius: 4 }
+                                }
+                            }
                         }
                     }
 
@@ -1269,55 +1385,6 @@ Dialog {
                                 }
                                 onAccepted: {
                                     if (cloneButton.enabled) cloneButton.clicked();
-                                }
-                            }
-                        }
-                    }
-
-                    // Warning when no repo is selected in provider mode (only shown after clone attempt)
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 38
-                        visible: root.cloneAttempted && root.profilesVm && root.profilesVm.activeProfileId !== "url" && root.selectedRepoFullName.length === 0
-                        color: "#451A03"
-                        radius: 6
-                        border.color: "#D97706"
-                        border.width: 1
-
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: 12
-                            anchors.rightMargin: 12
-                            spacing: 8
-
-                            Text {
-                                text: "⚠️ Seleziona prima un repository dal menu a tendina sopra!"
-                                color: "#FDE68A"
-                                font.pixelSize: 11
-                                font.bold: true
-                                Layout.fillWidth: true
-                            }
-
-                            Button {
-                                text: root.showRepoPicker ? "Chiudi ▲" : "Scegli Repository ▼"
-                                Layout.preferredHeight: 26
-                                onClicked: {
-                                    root.showRepoPicker = !root.showRepoPicker;
-                                    if (root.showRepoPicker && typeof searchField !== "undefined") {
-                                        searchField.forceActiveFocus();
-                                    }
-                                }
-                                contentItem: Text {
-                                    text: root.showRepoPicker ? "Chiudi ▲" : "Scegli Repository ▼"
-                                    color: "#FDE68A"
-                                    font.pixelSize: 11
-                                    font.bold: true
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                                background: Rectangle {
-                                    color: "#78350F"
-                                    radius: 4
                                 }
                             }
                         }
@@ -1535,16 +1602,27 @@ Dialog {
                     onClicked: {
                         console.log("[CloneModal] Avvia Clonazione cliccato. URL=" + urlField.text + " DestFolder=" + destFolderField.text + " Dir=" + dirNameField.text);
                         if (urlField.text.trim().length === 0) {
-                            console.warn("[CloneModal] Nessun repository selezionato! Apertura automatica cassetto...");
-                            root.showRepoPicker = true;
-                            if (typeof searchField !== "undefined") searchField.forceActiveFocus();
+                            if (root.profilesVm && root.profilesVm.activeProfileId === "url") {
+                                console.warn("[CloneModal] URL del repository non inserito!");
+                                root.urlMissing = true;
+                                urlField.forceActiveFocus();
+                            } else {
+                                console.warn("[CloneModal] Nessun repository selezionato! Apertura automatica cassetto...");
+                                root.repoTouched = true;
+                                root.showRepoPicker = true;
+                                if (typeof searchField !== "undefined") searchField.forceActiveFocus();
+                            }
                             return;
                         }
                         if (destFolderField.text.trim().length === 0) {
                             console.warn("[CloneModal] Cartella di destinazione non specificata!");
+                            root.destFolderMissing = true;
                             destFolderField.forceActiveFocus();
                             return;
                         }
+                        root.repoTouched = false;
+                        root.destFolderMissing = false;
+                        root.urlMissing = false;
                         var vm = root.effectiveHubVm;
                         if (vm) {
                             console.log("[CloneModal] Invocazione cloneRepositoryAsync su ViewModel per: " + urlField.text.trim());

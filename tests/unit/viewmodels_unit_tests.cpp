@@ -1918,4 +1918,28 @@ TEST_CASE("HomeHubViewModel: resetCloneState Resets All Progress and Cache", "[d
     CHECK(vm.lastError().isEmpty());
 }
 
+TEST_CASE("HomeHubViewModel: lastCloneDestinationPath persistence and signals", "[desktop][viewmodels][clone_dest]") {
+    TestContext ctx;
+
+    HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService, nullptr);
+    QSignalSpy destSpy(&vm, &HomeHubViewModel::lastCloneDestinationPathChanged);
+
+    const QString testPath = QStringLiteral("/projects/cloned_repos");
+    vm.setLastCloneDestinationPath(testPath);
+
+    CHECK(vm.lastCloneDestinationPath() == testPath);
+    CHECK(destSpy.count() == 1);
+    CHECK(destSpy.takeFirst().at(0).toString() == testPath);
+
+    // Setting same path again should not re-emit
+    vm.setLastCloneDestinationPath(testPath);
+    CHECK(destSpy.count() == 0);
+
+    // Setting empty/whitespace path should be ignored
+    vm.setLastCloneDestinationPath(QStringLiteral("   "));
+    CHECK(vm.lastCloneDestinationPath() == testPath);
+    CHECK(destSpy.count() == 0);
+}
+
+
 

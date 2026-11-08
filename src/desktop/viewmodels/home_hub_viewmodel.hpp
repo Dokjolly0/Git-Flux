@@ -45,6 +45,7 @@ class HomeHubViewModel : public QObject {
     Q_PROPERTY(bool isCloning READ isCloning NOTIFY isCloningChanged)
     Q_PROPERTY(QString cloneStatusMessage READ cloneStatusMessage NOTIFY cloneStatusMessageChanged)
     Q_PROPERTY(int cloneProgressPercent READ cloneProgressPercent NOTIFY cloneProgressPercentChanged)
+    Q_PROPERTY(QString lastCloneDestinationPath READ lastCloneDestinationPath NOTIFY lastCloneDestinationPathChanged)
 
 public:
     explicit HomeHubViewModel(gf::repositories::bl::RepositoryService& repoService,
@@ -71,6 +72,8 @@ public:
     [[nodiscard]] bool isCloning() const noexcept { return m_isCloning; }
     [[nodiscard]] QString cloneStatusMessage() const noexcept { return m_cloneStatusMessage; }
     [[nodiscard]] int cloneProgressPercent() const noexcept { return m_cloneProgressPercent; }
+    [[nodiscard]] QString lastCloneDestinationPath() const noexcept { return m_lastCloneDestinationPath; }
+    Q_INVOKABLE void setLastCloneDestinationPath(const QString& path);
 
     Q_INVOKABLE void refreshAll();
     Q_INVOKABLE void clearFeedback();
@@ -116,6 +119,7 @@ signals:
     void cloneStatusMessageChanged(const QString& message);
     void cloneProgressPercentChanged(int percent);
     void cloneCompleted(bool success, const QString& message);
+    void lastCloneDestinationPathChanged(const QString& path);
 
     void repositoryOpened(const QString& repoId, const QString& name, const QString& path);
     void repositoryAdded(const QString& repoName, const QString& path);
@@ -147,6 +151,7 @@ private:
     bool m_isCloning{false};
     QString m_cloneStatusMessage;
     int m_cloneProgressPercent{0};
+    QString m_lastCloneDestinationPath;
 };
 
 } // namespace gf::desktop
