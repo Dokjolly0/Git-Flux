@@ -357,6 +357,12 @@ TEST_CASE("HomeHubViewModel handles explorer paths, .git suffix, and comprehensi
     vm.clearFeedback();
     CHECK(vm.lastError().isEmpty());
     CHECK(vm.lastSuccessMessage().isEmpty());
+
+    // 8. Extract repository name from URL helper
+    CHECK(vm.extractRepoNameFromUrl("https://github.com/torvalds/linux.git") == "linux");
+    CHECK(vm.extractRepoNameFromUrl("git@github.com:dokjolly/GitFlux.git") == "GitFlux");
+    CHECK(vm.extractRepoNameFromUrl("https://gitlab.com/org/sub/cool-service") == "cool-service");
+    CHECK(vm.extractRepoNameFromUrl("") == "repository");
 }
 
 TEST_CASE("HomeHubViewModel interactive operations: renaming, group repo association, and group opening", "[desktop][mvvm]") {
@@ -1128,6 +1134,153 @@ TEST_CASE("BranchListModel and CommitHistoryListModel MVVM representations", "[v
         CHECK(model.data(idx, CommitHistoryListModel::CommitterAvatarUrlRole).toString() == "https://github.com/Dokjolly0.png?size=64");
         CHECK(model.data(idx, CommitHistoryListModel::IsMergeRole).toBool() == false);
     }
+
+    SECTION("CommitHistoryListModel filters commits by message, author, or SHA") {
+        CommitHistoryListModel model;
+
+        std::vector<gf::git::bo::GitCommitLogItem> commits = {
+            gf::git::bo::GitCommitLogItem{
+                .sha = "aaaa111122223333444455556666777788889999",
+                .shortSha = "aaaa111",
+                .authorName = "Alice Dev",
+                .authorEmail = "alice@example.com",
+                .subject = "feat(auth): implement oauth login"
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "bbbb111122223333444455556666777788889999",
+                .shortSha = "bbbb111",
+                .authorName = "Bob Coder",
+                .authorEmail = "bob@example.com",
+                .subject = "fix(memory): resolve heap buffer overflow"
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "cccc111122223333444455556666777788889999",
+                .shortSha = "cccc111",
+                .authorName = "Charlie Docs",
+                .authorEmail = "charlie@example.com",
+                .subject = "docs(readme): update build instructions"
+            }
+        };
+
+        model.setCommits(commits);
+        CHECK(model.totalCommitsCount() == 3);
+        CHECK(model.rowCount() == 3);
+
+        // Filter by subject keyword
+        model.setSearchFilter("oauth");
+        CHECK(model.rowCount() == 1);
+        CHECK(model.data(model.index(0), CommitHistoryListModel::SubjectRole).toString().contains("oauth"));
+
+        // Filter by author name (case-insensitive)
+        model.setSearchFilter("bob");
+        CHECK(model.rowCount() == 1);
+        CHECK(model.data(model.index(0), CommitHistoryListModel::AuthorNameRole).toString() == "Bob Coder");
+
+        // Filter by short SHA
+        model.setSearchFilter("cccc");
+        CHECK(model.rowCount() == 1);
+        CHECK(model.data(model.index(0), CommitHistoryListModel::ShortShaRole).toString() == "cccc111");
+
+        // Clear filter
+        model.setSearchFilter("");
+        CHECK(model.rowCount() == 3);
+        CHECK(model.totalCommitsCount() == 3);
+    }
+
+    SECTION("CommitHistoryListModel isolates gh-pages and orphan branches in dedicated lanes") {
+        CommitHistoryListModel model;
+
+        std::vector<gf::git::bo::GitCommitLogItem> commits = {
+            gf::git::bo::GitCommitLogItem{
+                .sha = "46be7d4111112222333344445555666677778888",
+                .shortSha = "46be7d4",
+                .parents = {"94b5697d5d17b77ba65be7b14767ea07e35347c8"},
+                .authorName = "Dokjolly0",
+                .authorEmail = "alexviolattolibero.it@gmail.com",
+                .authorDateIso = "2026-11-08T18:00:44Z",
+                .subject = "feat(git): implement remote clone engine",
+                .refDecorations = {"HEAD -> develop"}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "2465a5b5a62988a6aba43096644e2a7b4284af1d",
+                .shortSha = "2465a5b",
+                .parents = {}, // Orphan commit
+                .authorName = "GitHub Actions",
+                .authorEmail = "actions@github.com",
+                .authorDateIso = "2026-11-08T16:53:06Z",
+                .subject = "deploy: build website",
+                .refDecorations = {"origin/gh-pages"}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "94b5697d5d17b77ba65be7b14767ea07e35347c8",
+                .shortSha = "94b5697",
+                .parents = {"root111122223333444455556666777788889999"},
+                .authorName = "Dokjolly0",
+                .authorEmail = "alexviolattolibero.it@gmail.com",
+                .authorDateIso = "2026-11-08T16:41:20Z",
+                .subject = "feat(windows): add console for debugging",
+                .refDecorations = {"origin/main"}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "root111122223333444455556666777788889999",
+                .shortSha = "root111",
+                .parents = {},
+                .authorName = "Dokjolly0",
+                .authorEmail = "alexviolattolibero.it@gmail.com",
+                .authorDateIso = "2026-11-08T10:00:00Z",
+                .subject = "Initial commit",
+                .refDecorations = {}
+            }
+        };
+
+        model.setCommits(commits);
+        REQUIRE(model.rowCount() == 4);
+
+        auto idxDevelop = model.index(0);
+        auto idxGhPages = model.index(1);
+        auto idxMain = model.index(2);
+        auto idxRoot = model.index(3);
+
+        // gh-pages must be identified as orphan
+        CHECK(model.data(idxGhPages, CommitHistoryListModel::IsOrphanRole).toBool() == true);
+        // develop, main and root must NOT be identified as orphan
+        CHECK(model.data(idxDevelop, CommitHistoryListModel::IsOrphanRole).toBool() == false);
+        CHECK(model.data(idxMain, CommitHistoryListModel::IsOrphanRole).toBool() == false);
+        CHECK(model.data(idxRoot, CommitHistoryListModel::IsOrphanRole).toBool() == false);
+
+        // gh-pages must be in Lane 0 (shifted to the left of the main trunk in Lane 1)
+        int ghPagesLane = model.data(idxGhPages, CommitHistoryListModel::GraphLaneRole).toInt();
+        int mainLane = model.data(idxMain, CommitHistoryListModel::GraphLaneRole).toInt();
+        int developLane = model.data(idxDevelop, CommitHistoryListModel::GraphLaneRole).toInt();
+        CHECK(ghPagesLane == 0);
+        CHECK(mainLane == 1);
+        CHECK(developLane == 1);
+        CHECK(ghPagesLane < mainLane); // gh-pages is to the left of main
+
+        // On the gh-pages row, Lane 1 must have a pass-through route (|) passing down for main
+        auto routes = model.data(idxGhPages, CommitHistoryListModel::GraphRoutesRole).toList();
+        REQUIRE(routes.size() == 1);
+        auto r0 = routes[0].toMap();
+        CHECK(r0["fromLane"].toInt() == 1);
+        CHECK(r0["toLane"].toInt() == 1);
+        CHECK(r0["type"].toInt() == 0); // straight pass-through route
+
+        // Check structured decorations for gh-pages badge
+        auto decs = model.data(idxGhPages, CommitHistoryListModel::StructuredDecorationsRole).toList();
+        REQUIRE(decs.size() == 1);
+        auto badge = decs[0].toMap();
+        CHECK(badge["isOrphan"].toBool() == true);
+        CHECK(badge["label"].toString().contains("📄"));
+        CHECK(badge["label"].toString().contains("gh-pages"));
+        CHECK(badge["bgColor"].toString() == "#2E1065");
+        CHECK(badge["borderColor"].toString() == "#A855F7");
+        CHECK(badge["fgColor"].toString() == "#E9D5FF");
+
+        // Commit map checks
+        auto commitMapGhPages = model.getCommit(1);
+        CHECK(commitMapGhPages["isOrphan"].toBool() == true);
+        CHECK(commitMapGhPages["graphLane"].toInt() == 0);
+    }
 }
 
 TEST_CASE("BranchManagerViewModel operations and signal propagation", "[viewmodel][branch][manager]") {
@@ -1232,6 +1385,20 @@ TEST_CASE("BranchManagerViewModel operations and signal propagation", "[viewmode
     CHECK(branchVmWithRebase.mergeBranchInto("feature/test", "main"));
 
     branchVmWithRebase.copyToClipboard("sample commit sha");
+
+    // File history & repository files
+    QSignalSpy fileHistorySpy(&branchVmWithRebase, &BranchManagerViewModel::fileHistoryPathChanged);
+    CHECK(branchVmWithRebase.fileHistoryPath().isEmpty());
+    CHECK(branchVmWithRebase.loadFileHistory("src/main.cpp"));
+    CHECK(branchVmWithRebase.fileHistoryPath() == "src/main.cpp");
+    CHECK(fileHistorySpy.count() == 1);
+
+    branchVmWithRebase.clearFileHistory();
+    CHECK(branchVmWithRebase.fileHistoryPath().isEmpty());
+    CHECK(fileHistorySpy.count() == 2);
+
+    auto repoFiles = branchVmWithRebase.listRepositoryFiles();
+    (void)repoFiles;
 }
 
 TEST_CASE("StashListModel and StashManagerViewModel operations", "[viewmodel][stash]") {
@@ -1741,5 +1908,298 @@ TEST_CASE("DiffViewModel - View mode switching and property invariants", "[deskt
     diffVm.setViewMode("split");
     CHECK(diffVm.viewMode() == "split");
     CHECK(modeSpy.count() == 4);
+
+    CHECK(diffVm.maxLineLength() == 0);
+
+    // Test maxLineLength calculation on diff load (with tab expansion)
+    gf::git::bo::DiffHunk hunk;
+    hunk.header = "@@ -1,3 +1,3 @@";
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Context, .content = "short line"});
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Addition, .content = "this is a much longer line with 48 characters..."});
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Addition, .content = "\t\tabc"}); // 4 + 4 + 3 = 11 chars
+    mockOps.diffToReturn.hunks = {hunk};
+    mockOps.diffToReturn.newPath = "test.txt";
+    mockOps.diffToReturn.oldPath = "test.txt";
+
+    CHECK(diffVm.loadDiff("/tmp", "test.txt", "unstaged"));
+    CHECK(diffVm.maxLineLength() == 48);
+
+    diffVm.clear();
+    CHECK(diffVm.maxLineLength() == 0);
 }
+
+#include "desktop/viewmodels/remote_repo_list_model.hpp"
+
+TEST_CASE("RemoteRepoListModel: Real-Time Filtering and Protocol Switching", "[desktop][viewmodels][remote_repo]") {
+    using namespace gf::desktop::viewmodels;
+
+    RemoteRepoListModel model;
+    CHECK(model.rowCount() == 0);
+    CHECK(model.totalCount() == 0);
+    CHECK(model.filteredCount() == 0);
+
+    std::vector<gf::core::git::bo::RemoteRepositoryItem> items = {
+        {
+            .name = "Git-Flux",
+            .fullName = "Dokjolly0/Git-Flux",
+            .description = "Modern local-first desktop Git client",
+            .isPrivate = false,
+            .defaultBranch = "main",
+            .httpsUrl = "https://github.com/Dokjolly0/Git-Flux.git",
+            .sshUrl = "git@github.com:Dokjolly0/Git-Flux.git",
+            .updatedAt = "2026-11-08",
+            .starsCount = 42,
+            .forksCount = 5
+        },
+        {
+            .name = "agentic-seek",
+            .fullName = "Dokjolly0/agentic-seek",
+            .description = "Autonomous AI agent search system",
+            .isPrivate = true,
+            .defaultBranch = "develop",
+            .httpsUrl = "https://github.com/Dokjolly0/agentic-seek.git",
+            .sshUrl = "git@github.com:Dokjolly0/agentic-seek.git",
+            .updatedAt = "2026-11-07",
+            .starsCount = 10,
+            .forksCount = 1
+        },
+        {
+            .name = "angular-library",
+            .fullName = "Dokjolly0/angular-library",
+            .description = "Reusable enterprise UI components",
+            .isPrivate = false,
+            .defaultBranch = "master",
+            .httpsUrl = "https://github.com/Dokjolly0/angular-library.git",
+            .sshUrl = "git@github.com:Dokjolly0/angular-library.git",
+            .updatedAt = "2026-10-20",
+            .starsCount = 3,
+            .forksCount = 0
+        }
+    };
+
+    model.setRepositories(items);
+    CHECK(model.rowCount() == 3);
+    CHECK(model.totalCount() == 3);
+    CHECK(model.filteredCount() == 3);
+
+    // Default protocol is SSH
+    CHECK(model.selectedProtocol() == "ssh");
+    auto repo0 = model.getRepoAt(0);
+    CHECK(repo0["activeCloneUrl"].toString() == "git@github.com:Dokjolly0/Git-Flux.git");
+
+    // Switch protocol to HTTPS
+    model.setSelectedProtocol("https");
+    CHECK(model.selectedProtocol() == "https");
+    repo0 = model.getRepoAt(0);
+    CHECK(repo0["activeCloneUrl"].toString() == "https://github.com/Dokjolly0/Git-Flux.git");
+
+    // Real-time search filter by repository name
+    model.setSearchFilter("agent");
+    CHECK(model.rowCount() == 1);
+    CHECK(model.filteredCount() == 1);
+    CHECK(model.totalCount() == 3);
+    auto filteredRepo = model.getRepoAt(0);
+    CHECK(filteredRepo["name"].toString() == "agentic-seek");
+    CHECK(filteredRepo["isPrivate"].toBool() == true);
+
+    // Real-time search filter by description
+    model.setSearchFilter("desktop Git client");
+    CHECK(model.rowCount() == 1);
+    CHECK(model.filteredCount() == 1);
+    auto fluxRepo = model.getRepoAt(0);
+    CHECK(fluxRepo["name"].toString() == "Git-Flux");
+
+    // Clear filter
+    model.setSearchFilter("");
+    CHECK(model.rowCount() == 3);
+    CHECK(model.filteredCount() == 3);
+
+    // Clear entire cache
+    model.setSearchFilter("Git");
+    CHECK(model.searchFilter() == "Git");
+    model.clear();
+    CHECK(model.rowCount() == 0);
+    CHECK(model.totalCount() == 0);
+    CHECK(model.filteredCount() == 0);
+    CHECK(model.searchFilter().isEmpty());
+}
+
+TEST_CASE("HomeHubViewModel: resetCloneState Resets All Progress and Cache", "[desktop][viewmodels][clone_reset]") {
+    TestContext ctx;
+
+    HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService, nullptr);
+    CHECK_FALSE(vm.isCloning());
+    CHECK(vm.cloneProgressPercent() == 0);
+    CHECK(vm.cloneStatusMessage().isEmpty());
+
+    // Trigger clone with invalid URL to populate error and status
+    vm.cloneRepositoryAsync("", "/tmp", "test");
+    CHECK(vm.lastError().length() > 0);
+    CHECK(vm.statusMessage().length() > 0);
+
+    // Reset clone state
+    vm.resetCloneState();
+    CHECK_FALSE(vm.isCloning());
+    CHECK(vm.cloneProgressPercent() == 0);
+    CHECK(vm.cloneStatusMessage().isEmpty());
+    CHECK(vm.lastError().isEmpty());
+}
+
+TEST_CASE("HomeHubViewModel: lastCloneDestinationPath persistence and signals", "[desktop][viewmodels][clone_dest]") {
+    TestContext ctx;
+
+    HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService, nullptr);
+    QSignalSpy destSpy(&vm, &HomeHubViewModel::lastCloneDestinationPathChanged);
+
+    const QString testPathA = QStringLiteral("/projects/test_dest_A_") + QString::number(QDateTime::currentMSecsSinceEpoch());
+    const QString testPathB = QStringLiteral("/projects/test_dest_B_") + QString::number(QDateTime::currentMSecsSinceEpoch());
+
+    vm.setLastCloneDestinationPath(testPathA);
+    CHECK(vm.lastCloneDestinationPath() == testPathA);
+    REQUIRE(destSpy.count() == 1);
+    CHECK(destSpy.takeFirst().at(0).toString() == testPathA);
+
+    // Setting same path again should not re-emit
+    vm.setLastCloneDestinationPath(testPathA);
+    CHECK(destSpy.count() == 0);
+
+    // Setting new path emits signal
+    vm.setLastCloneDestinationPath(testPathB);
+    CHECK(vm.lastCloneDestinationPath() == testPathB);
+    REQUIRE(destSpy.count() == 1);
+    CHECK(destSpy.takeFirst().at(0).toString() == testPathB);
+
+    // Setting empty/whitespace path should be ignored
+    vm.setLastCloneDestinationPath(QStringLiteral("   "));
+    CHECK(vm.lastCloneDestinationPath() == testPathB);
+    CHECK(destSpy.count() == 0);
+}
+
+TEST_CASE("HomeHubViewModel: section visibility customization and persistence rules", "[desktop][viewmodels][sections]") {
+    TestContext ctx;
+    HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService, nullptr);
+
+    // Reset to all 3 sections visible
+    vm.setShowRepositories(true);
+    vm.setShowGroups(true);
+    vm.setShowWorkspaces(true);
+    CHECK(vm.showRepositories());
+    CHECK(vm.showGroups());
+    CHECK(vm.showWorkspaces());
+
+    QSignalSpy repoSpy(&vm, &HomeHubViewModel::showRepositoriesChanged);
+    QSignalSpy grpSpy(&vm, &HomeHubViewModel::showGroupsChanged);
+    QSignalSpy wsSpy(&vm, &HomeHubViewModel::showWorkspacesChanged);
+
+    // Turn off groups and workspaces
+    vm.setShowGroups(false);
+    CHECK_FALSE(vm.showGroups());
+    CHECK(grpSpy.count() == 1);
+
+    vm.setShowWorkspaces(false);
+    CHECK_FALSE(vm.showWorkspaces());
+    CHECK(wsSpy.count() == 1);
+
+    // Repositories is now the ONLY visible section. Attempting to turn it off should be prevented!
+    vm.setShowRepositories(false);
+    CHECK(vm.showRepositories());
+    CHECK(repoSpy.count() == 0);
+
+    // Toggle back on
+    vm.toggleShowGroups();
+    CHECK(vm.showGroups());
+    CHECK(grpSpy.count() == 2);
+}
+
+TEST_CASE("HomeHubViewModel: workspace repo composition and available repos filtering", "[desktop][viewmodels][workspace_composition]") {
+    TestContext ctx;
+    HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService, nullptr);
+
+    // Create 2 repositories
+    REQUIRE(vm.addRepository(QString::fromStdString(ctx.repoAPath.string()), QStringLiteral("Repo 1")));
+    REQUIRE(vm.addRepository(QString::fromStdString(ctx.repoBPath.string()), QStringLiteral("Repo 2")));
+    REQUIRE(vm.repositoriesCount() == 2);
+
+    auto allRepos = ctx.repoService->getAllRepositories();
+    REQUIRE(allRepos.has_value());
+    const QString r1Id = QString::fromStdString(allRepos->at(0).id.value());
+    const QString r2Id = QString::fromStdString(allRepos->at(1).id.value());
+
+    // Create Group
+    REQUIRE(vm.createGroup(QStringLiteral("Dev Group")));
+    auto allGroups = ctx.groupService->getAllGroups();
+    REQUIRE(allGroups.has_value());
+    const QString gId = QString::fromStdString(allGroups->at(0).id.value());
+
+    // Initially both repos are available for group
+    auto availForGrp = vm.getAvailableRepositoriesForGroup(gId);
+    CHECK(availForGrp.size() == 2);
+
+    // Add r1 to group
+    REQUIRE(vm.addRepositoryToGroup(gId, r1Id));
+    CHECK(vm.isRepositoryInGroup(gId, r1Id));
+    CHECK_FALSE(vm.isRepositoryInGroup(gId, r2Id));
+
+    // Now only r2 is available for group (r1 is excluded)
+    availForGrp = vm.getAvailableRepositoriesForGroup(gId);
+    REQUIRE(availForGrp.size() == 1);
+    CHECK(availForGrp.at(0).toMap()[QStringLiteral("id")].toString() == r2Id);
+
+    // Check available groups for repo: r1 has 0 available groups, r2 has 1 available group
+    CHECK(vm.getAvailableGroupsForRepository(r1Id).size() == 0);
+    CHECK(vm.getAvailableGroupsForRepository(r2Id).size() == 1);
+
+    // Create Workspace
+    REQUIRE(vm.createWorkspace(QStringLiteral("Main Workspace")));
+    auto allWs = ctx.workspaceService->getAllWorkspaces();
+    REQUIRE(allWs.has_value());
+    const QString wsId = QString::fromStdString(allWs->at(0).id.value());
+
+    // Initially both repos are available for workspace
+    auto availForWs = vm.getAvailableRepositoriesForWorkspace(wsId);
+    CHECK(availForWs.size() == 2);
+
+    // Add r2 to workspace
+    REQUIRE(vm.addRepositoryToWorkspace(wsId, r2Id));
+    CHECK(vm.isRepositoryInWorkspace(wsId, r2Id));
+    CHECK_FALSE(vm.isRepositoryInWorkspace(wsId, r1Id));
+
+    // Now only r1 is available for workspace (r2 is excluded)
+    availForWs = vm.getAvailableRepositoriesForWorkspace(wsId);
+    REQUIRE(availForWs.size() == 1);
+    CHECK(availForWs.at(0).toMap()[QStringLiteral("id")].toString() == r1Id);
+
+    // Remove r2 from workspace
+    REQUIRE(vm.removeRepositoryFromWorkspace(wsId, r2Id));
+    CHECK_FALSE(vm.isRepositoryInWorkspace(wsId, r2Id));
+    availForWs = vm.getAvailableRepositoriesForWorkspace(wsId);
+    CHECK(availForWs.size() == 2);
+
+    // Group-Workspace association tests
+    auto availGroupsForWs = vm.getAvailableGroupsForWorkspace(wsId);
+    REQUIRE(availGroupsForWs.size() == 1);
+    CHECK(availGroupsForWs.at(0).toMap()[QStringLiteral("id")].toString() == gId);
+
+    REQUIRE(vm.addGroupToWorkspace(wsId, gId));
+    CHECK(vm.isGroupInWorkspace(wsId, gId));
+
+    availGroupsForWs = vm.getAvailableGroupsForWorkspace(wsId);
+    CHECK(availGroupsForWs.empty());
+
+    // Verify workspace model exposes the added group
+    QModelIndex wsIdx = vm.workspaceModel()->index(0, 0);
+    QStringList grpIds = vm.workspaceModel()->data(wsIdx, WorkspaceListModel::GroupIdsRole).toStringList();
+    QStringList grpNames = vm.workspaceModel()->data(wsIdx, WorkspaceListModel::GroupNamesRole).toStringList();
+    CHECK(grpIds.contains(gId));
+    CHECK(grpNames.contains(QStringLiteral("Dev Group")));
+
+    REQUIRE(vm.removeGroupFromWorkspace(wsId, gId));
+    CHECK_FALSE(vm.isGroupInWorkspace(wsId, gId));
+
+    availGroupsForWs = vm.getAvailableGroupsForWorkspace(wsId);
+    CHECK(availGroupsForWs.size() == 1);
+}
+
+
+
 

@@ -27,6 +27,8 @@ class DiffViewModel final : public QObject {
     Q_PROPERTY(bool isDeletedFile READ isDeletedFile NOTIFY diffLoaded)
     Q_PROPERTY(bool isRenamed READ isRenamed NOTIFY diffLoaded)
     Q_PROPERTY(bool isEmpty READ isEmpty NOTIFY diffLoaded)
+    Q_PROPERTY(QString currentRevision READ currentRevision NOTIFY diffLoaded)
+    Q_PROPERTY(int maxLineLength READ maxLineLength NOTIFY diffLoaded)
     Q_PROPERTY(QString viewMode READ viewMode WRITE setViewMode NOTIFY viewModeChanged)
     Q_PROPERTY(QVariantList splitLines READ splitLines NOTIFY diffLoaded)
     Q_PROPERTY(QVariantList hunks READ hunks NOTIFY diffLoaded)
@@ -49,6 +51,8 @@ public:
     [[nodiscard]] bool isDeletedFile() const noexcept { return m_isDeletedFile; }
     [[nodiscard]] bool isRenamed() const noexcept { return m_isRenamed; }
     [[nodiscard]] bool isEmpty() const noexcept { return m_isEmpty; }
+    [[nodiscard]] QString currentRevision() const noexcept { return m_currentRevision; }
+    [[nodiscard]] int maxLineLength() const noexcept { return m_maxLineLength; }
     [[nodiscard]] QString viewMode() const noexcept { return m_viewMode; }
     [[nodiscard]] QVariantList splitLines() const noexcept { return m_splitLines; }
     [[nodiscard]] QVariantList hunks() const noexcept { return m_hunks; }
@@ -88,6 +92,7 @@ private:
     bool m_isDeletedFile = false;
     bool m_isRenamed = false;
     bool m_isEmpty = true;
+    int m_maxLineLength = 0;
     bool m_isBlameLoading = false;
 
     QVariantList m_splitLines;

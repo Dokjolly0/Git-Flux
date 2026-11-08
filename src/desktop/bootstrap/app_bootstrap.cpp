@@ -60,6 +60,7 @@ void AppBootstrap::initialize() {
     m_branchService = std::make_unique<git::bl::GitBranchService>(*m_gitOps);
     m_historyService = std::make_unique<git::bl::GitHistoryService>(*m_gitOps);
     m_remoteMergeService = std::make_unique<git::bl::GitRemoteMergeService>(*m_gitOps);
+    m_cloneService = std::make_unique<git::bl::GitCloneService>(*m_gitOps, *m_repoService);
     m_stashService = std::make_unique<git::bl::GitStashService>(*m_gitOps);
     m_rebaseService = std::make_unique<git::bl::GitRebaseService>(*m_gitOps);
     m_conflictService = std::make_unique<git::bl::GitConflictService>(*m_gitOps);
@@ -77,7 +78,7 @@ void AppBootstrap::initialize() {
         *m_remoteMergeService, *m_workingTreeService, *m_taskRunner
     );
 
-    m_homeHubVm = std::make_unique<HomeHubViewModel>(*m_repoService, *m_groupService, *m_workspaceService);
+    m_homeHubVm = std::make_unique<HomeHubViewModel>(*m_repoService, *m_groupService, *m_workspaceService, m_cloneService.get());
     m_quickOpenVm = std::make_unique<QuickOpenViewModel>(*m_groupService, *m_repoService);
     m_workspaceSessionVm = std::make_unique<WorkspaceSessionViewModel>(
         *m_repoService,
@@ -94,6 +95,16 @@ void AppBootstrap::initialize() {
         m_watcherService.get()
     );
     m_batchOperationsVm = std::make_unique<BatchOperationsViewModel>(*m_batchCoordinator);
+
+    m_profileStore = std::make_unique<infra::persistence::profiles::SqliteProfileStore>(*m_connection);
+    m_cryptoVault = std::make_unique<infra::security::CryptoVault>();
+    m_credentialDetector = std::make_unique<infra::git::credentials::SystemCredentialDetector>();
+    m_nam = std::make_unique<QNetworkAccessManager>();
+    m_gitApiClient = std::make_unique<services::GitProviderApiClient>(m_nam.get());
+    m_gitProfilesVm = std::make_unique<viewmodels::GitProfilesViewModel>(
+        *m_profileStore, *m_cryptoVault, *m_credentialDetector, m_gitApiClient.get()
+    );
+    m_gitProfilesVm->initialize();
 }
 
 void AppBootstrap::registerWithQml(QQmlApplicationEngine& engine) {
@@ -136,12 +147,17 @@ void AppBootstrap::registerWithQml(QQmlApplicationEngine& engine) {
         "ViewModel managed by bootstrap");
     qmlRegisterUncreatableType<BatchOperationsViewModel>("GitFlux.Desktop", 1, 0, "BatchOperationsViewModel",
         "ViewModel managed by bootstrap");
+    qmlRegisterUncreatableType<viewmodels::RemoteRepoListModel>("GitFlux.Desktop", 1, 0, "RemoteRepoListModel",
+        "Model provided by GitProfilesViewModel");
+    qmlRegisterUncreatableType<viewmodels::GitProfilesViewModel>("GitFlux.Desktop", 1, 0, "GitProfilesViewModel",
+        "ViewModel managed by bootstrap");
 
     auto* rootCtx = engine.rootContext();
     rootCtx->setContextProperty(QStringLiteral("homeHubVm"), m_homeHubVm.get());
     rootCtx->setContextProperty(QStringLiteral("quickOpenVm"), m_quickOpenVm.get());
     rootCtx->setContextProperty(QStringLiteral("workspaceSessionVm"), m_workspaceSessionVm.get());
     rootCtx->setContextProperty(QStringLiteral("batchOperationsVm"), m_batchOperationsVm.get());
+    rootCtx->setContextProperty(QStringLiteral("gitProfilesVm"), m_gitProfilesVm.get());
 }
 
 HomeHubViewModel& AppBootstrap::homeHubViewModel() noexcept {
@@ -158,6 +174,10 @@ WorkspaceSessionViewModel& AppBootstrap::workspaceSessionViewModel() noexcept {
 
 BatchOperationsViewModel& AppBootstrap::batchOperationsViewModel() noexcept {
     return *m_batchOperationsVm;
+}
+
+viewmodels::GitProfilesViewModel& AppBootstrap::gitProfilesViewModel() noexcept {
+    return *m_gitProfilesVm;
 }
 
 git::bl::GitRepositoryWatcherService& AppBootstrap::watcherService() noexcept {

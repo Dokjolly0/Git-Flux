@@ -79,6 +79,9 @@ public:
     getCommitLog(const std::filesystem::path& repoPath,
                  const gf::git::bo::CommitLogOptions& options) override;
 
+    [[nodiscard]] std::expected<std::vector<std::string>, gf::git::ports::GitOpsError>
+    listTrackedFiles(const std::filesystem::path& repoPath) override;
+
     [[nodiscard]] std::expected<std::vector<gf::git::bo::GitTag>, gf::git::ports::GitOpsError>
     listTags(const std::filesystem::path& repoPath) override;
 
@@ -197,6 +200,9 @@ public:
     createWorktree(const std::filesystem::path& repoPath,
                    const std::filesystem::path& worktreePath,
                    const std::string& commitOrBranch) override;
+
+    [[nodiscard]] std::expected<gf::git::bo::CloneRepositoryResult, gf::git::ports::GitOpsError>
+    cloneRepository(const gf::git::bo::CloneRepositoryOptions& options) override;
 
 private:
     gf::git::ports::IGitCommandExecutor& m_executor;

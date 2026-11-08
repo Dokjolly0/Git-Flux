@@ -99,8 +99,14 @@ int main(int argc, char* argv[]) {
     QCoreApplication::setApplicationName(QStringLiteral("GitFlux"));
     QCoreApplication::setApplicationVersion(QStringLiteral("0.1.0"));
 
+    // Ensure smooth, fluid scrolling across all Flickables, ListViews, and ScrollViews (Qt 6.6+ physics)
+    if (qEnvironmentVariableIsEmpty("QT_QUICK_FLICKABLE_WHEEL_DECELERATION")) {
+        qputenv("QT_QUICK_FLICKABLE_WHEEL_DECELERATION", "2500");
+    }
+
     QGuiApplication app(argc, argv);
     app.setApplicationDisplayName(QStringLiteral("Git Flux"));
+    app.setDesktopFileName(QStringLiteral("git-flux"));
 
     // Set application icon from assets
     QIcon appIcon(QStringLiteral(":/qt/qml/GitFlux/Desktop/assets/logo.png"));

@@ -1,6 +1,8 @@
 #include "desktop/viewmodels/workspace_list_model.hpp"
 #include "core/modules/workspaces/bo/workspace.hpp"
 #include "core/modules/workspaces/bl/workspace_service.hpp"
+#include "core/modules/groups/bl/group_service.hpp"
+#include "core/modules/groups/bo/group.hpp"
 
 #include <chrono>
 #include <ctime>
@@ -83,6 +85,14 @@ QVariant WorkspaceListModel::data(const QModelIndex& index, int role) const {
         return item.summary;
     case LastOpenedAtRole:
         return item.lastOpenedAt;
+    case RepositoryIdsRole:
+        return item.repositoryIds;
+    case RepositoryNamesRole:
+        return item.repositoryNames;
+    case GroupIdsRole:
+        return item.groupIds;
+    case GroupNamesRole:
+        return item.groupNames;
     case Qt::DisplayRole:
         return item.name;
     default:
@@ -98,12 +108,17 @@ QHash<int, QByteArray> WorkspaceListModel::roleNames() const {
         {DirectRepoCountRole, "directRepoCount"},
         {TotalRepoCountRole, "totalRepoCount"},
         {SummaryRole, "summary"},
-        {LastOpenedAtRole, "lastOpenedAt"}
+        {LastOpenedAtRole, "lastOpenedAt"},
+        {RepositoryIdsRole, "repositoryIds"},
+        {RepositoryNamesRole, "repositoryNames"},
+        {GroupIdsRole, "groupIds"},
+        {GroupNamesRole, "groupNames"}
     };
 }
 
 void WorkspaceListModel::setWorkspaces(const std::vector<gf::workspaces::bo::Workspace>& workspaces,
-                                       gf::workspaces::bl::WorkspaceService& workspaceService) {
+                                       gf::workspaces::bl::WorkspaceService& workspaceService,
+                                       gf::groups::bl::GroupService* groupService) {
     beginResetModel();
     m_items.clear();
     m_items.reserve(workspaces.size());
@@ -115,9 +130,27 @@ void WorkspaceListModel::setWorkspaces(const std::vector<gf::workspaces::bo::Wor
         item.groupCount = static_cast<int>(ws.groupIds.size());
         item.directRepoCount = static_cast<int>(ws.directRepositoryIds.size());
 
+        for (const auto& gId : ws.groupIds) {
+            item.groupIds.append(QString::fromStdString(gId.value()));
+            if (groupService) {
+                auto grpOpt = groupService->getGroup(gId);
+                if (grpOpt && grpOpt->has_value()) {
+                    item.groupNames.append(QString::fromStdString((*grpOpt)->name));
+                } else {
+                    item.groupNames.append(QString::fromStdString(gId.value()));
+                }
+            } else {
+                item.groupNames.append(QString::fromStdString(gId.value()));
+            }
+        }
+
         auto resolved = workspaceService.resolveWorkspaceRepositories(ws.id);
         if (resolved) {
             item.totalRepoCount = static_cast<int>(resolved->size());
+            for (const auto& r : *resolved) {
+                item.repositoryIds.append(QString::fromStdString(r.id.value()));
+                item.repositoryNames.append(QString::fromStdString(r.displayName));
+            }
         } else {
             item.totalRepoCount = item.directRepoCount;
         }

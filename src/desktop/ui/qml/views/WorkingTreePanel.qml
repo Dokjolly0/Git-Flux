@@ -88,6 +88,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
+            ScrollBar.vertical: FluxScrollBar {}
 
             ColumnLayout {
                 width: root.width

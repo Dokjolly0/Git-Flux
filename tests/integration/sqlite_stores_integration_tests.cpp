@@ -52,14 +52,14 @@ TEST_CASE("SqliteConnection & SchemaMigrator inizializzano correttamente il DB e
 
     auto v1 = SchemaMigrator::getCurrentVersion(conn);
     REQUIRE(v1.has_value());
-    REQUIRE(*v1 == 1);
+    REQUIRE(*v1 >= 2);
 
     // Subsequent idempotent execution
     auto migAgain = SchemaMigrator::migrateToLatest(conn);
     REQUIRE(migAgain.has_value());
     auto vStill1 = SchemaMigrator::getCurrentVersion(conn);
     REQUIRE(vStill1.has_value());
-    REQUIRE(*vStill1 == 1);
+    REQUIRE(*vStill1 == *v1);
 }
 
 TEST_CASE("SqliteTransaction garantisce commit e rollback automatico in caso di errore", "[integration][sqlite][tx]") {

@@ -32,6 +32,10 @@ public:
     [[nodiscard]] std::expected<std::vector<bo::CommitFileChange>, ports::GitOpsError>
     getCommitFiles(const std::filesystem::path& repoPath, const std::string& commitSha);
 
+    /// Returns the list of tracked files in the repository (`git ls-files`).
+    [[nodiscard]] std::expected<std::vector<std::string>, ports::GitOpsError>
+    listTrackedFiles(const std::filesystem::path& repoPath);
+
     /// Returns all repository tags (lightweight and annotated).
     [[nodiscard]] std::expected<std::vector<bo::GitTag>, ports::GitOpsError>
     listTags(const std::filesystem::path& repoPath);

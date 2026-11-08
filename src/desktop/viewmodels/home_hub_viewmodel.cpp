@@ -1,29 +1,55 @@
 #include "desktop/viewmodels/home_hub_viewmodel.hpp"
 
 #include "core/modules/repositories/bl/repository_service.hpp"
+#include "core/modules/repositories/bo/repository.hpp"
 #include "core/modules/groups/bl/group_service.hpp"
+#include "core/modules/groups/bo/group.hpp"
 #include "core/modules/workspaces/bl/workspace_service.hpp"
+#include "core/modules/workspaces/bo/workspace.hpp"
+#include "core/modules/git/bl/git_clone_service.hpp"
 
+#include <thread>
+#include <iostream>
 #include <QUrl>
+#include <QSettings>
 #include <QDesktopServices>
 #include <QProcess>
 #include <QClipboard>
 #include <QGuiApplication>
 #include <QStandardPaths>
+#include <QDebug>
 
 namespace gf::desktop {
 
 HomeHubViewModel::HomeHubViewModel(gf::repositories::bl::RepositoryService& repoService,
                                    gf::groups::bl::GroupService& groupService,
                                    gf::workspaces::bl::WorkspaceService& workspaceService,
+                                   gf::git::bl::GitCloneService* cloneService,
                                    QObject* parent)
     : QObject(parent),
       m_repoService(repoService),
       m_groupService(groupService),
       m_workspaceService(workspaceService),
+      m_cloneService(cloneService),
       m_repoModel(std::make_unique<RepositoryListModel>(this)),
       m_groupModel(std::make_unique<GroupListModel>(this)),
       m_workspaceModel(std::make_unique<WorkspaceListModel>(this)) {
+    QSettings settings;
+    m_lastCloneDestinationPath = settings.value(QStringLiteral("clone/lastDestinationParentFolder"), QString()).toString();
+    if (m_lastCloneDestinationPath.isEmpty()) {
+        auto allRepos = m_repoService.getAllRepositories();
+        if (allRepos.has_value() && !allRepos->empty()) {
+            m_lastCloneDestinationPath = QString::fromStdString(allRepos->front().localPath.parent_path().string());
+        }
+    }
+    m_showRepositories = settings.value(QStringLiteral("home/showRepositories"), true).toBool();
+    m_showGroups = settings.value(QStringLiteral("home/showGroups"), true).toBool();
+    m_showWorkspaces = settings.value(QStringLiteral("home/showWorkspaces"), true).toBool();
+    if (!m_showRepositories && !m_showGroups && !m_showWorkspaces) {
+        m_showRepositories = true;
+        m_showGroups = true;
+        m_showWorkspaces = true;
+    }
     refreshAll();
 }
 
@@ -170,7 +196,7 @@ void HomeHubViewModel::refreshAll() {
             }
         }
     }
-    m_workspaceModel->setWorkspaces(filteredWorkspaces, m_workspaceService);
+    m_workspaceModel->setWorkspaces(filteredWorkspaces, m_workspaceService, &m_groupService);
     emit workspacesChanged();
 }
 
@@ -239,6 +265,223 @@ bool HomeHubViewModel::addRepository(const QString& path, const QString& display
     emit repositoryAdded(repoName, repoSavedPath);
     refreshAll();
     return true;
+}
+
+QString HomeHubViewModel::extractRepoNameFromUrl(const QString& url) const {
+    return QString::fromStdString(gf::git::bl::GitCloneService::extractRepositoryNameFromUrl(url.trimmed().toStdString()));
+}
+
+void HomeHubViewModel::cloneRepositoryAsync(const QString& remoteUrl,
+                                           const QString& destinationParentFolder,
+                                           const QString& directoryName,
+                                           const QString& displayName) {
+    std::cout << "[HomeHubViewModel] cloneRepositoryAsync requested: URL=" << remoteUrl.toStdString()
+              << " Parent=" << destinationParentFolder.toStdString()
+              << " Dir=" << directoryName.toStdString()
+              << " DisplayName=" << displayName.toStdString() << std::endl;
+    qInfo() << "[HomeHubViewModel] cloneRepositoryAsync requested:"
+            << "URL:" << remoteUrl
+            << "Parent:" << destinationParentFolder
+            << "Dir:" << directoryName
+            << "DisplayName:" << displayName;
+
+    if (!m_cloneService) {
+        const QString err = QStringLiteral("Servizio di clonazione non disponibile");
+        qWarning() << "[HomeHubViewModel] Error:" << err;
+        setLastError(err);
+        setStatus(err);
+        emit errorOccurred(err);
+        emit cloneCompleted(false, err);
+        return;
+    }
+
+    const QString cleanUrl = remoteUrl.trimmed();
+    if (cleanUrl.isEmpty()) {
+        const QString err = QStringLiteral("L'URL del repository remoto non può essere vuoto");
+        setLastError(err);
+        setStatus(err);
+        emit errorOccurred(err);
+        emit cloneCompleted(false, err);
+        return;
+    }
+
+    QString cleanParent = destinationParentFolder.trimmed();
+    const QUrl parentUrl(cleanParent);
+    if (parentUrl.isLocalFile()) {
+        cleanParent = parentUrl.toLocalFile();
+    } else if (cleanParent.startsWith(QLatin1String("file://"))) {
+        cleanParent = cleanParent.sliced(7);
+    }
+    while (cleanParent.length() > 1 && (cleanParent.endsWith(QLatin1Char('/')) || cleanParent.endsWith(QLatin1Char('\\')))) {
+        cleanParent.chop(1);
+    }
+
+    if (cleanParent.isEmpty()) {
+        const QString err = QStringLiteral("Specificare una cartella di destinazione locale valida");
+        setLastError(err);
+        setStatus(err);
+        emit errorOccurred(err);
+        emit cloneCompleted(false, err);
+        return;
+    }
+
+    QString finalDirName = directoryName.trimmed();
+    if (finalDirName.isEmpty()) {
+        finalDirName = extractRepoNameFromUrl(cleanUrl);
+    }
+
+    const std::filesystem::path targetPath = std::filesystem::path(cleanParent.toStdString()) / finalDirName.toStdString();
+
+    m_isCloning = true;
+    m_cloneProgressPercent = 0;
+    emit isCloningChanged(true);
+    emit cloneProgressPercentChanged(0);
+    m_cloneStatusMessage = QStringLiteral("Avvio clonazione da %1...").arg(cleanUrl);
+    emit cloneStatusMessageChanged(m_cloneStatusMessage);
+    setStatus(m_cloneStatusMessage);
+    setLastError(QString());
+
+    std::thread([this,
+                 cleanUrlStd = cleanUrl.toStdString(),
+                 targetPath,
+                 dispNameStd = displayName.trimmed().toStdString(),
+                 cleanParent]() {
+        gf::git::bo::CloneRepositoryOptions opts{
+            .remoteUrl = cleanUrlStd,
+            .destinationPath = targetPath,
+            .timeout = std::chrono::milliseconds{180'000},
+            .progressCallback = [this](int percent, std::string_view statusText) {
+                QMetaObject::invokeMethod(this, [this, percent, txt = QString::fromUtf8(statusText.data(), static_cast<qsizetype>(statusText.size()))]() {
+                    if (percent >= 0) {
+                        m_cloneProgressPercent = percent;
+                        emit cloneProgressPercentChanged(percent);
+                    }
+                    if (!txt.isEmpty()) {
+                        m_cloneStatusMessage = txt;
+                        emit cloneStatusMessageChanged(m_cloneStatusMessage);
+                        setStatus(m_cloneStatusMessage);
+                    }
+                }, Qt::QueuedConnection);
+            }
+        };
+
+        std::optional<std::string> optDisp;
+        if (!dispNameStd.empty()) {
+            optDisp = dispNameStd;
+        }
+
+        auto result = m_cloneService->cloneAndRegister(opts, optDisp);
+
+        QMetaObject::invokeMethod(this, [this, result, targetPath, cleanParent]() {
+            m_isCloning = false;
+            m_cloneProgressPercent = result ? 100 : 0;
+            emit isCloningChanged(false);
+            emit cloneProgressPercentChanged(m_cloneProgressPercent);
+
+            if (!result) {
+                QString errStr;
+                switch (result.error().kind) {
+                case gf::git::ports::GitOpsError::Kind::DestinationAlreadyExists:
+                    errStr = QStringLiteral("La cartella di destinazione esiste già e non è vuota: %1")
+                                 .arg(QString::fromStdString(targetPath.string()));
+                    break;
+                case gf::git::ports::GitOpsError::Kind::NetworkAuthenticationFailed:
+                    errStr = QStringLiteral("Autenticazione fallita o host non raggiungibile durante il clone:\n%1")
+                                 .arg(QString::fromStdString(result.error().message));
+                    break;
+                case gf::git::ports::GitOpsError::Kind::RemoteNotFound:
+                    errStr = QStringLiteral("Repository remoto non trovato o URL non valido:\n%1")
+                                 .arg(QString::fromStdString(result.error().message));
+                    break;
+                default:
+                    errStr = QStringLiteral("Errore durante la clonazione del repository:\n%1")
+                                 .arg(QString::fromStdString(result.error().message));
+                    break;
+                }
+
+                m_cloneStatusMessage = errStr;
+                emit cloneStatusMessageChanged(errStr);
+                setLastError(errStr);
+                setStatus(errStr);
+                emit errorOccurred(errStr);
+                emit cloneCompleted(false, errStr);
+            } else {
+                const QString repoName = QString::fromStdString(result->displayName);
+                const QString repoSavedPath = QString::fromStdString(result->localPath.string());
+                const QString successMsg = QStringLiteral("Repository '%1' clonato con successo!").arg(repoName);
+
+                m_cloneStatusMessage = successMsg;
+                emit cloneStatusMessageChanged(successMsg);
+                setLastSuccessMessage(successMsg);
+                setStatus(successMsg);
+                setLastError(QString());
+
+                emit repositoryAdded(repoName, repoSavedPath);
+                emit cloneCompleted(true, successMsg);
+                setLastCloneDestinationPath(cleanParent);
+                refreshAll();
+            }
+        }, Qt::QueuedConnection);
+    }).detach();
+}
+
+void HomeHubViewModel::setLastCloneDestinationPath(const QString& path) {
+    const QString trimmed = path.trimmed();
+    if (trimmed.isEmpty() || m_lastCloneDestinationPath == trimmed) return;
+    m_lastCloneDestinationPath = trimmed;
+    QSettings settings;
+    settings.setValue(QStringLiteral("clone/lastDestinationParentFolder"), m_lastCloneDestinationPath);
+    emit lastCloneDestinationPathChanged(m_lastCloneDestinationPath);
+}
+
+void HomeHubViewModel::setShowRepositories(bool show) {
+    if (m_showRepositories == show) return;
+    if (!show && !m_showGroups && !m_showWorkspaces) return; // Prevent disabling all 3
+    m_showRepositories = show;
+    QSettings settings;
+    settings.setValue(QStringLiteral("home/showRepositories"), m_showRepositories);
+    emit showRepositoriesChanged(m_showRepositories);
+}
+
+void HomeHubViewModel::setShowGroups(bool show) {
+    if (m_showGroups == show) return;
+    if (!show && !m_showRepositories && !m_showWorkspaces) return; // Prevent disabling all 3
+    m_showGroups = show;
+    QSettings settings;
+    settings.setValue(QStringLiteral("home/showGroups"), m_showGroups);
+    emit showGroupsChanged(m_showGroups);
+}
+
+void HomeHubViewModel::setShowWorkspaces(bool show) {
+    if (m_showWorkspaces == show) return;
+    if (!show && !m_showRepositories && !m_showGroups) return; // Prevent disabling all 3
+    m_showWorkspaces = show;
+    QSettings settings;
+    settings.setValue(QStringLiteral("home/showWorkspaces"), m_showWorkspaces);
+    emit showWorkspacesChanged(m_showWorkspaces);
+}
+
+void HomeHubViewModel::toggleShowRepositories() {
+    setShowRepositories(!m_showRepositories);
+}
+
+void HomeHubViewModel::toggleShowGroups() {
+    setShowGroups(!m_showGroups);
+}
+
+void HomeHubViewModel::toggleShowWorkspaces() {
+    setShowWorkspaces(!m_showWorkspaces);
+}
+
+void HomeHubViewModel::resetCloneState() {
+    m_isCloning = false;
+    m_cloneProgressPercent = 0;
+    m_cloneStatusMessage.clear();
+    emit isCloningChanged(false);
+    emit cloneProgressPercentChanged(0);
+    emit cloneStatusMessageChanged(QString());
+    setLastError(QString());
+    clearFeedback();
 }
 
 bool HomeHubViewModel::reconnectRepository(const QString& repoId, const QString& newPath) {
@@ -590,6 +833,314 @@ void HomeHubViewModel::openWorkspace(const QString& workspaceId) {
         return;
     }
     emit workspaceOpened(workspaceId);
+}
+
+bool HomeHubViewModel::isRepositoryInGroup(const QString& groupId, const QString& repoId) const {
+    const auto gId = groupId.trimmed().toStdString();
+    const auto rId = repoId.trimmed().toStdString();
+    if (gId.empty() || rId.empty()) return false;
+
+    auto grpOpt = m_groupService.getGroup(gf::groups::bo::GroupId{gId});
+    if (!grpOpt || !grpOpt->has_value()) return false;
+
+    const auto& repoIds = (*grpOpt)->repositoryIds;
+    return std::find(repoIds.begin(), repoIds.end(), gf::repositories::bo::RepositoryId{rId}) != repoIds.end();
+}
+
+bool HomeHubViewModel::isRepositoryInWorkspace(const QString& workspaceId, const QString& repoId) const {
+    const auto wsId = workspaceId.trimmed().toStdString();
+    const auto rId = repoId.trimmed().toStdString();
+    if (wsId.empty() || rId.empty()) return false;
+
+    auto reposExpected = m_workspaceService.resolveWorkspaceRepositories(gf::workspaces::bo::WorkspaceId{wsId});
+    if (!reposExpected) return false;
+
+    for (const auto& r : *reposExpected) {
+        if (r.id.value() == rId) {
+            return true;
+        }
+    }
+    return false;
+}
+
+QStringList HomeHubViewModel::getRepositoryIdsForGroup(const QString& groupId) const {
+    QStringList result;
+    const auto gId = groupId.trimmed().toStdString();
+    if (gId.empty()) return result;
+
+    auto grpOpt = m_groupService.getGroup(gf::groups::bo::GroupId{gId});
+    if (!grpOpt || !grpOpt->has_value()) return result;
+
+    for (const auto& rId : (*grpOpt)->repositoryIds) {
+        result.append(QString::fromStdString(rId.value()));
+    }
+    return result;
+}
+
+QStringList HomeHubViewModel::getRepositoryIdsForWorkspace(const QString& workspaceId) const {
+    QStringList result;
+    const auto wsId = workspaceId.trimmed().toStdString();
+    if (wsId.empty()) return result;
+
+    auto reposExpected = m_workspaceService.resolveWorkspaceRepositories(gf::workspaces::bo::WorkspaceId{wsId});
+    if (!reposExpected) return result;
+
+    for (const auto& r : *reposExpected) {
+        result.append(QString::fromStdString(r.id.value()));
+    }
+    return result;
+}
+
+QVariantList HomeHubViewModel::getAvailableRepositoriesForGroup(const QString& groupId) const {
+    QVariantList list;
+    const auto gId = groupId.trimmed().toStdString();
+    if (gId.empty()) return list;
+
+    auto grpOpt = m_groupService.getGroup(gf::groups::bo::GroupId{gId});
+    if (!grpOpt || !grpOpt->has_value()) return list;
+
+    const auto& existingRepoIds = (*grpOpt)->repositoryIds;
+    auto allRepos = m_repoService.getAllRepositories();
+    if (!allRepos) return list;
+
+    for (const auto& repo : *allRepos) {
+        bool alreadyInGroup = std::find(existingRepoIds.begin(), existingRepoIds.end(), repo.id) != existingRepoIds.end();
+        if (!alreadyInGroup) {
+            QVariantMap map;
+            const QString rIdQStr = QString::fromStdString(repo.id.value());
+            map[QStringLiteral("id")] = rIdQStr;
+            map[QStringLiteral("displayName")] = QString::fromStdString(repo.displayName);
+            map[QStringLiteral("localPath")] = QString::fromStdString(repo.localPath.string());
+            auto cached = m_repoModel ? m_repoModel->findById(rIdQStr) : std::nullopt;
+            map[QStringLiteral("branch")] = cached ? cached->branch : QString();
+            map[QStringLiteral("isMissing")] = (repo.pathStatus == gf::repositories::bo::RepositoryPathStatus::Missing);
+            list.append(map);
+        }
+    }
+    return list;
+}
+
+QVariantList HomeHubViewModel::getAvailableRepositoriesForWorkspace(const QString& workspaceId) const {
+    QVariantList list;
+    const auto wsId = workspaceId.trimmed().toStdString();
+    if (wsId.empty()) return list;
+
+    auto resolved = m_workspaceService.resolveWorkspaceRepositories(gf::workspaces::bo::WorkspaceId{wsId});
+    std::vector<std::string> existingIds;
+    if (resolved) {
+        for (const auto& r : *resolved) {
+            existingIds.push_back(r.id.value());
+        }
+    }
+
+    auto allRepos = m_repoService.getAllRepositories();
+    if (!allRepos) return list;
+
+    for (const auto& repo : *allRepos) {
+        bool alreadyInWs = std::find(existingIds.begin(), existingIds.end(), repo.id.value()) != existingIds.end();
+        if (!alreadyInWs) {
+            QVariantMap map;
+            const QString rIdQStr = QString::fromStdString(repo.id.value());
+            map[QStringLiteral("id")] = rIdQStr;
+            map[QStringLiteral("displayName")] = QString::fromStdString(repo.displayName);
+            map[QStringLiteral("localPath")] = QString::fromStdString(repo.localPath.string());
+            auto cached = m_repoModel ? m_repoModel->findById(rIdQStr) : std::nullopt;
+            map[QStringLiteral("branch")] = cached ? cached->branch : QString();
+            map[QStringLiteral("isMissing")] = (repo.pathStatus == gf::repositories::bo::RepositoryPathStatus::Missing);
+            list.append(map);
+        }
+    }
+    return list;
+}
+
+QVariantList HomeHubViewModel::getAvailableGroupsForRepository(const QString& repoId) const {
+    QVariantList list;
+    const auto rId = repoId.trimmed().toStdString();
+    if (rId.empty()) return list;
+
+    auto allGroups = m_groupService.getAllGroups();
+    if (!allGroups) return list;
+
+    for (const auto& grp : *allGroups) {
+        bool containsRepo = std::find(grp.repositoryIds.begin(), grp.repositoryIds.end(), gf::repositories::bo::RepositoryId{rId}) != grp.repositoryIds.end();
+        if (!containsRepo) {
+            QVariantMap map;
+            map[QStringLiteral("id")] = QString::fromStdString(grp.id.value());
+            map[QStringLiteral("name")] = QString::fromStdString(grp.name);
+            map[QStringLiteral("repositoryCount")] = static_cast<int>(grp.repositoryIds.size());
+            list.append(map);
+        }
+    }
+    return list;
+}
+
+bool HomeHubViewModel::addRepositoryToWorkspace(const QString& workspaceId, const QString& repoId) {
+    const auto wsIdStr = workspaceId.trimmed().toStdString();
+    const auto rIdStr = repoId.trimmed().toStdString();
+    if (wsIdStr.empty() || rIdStr.empty()) {
+        const QString err = QStringLiteral("Parametri non validi per l'aggiunta al workspace.");
+        setLastError(err);
+        emit errorOccurred(err);
+        return false;
+    }
+
+    auto wsOptExp = m_workspaceService.getWorkspace(gf::workspaces::bo::WorkspaceId{wsIdStr});
+    if (!wsOptExp || !wsOptExp->has_value()) {
+        const QString err = QStringLiteral("Workspace non trovato.");
+        setLastError(err);
+        emit errorOccurred(err);
+        return false;
+    }
+
+    auto ws = **wsOptExp;
+    gf::repositories::bo::RepositoryId targetRepoId{rIdStr};
+    auto it = std::find(ws.directRepositoryIds.begin(), ws.directRepositoryIds.end(), targetRepoId);
+    if (it != ws.directRepositoryIds.end()) {
+        const QString err = QStringLiteral("Il repository fa già parte di questo workspace.");
+        setLastError(err);
+        emit errorOccurred(err);
+        return false;
+    }
+
+    ws.directRepositoryIds.push_back(targetRepoId);
+    auto updateRes = m_workspaceService.updateWorkspaceComposition(ws.id, ws.groupIds, ws.directRepositoryIds);
+    if (!updateRes) {
+        const QString err = QStringLiteral("Impossibile aggiornare la composizione del workspace.");
+        setLastError(err);
+        emit errorOccurred(err);
+        return false;
+    }
+
+    setLastSuccessMessage(QStringLiteral("Repository aggiunto al workspace '%1'").arg(QString::fromStdString(ws.name)));
+    refreshAll();
+    emit workspacesChanged();
+    return true;
+}
+
+bool HomeHubViewModel::removeRepositoryFromWorkspace(const QString& workspaceId, const QString& repoId) {
+    const auto wsIdStr = workspaceId.trimmed().toStdString();
+    const auto rIdStr = repoId.trimmed().toStdString();
+    if (wsIdStr.empty() || rIdStr.empty()) return false;
+
+    auto wsOptExp = m_workspaceService.getWorkspace(gf::workspaces::bo::WorkspaceId{wsIdStr});
+    if (!wsOptExp || !wsOptExp->has_value()) return false;
+
+    auto ws = **wsOptExp;
+    gf::repositories::bo::RepositoryId targetRepoId{rIdStr};
+    auto it = std::find(ws.directRepositoryIds.begin(), ws.directRepositoryIds.end(), targetRepoId);
+    if (it == ws.directRepositoryIds.end()) return false;
+
+    ws.directRepositoryIds.erase(it);
+    auto updateRes = m_workspaceService.updateWorkspaceComposition(ws.id, ws.groupIds, ws.directRepositoryIds);
+    if (!updateRes) return false;
+
+    setLastSuccessMessage(QStringLiteral("Repository rimosso dal workspace"));
+    refreshAll();
+    emit workspacesChanged();
+    return true;
+}
+
+bool HomeHubViewModel::addGroupToWorkspace(const QString& workspaceId, const QString& groupId) {
+    const auto wsIdStr = workspaceId.trimmed().toStdString();
+    const auto gIdStr = groupId.trimmed().toStdString();
+    if (wsIdStr.empty() || gIdStr.empty()) {
+        const QString err = QStringLiteral("Parametri non validi per l'aggiunta del gruppo al workspace.");
+        setLastError(err);
+        emit errorOccurred(err);
+        return false;
+    }
+
+    auto wsOptExp = m_workspaceService.getWorkspace(gf::workspaces::bo::WorkspaceId{wsIdStr});
+    if (!wsOptExp || !wsOptExp->has_value()) {
+        const QString err = QStringLiteral("Workspace non trovato.");
+        setLastError(err);
+        emit errorOccurred(err);
+        return false;
+    }
+
+    auto ws = **wsOptExp;
+    gf::groups::bo::GroupId targetGrpId{gIdStr};
+    auto it = std::find(ws.groupIds.begin(), ws.groupIds.end(), targetGrpId);
+    if (it != ws.groupIds.end()) {
+        const QString err = QStringLiteral("Il gruppo fa già parte di questo workspace.");
+        setLastError(err);
+        emit errorOccurred(err);
+        return false;
+    }
+
+    ws.groupIds.push_back(targetGrpId);
+    auto updateRes = m_workspaceService.updateWorkspaceComposition(ws.id, ws.groupIds, ws.directRepositoryIds);
+    if (!updateRes) {
+        const QString err = QStringLiteral("Impossibile aggiornare la composizione del workspace.");
+        setLastError(err);
+        emit errorOccurred(err);
+        return false;
+    }
+
+    setLastSuccessMessage(QStringLiteral("Gruppo aggiunto al workspace '%1'").arg(QString::fromStdString(ws.name)));
+    refreshAll();
+    emit workspacesChanged();
+    return true;
+}
+
+bool HomeHubViewModel::removeGroupFromWorkspace(const QString& workspaceId, const QString& groupId) {
+    const auto wsIdStr = workspaceId.trimmed().toStdString();
+    const auto gIdStr = groupId.trimmed().toStdString();
+    if (wsIdStr.empty() || gIdStr.empty()) return false;
+
+    auto wsOptExp = m_workspaceService.getWorkspace(gf::workspaces::bo::WorkspaceId{wsIdStr});
+    if (!wsOptExp || !wsOptExp->has_value()) return false;
+
+    auto ws = **wsOptExp;
+    gf::groups::bo::GroupId targetGrpId{gIdStr};
+    auto it = std::find(ws.groupIds.begin(), ws.groupIds.end(), targetGrpId);
+    if (it == ws.groupIds.end()) return false;
+
+    ws.groupIds.erase(it);
+    auto updateRes = m_workspaceService.updateWorkspaceComposition(ws.id, ws.groupIds, ws.directRepositoryIds);
+    if (!updateRes) return false;
+
+    setLastSuccessMessage(QStringLiteral("Gruppo rimosso dal workspace"));
+    refreshAll();
+    emit workspacesChanged();
+    return true;
+}
+
+bool HomeHubViewModel::isGroupInWorkspace(const QString& workspaceId, const QString& groupId) const {
+    const auto wsIdStr = workspaceId.trimmed().toStdString();
+    const auto gIdStr = groupId.trimmed().toStdString();
+    if (wsIdStr.empty() || gIdStr.empty()) return false;
+
+    auto wsOptExp = m_workspaceService.getWorkspace(gf::workspaces::bo::WorkspaceId{wsIdStr});
+    if (!wsOptExp || !wsOptExp->has_value()) return false;
+
+    const auto& grpIds = (*wsOptExp)->groupIds;
+    return std::find(grpIds.begin(), grpIds.end(), gf::groups::bo::GroupId{gIdStr}) != grpIds.end();
+}
+
+QVariantList HomeHubViewModel::getAvailableGroupsForWorkspace(const QString& workspaceId) const {
+    QVariantList list;
+    const auto wsIdStr = workspaceId.trimmed().toStdString();
+    if (wsIdStr.empty()) return list;
+
+    auto wsOptExp = m_workspaceService.getWorkspace(gf::workspaces::bo::WorkspaceId{wsIdStr});
+    if (!wsOptExp || !wsOptExp->has_value()) return list;
+
+    const auto& existingGrpIds = (*wsOptExp)->groupIds;
+    auto allGroups = m_groupService.getAllGroups();
+    if (!allGroups) return list;
+
+    for (const auto& grp : *allGroups) {
+        bool alreadyInWs = std::find(existingGrpIds.begin(), existingGrpIds.end(), grp.id) != existingGrpIds.end();
+        if (!alreadyInWs) {
+            QVariantMap map;
+            map[QStringLiteral("id")] = QString::fromStdString(grp.id.value());
+            map[QStringLiteral("name")] = QString::fromStdString(grp.name);
+            map[QStringLiteral("repositoryCount")] = static_cast<int>(grp.repositoryIds.size());
+            list.append(map);
+        }
+    }
+    return list;
 }
 
 } // namespace gf::desktop

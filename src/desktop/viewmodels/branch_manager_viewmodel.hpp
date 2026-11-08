@@ -25,6 +25,7 @@ class BranchManagerViewModel final : public QObject {
     Q_PROPERTY(bool isBusy READ isBusy NOTIFY busyChanged)
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged)
     Q_PROPERTY(QString remoteUrl READ remoteUrl NOTIFY remoteUrlChanged)
+    Q_PROPERTY(QString fileHistoryPath READ fileHistoryPath NOTIFY fileHistoryPathChanged)
     Q_PROPERTY(bool hasConflicts READ hasConflicts NOTIFY conflictsChanged)
     Q_PROPERTY(QStringList conflictedFiles READ conflictedFiles NOTIFY conflictsChanged)
 
@@ -44,6 +45,7 @@ public:
     [[nodiscard]] bool isBusy() const noexcept { return m_isBusy; }
     [[nodiscard]] QString statusMessage() const noexcept { return m_statusMessage; }
     [[nodiscard]] QString remoteUrl() const noexcept { return m_remoteUrl; }
+    [[nodiscard]] QString fileHistoryPath() const noexcept { return m_fileHistoryPath; }
     [[nodiscard]] bool hasConflicts() const noexcept { return !m_conflictedFiles.isEmpty(); }
     [[nodiscard]] QStringList conflictedFiles() const noexcept { return m_conflictedFiles; }
 
@@ -84,11 +86,16 @@ public:
     Q_INVOKABLE void setWipStatus(bool hasWip, int changedFilesCount = 0);
     Q_INVOKABLE QVariantList getCommitFiles(const QString& commitSha);
 
+    Q_INVOKABLE bool loadFileHistory(const QString& filePath);
+    Q_INVOKABLE void clearFileHistory();
+    Q_INVOKABLE QStringList listRepositoryFiles();
+
 signals:
     void currentBranchChanged();
     void busyChanged();
     void statusMessageChanged();
     void remoteUrlChanged();
+    void fileHistoryPathChanged();
     void conflictsChanged();
     void branchSwitched(const QString& newBranch);
     void operationCompleted(bool success, const QString& message);
@@ -107,6 +114,7 @@ private:
     CommitHistoryListModel m_commitHistoryModel;
 
     QString m_currentBranch;
+    QString m_fileHistoryPath;
     bool m_isDetached = false;
     bool m_isBusy = false;
     QString m_statusMessage;

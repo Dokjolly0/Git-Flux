@@ -2,7 +2,9 @@
 
 #include <chrono>
 #include <filesystem>
+#include <functional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace gf::git::bo {
@@ -20,6 +22,8 @@ struct GitCommand {
     std::filesystem::path workingDirectory;
     GitLockPolicy lockPolicy = GitLockPolicy::NoOptionalLocks;
     std::chrono::milliseconds timeout{30'000};
+    std::function<void(std::string_view)> onStderrChunk{};
+    std::function<void(std::string_view)> onStdoutChunk{};
 };
 
 struct GitProcessResult {

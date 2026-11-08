@@ -91,23 +91,32 @@ done
 
 cd "${ROOT_DIR}"
 
-# Register Linux desktop icon and .desktop file for app bar / dock integration
+# Clean up legacy duplicate .desktop files from previous versions
+rm -f ~/.local/share/applications/git_flux.desktop ~/.local/share/applications/GitFlux.desktop 2>/dev/null || true
+
+# Register Linux desktop icon and canonical .desktop file (only if not already installed system-wide)
 if [[ -f "${ROOT_DIR}/assets/logo.png" ]]; then
-    mkdir -p ~/.local/share/applications ~/.local/share/icons/hicolor/512x512/apps
-    cp -u "${ROOT_DIR}/assets/logo.png" ~/.local/share/icons/hicolor/512x512/apps/git_flux.png 2>/dev/null || true
-    cat << EOF > ~/.local/share/applications/git_flux.desktop
+    mkdir -p ~/.local/share/icons/hicolor/512x512/apps
+    cp -u "${ROOT_DIR}/assets/logo.png" ~/.local/share/icons/hicolor/512x512/apps/git-flux.png 2>/dev/null || true
+
+    if [[ ! -f "/usr/share/applications/git-flux.desktop" ]]; then
+        mkdir -p ~/.local/share/applications
+        cat << EOF > ~/.local/share/applications/git-flux.desktop
 [Desktop Entry]
 Type=Application
 Name=Git Flux
+GenericName=Git Client
 Comment=Git Flux — Modern local-first desktop Git client
 Exec=${BIN_PATH} %U
 Icon=${ROOT_DIR}/assets/logo.png
 Terminal=false
 Categories=Development;RevisionControl;
 StartupWMClass=GitFlux
+MimeType=x-scheme-handler/gitflux;
 EOF
-    cp ~/.local/share/applications/git_flux.desktop ~/.local/share/applications/GitFlux.desktop 2>/dev/null || true
-    chmod +x ~/.local/share/applications/git_flux.desktop ~/.local/share/applications/GitFlux.desktop 2>/dev/null || true
+        chmod +x ~/.local/share/applications/git-flux.desktop 2>/dev/null || true
+    fi
+
     update-desktop-database ~/.local/share/applications/ 2>/dev/null || true
 fi
 

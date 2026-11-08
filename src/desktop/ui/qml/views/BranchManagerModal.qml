@@ -118,6 +118,10 @@ Dialog {
                 id: branchList
                 anchors.fill: parent
                 model: root.branchManager ? root.branchManager.branchList : null
+                boundsBehavior: Flickable.StopAtBounds
+                maximumFlickVelocity: 6000
+                flickDeceleration: 1000
+                ScrollBar.vertical: FluxScrollBar {}
 
                 delegate: Rectangle {
                     width: branchList.width

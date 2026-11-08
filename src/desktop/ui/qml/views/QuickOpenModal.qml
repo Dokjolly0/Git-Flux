@@ -164,6 +164,10 @@ Item {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
+                            boundsBehavior: Flickable.StopAtBounds
+                            maximumFlickVelocity: 6000
+                            flickDeceleration: 1000
+                            ScrollBar.vertical: FluxScrollBar {}
                             model: homeHubVm.groups
                             spacing: 6
 
@@ -307,6 +311,10 @@ Item {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
+                            boundsBehavior: Flickable.StopAtBounds
+                            maximumFlickVelocity: 6000
+                            flickDeceleration: 1000
+                            ScrollBar.vertical: FluxScrollBar {}
                             model: quickOpenVm.resolvedRepositories
                             spacing: 6
 

@@ -85,11 +85,15 @@ void BranchManagerViewModel::refresh() {
         }
     }
 
-    // 2. Refresh commit history across all branches with full topological graph ordering
+    // 2. Refresh commit history across all branches with date ordering (keeps commits at their creation row)
     git::bo::CommitLogOptions logOpts;
     logOpts.maxCount = 0; // 0 = unlimited (complete history)
     logOpts.revisionRange = std::string("--all");
-    logOpts.topoOrder = true;
+    logOpts.dateOrder = true;
+    if (!m_fileHistoryPath.isEmpty()) {
+        logOpts.followRenames = true;
+        logOpts.pathFilter = m_fileHistoryPath.toStdString();
+    }
     auto logRes = m_historyService.getCommitHistory(m_repoPath, logOpts);
     if (logRes) {
         m_commitHistoryModel.setCommits(std::move(*logRes));
@@ -388,7 +392,11 @@ bool BranchManagerViewModel::fetchRemote(const QString& remoteName, bool allRemo
 }
 
 void BranchManagerViewModel::setWipStatus(bool hasWip, int changedFilesCount) {
-    m_commitHistoryModel.setWip(hasWip, changedFilesCount);
+    if (!m_fileHistoryPath.isEmpty()) {
+        m_commitHistoryModel.setWip(false, 0);
+    } else {
+        m_commitHistoryModel.setWip(hasWip, changedFilesCount);
+    }
 }
 
 bool BranchManagerViewModel::pullRemote(const QString& remoteName, const QString& strategy) {
@@ -882,6 +890,61 @@ QString BranchManagerViewModel::buildPullRequestUrl(const QString& sourceBranch,
     }
 
     return finalUrl;
+}
+
+bool BranchManagerViewModel::loadFileHistory(const QString& filePath) {
+    if (m_repoPath.empty() || filePath.trimmed().isEmpty()) {
+        clearFileHistory();
+        return false;
+    }
+
+    QString cleanPath = filePath.trimmed();
+    cleanPath.replace(QLatin1Char('\\'), QLatin1Char('/'));
+
+    git::bo::CommitLogOptions logOpts;
+    logOpts.maxCount = 0;
+    logOpts.revisionRange = std::string("--all");
+    logOpts.followRenames = true;
+    logOpts.pathFilter = cleanPath.toStdString();
+    logOpts.dateOrder = true;
+
+    auto logRes = m_historyService.getCommitHistory(m_repoPath, logOpts);
+    if (logRes) {
+        m_fileHistoryPath = cleanPath;
+        m_commitHistoryModel.setWip(false, 0);
+        m_commitHistoryModel.setCommits(std::move(*logRes));
+        emit fileHistoryPathChanged();
+        return true;
+    }
+
+    return false;
+}
+
+void BranchManagerViewModel::clearFileHistory() {
+    if (m_fileHistoryPath.isEmpty()) {
+        return;
+    }
+    m_fileHistoryPath.clear();
+    emit fileHistoryPathChanged();
+    refresh();
+}
+
+QStringList BranchManagerViewModel::listRepositoryFiles() {
+    if (m_repoPath.empty()) {
+        return {};
+    }
+
+    auto res = m_historyService.listTrackedFiles(m_repoPath);
+    if (!res) {
+        return {};
+    }
+
+    QStringList list;
+    list.reserve(static_cast<qsizetype>(res->size()));
+    for (const auto& f : *res) {
+        list.append(QString::fromStdString(f));
+    }
+    return list;
 }
 
 } // namespace gf::desktop

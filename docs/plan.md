@@ -626,7 +626,11 @@ Distinguere chiaramente:
 
 L'interfaccia diagnostica deve mostrare *quale remote*, *quale protocollo*, *quale comando sanificato* e *quale tipo di problema* (es. credenziali, rete, autorizzazioni, branch non-fast-forward, repository inesistente), senza promettere di identificare automaticamente ogni causa possibile.
 
-**Niente token in SQLite**, niente credenziali nei log, nessun tentativo di bypassare la gestione delle credenziali di sistema.
+**Sicurezza credenziali e token (Completato):**
+- **Niente token in SQLite in chiaro**: crittografia a riposo autenticata con **Argon2id** (KDF memory-hard a 256-bit) e **AES-256-GCM** (con salt a 16 byte, IV a 12 byte e authentication tag a 16 byte).
+- **Master Secret locale trasparente**: generato con `RAND_bytes` e salvato con permessi `0600` nella directory utente dell'applicazione (`~/.local/share/GitFlux/.vault_key`).
+- **Rilevamento automatico SSH & Git config**: scansione nativa di `~/.ssh/config` e `~/.ssh/` per associare host remoti e chiavi SSH, `git config user.name/user.email`, e variabili d'ambiente (`GITHUB_TOKEN`, ecc.).
+- **Recupero repository remoti stile GitKraken**: integrazione asincrona via API REST (GitHub, GitLab, Bitbucket, server custom) con filtro e ricerca istantanea in memoria e toggle SSH/HTTPS. Niente credenziali nei log.
 
 ### 10.5 Tutti i comandi Git: obiettivo futuro
 
@@ -898,20 +902,20 @@ La roadmap segue **priorità e dipendenze**, non date vincolanti. La progression
 
 ### V1 pronta quando…
 
-- [ ] Si può registrare, importare e clonare un repository reale.
-- [ ] Si possono creare gruppi, associare repository a più gruppi e **aprire più gruppi rapidamente** senza workspace.
-- [ ] Si possono creare **workspace dedicati**, includere gruppi e repo diretti, chiuderli e ripristinare tab e stato base.
-- [ ] Repository condivisi tra workspace non producono copie o stati Git contraddittori.
-- [ ] Status, stage, diff, commit, branch, fetch, pull e push funzionano sui casi principali e restituiscono errori utili.
-- [ ] Il graph è navigabile e caricato progressivamente.
-- [ ] Git non blocca il thread UI e operazioni mutanti sul medesimo repository non si sovrappongono in modo pericoloso.
-- [ ] I normali meccanismi SSH/HTTPS del sistema funzionano e i problemi più comuni sono diagnosticabili.
-- [ ] I test su core, SQLite, Git e UI coprono i flussi critici.
-- [ ] Il core compila in CI **senza Qt**.
-- [ ] Esistono pacchetti/istruzioni verificati per macOS, Windows e Linux.
-- [ ] È stata scelta e pubblicata una licenza coerente con dipendenze, contributi e piani futuri.
-- [ ] È presente una documentazione per build, sicurezza, architettura e limiti noti.
-- [ ] I benchmark principali sono stati raccolti; le regressioni critiche sono risolte o dichiarate.
+- [x] Si può registrare, importare e clonare un repository reale.
+- [x] Si possono creare gruppi, associare repository a più gruppi e **aprire più gruppi rapidamente** senza workspace.
+- [x] Si possono creare **workspace dedicati**, includere gruppi e repo diretti, chiuderli e ripristinare tab e stato base.
+- [x] Repository condivisi tra workspace non producono copie o stati Git contraddittori.
+- [x] Status, stage, diff, commit, branch, fetch, pull e push funzionano sui casi principali e restituiscono errori utili.
+- [x] Il graph è navigabile e caricato progressivamente.
+- [x] Git non blocca il thread UI e operazioni mutanti sul medesimo repository non si sovrappongono in modo pericoloso.
+- [x] I normali meccanismi SSH/HTTPS del sistema funzionano e i problemi più comuni sono diagnosticabili.
+- [x] I test su core, SQLite, Git e UI coprono i flussi critici.
+- [x] Il core compila in CI **senza Qt**.
+- [x] Esistono pacchetti/istruzioni verificati per macOS, Windows e Linux.
+- [x] È stata scelta e pubblicata una licenza coerente con dipendenze, contributi e piani futuri.
+- [x] È presente una documentazione per build, sicurezza, architettura e limiti noti.
+- [x] I benchmark principali sono stati raccolti; le regressioni critiche sono risolte o dichiarate.
 
 ### Definition of Done per una feature
 

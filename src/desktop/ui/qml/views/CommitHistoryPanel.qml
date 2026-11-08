@@ -20,6 +20,7 @@ Rectangle {
     property string fileSortOrder: "name_asc" // "name_asc" | "name_desc" | "git"
     property var treeItems: []
     property var collapsedFolders: ({})
+    property string fileSearchQuery: ""
 
     signal createBranchRequested(string startPoint)
     signal createPullRequestRequested(string sourceBranch, string targetBranch)
@@ -124,18 +125,26 @@ Rectangle {
         return count;
     }
 
-    // Filtered files according to category chip selection
+    // Filtered files according to category chip selection and search query
     readonly property var filteredCommitFiles: {
         if (!root.commitFiles) return [];
-        if (root.fileCategoryFilter === "all") return root.commitFiles;
         var res = [];
+        var q = root.fileSearchQuery.trim().toLowerCase();
         for (var i = 0; i < root.commitFiles.length; ++i) {
             var f = root.commitFiles[i];
             if (!f) continue;
-            if (root.fileCategoryFilter === "M" && f.status === "M") res.push(f);
-            else if (root.fileCategoryFilter === "A" && f.status === "A") res.push(f);
-            else if (root.fileCategoryFilter === "D" && f.status === "D") res.push(f);
-            else if ((root.fileCategoryFilter === "R" || root.fileCategoryFilter === "C") && (f.status === "R" || f.status === "C")) res.push(f);
+            if (root.fileCategoryFilter === "M" && f.status !== "M") continue;
+            else if (root.fileCategoryFilter === "A" && f.status !== "A") continue;
+            else if (root.fileCategoryFilter === "D" && f.status !== "D") continue;
+            else if ((root.fileCategoryFilter === "R" || root.fileCategoryFilter === "C") && (f.status !== "R" && f.status !== "C")) continue;
+
+            if (q !== "") {
+                var p = (f.path || "").toLowerCase();
+                var fn = (f.filename || root.getFilename(f.path) || "").toLowerCase();
+                if (p.indexOf(q) === -1 && fn.indexOf(q) === -1) continue;
+            }
+
+            res.push(f);
         }
         return res;
     }
@@ -163,6 +172,9 @@ Rectangle {
         root.updateTreeItems();
     }
     onFileSortOrderChanged: {
+        root.updateTreeItems();
+    }
+    onFileSearchQueryChanged: {
         root.updateTreeItems();
     }
 
@@ -232,14 +244,76 @@ Rectangle {
     property int graphColWidth: Math.max(50, Math.min(260, 24 + root.maxGraphLanes * 22))
     property int branchTagColWidth: 180
 
-    // Keyboard navigation and shortcut to close diff view
+    // Keyboard navigation and shortcuts
     focus: true
     Keys.onEscapePressed: function(event) {
-        if (root.isDiffOpen) {
+        if (fileHistoryModal.visible) {
+            fileHistoryModal.close();
+            event.accepted = true;
+        } else if (root.isDiffOpen) {
             root.closeFileDiff();
+            event.accepted = true;
+        } else if (commitFilterInput.text.length > 0) {
+            commitFilterInput.text = "";
+            if (root.branchManager && root.branchManager.commitHistory) {
+                root.branchManager.commitHistory.searchFilter = "";
+            }
+            event.accepted = true;
+        } else if (root.branchManager && root.branchManager.fileHistoryPath !== "") {
+            root.branchManager.clearFileHistory();
+            root.autoSelectFirstCommit();
             event.accepted = true;
         }
     }
+
+    Keys.onPressed: function(event) {
+        if ((event.modifiers & Qt.ControlModifier) && (event.key === Qt.Key_F || event.key === Qt.Key_Find)) {
+            root.focusCommitSearch();
+            event.accepted = true;
+        } else if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_H) {
+            root.openFileHistoryPicker();
+            event.accepted = true;
+        }
+    }
+
+    function focusCommitSearch() {
+        if (root.isDiffOpen) {
+            root.closeFileDiff();
+        }
+        commitFilterInput.forceActiveFocus();
+        commitFilterInput.selectAll();
+        Qt.callLater(function() {
+            commitFilterInput.forceActiveFocus();
+            commitFilterInput.selectAll();
+        });
+    }
+
+    Shortcut {
+        sequence: "Ctrl+F"
+        onActivated: root.focusCommitSearch()
+    }
+    Shortcut {
+        sequence: "Ctrl+H"
+        onActivated: {
+            root.openFileHistoryPicker();
+        }
+    }
+
+    function openFileHistoryPicker() {
+        fileHistoryModal.openModal();
+    }
+
+    function selectFileForHistory(filePath) {
+        fileHistoryModal.close();
+        if (root.isDiffOpen) {
+            root.closeFileDiff();
+        }
+        if (root.branchManager) {
+            root.branchManager.loadFileHistory(filePath);
+            root.autoSelectFirstCommit();
+        }
+    }
+
     Keys.onUpPressed: function(event) {
         if (!root.isDiffOpen && commitTableListView.currentIndex > 0) {
             root.selectCommitByIndex(commitTableListView.currentIndex - 1);
@@ -351,6 +425,14 @@ Rectangle {
         var files = root.branchManager.getCommitFiles(commit.sha);
         root.commitFiles = files || [];
         root.updateTreeItems();
+
+        // If file history mode is active, automatically open the diff of the tracked file in this commit!
+        if (root.branchManager && root.branchManager.fileHistoryPath !== "" && root.sessionVm && root.sessionVm.commitDiffViewer) {
+            var repoPath = root.sessionVm.activeRepoPath;
+            root.selectedFile = { path: root.branchManager.fileHistoryPath, isStaged: false };
+            root.sessionVm.commitDiffViewer.loadCommitFileDiff(repoPath, commit.sha, root.branchManager.fileHistoryPath);
+            root.isDiffOpen = true;
+        }
     }
 
     function reloadWipFiles() {
@@ -424,7 +506,7 @@ Rectangle {
             for (var k = 0; k < childKeys.length; ++k) {
                 var key = childKeys[k];
                 var child = node.children[key];
-                var isCollapsed = !!root.collapsedFolders[child.fullPath];
+                var isCollapsed = (root.fileSearchQuery.trim() === "") && !!root.collapsedFolders[child.fullPath];
                 items.push({
                     isFolder: true,
                     name: child.name,
@@ -586,6 +668,197 @@ Rectangle {
                 spacing: 0
                 visible: !root.isDiffOpen
 
+                // Commit Search & Filter Bar
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 36
+                    color: commitFilterInput.activeFocus ? "#161B22" : "#0F141C"
+                    border.color: commitFilterInput.activeFocus ? "#38BDF8" : "#21262D"
+                    border.width: commitFilterInput.activeFocus ? 1.5 : 1
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.IBeamCursor
+                        onClicked: root.focusCommitSearch()
+                    }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        spacing: 8
+                        z: 1
+
+                        Text {
+                            text: "🔍"
+                            font.pixelSize: 12
+                            color: commitFilterInput.activeFocus ? "#38BDF8" : "#8B949E"
+                        }
+
+                        TextField {
+                            id: commitFilterInput
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 28
+                            placeholderText: "Filtra per messaggio, autore o hash commit... (Ctrl+F)"
+                            placeholderTextColor: "#484F58"
+                            color: "#F0F6FC"
+                            font.pixelSize: 12
+                            selectByMouse: true
+                            background: Rectangle {
+                                color: "transparent"
+                            }
+                            onTextChanged: {
+                                if (root.branchManager && root.branchManager.commitHistory) {
+                                    root.branchManager.commitHistory.searchFilter = text;
+                                }
+                            }
+                            Keys.onEscapePressed: {
+                                text = "";
+                                if (root.branchManager && root.branchManager.commitHistory) {
+                                    root.branchManager.commitHistory.searchFilter = "";
+                                }
+                                commitTableListView.forceActiveFocus();
+                            }
+                        }
+
+                        // Ctrl+F hint badge
+                        Rectangle {
+                            visible: commitFilterInput.text.length === 0 && !commitFilterInput.activeFocus
+                            Layout.preferredHeight: 18
+                            Layout.preferredWidth: ctrlFBadgeText.implicitWidth + 8
+                            color: "#1E293B"
+                            radius: 3
+                            border.color: "#334155"
+                            border.width: 1
+
+                            Text {
+                                id: ctrlFBadgeText
+                                anchors.centerIn: parent
+                                text: "Ctrl+F"
+                                color: "#64748B"
+                                font.pixelSize: 9
+                                font.bold: true
+                            }
+                        }
+
+                        Button {
+                            visible: commitFilterInput.text.length > 0
+                            text: "✕"
+                            flat: true
+                            onClicked: commitFilterInput.text = ""
+                            contentItem: Text {
+                                text: "✕"
+                                color: "#8B949E"
+                                font.pixelSize: 11
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            background: Item {}
+                        }
+
+                        // Filter Counter Badge
+                        Rectangle {
+                            visible: root.branchManager && root.branchManager.commitHistory && root.branchManager.commitHistory.searchFilter.length > 0
+                            Layout.preferredHeight: 20
+                            Layout.preferredWidth: filterCountText.implicitWidth + 12
+                            color: "#1E293B"
+                            radius: 10
+                            border.color: "#38BDF8"
+                            border.width: 1
+
+                            Text {
+                                id: filterCountText
+                                anchors.centerIn: parent
+                                text: (root.branchManager && root.branchManager.commitHistory) ?
+                                      (root.branchManager.commitHistory.filteredCommitsCount + " / " + root.branchManager.commitHistory.totalCommitsCount) : ""
+                                color: "#38BDF8"
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+                        }
+
+                        // File History (Ctrl+H) Button
+                        Button {
+                            Layout.preferredHeight: 24
+                            background: Rectangle {
+                                color: parent.hovered ? "#334155" : ((root.branchManager && root.branchManager.fileHistoryPath !== "") ? "#1E3A8A" : "#1E293B")
+                                radius: 4
+                                border.color: (root.branchManager && root.branchManager.fileHistoryPath !== "") ? "#38BDF8" : "#334155"
+                                border.width: 1
+                            }
+                            contentItem: RowLayout {
+                                spacing: 4
+                                Text { text: "📄"; font.pixelSize: 10 }
+                                Text {
+                                    text: (root.branchManager && root.branchManager.fileHistoryPath !== "") ? "Cronologia attiva" : "Cronologia file (Ctrl+H)"
+                                    color: (root.branchManager && root.branchManager.fileHistoryPath !== "") ? "#38BDF8" : "#94A3B8"
+                                    font.pixelSize: 10
+                                    font.bold: (root.branchManager && root.branchManager.fileHistoryPath !== "")
+                                }
+                            }
+                            onClicked: root.openFileHistoryPicker()
+                        }
+                    }
+                }
+
+                // File History Active Banner
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 36
+                    visible: root.branchManager && root.branchManager.fileHistoryPath !== ""
+                    color: "#0F1A2E"
+                    border.color: "#38BDF8"
+                    border.width: 1
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        spacing: 8
+
+                        Text { text: "📄"; font.pixelSize: 12 }
+                        Text {
+                            text: "Cronologia file:"
+                            color: "#94A3B8"
+                            font.pixelSize: 11
+                        }
+                        Text {
+                            text: root.branchManager ? root.branchManager.fileHistoryPath : ""
+                            color: "#38BDF8"
+                            font.bold: true
+                            font.pixelSize: 11
+                            elide: Text.ElideMiddle
+                            Layout.maximumWidth: root.width * 0.35
+                        }
+                        Text {
+                            text: "(" + (root.branchManager && root.branchManager.commitHistory ? root.branchManager.commitHistory.totalCommitsCount : 0) + " commit trovati)"
+                            color: "#64748B"
+                            font.pixelSize: 10
+                        }
+                        Item { Layout.fillWidth: true }
+                        Button {
+                            Layout.preferredHeight: 22
+                            background: Rectangle {
+                                color: parent.hovered ? "#334155" : "#1E293B"
+                                radius: 3
+                                border.color: "#475569"
+                                border.width: 1
+                            }
+                            contentItem: RowLayout {
+                                spacing: 4
+                                Text { text: "✕"; color: "#F87171"; font.bold: true; font.pixelSize: 10 }
+                                Text { text: "Chiudi cronologia file"; color: "#F1F5F9"; font.pixelSize: 10 }
+                            }
+                            onClicked: {
+                                if (root.branchManager) {
+                                    root.branchManager.clearFileHistory();
+                                    root.autoSelectFirstCommit();
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Table Header Bar (matching GitKraken header)
                 Rectangle {
                     Layout.fillWidth: true
@@ -695,6 +968,9 @@ Rectangle {
                     clip: true
                     model: root.branchManager ? root.branchManager.commitHistory : null
                     boundsBehavior: Flickable.StopAtBounds
+                    maximumFlickVelocity: 6000
+                    flickDeceleration: 1000
+                    ScrollBar.vertical: FluxScrollBar {}
                     focus: true
                     keyNavigationWraps: false
                     Keys.onUpPressed: function(event) {
@@ -708,6 +984,15 @@ Rectangle {
                             root.selectCommitByIndex(commitTableListView.currentIndex + 1);
                         }
                         event.accepted = true;
+                    }
+                    Keys.onPressed: function(event) {
+                        if ((event.modifiers & Qt.ControlModifier) && (event.key === Qt.Key_F || event.key === Qt.Key_Find)) {
+                            root.focusCommitSearch();
+                            event.accepted = true;
+                        } else if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_H) {
+                            root.openFileHistoryPicker();
+                            event.accepted = true;
+                        }
                     }
 
                     delegate: Rectangle {
@@ -735,6 +1020,7 @@ Rectangle {
                         required property string graphColor
                         required property var graphRoutes
                         required property bool isMerge
+                        required property bool isOrphan
                         required property int index
 
                         width: commitTableListView.width
@@ -794,6 +1080,16 @@ Rectangle {
                                 Layout.preferredWidth: root.branchTagColWidth
                                 Layout.fillHeight: true
                                 clip: true
+
+                                readonly property bool hasOrphanBadge: {
+                                    if (commitRow.isOrphan) return true;
+                                    var decs = commitRow.structuredDecorations;
+                                    if (!decs) return false;
+                                    for (var d = 0; d < decs.length; ++d) {
+                                        if (decs[d].isOrphan || (decs[d].name && decs[d].name.indexOf("gh-pages") !== -1)) return true;
+                                    }
+                                    return false;
+                                }
 
                                 Row {
                                     anchors.right: parent.right
@@ -975,6 +1271,15 @@ Rectangle {
 
                                         var centerY = height / 2;
 
+                                        // Horizontal connecting line from Col 1 into node
+                                        if (commitRow.structuredDecorations && commitRow.structuredDecorations.length > 0) {
+                                            ctx.strokeStyle = commitRow.graphColor || "#06B6D4";
+                                            ctx.beginPath();
+                                            ctx.moveTo(0, centerY);
+                                            ctx.lineTo(laneX(commitLane), centerY);
+                                            ctx.stroke();
+                                        }
+
                                         for (var i = 0; i < routes.length; ++i) {
                                             var r = routes[i];
                                             ctx.strokeStyle = r.color || "#06B6D4";
@@ -1110,6 +1415,7 @@ Rectangle {
                                     anchors.left: parent.left
                                     anchors.right: parent.right
                                     anchors.leftMargin: 8
+                                    anchors.rightMargin: 14
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: (commitRow.sha === "WIP") ? "Modifiche locali" : (commitRow.authorName || "")
                                     color: (commitRow.sha === "WIP") ? "#F59E0B" : "#94A3B8"
@@ -1129,6 +1435,7 @@ Rectangle {
                                     anchors.left: parent.left
                                     anchors.right: parent.right
                                     anchors.leftMargin: 8
+                                    anchors.rightMargin: 14
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: (commitRow.sha === "WIP") ? "Adesso" : (commitRow.authorDateFormatted || commitRow.authorDate || "")
                                     color: "#94A3B8"
@@ -1842,6 +2149,83 @@ Rectangle {
                     }
                 }
 
+                // Quick Search Bar for Modified Files
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 30
+                    radius: 5
+                    color: "#0B0E14"
+                    border.color: fileSearchInput.activeFocus ? "#38BDF8" : "#30363D"
+                    border.width: 1
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 8
+                        anchors.rightMargin: 8
+                        spacing: 6
+
+                        Text {
+                            text: "🔍"
+                            font.pixelSize: 11
+                            color: "#64748B"
+                        }
+
+                        TextInput {
+                            id: fileSearchInput
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            verticalAlignment: TextInput.AlignVCenter
+                            color: "#F0F6FC"
+                            font.pixelSize: 11
+                            clip: true
+                            selectByMouse: true
+                            text: root.fileSearchQuery
+                            onTextChanged: root.fileSearchQuery = text
+
+                            Keys.onEscapePressed: {
+                                fileSearchInput.text = "";
+                                root.fileSearchQuery = "";
+                            }
+
+                            Text {
+                                text: "Filtra file modificati..."
+                                color: "#64748B"
+                                font.pixelSize: 11
+                                visible: fileSearchInput.text === "" && !fileSearchInput.activeFocus
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+
+                        // Clear button (visible when there is search text)
+                        Rectangle {
+                            Layout.preferredWidth: 16
+                            Layout.preferredHeight: 16
+                            radius: 8
+                            color: clearSearchMouse.containsMouse ? "#334155" : "transparent"
+                            visible: fileSearchInput.text !== ""
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "✕"
+                                color: "#94A3B8"
+                                font.pixelSize: 10
+                                font.bold: true
+                            }
+
+                            MouseArea {
+                                id: clearSearchMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    fileSearchInput.text = "";
+                                    root.fileSearchQuery = "";
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // ==========================================
                 // 1. PATH VIEW (Flat list)
                 // ==========================================
@@ -1850,6 +2234,7 @@ Rectangle {
                     Layout.fillHeight: true
                     clip: true
                     visible: root.fileViewMode === "path"
+                    ScrollBar.vertical: FluxScrollBar {}
 
                     ListView {
                         id: gitKrakenFilesList
@@ -1857,6 +2242,8 @@ Rectangle {
                         model: root.sortedPathFiles
                         spacing: 2
                         boundsBehavior: Flickable.StopAtBounds
+                        maximumFlickVelocity: 6000
+                        flickDeceleration: 1000
 
                         delegate: Rectangle {
                             id: fDelegate
@@ -2030,10 +2417,16 @@ Rectangle {
                                 id: fileRowMouse
                                 z: 0
                                 anchors.fill: parent
+                                acceptedButtons: Qt.LeftButton | Qt.RightButton
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    root.openFileDiff(modelData);
+                                onClicked: function(mouse) {
+                                    if (mouse.button === Qt.RightButton) {
+                                        changedFileContextMenu.targetPath = modelData.path;
+                                        changedFileContextMenu.popup();
+                                    } else {
+                                        root.openFileDiff(modelData);
+                                    }
                                 }
                             }
                         }
@@ -2048,6 +2441,7 @@ Rectangle {
                     Layout.fillHeight: true
                     clip: true
                     visible: root.fileViewMode === "tree"
+                    ScrollBar.vertical: FluxScrollBar {}
 
                     ListView {
                         id: gitKrakenTreeList
@@ -2055,6 +2449,8 @@ Rectangle {
                         model: root.treeItems
                         spacing: 2
                         boundsBehavior: Flickable.StopAtBounds
+                        maximumFlickVelocity: 6000
+                        flickDeceleration: 1000
 
                         delegate: Rectangle {
                             id: treeDelegate
@@ -2268,10 +2664,14 @@ Rectangle {
                                 id: treeRowMouse
                                 z: 0
                                 anchors.fill: parent
+                                acceptedButtons: Qt.LeftButton | Qt.RightButton
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (treeDelegate.isFolder) {
+                                onClicked: function(mouse) {
+                                    if (mouse.button === Qt.RightButton && !treeDelegate.isFolder && modelData.file) {
+                                        changedFileContextMenu.targetPath = modelData.file.path;
+                                        changedFileContextMenu.popup();
+                                    } else if (treeDelegate.isFolder) {
                                         root.toggleFolder(modelData.fullPath);
                                     } else {
                                         root.openFileDiff(modelData.file);
@@ -2900,6 +3300,352 @@ Rectangle {
                     onClicked: {
                         if (root.branchManager) root.branchManager.deleteTag(deleteTagConfirmDialog.targetTag);
                         deleteTagConfirmDialog.close();
+                    }
+                }
+            }
+        }
+    }
+
+    // ==========================================
+    // CHANGED FILE CONTEXT MENU
+    // ==========================================
+    Menu {
+        id: changedFileContextMenu
+        property string targetPath: ""
+
+        MenuItem {
+            text: "📄 Cronologia file (Ctrl+H)"
+            font.pixelSize: 11
+            font.bold: true
+            onClicked: {
+                if (changedFileContextMenu.targetPath !== "") {
+                    root.selectFileForHistory(changedFileContextMenu.targetPath);
+                }
+            }
+        }
+
+        MenuItem {
+            text: "📋 Copia percorso file"
+            font.pixelSize: 11
+            onClicked: {
+                if (root.branchManager && changedFileContextMenu.targetPath !== "") {
+                    root.branchManager.copyToClipboard(changedFileContextMenu.targetPath);
+                }
+            }
+        }
+    }
+
+    // ==========================================
+    // FILE HISTORY SELECTION DIALOG (GitKraken style)
+    // ==========================================
+    Dialog {
+        id: fileHistoryModal
+        title: "Cronologia File (File History)"
+        modal: true
+        width: 580
+        height: 480
+        anchors.centerIn: Overlay.overlay
+
+        property var allRepoFiles: []
+        property var filteredRepoFiles: []
+
+        function openModal() {
+            var files = (root.branchManager) ? root.branchManager.listRepositoryFiles() : [];
+            allRepoFiles = files || [];
+            fileHistorySearchField.text = "";
+            applyFilter("");
+            open();
+            fileHistorySearchField.forceActiveFocus();
+        }
+
+        function applyFilter(query) {
+            var q = query.trim().toLowerCase();
+            if (q === "") {
+                filteredRepoFiles = allRepoFiles.slice(0, 200);
+            } else {
+                var res = [];
+                for (var i = 0; i < allRepoFiles.length && res.length < 200; ++i) {
+                    var f = allRepoFiles[i];
+                    if (f.toLowerCase().indexOf(q) !== -1) {
+                        res.push(f);
+                    }
+                }
+                filteredRepoFiles = res;
+            }
+            if (fileHistoryResultsList.count > 0) {
+                fileHistoryResultsList.currentIndex = 0;
+            } else {
+                fileHistoryResultsList.currentIndex = -1;
+            }
+        }
+
+        function confirmSelection() {
+            var path = "";
+            if (fileHistoryResultsList.currentIndex >= 0 && fileHistoryResultsList.currentIndex < filteredRepoFiles.length) {
+                path = filteredRepoFiles[fileHistoryResultsList.currentIndex];
+            } else if (fileHistorySearchField.text.trim().length > 0) {
+                path = fileHistorySearchField.text.trim();
+            }
+            if (path !== "") {
+                root.selectFileForHistory(path);
+            }
+        }
+
+        background: Rectangle {
+            color: "#0F172A"
+            radius: 8
+            border.color: "#334155"
+            border.width: 1
+        }
+
+        header: Rectangle {
+            color: "#1E293B"
+            height: 42
+            radius: 8
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 14
+                anchors.rightMargin: 14
+
+                Text {
+                    text: "📄 Cronologia File (File History)"
+                    color: "#F8FAFC"
+                    font.bold: true
+                    font.pixelSize: 13
+                }
+
+                Rectangle {
+                    color: "#0F172A"
+                    radius: 3
+                    border.color: "#38BDF8"
+                    border.width: 1
+                    implicitWidth: 50
+                    implicitHeight: 20
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Ctrl+H"
+                        color: "#38BDF8"
+                        font.pixelSize: 10
+                        font.bold: true
+                    }
+                }
+
+                Item { Layout.fillWidth: true }
+
+                Text {
+                    text: (fileHistoryModal.allRepoFiles.length) + " file tracciati"
+                    color: "#64748B"
+                    font.pixelSize: 11
+                }
+            }
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 10
+
+            Text {
+                text: "Seleziona o cerca un file per esaminarne l'intera storia dei commit e visualizzarne i diff:"
+                color: "#94A3B8"
+                font.pixelSize: 11
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 36
+                radius: 6
+                color: "#020617"
+                border.color: fileHistorySearchField.activeFocus ? "#38BDF8" : "#334155"
+                border.width: 1
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    spacing: 8
+
+                    Text {
+                        text: "🔍"
+                        font.pixelSize: 12
+                        color: "#64748B"
+                    }
+
+                    TextField {
+                        id: fileHistorySearchField
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        color: "#F8FAFC"
+                        font.pixelSize: 12
+                        background: Item {}
+                        placeholderText: "Cerca percorso o nome file (es. main.cpp, src/core/...)..."
+                        selectByMouse: true
+
+                        onTextChanged: fileHistoryModal.applyFilter(text)
+
+                        Keys.onDownPressed: function(event) {
+                            if (fileHistoryResultsList.currentIndex < fileHistoryModal.filteredRepoFiles.length - 1) {
+                                fileHistoryResultsList.currentIndex++;
+                                fileHistoryResultsList.positionViewAtIndex(fileHistoryResultsList.currentIndex, ListView.Contain);
+                            }
+                            event.accepted = true;
+                        }
+
+                        Keys.onUpPressed: function(event) {
+                            if (fileHistoryResultsList.currentIndex > 0) {
+                                fileHistoryResultsList.currentIndex--;
+                                fileHistoryResultsList.positionViewAtIndex(fileHistoryResultsList.currentIndex, ListView.Contain);
+                            }
+                            event.accepted = true;
+                        }
+
+                        Keys.onReturnPressed: function(event) {
+                            fileHistoryModal.confirmSelection();
+                            event.accepted = true;
+                        }
+                        Keys.onEnterPressed: function(event) {
+                            fileHistoryModal.confirmSelection();
+                            event.accepted = true;
+                        }
+                        Keys.onEscapePressed: function(event) {
+                            fileHistoryModal.close();
+                            event.accepted = true;
+                        }
+                    }
+
+                    Button {
+                        visible: fileHistorySearchField.text.length > 0
+                        text: "✕"
+                        flat: true
+                        onClicked: fileHistorySearchField.text = ""
+                        contentItem: Text {
+                            text: "✕"
+                            color: "#8B949E"
+                            font.pixelSize: 11
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        background: Item {}
+                    }
+                }
+            }
+
+            // Results List
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                radius: 6
+                color: "#090D16"
+                border.color: "#1E293B"
+                border.width: 1
+                clip: true
+
+                ListView {
+                    id: fileHistoryResultsList
+                    anchors.fill: parent
+                    anchors.margins: 4
+                    model: fileHistoryModal.filteredRepoFiles
+                    spacing: 2
+                    boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: FluxScrollBar {}
+
+                    delegate: Rectangle {
+                        id: fileItemRect
+                        width: fileHistoryResultsList.width - 8
+                        height: 32
+                        radius: 4
+                        property bool isCurrent: fileHistoryResultsList.currentIndex === index
+                        color: isCurrent ? "#1E3A8A" : (fileItemMouse.containsMouse ? "#1E293B" : "transparent")
+                        border.color: isCurrent ? "#38BDF8" : "transparent"
+                        border.width: 1
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 8
+                            anchors.rightMargin: 8
+                            spacing: 8
+
+                            Text {
+                                text: "📄"
+                                font.pixelSize: 12
+                            }
+
+                            // Directory prefix (dimmed)
+                            Text {
+                                text: root.getDirectory(modelData)
+                                color: "#64748B"
+                                font.pixelSize: 11
+                                elide: Text.ElideMiddle
+                                Layout.maximumWidth: Math.floor(fileItemRect.width * 0.45)
+                                visible: text !== ""
+                            }
+
+                            // Filename (highlighted)
+                            Text {
+                                text: root.getFilename(modelData)
+                                color: fileItemRect.isCurrent ? "#38BDF8" : "#F1F5F9"
+                                font.bold: true
+                                font.pixelSize: 11
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+                        }
+
+                        MouseArea {
+                            id: fileItemMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                fileHistoryResultsList.currentIndex = index;
+                                fileHistoryModal.confirmSelection();
+                            }
+                        }
+                    }
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Nessun file trovato"
+                        color: "#64748B"
+                        font.pixelSize: 12
+                        visible: fileHistoryModal.filteredRepoFiles.length === 0
+                    }
+                }
+            }
+        }
+
+        footer: Rectangle {
+            color: "#1E293B"
+            height: 48
+            radius: 8
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 14
+                anchors.rightMargin: 14
+                spacing: 10
+
+                Text {
+                    text: "Suggerimento: usa i tasti ↑ ↓ per navigare e Invio per selezionare"
+                    color: "#64748B"
+                    font.pixelSize: 10
+                }
+
+                Item { Layout.fillWidth: true }
+
+                Button {
+                    text: "Annulla"
+                    onClicked: fileHistoryModal.close()
+                }
+
+                Button {
+                    text: "Mostra Cronologia"
+                    enabled: (fileHistoryResultsList.currentIndex >= 0 && fileHistoryResultsList.currentIndex < fileHistoryModal.filteredRepoFiles.length) || fileHistorySearchField.text.trim().length > 0
+                    onClicked: fileHistoryModal.confirmSelection()
+                    contentItem: Text {
+                        text: "Mostra Cronologia"
+                        color: parent.enabled ? "#38BDF8" : "#64748B"
+                        font.bold: true
+                        horizontalAlignment: Text.AlignHCenter
                     }
                 }
             }

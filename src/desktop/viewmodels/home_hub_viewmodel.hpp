@@ -21,6 +21,10 @@ namespace gf::workspaces::bl {
 class WorkspaceService;
 }
 
+namespace gf::git::bl {
+class GitCloneService;
+}
+
 namespace gf::desktop {
 
 class HomeHubViewModel : public QObject {
@@ -38,10 +42,20 @@ class HomeHubViewModel : public QObject {
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
     Q_PROPERTY(QString lastSuccessMessage READ lastSuccessMessage NOTIFY lastSuccessMessageChanged)
 
+    Q_PROPERTY(bool isCloning READ isCloning NOTIFY isCloningChanged)
+    Q_PROPERTY(QString cloneStatusMessage READ cloneStatusMessage NOTIFY cloneStatusMessageChanged)
+    Q_PROPERTY(int cloneProgressPercent READ cloneProgressPercent NOTIFY cloneProgressPercentChanged)
+    Q_PROPERTY(QString lastCloneDestinationPath READ lastCloneDestinationPath NOTIFY lastCloneDestinationPathChanged)
+
+    Q_PROPERTY(bool showRepositories READ showRepositories WRITE setShowRepositories NOTIFY showRepositoriesChanged)
+    Q_PROPERTY(bool showGroups READ showGroups WRITE setShowGroups NOTIFY showGroupsChanged)
+    Q_PROPERTY(bool showWorkspaces READ showWorkspaces WRITE setShowWorkspaces NOTIFY showWorkspacesChanged)
+
 public:
     explicit HomeHubViewModel(gf::repositories::bl::RepositoryService& repoService,
                               gf::groups::bl::GroupService& groupService,
                               gf::workspaces::bl::WorkspaceService& workspaceService,
+                              gf::git::bl::GitCloneService* cloneService = nullptr,
                               QObject* parent = nullptr);
     ~HomeHubViewModel() override = default;
 
@@ -59,6 +73,23 @@ public:
     [[nodiscard]] QString lastError() const noexcept;
     [[nodiscard]] QString lastSuccessMessage() const noexcept;
 
+    [[nodiscard]] bool isCloning() const noexcept { return m_isCloning; }
+    [[nodiscard]] QString cloneStatusMessage() const noexcept { return m_cloneStatusMessage; }
+    [[nodiscard]] int cloneProgressPercent() const noexcept { return m_cloneProgressPercent; }
+    [[nodiscard]] QString lastCloneDestinationPath() const noexcept { return m_lastCloneDestinationPath; }
+    Q_INVOKABLE void setLastCloneDestinationPath(const QString& path);
+
+    [[nodiscard]] bool showRepositories() const noexcept { return m_showRepositories; }
+    void setShowRepositories(bool show);
+    [[nodiscard]] bool showGroups() const noexcept { return m_showGroups; }
+    void setShowGroups(bool show);
+    [[nodiscard]] bool showWorkspaces() const noexcept { return m_showWorkspaces; }
+    void setShowWorkspaces(bool show);
+
+    Q_INVOKABLE void toggleShowRepositories();
+    Q_INVOKABLE void toggleShowGroups();
+    Q_INVOKABLE void toggleShowWorkspaces();
+
     Q_INVOKABLE void refreshAll();
     Q_INVOKABLE void clearFeedback();
 
@@ -66,7 +97,13 @@ public:
     Q_INVOKABLE void openInTerminal(const QString& path);
     Q_INVOKABLE void copyToClipboard(const QString& text);
 
+    Q_INVOKABLE void resetCloneState();
     Q_INVOKABLE bool addRepository(const QString& path, const QString& displayName = QString());
+    Q_INVOKABLE void cloneRepositoryAsync(const QString& remoteUrl,
+                                          const QString& destinationParentFolder,
+                                          const QString& directoryName,
+                                          const QString& displayName = QString());
+    Q_INVOKABLE QString extractRepoNameFromUrl(const QString& url) const;
     Q_INVOKABLE bool reconnectRepository(const QString& repoId, const QString& newPath);
     Q_INVOKABLE bool renameRepository(const QString& repoId, const QString& newDisplayName);
     Q_INVOKABLE bool removeRepository(const QString& repoId);
@@ -81,6 +118,20 @@ public:
                                      const QStringList& groupIds = {},
                                      const QStringList& repoIds = {});
     Q_INVOKABLE bool removeWorkspace(const QString& workspaceId);
+    Q_INVOKABLE bool addRepositoryToWorkspace(const QString& workspaceId, const QString& repoId);
+    Q_INVOKABLE bool removeRepositoryFromWorkspace(const QString& workspaceId, const QString& repoId);
+    Q_INVOKABLE bool addGroupToWorkspace(const QString& workspaceId, const QString& groupId);
+    Q_INVOKABLE bool removeGroupFromWorkspace(const QString& workspaceId, const QString& groupId);
+
+    Q_INVOKABLE bool isRepositoryInGroup(const QString& groupId, const QString& repoId) const;
+    Q_INVOKABLE bool isRepositoryInWorkspace(const QString& workspaceId, const QString& repoId) const;
+    Q_INVOKABLE bool isGroupInWorkspace(const QString& workspaceId, const QString& groupId) const;
+    Q_INVOKABLE QStringList getRepositoryIdsForGroup(const QString& groupId) const;
+    Q_INVOKABLE QStringList getRepositoryIdsForWorkspace(const QString& workspaceId) const;
+    Q_INVOKABLE QVariantList getAvailableRepositoriesForGroup(const QString& groupId) const;
+    Q_INVOKABLE QVariantList getAvailableRepositoriesForWorkspace(const QString& workspaceId) const;
+    Q_INVOKABLE QVariantList getAvailableGroupsForRepository(const QString& repoId) const;
+    Q_INVOKABLE QVariantList getAvailableGroupsForWorkspace(const QString& workspaceId) const;
 
     Q_INVOKABLE void openRepository(const QString& repoId);
     Q_INVOKABLE void openGroup(const QString& groupId);
@@ -92,6 +143,16 @@ signals:
     void groupsChanged();
     void workspacesChanged();
     void statusMessageChanged(const QString& message);
+
+    void isCloningChanged(bool isCloning);
+    void cloneStatusMessageChanged(const QString& message);
+    void cloneProgressPercentChanged(int percent);
+    void cloneCompleted(bool success, const QString& message);
+    void lastCloneDestinationPathChanged(const QString& path);
+
+    void showRepositoriesChanged(bool show);
+    void showGroupsChanged(bool show);
+    void showWorkspacesChanged(bool show);
 
     void repositoryOpened(const QString& repoId, const QString& name, const QString& path);
     void repositoryAdded(const QString& repoName, const QString& path);
@@ -109,6 +170,7 @@ private:
     gf::repositories::bl::RepositoryService& m_repoService;
     gf::groups::bl::GroupService& m_groupService;
     gf::workspaces::bl::WorkspaceService& m_workspaceService;
+    gf::git::bl::GitCloneService* m_cloneService{nullptr};
 
     std::unique_ptr<RepositoryListModel> m_repoModel;
     std::unique_ptr<GroupListModel> m_groupModel;
@@ -118,6 +180,14 @@ private:
     QString m_statusMessage;
     QString m_lastError;
     QString m_lastSuccessMessage;
+
+    bool m_isCloning{false};
+    QString m_cloneStatusMessage;
+    int m_cloneProgressPercent{0};
+    QString m_lastCloneDestinationPath;
+    bool m_showRepositories{true};
+    bool m_showGroups{true};
+    bool m_showWorkspaces{true};
 };
 
 } // namespace gf::desktop

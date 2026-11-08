@@ -107,6 +107,8 @@ Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 32
             enabled: commitBox ? commitBox.canCommit : false
+            ToolTip.visible: hovered
+            ToolTip.text: "Esegui Commit (Ctrl+Invio)"
 
             background: Rectangle {
                 color: {
@@ -145,6 +147,12 @@ Rectangle {
             onClicked: {
                 doCommit();
             }
+        }
+
+        Shortcut {
+            sequence: "Ctrl+Return"
+            enabled: commitBox ? commitBox.canCommit : false
+            onActivated: doCommit()
         }
     }
 

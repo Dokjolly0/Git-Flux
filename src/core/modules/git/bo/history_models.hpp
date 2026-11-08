@@ -29,6 +29,7 @@ struct CommitLogOptions {
     std::optional<std::string> pathFilter{std::nullopt};
     bool followRenames{false};
     bool topoOrder{false};
+    bool dateOrder{false};
 };
 
 enum class TagType {

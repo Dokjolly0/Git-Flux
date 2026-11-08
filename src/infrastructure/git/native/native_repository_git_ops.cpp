@@ -1333,7 +1333,9 @@ NativeRepositoryGitOps::getCommitLog(const std::filesystem::path& repoPath,
         "--format=%H%x00%h%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%D%x00%s%x00%b%x1e"
     };
 
-    if (options.topoOrder) {
+    if (options.dateOrder) {
+        args.emplace_back("--date-order");
+    } else if (options.topoOrder) {
         args.emplace_back("--topo-order");
     }
 
@@ -1392,6 +1394,54 @@ NativeRepositoryGitOps::getCommitLog(const std::filesystem::path& repoPath,
     }
 
     return gf::git::bl::CommitLogParser::parse(execResult->stdoutBytes);
+}
+
+std::expected<std::vector<std::string>, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::listTrackedFiles(const std::filesystem::path& repoPath) {
+    gf::git::bo::GitCommand cmd{
+        .args = {"ls-files"},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
+        .timeout = std::chrono::milliseconds{15'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile recuperare i file del repository: " + execResult.error().message,
+            .command = "git ls-files"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes,
+            .command = "git ls-files"
+        });
+    }
+
+    std::vector<std::string> files;
+    std::string_view out = execResult->stdoutBytes;
+    std::size_t start = 0;
+    while (start < out.size()) {
+        std::size_t end = out.find('\n', start);
+        if (end == std::string_view::npos) {
+            end = out.size();
+        }
+        std::string_view line = out.substr(start, end - start);
+        if (!line.empty() && line.back() == '\r') {
+            line.remove_suffix(1);
+        }
+        if (!line.empty()) {
+            files.emplace_back(line);
+        }
+        start = end + 1;
+    }
+    return files;
 }
 
 std::expected<std::vector<gf::git::bo::GitTag>, gf::git::ports::GitOpsError>
@@ -3095,6 +3145,167 @@ NativeRepositoryGitOps::createWorktree(const std::filesystem::path& repoPath,
     }
 
     return {};
+}
+
+std::expected<gf::git::bo::CloneRepositoryResult, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::cloneRepository(const gf::git::bo::CloneRepositoryOptions& options) {
+    if (options.remoteUrl.empty()) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::InvalidRemoteUrl,
+            .exitCode = -1,
+            .message = "L'URL del repository remoto non può essere vuoto",
+            .command = "git clone"
+        });
+    }
+
+    if (options.destinationPath.empty()) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::InvalidRepositoryPath,
+            .exitCode = -1,
+            .message = "Il percorso di destinazione non può essere vuoto",
+            .command = "git clone"
+        });
+    }
+
+    std::error_code ec;
+    if (std::filesystem::exists(options.destinationPath, ec) && !std::filesystem::is_empty(options.destinationPath, ec)) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::DestinationAlreadyExists,
+            .exitCode = -1,
+            .message = "La cartella di destinazione esiste già e non è vuota: " + options.destinationPath.string(),
+            .command = "git clone"
+        });
+    }
+
+    // Ensure parent directory exists
+    const auto parentDir = options.destinationPath.parent_path();
+    if (!parentDir.empty() && !std::filesystem::exists(parentDir, ec)) {
+        std::filesystem::create_directories(parentDir, ec);
+    }
+
+    std::vector<std::string> args = {"clone", "--progress"};
+    if (options.recursiveSubmodules) {
+        args.emplace_back("--recurse-submodules");
+    }
+    if (options.branch.has_value() && !options.branch->empty()) {
+        args.emplace_back("-b");
+        args.push_back(*options.branch);
+    }
+    args.push_back(options.remoteUrl);
+    args.push_back(options.destinationPath.string());
+
+    const auto workingDir = (!parentDir.empty() && std::filesystem::exists(parentDir, ec))
+                                ? parentDir
+                                : std::filesystem::temp_directory_path();
+
+    std::string lineBuffer;
+    auto parseProgressChunk = [&lineBuffer, &options](std::string_view chunk) {
+        if (!options.progressCallback) return;
+        lineBuffer.append(chunk);
+
+        size_t pos = 0;
+        while (pos < lineBuffer.size()) {
+            size_t delim = lineBuffer.find_first_of("\r\n", pos);
+            if (delim == std::string::npos) {
+                break;
+            }
+
+            std::string_view line(lineBuffer.data() + pos, delim - pos);
+            while (!line.empty() && (line.front() == ' ' || line.front() == '\t')) line.remove_prefix(1);
+            while (!line.empty() && (line.back() == ' ' || line.back() == '\t')) line.remove_suffix(1);
+
+            if (!line.empty()) {
+                int percent = -1;
+                auto pctPos = line.find('%');
+                if (pctPos != std::string_view::npos && pctPos > 0) {
+                    size_t startDigits = pctPos;
+                    while (startDigits > 0 && std::isdigit(static_cast<unsigned char>(line[startDigits - 1]))) {
+                        --startDigits;
+                    }
+                    if (startDigits < pctPos) {
+                        try {
+                            percent = std::stoi(std::string(line.substr(startDigits, pctPos - startDigits)));
+                        } catch (...) {}
+                    }
+                }
+                options.progressCallback(percent, line);
+            }
+
+            pos = delim + 1;
+        }
+
+        if (pos > 0) {
+            lineBuffer.erase(0, pos);
+        }
+    };
+
+    gf::git::bo::GitCommand cmd{
+        .args = std::move(args),
+        .workingDirectory = workingDir,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = options.timeout,
+        .onStderrChunk = std::move(parseProgressChunk)
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile eseguire il clone: " + execResult.error().message,
+            .command = "git clone"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+        const auto& err = execResult->stderrBytes;
+
+        if (err.find("already exists and is not an empty directory") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::DestinationAlreadyExists;
+        } else if (err.find("Could not resolve host") != std::string::npos ||
+                   err.find("Authentication failed") != std::string::npos ||
+                   err.find("Permission denied") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::NetworkAuthenticationFailed;
+        } else if (err.find("does not appear to be a git repository") != std::string::npos ||
+                   err.find("not found") != std::string::npos ||
+                   err.find("fatal: repository") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::RemoteNotFound;
+        }
+
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = kind,
+            .exitCode = execResult->exitCode,
+            .message = err.empty() ? execResult->stdoutBytes : err,
+            .command = "git clone"
+        });
+    }
+
+    // Detect initial branch of cloned repository
+    std::string branchName = "main";
+    gf::git::bo::GitCommand branchCmd{
+        .args = {"branch", "--show-current"},
+        .workingDirectory = options.destinationPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{5'000}
+    };
+    if (auto branchRes = m_executor.execute(branchCmd); branchRes && branchRes->exitCode == 0) {
+        auto out = branchRes->stdoutBytes;
+        while (!out.empty() && (out.back() == '\n' || out.back() == '\r')) {
+            out.pop_back();
+        }
+        if (!out.empty()) {
+            branchName = std::move(out);
+        }
+    }
+
+    std::string displayName = options.destinationPath.filename().string();
+
+    return gf::git::bo::CloneRepositoryResult{
+        .repositoryPath = options.destinationPath,
+        .displayName = std::move(displayName),
+        .initialBranch = std::move(branchName)
+    };
 }
 
 } // namespace gf::infra::git
