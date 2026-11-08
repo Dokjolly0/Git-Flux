@@ -13,11 +13,11 @@ public:
     explicit CryptoVault(std::filesystem::path keyStorageDir = "");
     ~CryptoVault() = default;
 
-    /// Encrypts a plaintext secret (such as a Personal Access Token) using Argon2id (KDF) + AES-256-GCM.
+    /// Encrypts a plaintext secret (such as a Personal Access Token) using KDF (PBKDF2/Argon2id) + AES-256-GCM.
     [[nodiscard]] std::expected<core::git::bo::EncryptedSecret, std::string>
     encrypt(const std::string& plaintext) const;
 
-    /// Decrypts an encrypted secret back into plaintext using Argon2id (KDF) + AES-256-GCM.
+    /// Decrypts an encrypted secret back into plaintext using KDF (PBKDF2/Argon2id) + AES-256-GCM.
     [[nodiscard]] std::expected<std::string, std::string>
     decrypt(const core::git::bo::EncryptedSecret& secret) const;
 
