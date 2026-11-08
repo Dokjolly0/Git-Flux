@@ -20,14 +20,18 @@ Dialog {
 
     property bool showTokenConfig: false
     property bool showTokenText: false
+    property bool showRepoPicker: false
     property string selectedRepoFullName: ""
+    property bool selectedRepoIsPrivate: false
 
     function openWithDefaultFolder(defaultParentFolder) {
         urlField.text = "";
         dirNameField.text = "";
         displayNameField.text = "";
         selectedRepoFullName = "";
+        selectedRepoIsPrivate = false;
         showTokenConfig = false;
+        showRepoPicker = false;
         dirNameField.propertyModified = false;
 
         if (defaultParentFolder && defaultParentFolder.length > 0) {
@@ -39,9 +43,9 @@ Dialog {
         }
 
         root.open();
-        if (searchField.visible) {
+        if (typeof searchField !== "undefined" && searchField && searchField.visible) {
             searchField.forceActiveFocus();
-        } else {
+        } else if (typeof urlField !== "undefined" && urlField && urlField.visible) {
             urlField.forceActiveFocus();
         }
     }
@@ -229,6 +233,8 @@ Dialog {
                                     if (root.profilesVm) {
                                         root.profilesVm.selectProfile(modelData.id);
                                         root.selectedRepoFullName = "";
+                                        root.selectedRepoIsPrivate = false;
+                                        root.showRepoPicker = false;
                                     }
                                 }
                             }
@@ -666,253 +672,361 @@ Dialog {
                     }
 
                     // ---------------------------------------------------------
-                    // C. REPOSITORY SEARCH & LIST (When Provider is selected)
+                    // C. REPOSITORY SELECTOR & EXPANDABLE LIST (GitKraken Clean)
                     // ---------------------------------------------------------
                     ColumnLayout {
                         Layout.fillWidth: true
                         visible: root.profilesVm ? (root.profilesVm.activeProfileId !== "url") : false
                         spacing: 6
 
-                        // Search Bar & Counter
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-
-                            TextField {
-                                id: searchField
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 32
-                                placeholderText: "🔍 Cerca tra i tuoi repository (es. Git-Flux, template, app)..."
-                                placeholderTextColor: "#475569"
-                                color: "#F8FAFC"
-                                font.pixelSize: 12
-                                selectByMouse: true
-                                background: Rectangle {
-                                    color: "#0F172A"
-                                    radius: 6
-                                    border.color: searchField.activeFocus ? "#38BDF8" : "#334155"
-                                    border.width: 1
-                                }
-                                onTextChanged: {
-                                    if (root.profilesVm && root.profilesVm.remoteReposModel) {
-                                        root.profilesVm.remoteReposModel.searchFilter = text;
-                                    }
-                                }
-                            }
-
-                            // Clear search button
-                            Button {
-                                visible: searchField.text.length > 0
-                                text: "✕"
-                                Layout.preferredWidth: 32
-                                Layout.preferredHeight: 32
-                                onClicked: searchField.text = ""
-                                background: Rectangle { color: "#1E293B"; radius: 4 }
-                                contentItem: Text {
-                                    text: "✕"
-                                    color: "#94A3B8"
-                                    font.pixelSize: 11
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                            }
-
-                            // Counter Badge
-                            Rectangle {
-                                implicitHeight: 32
-                                implicitWidth: countText.implicitWidth + 16
-                                color: "#1E293B"
-                                radius: 6
-                                border.color: "#334155"
-                                Text {
-                                    id: countText
-                                    anchors.centerIn: parent
-                                    text: {
-                                        if (!root.profilesVm || !root.profilesVm.remoteReposModel) return "0 repo";
-                                        var filtered = root.profilesVm.remoteReposModel.filteredCount;
-                                        var total = root.profilesVm.remoteReposModel.totalCount;
-                                        return filtered + " di " + total + " repo";
-                                    }
-                                    color: "#38BDF8"
-                                    font.pixelSize: 11
-                                    font.bold: true
-                                }
-                            }
+                        Text {
+                            text: "Repository da Clonare:"
+                            color: "#94A3B8"
+                            font.pixelSize: 12
+                            font.bold: true
                         }
 
-                        // Loading State
+                        // Compact Clickable Selector Box
                         Rectangle {
+                            id: repoSelectorBox
                             Layout.fillWidth: true
-                            height: 36
-                            visible: Boolean(root.profilesVm && root.profilesVm.isFetching)
-                            color: "#0F172A"
+                            height: 42
                             radius: 6
+                            color: repoSelectorMouse.containsMouse ? "#1E293B" : "#0B1120"
+                            border.color: root.showRepoPicker ? "#38BDF8" : (root.selectedRepoFullName.length > 0 ? "#0284C7" : "#334155")
+                            border.width: root.showRepoPicker ? 2 : 1
+
                             RowLayout {
-                                anchors.centerIn: parent
-                                spacing: 8
-                                ProgressBar { indeterminate: true; Layout.preferredWidth: 100 }
+                                anchors.fill: parent
+                                anchors.leftMargin: 12
+                                anchors.rightMargin: 12
+                                spacing: 10
+
                                 Text {
-                                    text: "Caricamento repository in corso..."
-                                    color: "#38BDF8"
-                                    font.pixelSize: 12
+                                    text: root.selectedRepoFullName.length > 0 ? (root.selectedRepoIsPrivate ? "🔒" : "🌐") : "📂"
+                                    font.pixelSize: 16
+                                }
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 1
+
+                                    Text {
+                                        text: root.selectedRepoFullName.length > 0
+                                              ? root.selectedRepoFullName
+                                              : "Clicca per selezionare un repository da " + (root.profilesVm ? root.profilesVm.activeProfileDisplayName : "server") + "..."
+                                        color: root.selectedRepoFullName.length > 0 ? "#F8FAFC" : "#64748B"
+                                        font.pixelSize: 12
+                                        font.bold: root.selectedRepoFullName.length > 0
+                                        elide: Text.ElideRight
+                                        Layout.fillWidth: true
+                                    }
+
+                                    Text {
+                                        visible: root.selectedRepoFullName.length > 0
+                                        text: urlField.text
+                                        color: "#38BDF8"
+                                        font.pixelSize: 10
+                                        elide: Text.ElideRight
+                                        Layout.fillWidth: true
+                                    }
+                                }
+
+                                Rectangle {
+                                    implicitHeight: 24
+                                    implicitWidth: actionBtnText.implicitWidth + 14
+                                    radius: 4
+                                    color: root.showRepoPicker ? "#0284C7" : (repoSelectorMouse.containsMouse ? "#334155" : "#1E293B")
+                                    border.color: root.showRepoPicker ? "#38BDF8" : "#475569"
+                                    Text {
+                                        id: actionBtnText
+                                        anchors.centerIn: parent
+                                        text: root.showRepoPicker
+                                              ? "Chiudi ▲"
+                                              : (root.selectedRepoFullName.length > 0 ? "Cambia ▼" : "Scegli ▼")
+                                        color: root.showRepoPicker ? "#FFFFFF" : "#94A3B8"
+                                        font.pixelSize: 11
+                                        font.bold: true
+                                    }
+                                }
+                            }
+
+                            MouseArea {
+                                id: repoSelectorMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    root.showRepoPicker = !root.showRepoPicker;
+                                    if (root.showRepoPicker) {
+                                        searchField.forceActiveFocus();
+                                    }
                                 }
                             }
                         }
 
-                        // Fetch Error Banner
+                        // Expandable Dropdown Drawer for Repository Selection
                         Rectangle {
+                            id: repoPickerContainer
                             Layout.fillWidth: true
-                            visible: Boolean(root.profilesVm && root.profilesVm.fetchError.length > 0 && !root.profilesVm.isFetching)
-                            implicitHeight: fetchErrText.implicitHeight + 16
-                            color: "#450A0A"
+                            visible: root.showRepoPicker
+                            implicitHeight: repoPickerLayout.implicitHeight + 16
+                            color: "#080D1A"
                             radius: 6
-                            border.color: "#DC2626"
+                            border.color: "#38BDF8"
                             border.width: 1
-                            RowLayout {
+
+                            onVisibleChanged: {
+                                if (visible && typeof searchField !== "undefined") {
+                                    searchField.forceActiveFocus();
+                                }
+                            }
+
+                            ColumnLayout {
+                                id: repoPickerLayout
                                 anchors.fill: parent
                                 anchors.margins: 8
-                                spacing: 8
-                                Text {
-                                    id: fetchErrText
-                                    text: root.profilesVm ? root.profilesVm.fetchError : ""
-                                    color: "#FECACA"
-                                    font.pixelSize: 11
-                                    wrapMode: Text.Wrap
+                                spacing: 6
+
+                                // Search Bar & Counter & Clear
+                                RowLayout {
                                     Layout.fillWidth: true
-                                }
-                                Button {
-                                    text: "Inserisci Token"
-                                    Layout.preferredHeight: 24
-                                    onClicked: root.showTokenConfig = true
-                                    background: Rectangle { color: "#7F1D1D"; radius: 4 }
-                                    contentItem: Text { text: "Inserisci Token"; color: "#FFFFFF"; font.pixelSize: 10; font.bold: true }
-                                }
-                            }
-                        }
+                                    spacing: 8
 
-                        // Scrollable Remote Repository List View
-                        Rectangle {
-                            Layout.fillWidth: true
-                            height: 180
-                            color: "#070B14"
-                            radius: 6
-                            border.color: "#1E293B"
-                            border.width: 1
-                            clip: true
-
-                            ListView {
-                                id: repoListView
-                                anchors.fill: parent
-                                anchors.margins: 4
-                                spacing: 4
-                                model: root.profilesVm ? root.profilesVm.remoteReposModel : null
-                                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-
-                                delegate: Rectangle {
-                                    id: repoCard
-                                    width: repoListView.width - 8
-                                    height: 50
-                                    radius: 5
-
-                                    readonly property bool isSelected: root.selectedRepoFullName === model.fullName
-
-                                    color: isSelected ? "#0F2942" : (cardMouse.containsMouse ? "#1E293B" : "#0F172A")
-                                    border.color: isSelected ? "#38BDF8" : (cardMouse.containsMouse ? "#475569" : "#1E293B")
-                                    border.width: isSelected ? 2 : 1
-
-                                    RowLayout {
-                                        anchors.fill: parent
-                                        anchors.leftMargin: 10
-                                        anchors.rightMargin: 10
-                                        spacing: 8
-
-                                        // Privacy Icon (Lock or Globe)
-                                        Text {
-                                            text: model.isPrivate ? "🔒" : "🌐"
-                                            font.pixelSize: 13
+                                    TextField {
+                                        id: searchField
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 32
+                                        placeholderText: "🔍 Cerca tra i tuoi repository (es. FinancialManager, FileHub)..."
+                                        placeholderTextColor: "#475569"
+                                        color: "#F8FAFC"
+                                        font.pixelSize: 12
+                                        selectByMouse: true
+                                        background: Rectangle {
+                                            color: "#0F172A"
+                                            radius: 6
+                                            border.color: searchField.activeFocus ? "#38BDF8" : "#334155"
+                                            border.width: 1
                                         }
-
-                                        // Repository Details
-                                        ColumnLayout {
-                                            Layout.fillWidth: true
-                                            spacing: 1
-
-                                            RowLayout {
-                                                spacing: 6
-                                                Text {
-                                                    text: model.fullName
-                                                    color: repoCard.isSelected ? "#38BDF8" : "#F8FAFC"
-                                                    font.pixelSize: 12
-                                                    font.bold: true
-                                                    elide: Text.ElideRight
-                                                }
-
-                                                Text {
-                                                    visible: model.starsCount > 0
-                                                    text: "⭐ " + model.starsCount
-                                                    color: "#FBBF24"
-                                                    font.pixelSize: 10
-                                                }
-                                            }
-
-                                            Text {
-                                                text: model.description.length > 0 ? model.description : (model.activeCloneUrl)
-                                                color: "#94A3B8"
-                                                font.pixelSize: 11
-                                                elide: Text.ElideRight
-                                                Layout.fillWidth: true
+                                        onTextChanged: {
+                                            if (root.profilesVm && root.profilesVm.remoteReposModel) {
+                                                root.profilesVm.remoteReposModel.searchFilter = text;
                                             }
                                         }
+                                    }
 
-                                        // Selection Indicator Checkmark
+                                    Button {
+                                        visible: searchField.text.length > 0
+                                        text: "✕"
+                                        Layout.preferredWidth: 32
+                                        Layout.preferredHeight: 32
+                                        onClicked: searchField.text = ""
+                                        background: Rectangle { color: "#1E293B"; radius: 4 }
+                                        contentItem: Text {
+                                            text: "✕"
+                                            color: "#94A3B8"
+                                            font.pixelSize: 11
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                    }
+
+                                    // Counter Badge
+                                    Rectangle {
+                                        implicitHeight: 32
+                                        implicitWidth: countText.implicitWidth + 16
+                                        color: "#1E293B"
+                                        radius: 6
+                                        border.color: "#334155"
                                         Text {
-                                            visible: repoCard.isSelected
-                                            text: "✔"
+                                            id: countText
+                                            anchors.centerIn: parent
+                                            text: {
+                                                if (!root.profilesVm || !root.profilesVm.remoteReposModel) return "0 repo";
+                                                var filtered = root.profilesVm.remoteReposModel.filteredCount;
+                                                var total = root.profilesVm.remoteReposModel.totalCount;
+                                                return filtered + " di " + total + " repo";
+                                            }
                                             color: "#38BDF8"
-                                            font.pixelSize: 14
+                                            font.pixelSize: 11
                                             font.bold: true
                                         }
                                     }
+                                }
 
-                                    MouseArea {
-                                        id: cardMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            root.selectedRepoFullName = model.fullName;
-                                            urlField.text = model.activeCloneUrl;
-                                            dirNameField.text = model.name;
-                                            dirNameField.propertyModified = true;
+                                // Loading State
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    height: 36
+                                    visible: Boolean(root.profilesVm && root.profilesVm.isFetching)
+                                    color: "#0F172A"
+                                    radius: 6
+                                    RowLayout {
+                                        anchors.centerIn: parent
+                                        spacing: 8
+                                        ProgressBar { indeterminate: true; Layout.preferredWidth: 100 }
+                                        Text {
+                                            text: "Caricamento repository in corso..."
+                                            color: "#38BDF8"
+                                            font.pixelSize: 12
                                         }
                                     }
                                 }
 
-                                // Empty list placeholder
-                                Text {
-                                    anchors.centerIn: parent
-                                    visible: repoListView.count === 0 && (!root.profilesVm || !root.profilesVm.isFetching)
-                                    text: searchField.text.length > 0
-                                          ? "Nessun repository trovato per '" + searchField.text + "'"
-                                          : "Nessun repository disponibile per questo account."
-                                    color: "#64748B"
-                                    font.pixelSize: 12
+                                // Fetch Error Banner
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    visible: Boolean(root.profilesVm && root.profilesVm.fetchError.length > 0 && !root.profilesVm.isFetching)
+                                    implicitHeight: fetchErrText.implicitHeight + 16
+                                    color: "#450A0A"
+                                    radius: 6
+                                    border.color: "#DC2626"
+                                    border.width: 1
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 8
+                                        spacing: 8
+                                        Text {
+                                            id: fetchErrText
+                                            text: root.profilesVm ? root.profilesVm.fetchError : ""
+                                            color: "#FECACA"
+                                            font.pixelSize: 11
+                                            wrapMode: Text.Wrap
+                                            Layout.fillWidth: true
+                                        }
+                                        Button {
+                                            text: "Inserisci Token"
+                                            Layout.preferredHeight: 24
+                                            onClicked: root.showTokenConfig = true
+                                            background: Rectangle { color: "#7F1D1D"; radius: 4 }
+                                            contentItem: Text { text: "Inserisci Token"; color: "#FFFFFF"; font.pixelSize: 10; font.bold: true }
+                                        }
+                                    }
+                                }
+
+                                // Scrollable Remote Repository List View (height 190)
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    height: 190
+                                    color: "#070B14"
+                                    radius: 6
+                                    border.color: "#1E293B"
+                                    border.width: 1
+                                    clip: true
+
+                                    ListView {
+                                        id: repoListView
+                                        anchors.fill: parent
+                                        anchors.margins: 4
+                                        spacing: 4
+                                        model: root.profilesVm ? root.profilesVm.remoteReposModel : null
+                                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                                        delegate: Rectangle {
+                                            id: repoCard
+                                            width: repoListView.width - 8
+                                            height: 50
+                                            radius: 5
+
+                                            readonly property bool isSelected: root.selectedRepoFullName === model.fullName
+
+                                            color: isSelected ? "#0F2942" : (cardMouse.containsMouse ? "#1E293B" : "#0F172A")
+                                            border.color: isSelected ? "#38BDF8" : (cardMouse.containsMouse ? "#475569" : "#1E293B")
+                                            border.width: isSelected ? 2 : 1
+
+                                            RowLayout {
+                                                anchors.fill: parent
+                                                anchors.leftMargin: 10
+                                                anchors.rightMargin: 10
+                                                spacing: 8
+
+                                                Text {
+                                                    text: model.isPrivate ? "🔒" : "🌐"
+                                                    font.pixelSize: 13
+                                                }
+
+                                                ColumnLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: 1
+
+                                                    RowLayout {
+                                                        spacing: 6
+                                                        Text {
+                                                            text: model.fullName
+                                                            color: repoCard.isSelected ? "#38BDF8" : "#F8FAFC"
+                                                            font.pixelSize: 12
+                                                            font.bold: true
+                                                            elide: Text.ElideRight
+                                                        }
+
+                                                        Text {
+                                                            visible: model.starsCount > 0
+                                                            text: "⭐ " + model.starsCount
+                                                            color: "#FBBF24"
+                                                            font.pixelSize: 10
+                                                        }
+                                                    }
+
+                                                    Text {
+                                                        text: model.description.length > 0 ? model.description : (model.activeCloneUrl)
+                                                        color: "#94A3B8"
+                                                        font.pixelSize: 11
+                                                        elide: Text.ElideRight
+                                                        Layout.fillWidth: true
+                                                    }
+                                                }
+
+                                                Text {
+                                                    visible: repoCard.isSelected
+                                                    text: "✔"
+                                                    color: "#38BDF8"
+                                                    font.pixelSize: 14
+                                                    font.bold: true
+                                                }
+                                            }
+
+                                            MouseArea {
+                                                id: cardMouse
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: {
+                                                    root.selectedRepoFullName = model.fullName;
+                                                    root.selectedRepoIsPrivate = model.isPrivate;
+                                                    urlField.text = model.activeCloneUrl;
+                                                    dirNameField.text = model.name;
+                                                    dirNameField.propertyModified = true;
+                                                    root.showRepoPicker = false;
+                                                }
+                                            }
+                                        }
+
+                                        // Empty list placeholder
+                                        Text {
+                                            anchors.centerIn: parent
+                                            visible: repoListView.count === 0 && (!root.profilesVm || !root.profilesVm.isFetching)
+                                            text: searchField.text.length > 0
+                                                  ? "Nessun repository trovato per '" + searchField.text + "'"
+                                                  : "Nessun repository disponibile per questo account."
+                                            color: "#64748B"
+                                            font.pixelSize: 12
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
 
                     // ---------------------------------------------------------
-                    // D. DIRECT URL INPUT (Visible in "URL Diretto" mode or as editable field)
+                    // D. DIRECT URL INPUT (Only in "URL Diretto" mode)
                     // ---------------------------------------------------------
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 4
+                        visible: root.profilesVm ? (root.profilesVm.activeProfileId === "url") : false
 
                         Text {
-                            text: (root.profilesVm && root.profilesVm.activeProfileId !== "url")
-                                  ? "URL Repository Selezionato:"
-                                  : "URL Repository Remoto (HTTPS o SSH):"
+                            text: "URL Repository Remoto (HTTPS o SSH):"
                             color: "#94A3B8"
                             font.pixelSize: 12
                             font.bold: true
