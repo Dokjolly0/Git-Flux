@@ -12,6 +12,7 @@
 #include <QClipboard>
 #include <QGuiApplication>
 #include <QStandardPaths>
+#include <QDebug>
 
 namespace gf::desktop {
 
@@ -253,8 +254,15 @@ void HomeHubViewModel::cloneRepositoryAsync(const QString& remoteUrl,
                                            const QString& destinationParentFolder,
                                            const QString& directoryName,
                                            const QString& displayName) {
+    qInfo() << "[HomeHubViewModel] cloneRepositoryAsync requested:"
+            << "URL:" << remoteUrl
+            << "Parent:" << destinationParentFolder
+            << "Dir:" << directoryName
+            << "DisplayName:" << displayName;
+
     if (!m_cloneService) {
         const QString err = QStringLiteral("Servizio di clonazione non disponibile");
+        qWarning() << "[HomeHubViewModel] Error:" << err;
         setLastError(err);
         setStatus(err);
         emit errorOccurred(err);
