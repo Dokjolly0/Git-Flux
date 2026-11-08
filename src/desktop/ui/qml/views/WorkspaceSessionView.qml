@@ -195,10 +195,12 @@ Rectangle {
                                         }
 
                                         onClicked: {
-                                            if (root.sessionVm) {
-                                                root.sessionVm.closeTab(index);
-                                                if (!root.sessionVm.hasOpenTabs) {
-                                                    root.returnToHomeRequested();
+                                            var vm = root.sessionVm;
+                                            var target = root;
+                                            if (vm) {
+                                                vm.closeTab(index);
+                                                if (!vm.hasOpenTabs && target) {
+                                                    target.returnToHomeRequested();
                                                 }
                                             }
                                         }

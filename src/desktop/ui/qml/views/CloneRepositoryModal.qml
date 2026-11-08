@@ -7,7 +7,7 @@ Dialog {
     id: root
     title: "Clona Repository"
     modal: true
-    width: 680
+    width: 820
     anchors.centerIn: Overlay.overlay
     padding: 0
     topPadding: 0
@@ -100,7 +100,7 @@ Dialog {
                 anchors.rightMargin: 16
 
                 Text {
-                    text: "⬇ Clona Repository Remoto (Stile GitKraken)"
+                    text: "⬇ Clona Repository (Stile GitKraken)"
                     color: "#F8FAFC"
                     font.pixelSize: 15
                     font.bold: true
@@ -128,69 +128,100 @@ Dialog {
         }
 
         // ==========================================
-        // 2. PROVIDER SELECTOR TABS
+        // 2. MAIN TWO-COLUMN BODY (Sidebar + Content)
         // ==========================================
-        Rectangle {
+        RowLayout {
             Layout.fillWidth: true
-            height: 44
-            color: "#0F172A"
-            border.color: "#1E293B"
-            border.width: 1
+            spacing: 0
 
-            ScrollView {
-                anchors.fill: parent
-                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-                ScrollBar.vertical.policy: ScrollBar.AlwaysOff
+            // -------------------------------------------------------------
+            // LEFT SIDEBAR: Stacked list of Git Servers/Providers (GitKraken)
+            // -------------------------------------------------------------
+            Rectangle {
+                Layout.preferredWidth: 210
+                Layout.fillHeight: true
+                color: "#080D18"
+                border.color: "#1E293B"
+                border.width: 1
 
-                RowLayout {
-                    spacing: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: parent.left
-                    anchors.leftMargin: 14
+                ColumnLayout {
+                    anchors.fill: parent
+                    spacing: 0
 
-                    Repeater {
+                    // Sidebar Section Label
+                    Item {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 34
+                        Text {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 16
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "SERVIZI & PROVIDER"
+                            color: "#64748B"
+                            font.pixelSize: 10
+                            font.bold: true
+                            font.letterSpacing: 0.8
+                        }
+                    }
+
+                    // Stacked Vertical List of Providers
+                    ListView {
+                        id: providerListView
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        clip: true
+                        interactive: false
                         model: root.profilesVm ? root.profilesVm.profiles : []
+
                         delegate: Rectangle {
-                            id: tabRect
-                            implicitHeight: 32
-                            implicitWidth: tabRow.implicitWidth + 24
-                            radius: 6
+                            id: providerItem
+                            width: providerListView.width
+                            height: 42
 
                             readonly property bool isSelected: root.profilesVm && (root.profilesVm.activeProfileId === modelData.id)
 
-                            color: isSelected ? "#0369A1" : (tabMouse.containsMouse ? "#1E293B" : "#0B1120")
-                            border.color: isSelected ? "#38BDF8" : (tabMouse.containsMouse ? "#475569" : "#1E293B")
-                            border.width: 1
+                            color: isSelected ? "#1E293B" : (providerMouse.containsMouse ? "#111827" : "transparent")
+
+                            // Active Left Indicator Bar
+                            Rectangle {
+                                width: 3
+                                height: parent.height
+                                color: "#38BDF8"
+                                visible: providerItem.isSelected
+                            }
 
                             RowLayout {
-                                id: tabRow
-                                anchors.centerIn: parent
-                                spacing: 6
+                                anchors.fill: parent
+                                anchors.leftMargin: 16
+                                anchors.rightMargin: 12
+                                spacing: 10
 
                                 Text {
                                     text: modelData.icon
-                                    font.pixelSize: 13
+                                    font.pixelSize: 14
                                 }
 
                                 Text {
                                     text: modelData.displayName
-                                    color: tabRect.isSelected ? "#FFFFFF" : (tabMouse.containsMouse ? "#F8FAFC" : "#94A3B8")
+                                    color: providerItem.isSelected ? "#FFFFFF" : (providerMouse.containsMouse ? "#F8FAFC" : "#94A3B8")
                                     font.pixelSize: 12
-                                    font.bold: tabRect.isSelected
+                                    font.bold: providerItem.isSelected
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
                                 }
 
-                                // Status dot (Green if configured/SSH, gray if not)
+                                // Status Dot: Green if SSH or Token configured
                                 Rectangle {
                                     visible: modelData.id !== "url"
-                                    width: 6
-                                    height: 6
-                                    radius: 3
+                                    width: 7
+                                    height: 7
+                                    radius: 3.5
                                     color: (modelData.hasSsh || modelData.hasToken) ? "#10B981" : "#475569"
                                 }
                             }
 
                             MouseArea {
-                                id: tabMouse
+                                id: providerMouse
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
@@ -205,689 +236,641 @@ Dialog {
                     }
                 }
             }
-        }
 
-        // ==========================================
-        // 3. FORM BODY
-        // ==========================================
-        Item {
-            Layout.fillWidth: true
-            implicitHeight: formLayout.implicitHeight + 28
+            // -------------------------------------------------------------
+            // RIGHT MAIN CONTENT: Provider Details, Repositories & Path
+            // -------------------------------------------------------------
+            Item {
+                Layout.fillWidth: true
+                implicitHeight: rightContentLayout.implicitHeight + 24
 
-            ColumnLayout {
-                id: formLayout
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                anchors.topMargin: 14
-                anchors.bottomMargin: 14
-                spacing: 12
+                ColumnLayout {
+                    id: rightContentLayout
+                    anchors.fill: parent
+                    anchors.leftMargin: 16
+                    anchors.rightMargin: 16
+                    anchors.topMargin: 12
+                    anchors.bottomMargin: 12
+                    spacing: 10
 
-                // ---------------------------------------------------------
-                // A. PROVIDER SUB-HEADER (When a Git provider is selected)
-                // ---------------------------------------------------------
-                Rectangle {
-                    Layout.fillWidth: true
-                    height: 40
-                    visible: root.profilesVm && root.profilesVm.activeProfileId !== "url"
-                    color: "#131C2E"
-                    radius: 6
-                    border.color: "#1E293B"
-                    border.width: 1
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: 12
-                        anchors.rightMargin: 12
-                        spacing: 10
-
-                        // Profile Title & Account Name
-                        Text {
-                            text: (root.profilesVm ? root.profilesVm.activeProfileDisplayName : "") +
-                                  (root.profilesVm && root.profilesVm.activeProfileUsername.length > 0
-                                   ? " • @" + root.profilesVm.activeProfileUsername : "")
-                            color: "#F8FAFC"
-                            font.bold: true
-                            font.pixelSize: 12
-                        }
-
-                        // SSH Status Badge
-                        Rectangle {
-                            visible: root.profilesVm && root.profilesVm.activeProfileHasSsh
-                            implicitHeight: 22
-                            implicitWidth: sshText.implicitWidth + 14
-                            color: "#064E3B"
-                            radius: 4
-                            border.color: "#059669"
-                            border.width: 1
-                            Text {
-                                id: sshText
-                                anchors.centerIn: parent
-                                text: "🔑 SSH Attivo"
-                                color: "#A7F3D0"
-                                font.pixelSize: 11
-                                font.bold: true
-                            }
-                        }
-
-                        // Token Status Badge
-                        Rectangle {
-                            visible: root.profilesVm && root.profilesVm.activeProfileHasToken
-                            implicitHeight: 22
-                            implicitWidth: tokenText.implicitWidth + 14
-                            color: "#1E3A8A"
-                            radius: 4
-                            border.color: "#3B82F6"
-                            border.width: 1
-                            Text {
-                                id: tokenText
-                                anchors.centerIn: parent
-                                text: "🔒 Token Cifrato (Argon2id)"
-                                color: "#BFDBFE"
-                                font.pixelSize: 11
-                                font.bold: true
-                            }
-                        }
-
-                        Item { Layout.fillWidth: true }
-
-                        // Protocol Switcher (SSH vs HTTPS)
-                        RowLayout {
-                            spacing: 2
-                            Text {
-                                text: "Protocollo:"
-                                color: "#94A3B8"
-                                font.pixelSize: 11
-                            }
-
-                            Rectangle {
-                                width: 44
-                                height: 26
-                                radius: 4
-                                color: (root.profilesVm && root.profilesVm.selectedProtocol === "ssh") ? "#0284C7" : "#0F172A"
-                                border.color: (root.profilesVm && root.profilesVm.selectedProtocol === "ssh") ? "#38BDF8" : "#334155"
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: "SSH"
-                                    color: (root.profilesVm && root.profilesVm.selectedProtocol === "ssh") ? "#FFFFFF" : "#94A3B8"
-                                    font.pixelSize: 11
-                                    font.bold: true
-                                }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: if (root.profilesVm) root.profilesVm.setSelectedProtocol("ssh")
-                                }
-                            }
-
-                            Rectangle {
-                                width: 52
-                                height: 26
-                                radius: 4
-                                color: (root.profilesVm && root.profilesVm.selectedProtocol === "https") ? "#0284C7" : "#0F172A"
-                                border.color: (root.profilesVm && root.profilesVm.selectedProtocol === "https") ? "#38BDF8" : "#334155"
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: "HTTPS"
-                                    color: (root.profilesVm && root.profilesVm.selectedProtocol === "https") ? "#FFFFFF" : "#94A3B8"
-                                    font.pixelSize: 11
-                                    font.bold: true
-                                }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: if (root.profilesVm) root.profilesVm.setSelectedProtocol("https")
-                                }
-                            }
-                        }
-
-                        // Refresh Button
-                        Button {
-                            text: "🔄"
-                            Layout.preferredHeight: 26
-                            Layout.preferredWidth: 28
-                            onClicked: if (root.profilesVm) root.profilesVm.refreshRepositories()
-                            contentItem: Text {
-                                text: "🔄"
-                                font.pixelSize: 12
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                            background: Rectangle {
-                                color: parent.hovered ? "#334155" : "#1E293B"
-                                radius: 4
-                            }
-                        }
-
-                        // Config Token Button
-                        Button {
-                            text: root.showTokenConfig ? "Nascondi" : (root.profilesVm && root.profilesVm.activeProfileHasToken ? "Modifica Token" : "+ Inserisci Token")
-                            Layout.preferredHeight: 26
-                            onClicked: root.showTokenConfig = !root.showTokenConfig
-                            contentItem: Text {
-                                text: parent.text
-                                color: root.showTokenConfig ? "#38BDF8" : "#94A3B8"
-                                font.pixelSize: 11
-                                font.bold: true
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                            background: Rectangle {
-                                color: parent.hovered ? "#334155" : "#1E293B"
-                                radius: 4
-                                border.color: root.showTokenConfig ? "#38BDF8" : "#334155"
-                                border.width: 1
-                            }
-                        }
-                    }
-                }
-
-                // ---------------------------------------------------------
-                // B. EXPANDABLE TOKEN CONFIGURATION CARD (Argon2id + AES)
-                // ---------------------------------------------------------
-                Rectangle {
-                    Layout.fillWidth: true
-                    visible: root.showTokenConfig && root.profilesVm && root.profilesVm.activeProfileId !== "url"
-                    implicitHeight: tokenConfigCol.implicitHeight + 20
-                    color: "#080D1A"
-                    radius: 6
-                    border.color: "#38BDF8"
-                    border.width: 1
-
-                    ColumnLayout {
-                        id: tokenConfigCol
-                        anchors.fill: parent
-                        anchors.margins: 10
-                        spacing: 8
-
-                        Text {
-                            text: "🔒 Configura Personal Access Token (PAT) per " + (root.profilesVm ? root.profilesVm.activeProfileDisplayName : "")
-                            color: "#F8FAFC"
-                            font.bold: true
-                            font.pixelSize: 12
-                        }
-
-                        Text {
-                            text: "Il token viene salvato nel database locale cifrato con Argon2id (KDF) e AES-256-GCM. Sblocca repository privati e delle organizzazioni."
-                            color: "#94A3B8"
-                            font.pixelSize: 11
-                            wrapMode: Text.Wrap
-                            Layout.fillWidth: true
-                        }
+                    // ---------------------------------------------------------
+                    // A. PROVIDER SUB-HEADER (Account, Badges, Protocol Switch)
+                    // ---------------------------------------------------------
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 40
+                        visible: root.profilesVm ? (root.profilesVm.activeProfileId !== "url") : false
+                        color: "#131C2E"
+                        radius: 6
+                        border.color: "#1E293B"
+                        border.width: 1
 
                         RowLayout {
-                            Layout.fillWidth: true
+                            anchors.fill: parent
+                            anchors.leftMargin: 12
+                            anchors.rightMargin: 12
                             spacing: 8
 
-                            TextField {
-                                id: tokenUsernameInput
-                                Layout.preferredWidth: 160
-                                Layout.preferredHeight: 32
-                                placeholderText: "Username (es. Dokjolly0)"
-                                placeholderTextColor: "#475569"
-                                text: root.profilesVm ? root.profilesVm.activeProfileUsername : ""
+                            // Profile Title & Account Name
+                            Text {
+                                text: (root.profilesVm ? root.profilesVm.activeProfileDisplayName : "") +
+                                      (root.profilesVm && root.profilesVm.activeProfileUsername.length > 0
+                                       ? " • @" + root.profilesVm.activeProfileUsername : "")
                                 color: "#F8FAFC"
+                                font.bold: true
                                 font.pixelSize: 12
-                                background: Rectangle {
-                                    color: "#0B1120"
-                                    radius: 4
-                                    border.color: "#334155"
+                            }
+
+                            // SSH Status Badge
+                            Rectangle {
+                                visible: Boolean(root.profilesVm && root.profilesVm.activeProfileHasSsh)
+                                implicitHeight: 22
+                                implicitWidth: sshText.implicitWidth + 12
+                                color: "#064E3B"
+                                radius: 4
+                                border.color: "#059669"
+                                border.width: 1
+                                Text {
+                                    id: sshText
+                                    anchors.centerIn: parent
+                                    text: "🔑 SSH"
+                                    color: "#A7F3D0"
+                                    font.pixelSize: 10
+                                    font.bold: true
                                 }
                             }
 
-                            TextField {
-                                id: tokenSecretInput
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 32
-                                placeholderText: "Token (ghp_... o API token)"
-                                placeholderTextColor: "#475569"
-                                echoMode: root.showTokenText ? TextInput.Normal : TextInput.Password
-                                color: "#F8FAFC"
-                                font.pixelSize: 12
-                                background: Rectangle {
-                                    color: "#0B1120"
-                                    radius: 4
-                                    border.color: "#334155"
+                            // Token Status Badge
+                            Rectangle {
+                                visible: Boolean(root.profilesVm && root.profilesVm.activeProfileHasToken)
+                                implicitHeight: 22
+                                implicitWidth: tokenText.implicitWidth + 12
+                                color: "#1E3A8A"
+                                radius: 4
+                                border.color: "#3B82F6"
+                                border.width: 1
+                                Text {
+                                    id: tokenText
+                                    anchors.centerIn: parent
+                                    text: "🔒 Token (Argon2id)"
+                                    color: "#BFDBFE"
+                                    font.pixelSize: 10
+                                    font.bold: true
                                 }
                             }
 
-                            Button {
-                                text: root.showTokenText ? "🙈" : "👁️"
-                                Layout.preferredWidth: 32
-                                Layout.preferredHeight: 32
-                                onClicked: root.showTokenText = !root.showTokenText
-                                background: Rectangle { color: "#1E293B"; radius: 4 }
-                            }
+                            Item { Layout.fillWidth: true }
 
-                            Button {
-                                text: "💾 Salva e Carica"
-                                Layout.preferredHeight: 32
-                                enabled: tokenSecretInput.text.trim().length > 0 || tokenUsernameInput.text.trim().length > 0
-                                onClicked: {
-                                    if (root.profilesVm) {
-                                        root.profilesVm.saveProfileToken(
-                                            root.profilesVm.activeProfileId,
-                                            tokenSecretInput.text,
-                                            tokenUsernameInput.text
-                                        );
-                                        tokenSecretInput.text = "";
-                                        root.showTokenConfig = false;
+                            // Protocol Switcher (SSH vs HTTPS)
+                            RowLayout {
+                                spacing: 2
+                                Text {
+                                    text: "Protocollo:"
+                                    color: "#94A3B8"
+                                    font.pixelSize: 11
+                                }
+
+                                Rectangle {
+                                    width: 44
+                                    height: 26
+                                    radius: 4
+                                    readonly property bool isSelected: root.profilesVm ? (root.profilesVm.selectedProtocol === "ssh") : false
+                                    color: isSelected ? "#0284C7" : "#0F172A"
+                                    border.color: isSelected ? "#38BDF8" : "#334155"
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "SSH"
+                                        color: parent.isSelected ? "#FFFFFF" : "#94A3B8"
+                                        font.pixelSize: 11
+                                        font.bold: true
+                                    }
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            if (root.profilesVm) {
+                                                root.profilesVm.setSelectedProtocol("ssh");
+                                                if (root.selectedRepoFullName.length > 0) {
+                                                    // refresh active clone url in field
+                                                    for (var i = 0; i < repoListView.count; ++i) {
+                                                        var r = root.profilesVm.remoteReposModel.getRepoAt(i);
+                                                        if (r.fullName === root.selectedRepoFullName) {
+                                                            urlField.text = r.activeCloneUrl;
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
+
+                                Rectangle {
+                                    width: 52
+                                    height: 26
+                                    radius: 4
+                                    readonly property bool isSelected: root.profilesVm ? (root.profilesVm.selectedProtocol === "https") : false
+                                    color: isSelected ? "#0284C7" : "#0F172A"
+                                    border.color: isSelected ? "#38BDF8" : "#334155"
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "HTTPS"
+                                        color: parent.isSelected ? "#FFFFFF" : "#94A3B8"
+                                        font.pixelSize: 11
+                                        font.bold: true
+                                    }
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            if (root.profilesVm) {
+                                                root.profilesVm.setSelectedProtocol("https");
+                                                if (root.selectedRepoFullName.length > 0) {
+                                                    for (var i = 0; i < repoListView.count; ++i) {
+                                                        var r = root.profilesVm.remoteReposModel.getRepoAt(i);
+                                                        if (r.fullName === root.selectedRepoFullName) {
+                                                            urlField.text = r.activeCloneUrl;
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Refresh Button
+                            Button {
+                                text: "🔄"
+                                Layout.preferredHeight: 26
+                                Layout.preferredWidth: 28
+                                onClicked: if (root.profilesVm) root.profilesVm.refreshRepositories()
                                 contentItem: Text {
-                                    text: "💾 Salva e Carica"
-                                    color: "#FFFFFF"
-                                    font.bold: true
-                                    font.pixelSize: 11
+                                    text: "🔄"
+                                    font.pixelSize: 12
                                     horizontalAlignment: Text.AlignHCenter
                                     verticalAlignment: Text.AlignVCenter
                                 }
                                 background: Rectangle {
-                                    color: parent.enabled ? (parent.hovered ? "#0284C7" : "#0369A1") : "#1E293B"
+                                    color: parent.hovered ? "#334155" : "#1E293B"
                                     radius: 4
                                 }
                             }
 
+                            // Config Token Button
                             Button {
-                                visible: root.profilesVm && root.profilesVm.activeProfileHasToken
-                                text: "🗑 Rimuovi"
-                                Layout.preferredHeight: 32
-                                onClicked: {
-                                    if (root.profilesVm) {
-                                        root.profilesVm.clearProfileToken(root.profilesVm.activeProfileId);
-                                        root.showTokenConfig = false;
-                                    }
-                                }
+                                text: root.showTokenConfig ? "Nascondi" : (root.profilesVm && root.profilesVm.activeProfileHasToken ? "Modifica Token" : "+ Inserisci Token")
+                                Layout.preferredHeight: 26
+                                onClicked: root.showTokenConfig = !root.showTokenConfig
                                 contentItem: Text {
-                                    text: "🗑 Rimuovi"
-                                    color: "#EF4444"
-                                    font.bold: true
+                                    text: parent.text
+                                    color: root.showTokenConfig ? "#38BDF8" : "#94A3B8"
                                     font.pixelSize: 11
+                                    font.bold: true
                                     horizontalAlignment: Text.AlignHCenter
                                     verticalAlignment: Text.AlignVCenter
                                 }
                                 background: Rectangle {
-                                    color: parent.hovered ? "#450A0A" : "#1E293B"
+                                    color: parent.hovered ? "#334155" : "#1E293B"
                                     radius: 4
-                                    border.color: "#DC2626"
+                                    border.color: root.showTokenConfig ? "#38BDF8" : "#334155"
                                     border.width: 1
                                 }
                             }
                         }
                     }
-                }
 
-                // ---------------------------------------------------------
-                // C. REPOSITORY SEARCH & LIST (When Provider is selected)
-                // ---------------------------------------------------------
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    visible: root.profilesVm && root.profilesVm.activeProfileId !== "url"
-                    spacing: 6
-
-                    // Search Bar & Counter
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-
-                        TextField {
-                            id: searchField
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 32
-                            placeholderText: "🔍 Cerca tra i tuoi repository (es. Git-Flux, template, app)..."
-                            placeholderTextColor: "#475569"
-                            color: "#F8FAFC"
-                            font.pixelSize: 12
-                            selectByMouse: true
-                            background: Rectangle {
-                                color: "#0F172A"
-                                radius: 6
-                                border.color: searchField.activeFocus ? "#38BDF8" : "#334155"
-                                border.width: 1
-                            }
-                            onTextChanged: {
-                                if (root.profilesVm && root.profilesVm.remoteReposModel) {
-                                    root.profilesVm.remoteReposModel.searchFilter = text;
-                                }
-                            }
-                        }
-
-                        // Clear search button
-                        Button {
-                            visible: searchField.text.length > 0
-                            text: "✕"
-                            Layout.preferredWidth: 32
-                            Layout.preferredHeight: 32
-                            onClicked: searchField.text = ""
-                            background: Rectangle { color: "#1E293B"; radius: 4 }
-                            contentItem: Text {
-                                text: "✕"
-                                color: "#94A3B8"
-                                font.pixelSize: 11
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                        }
-
-                        // Counter Badge
-                        Rectangle {
-                            implicitHeight: 32
-                            implicitWidth: countText.implicitWidth + 16
-                            color: "#1E293B"
-                            radius: 6
-                            border.color: "#334155"
-                            Text {
-                                id: countText
-                                anchors.centerIn: parent
-                                text: {
-                                    if (!root.profilesVm || !root.profilesVm.remoteReposModel) return "0 repo";
-                                    var filtered = root.profilesVm.remoteReposModel.filteredCount;
-                                    var total = root.profilesVm.remoteReposModel.totalCount;
-                                    return filtered + " di " + total + " repo";
-                                }
-                                color: "#38BDF8"
-                                font.pixelSize: 11
-                                font.bold: true
-                            }
-                        }
-                    }
-
-                    // Loading State
+                    // ---------------------------------------------------------
+                    // B. EXPANDABLE TOKEN CONFIGURATION CARD (Argon2id + AES)
+                    // ---------------------------------------------------------
                     Rectangle {
                         Layout.fillWidth: true
-                        height: 38
-                        visible: root.profilesVm && root.profilesVm.isFetching
-                        color: "#0F172A"
+                        visible: root.showTokenConfig && root.profilesVm && (root.profilesVm.activeProfileId !== "url")
+                        implicitHeight: tokenConfigCol.implicitHeight + 16
+                        color: "#080D1A"
                         radius: 6
-                        RowLayout {
-                            anchors.centerIn: parent
+                        border.color: "#38BDF8"
+                        border.width: 1
+
+                        ColumnLayout {
+                            id: tokenConfigCol
+                            anchors.fill: parent
+                            anchors.margins: 10
                             spacing: 8
-                            ProgressBar { indeterminate: true; Layout.preferredWidth: 100 }
+
                             Text {
-                                text: "Caricamento repository in corso..."
-                                color: "#38BDF8"
+                                text: "🔒 Configura Personal Access Token (PAT) per " + (root.profilesVm ? root.profilesVm.activeProfileDisplayName : "")
+                                color: "#F8FAFC"
+                                font.bold: true
                                 font.pixelSize: 12
                             }
+
+                            Text {
+                                text: "Il token viene crittografato sul database locale con Argon2id (KDF) e AES-256-GCM. Sblocca tutti i repository privati e delle organizzazioni."
+                                color: "#94A3B8"
+                                font.pixelSize: 11
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                TextField {
+                                    id: tokenUsernameInput
+                                    Layout.preferredWidth: 150
+                                    Layout.preferredHeight: 32
+                                    placeholderText: "Username (es. Dokjolly0)"
+                                    placeholderTextColor: "#475569"
+                                    text: root.profilesVm ? root.profilesVm.activeProfileUsername : ""
+                                    color: "#F8FAFC"
+                                    font.pixelSize: 12
+                                    background: Rectangle {
+                                        color: "#0B1120"
+                                        radius: 4
+                                        border.color: "#334155"
+                                    }
+                                }
+
+                                TextField {
+                                    id: tokenSecretInput
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 32
+                                    placeholderText: "Token (ghp_... o API token)"
+                                    placeholderTextColor: "#475569"
+                                    echoMode: root.showTokenText ? TextInput.Normal : TextInput.Password
+                                    color: "#F8FAFC"
+                                    font.pixelSize: 12
+                                    background: Rectangle {
+                                        color: "#0B1120"
+                                        radius: 4
+                                        border.color: "#334155"
+                                    }
+                                }
+
+                                Button {
+                                    text: root.showTokenText ? "🙈" : "👁️"
+                                    Layout.preferredWidth: 32
+                                    Layout.preferredHeight: 32
+                                    onClicked: root.showTokenText = !root.showTokenText
+                                    background: Rectangle { color: "#1E293B"; radius: 4 }
+                                }
+
+                                Button {
+                                    text: "💾 Salva e Carica"
+                                    Layout.preferredHeight: 32
+                                    enabled: tokenSecretInput.text.trim().length > 0 || tokenUsernameInput.text.trim().length > 0
+                                    onClicked: {
+                                        if (root.profilesVm) {
+                                            root.profilesVm.saveProfileToken(
+                                                root.profilesVm.activeProfileId,
+                                                tokenSecretInput.text,
+                                                tokenUsernameInput.text
+                                            );
+                                            tokenSecretInput.text = "";
+                                            root.showTokenConfig = false;
+                                        }
+                                    }
+                                    contentItem: Text {
+                                        text: "💾 Salva e Carica"
+                                        color: "#FFFFFF"
+                                        font.bold: true
+                                        font.pixelSize: 11
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                    background: Rectangle {
+                                        color: parent.enabled ? (parent.hovered ? "#0284C7" : "#0369A1") : "#1E293B"
+                                        radius: 4
+                                    }
+                                }
+
+                                Button {
+                                    visible: Boolean(root.profilesVm && root.profilesVm.activeProfileHasToken)
+                                    text: "🗑 Rimuovi"
+                                    Layout.preferredHeight: 32
+                                    onClicked: {
+                                        if (root.profilesVm) {
+                                            root.profilesVm.clearProfileToken(root.profilesVm.activeProfileId);
+                                            root.showTokenConfig = false;
+                                        }
+                                    }
+                                    contentItem: Text {
+                                        text: "🗑 Rimuovi"
+                                        color: "#EF4444"
+                                        font.bold: true
+                                        font.pixelSize: 11
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                    background: Rectangle {
+                                        color: parent.hovered ? "#450A0A" : "#1E293B"
+                                        radius: 4
+                                        border.color: "#DC2626"
+                                        border.width: 1
+                                    }
+                                }
+                            }
                         }
                     }
 
-                    // Fetch Error Banner
+                    // Informative Banner when token is not yet configured on GitHub
                     Rectangle {
                         Layout.fillWidth: true
-                        visible: root.profilesVm && root.profilesVm.fetchError.length > 0 && !root.profilesVm.isFetching
-                        implicitHeight: fetchErrText.implicitHeight + 16
-                        color: "#450A0A"
+                        visible: Boolean(root.profilesVm && root.profilesVm.activeProfileId === "github" && !root.profilesVm.activeProfileHasToken && !root.showTokenConfig)
+                        implicitHeight: tokenTipText.implicitHeight + 14
+                        color: "#0F2942"
                         radius: 6
-                        border.color: "#DC2626"
+                        border.color: "#0284C7"
                         border.width: 1
+
                         RowLayout {
                             anchors.fill: parent
-                            anchors.margins: 8
+                            anchors.margins: 6
                             spacing: 8
                             Text {
-                                id: fetchErrText
-                                text: root.profilesVm ? root.profilesVm.fetchError : ""
-                                color: "#FECACA"
+                                text: "💡"
+                                font.pixelSize: 13
+                            }
+                            Text {
+                                id: tokenTipText
+                                text: "Visualizzazione repository pubblici di @" + (root.profilesVm ? root.profilesVm.activeProfileUsername : "utente") + ". Per includere anche i repository privati e aziendali, inserisci un token."
+                                color: "#BAE6FD"
                                 font.pixelSize: 11
                                 wrapMode: Text.Wrap
                                 Layout.fillWidth: true
                             }
                             Button {
-                                text: "Inserisci Token"
+                                text: "+ Inserisci Token"
                                 Layout.preferredHeight: 24
                                 onClicked: root.showTokenConfig = true
-                                background: Rectangle { color: "#7F1D1D"; radius: 4 }
-                                contentItem: Text { text: "Inserisci Token"; color: "#FFFFFF"; font.pixelSize: 10; font.bold: true }
+                                background: Rectangle { color: "#0369A1"; radius: 4 }
+                                contentItem: Text { text: "+ Inserisci Token"; color: "#FFFFFF"; font.pixelSize: 10; font.bold: true }
                             }
                         }
                     }
 
-                    // Scrollable Remote Repository List View
-                    Rectangle {
+                    // ---------------------------------------------------------
+                    // C. REPOSITORY SEARCH & LIST (When Provider is selected)
+                    // ---------------------------------------------------------
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        height: 180
-                        color: "#070B14"
-                        radius: 6
-                        border.color: "#1E293B"
-                        border.width: 1
-                        clip: true
+                        visible: root.profilesVm ? (root.profilesVm.activeProfileId !== "url") : false
+                        spacing: 6
 
-                        ListView {
-                            id: repoListView
-                            anchors.fill: parent
-                            anchors.margins: 4
-                            spacing: 4
-                            model: root.profilesVm ? root.profilesVm.remoteReposModel : null
-                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-
-                            delegate: Rectangle {
-                                id: repoCard
-                                width: repoListView.width - 8
-                                height: 50
-                                radius: 5
-
-                                readonly property bool isSelected: root.selectedRepoFullName === model.fullName
-
-                                color: isSelected ? "#0F2942" : (cardMouse.containsMouse ? "#1E293B" : "#0F172A")
-                                border.color: isSelected ? "#38BDF8" : (cardMouse.containsMouse ? "#475569" : "#1E293B")
-                                border.width: isSelected ? 2 : 1
-
-                                RowLayout {
-                                    anchors.fill: parent
-                                    anchors.leftMargin: 10
-                                    anchors.rightMargin: 10
-                                    spacing: 8
-
-                                    // Privacy Icon (Lock or Globe)
-                                    Text {
-                                        text: model.isPrivate ? "🔒" : "🌐"
-                                        font.pixelSize: 13
-                                    }
-
-                                    // Repository Details
-                                    ColumnLayout {
-                                        Layout.fillWidth: true
-                                        spacing: 1
-
-                                        RowLayout {
-                                            spacing: 6
-                                            Text {
-                                                text: model.fullName
-                                                color: repoCard.isSelected ? "#38BDF8" : "#F8FAFC"
-                                                font.pixelSize: 12
-                                                font.bold: true
-                                                elide: Text.ElideRight
-                                            }
-
-                                            Text {
-                                                visible: model.starsCount > 0
-                                                text: "⭐ " + model.starsCount
-                                                color: "#FBBF24"
-                                                font.pixelSize: 10
-                                            }
-                                        }
-
-                                        Text {
-                                            text: model.description.length > 0 ? model.description : (model.activeCloneUrl)
-                                            color: "#94A3B8"
-                                            font.pixelSize: 11
-                                            elide: Text.ElideRight
-                                            Layout.fillWidth: true
-                                        }
-                                    }
-
-                                    // Selection Indicator Checkmark
-                                    Text {
-                                        visible: repoCard.isSelected
-                                        text: "✔"
-                                        color: "#38BDF8"
-                                        font.pixelSize: 14
-                                        font.bold: true
-                                    }
-                                }
-
-                                MouseArea {
-                                    id: cardMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        root.selectedRepoFullName = model.fullName;
-                                        urlField.text = model.activeCloneUrl;
-                                        dirNameField.text = model.name;
-                                        dirNameField.propertyModified = true;
-                                    }
-                                }
-                            }
-
-                            // Empty list placeholder
-                            Text {
-                                anchors.centerIn: parent
-                                visible: repoListView.count === 0 && (!root.profilesVm || !root.profilesVm.isFetching)
-                                text: searchField.text.length > 0
-                                      ? "Nessun repository trovato per '" + searchField.text + "'"
-                                      : "Nessun repository disponibile per questo account."
-                                color: "#64748B"
-                                font.pixelSize: 12
-                            }
-                        }
-                    }
-                }
-
-                // ---------------------------------------------------------
-                // D. DIRECT URL INPUT (Visible in "URL Diretto" mode or as editable field)
-                // ---------------------------------------------------------
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 4
-
-                    Text {
-                        text: (root.profilesVm && root.profilesVm.activeProfileId !== "url")
-                              ? "URL Repository Selezionato:"
-                              : "URL Repository Remoto (HTTPS o SSH):"
-                        color: "#94A3B8"
-                        font.pixelSize: 12
-                        font.bold: true
-                    }
-
-                    TextField {
-                        id: urlField
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 34
-                        enabled: !(root.homeHubVm && root.homeHubVm.isCloning)
-                        placeholderText: "es. https://github.com/utente/progetto.git o git@github.com:..."
-                        placeholderTextColor: "#475569"
-                        color: "#F8FAFC"
-                        font.pixelSize: 13
-                        selectByMouse: true
-                        background: Rectangle {
-                            color: "#0B1120"
-                            radius: 6
-                            border.color: urlField.activeFocus ? "#38BDF8" : "#334155"
-                            border.width: 1
-                        }
-                        onTextChanged: {
-                            if (root.homeHubVm && text.length > 0 && root.profilesVm && root.profilesVm.activeProfileId === "url") {
-                                var extracted = root.homeHubVm.extractRepoNameFromUrl(text);
-                                if (dirNameField.text.length === 0 || dirNameField.propertyModified !== true) {
-                                    dirNameField.text = extracted;
-                                }
-                            }
-                        }
-                        onAccepted: {
-                            if (cloneButton.enabled) cloneButton.clicked();
-                        }
-                    }
-                }
-
-                // ---------------------------------------------------------
-                // E. LOCAL DESTINATION FOLDER
-                // ---------------------------------------------------------
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 4
-
-                    Text {
-                        text: "Cartella Locale di Destinazione:"
-                        color: "#94A3B8"
-                        font.pixelSize: 12
-                        font.bold: true
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-
-                        TextField {
-                            id: destFolderField
+                        // Search Bar & Counter
+                        RowLayout {
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 34
-                            enabled: !(root.homeHubVm && root.homeHubVm.isCloning)
-                            placeholderText: "Seleziona cartella in cui scaricare il progetto..."
-                            placeholderTextColor: "#475569"
-                            color: "#F8FAFC"
-                            font.pixelSize: 13
-                            selectByMouse: true
-                            background: Rectangle {
-                                color: "#0B1120"
-                                radius: 6
-                                border.color: destFolderField.activeFocus ? "#38BDF8" : "#334155"
-                                border.width: 1
-                            }
-                            onAccepted: {
-                                if (cloneButton.enabled) cloneButton.clicked();
-                            }
-                        }
+                            spacing: 8
 
-                        Button {
-                            text: "Sfoglia..."
-                            Layout.preferredHeight: 34
-                            Layout.preferredWidth: 84
-                            enabled: !(root.homeHubVm && root.homeHubVm.isCloning)
-                            onClicked: cloneParentFolderDialog.open()
-                            contentItem: Text {
-                                text: "Sfoglia..."
-                                color: "#38BDF8"
+                            TextField {
+                                id: searchField
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 32
+                                placeholderText: "🔍 Cerca tra i tuoi repository (es. Git-Flux, template, app)..."
+                                placeholderTextColor: "#475569"
+                                color: "#F8FAFC"
                                 font.pixelSize: 12
-                                font.bold: true
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
+                                selectByMouse: true
+                                background: Rectangle {
+                                    color: "#0F172A"
+                                    radius: 6
+                                    border.color: searchField.activeFocus ? "#38BDF8" : "#334155"
+                                    border.width: 1
+                                }
+                                onTextChanged: {
+                                    if (root.profilesVm && root.profilesVm.remoteReposModel) {
+                                        root.profilesVm.remoteReposModel.searchFilter = text;
+                                    }
+                                }
                             }
-                            background: Rectangle {
-                                color: parent.hovered ? "#1E293B" : "#0F172A"
+
+                            // Clear search button
+                            Button {
+                                visible: searchField.text.length > 0
+                                text: "✕"
+                                Layout.preferredWidth: 32
+                                Layout.preferredHeight: 32
+                                onClicked: searchField.text = ""
+                                background: Rectangle { color: "#1E293B"; radius: 4 }
+                                contentItem: Text {
+                                    text: "✕"
+                                    color: "#94A3B8"
+                                    font.pixelSize: 11
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                            }
+
+                            // Counter Badge
+                            Rectangle {
+                                implicitHeight: 32
+                                implicitWidth: countText.implicitWidth + 16
+                                color: "#1E293B"
                                 radius: 6
                                 border.color: "#334155"
-                                border.width: 1
+                                Text {
+                                    id: countText
+                                    anchors.centerIn: parent
+                                    text: {
+                                        if (!root.profilesVm || !root.profilesVm.remoteReposModel) return "0 repo";
+                                        var filtered = root.profilesVm.remoteReposModel.filteredCount;
+                                        var total = root.profilesVm.remoteReposModel.totalCount;
+                                        return filtered + " di " + total + " repo";
+                                    }
+                                    color: "#38BDF8"
+                                    font.pixelSize: 11
+                                    font.bold: true
+                                }
+                            }
+                        }
+
+                        // Loading State
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: 36
+                            visible: Boolean(root.profilesVm && root.profilesVm.isFetching)
+                            color: "#0F172A"
+                            radius: 6
+                            RowLayout {
+                                anchors.centerIn: parent
+                                spacing: 8
+                                ProgressBar { indeterminate: true; Layout.preferredWidth: 100 }
+                                Text {
+                                    text: "Caricamento repository in corso..."
+                                    color: "#38BDF8"
+                                    font.pixelSize: 12
+                                }
+                            }
+                        }
+
+                        // Fetch Error Banner
+                        Rectangle {
+                            Layout.fillWidth: true
+                            visible: Boolean(root.profilesVm && root.profilesVm.fetchError.length > 0 && !root.profilesVm.isFetching)
+                            implicitHeight: fetchErrText.implicitHeight + 16
+                            color: "#450A0A"
+                            radius: 6
+                            border.color: "#DC2626"
+                            border.width: 1
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.margins: 8
+                                spacing: 8
+                                Text {
+                                    id: fetchErrText
+                                    text: root.profilesVm ? root.profilesVm.fetchError : ""
+                                    color: "#FECACA"
+                                    font.pixelSize: 11
+                                    wrapMode: Text.Wrap
+                                    Layout.fillWidth: true
+                                }
+                                Button {
+                                    text: "Inserisci Token"
+                                    Layout.preferredHeight: 24
+                                    onClicked: root.showTokenConfig = true
+                                    background: Rectangle { color: "#7F1D1D"; radius: 4 }
+                                    contentItem: Text { text: "Inserisci Token"; color: "#FFFFFF"; font.pixelSize: 10; font.bold: true }
+                                }
+                            }
+                        }
+
+                        // Scrollable Remote Repository List View
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: 180
+                            color: "#070B14"
+                            radius: 6
+                            border.color: "#1E293B"
+                            border.width: 1
+                            clip: true
+
+                            ListView {
+                                id: repoListView
+                                anchors.fill: parent
+                                anchors.margins: 4
+                                spacing: 4
+                                model: root.profilesVm ? root.profilesVm.remoteReposModel : null
+                                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                                delegate: Rectangle {
+                                    id: repoCard
+                                    width: repoListView.width - 8
+                                    height: 50
+                                    radius: 5
+
+                                    readonly property bool isSelected: root.selectedRepoFullName === model.fullName
+
+                                    color: isSelected ? "#0F2942" : (cardMouse.containsMouse ? "#1E293B" : "#0F172A")
+                                    border.color: isSelected ? "#38BDF8" : (cardMouse.containsMouse ? "#475569" : "#1E293B")
+                                    border.width: isSelected ? 2 : 1
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 10
+                                        anchors.rightMargin: 10
+                                        spacing: 8
+
+                                        // Privacy Icon (Lock or Globe)
+                                        Text {
+                                            text: model.isPrivate ? "🔒" : "🌐"
+                                            font.pixelSize: 13
+                                        }
+
+                                        // Repository Details
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 1
+
+                                            RowLayout {
+                                                spacing: 6
+                                                Text {
+                                                    text: model.fullName
+                                                    color: repoCard.isSelected ? "#38BDF8" : "#F8FAFC"
+                                                    font.pixelSize: 12
+                                                    font.bold: true
+                                                    elide: Text.ElideRight
+                                                }
+
+                                                Text {
+                                                    visible: model.starsCount > 0
+                                                    text: "⭐ " + model.starsCount
+                                                    color: "#FBBF24"
+                                                    font.pixelSize: 10
+                                                }
+                                            }
+
+                                            Text {
+                                                text: model.description.length > 0 ? model.description : (model.activeCloneUrl)
+                                                color: "#94A3B8"
+                                                font.pixelSize: 11
+                                                elide: Text.ElideRight
+                                                Layout.fillWidth: true
+                                            }
+                                        }
+
+                                        // Selection Indicator Checkmark
+                                        Text {
+                                            visible: repoCard.isSelected
+                                            text: "✔"
+                                            color: "#38BDF8"
+                                            font.pixelSize: 14
+                                            font.bold: true
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        id: cardMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            root.selectedRepoFullName = model.fullName;
+                                            urlField.text = model.activeCloneUrl;
+                                            dirNameField.text = model.name;
+                                            dirNameField.propertyModified = true;
+                                        }
+                                    }
+                                }
+
+                                // Empty list placeholder
+                                Text {
+                                    anchors.centerIn: parent
+                                    visible: repoListView.count === 0 && (!root.profilesVm || !root.profilesVm.isFetching)
+                                    text: searchField.text.length > 0
+                                          ? "Nessun repository trovato per '" + searchField.text + "'"
+                                          : "Nessun repository disponibile per questo account."
+                                    color: "#64748B"
+                                    font.pixelSize: 12
+                                }
                             }
                         }
                     }
-                }
 
-                // ---------------------------------------------------------
-                // F. DIRECTORY NAME & CATALOG NAME
-                // ---------------------------------------------------------
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 12
-
+                    // ---------------------------------------------------------
+                    // D. DIRECT URL INPUT (Visible in "URL Diretto" mode or as editable field)
+                    // ---------------------------------------------------------
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 4
 
                         Text {
-                            text: "Nome Cartella:"
+                            text: (root.profilesVm && root.profilesVm.activeProfileId !== "url")
+                                  ? "URL Repository Selezionato:"
+                                  : "URL Repository Remoto (HTTPS o SSH):"
                             color: "#94A3B8"
                             font.pixelSize: 12
                             font.bold: true
                         }
 
                         TextField {
-                            id: dirNameField
+                            id: urlField
                             Layout.fillWidth: true
                             Layout.preferredHeight: 34
-                            property bool propertyModified: false
                             enabled: !(root.homeHubVm && root.homeHubVm.isCloning)
-                            placeholderText: "nome-cartella"
+                            placeholderText: "es. https://github.com/utente/progetto.git o git@github.com:..."
                             placeholderTextColor: "#475569"
                             color: "#F8FAFC"
                             font.pixelSize: 13
@@ -895,105 +878,218 @@ Dialog {
                             background: Rectangle {
                                 color: "#0B1120"
                                 radius: 6
-                                border.color: dirNameField.activeFocus ? "#38BDF8" : "#334155"
+                                border.color: urlField.activeFocus ? "#38BDF8" : "#334155"
                                 border.width: 1
                             }
-                            onTextEdited: propertyModified = true
+                            onTextChanged: {
+                                if (root.homeHubVm && text.length > 0 && root.profilesVm && root.profilesVm.activeProfileId === "url") {
+                                    var extracted = root.homeHubVm.extractRepoNameFromUrl(text);
+                                    if (dirNameField.text.length === 0 || dirNameField.propertyModified !== true) {
+                                        dirNameField.text = extracted;
+                                    }
+                                }
+                            }
                             onAccepted: {
                                 if (cloneButton.enabled) cloneButton.clicked();
                             }
                         }
                     }
 
+                    // ---------------------------------------------------------
+                    // E. LOCAL DESTINATION FOLDER
+                    // ---------------------------------------------------------
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 4
 
                         Text {
-                            text: "Nome nel Catalogo (opzionale):"
+                            text: "Cartella Locale di Destinazione:"
                             color: "#94A3B8"
                             font.pixelSize: 12
+                            font.bold: true
                         }
 
-                        TextField {
-                            id: displayNameField
+                        RowLayout {
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 34
-                            enabled: !(root.homeHubVm && root.homeHubVm.isCloning)
-                            placeholderText: "Come mostrare in Git Flux"
-                            placeholderTextColor: "#475569"
-                            color: "#F8FAFC"
-                            font.pixelSize: 13
-                            selectByMouse: true
-                            background: Rectangle {
-                                color: "#0B1120"
-                                radius: 6
-                                border.color: displayNameField.activeFocus ? "#38BDF8" : "#334155"
-                                border.width: 1
+                            spacing: 8
+
+                            TextField {
+                                id: destFolderField
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 34
+                                enabled: !(root.homeHubVm && root.homeHubVm.isCloning)
+                                placeholderText: "Seleziona cartella in cui scaricare il progetto..."
+                                placeholderTextColor: "#475569"
+                                color: "#F8FAFC"
+                                font.pixelSize: 13
+                                selectByMouse: true
+                                background: Rectangle {
+                                    color: "#0B1120"
+                                    radius: 6
+                                    border.color: destFolderField.activeFocus ? "#38BDF8" : "#334155"
+                                    border.width: 1
+                                }
+                                onAccepted: {
+                                    if (cloneButton.enabled) cloneButton.clicked();
+                                }
                             }
-                            onAccepted: {
-                                if (cloneButton.enabled) cloneButton.clicked();
+
+                            Button {
+                                text: "Sfoglia..."
+                                Layout.preferredHeight: 34
+                                Layout.preferredWidth: 84
+                                enabled: !(root.homeHubVm && root.homeHubVm.isCloning)
+                                onClicked: cloneParentFolderDialog.open()
+                                contentItem: Text {
+                                    text: "Sfoglia..."
+                                    color: "#38BDF8"
+                                    font.pixelSize: 12
+                                    font.bold: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                background: Rectangle {
+                                    color: parent.hovered ? "#1E293B" : "#0F172A"
+                                    radius: 6
+                                    border.color: "#334155"
+                                    border.width: 1
+                                }
                             }
                         }
                     }
-                }
 
-                // Destination Path Preview
-                Text {
-                    visible: destFolderField.text.trim().length > 0 && dirNameField.text.trim().length > 0
-                    text: "📁 Salvataggio in: " + destFolderField.text.trim() + "/" + dirNameField.text.trim()
-                    color: "#38BDF8"
-                    font.pixelSize: 11
-                    font.bold: true
-                    elide: Text.ElideMiddle
-                    Layout.fillWidth: true
-                }
-
-                // Progress Indicator
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    visible: root.homeHubVm ? root.homeHubVm.isCloning : false
-                    spacing: 6
-
-                    ProgressBar {
+                    // ---------------------------------------------------------
+                    // F. DIRECTORY NAME & CATALOG NAME
+                    // ---------------------------------------------------------
+                    RowLayout {
                         Layout.fillWidth: true
-                        indeterminate: true
+                        spacing: 12
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+
+                            Text {
+                                text: "Nome Cartella:"
+                                color: "#94A3B8"
+                                font.pixelSize: 12
+                                font.bold: true
+                            }
+
+                            TextField {
+                                id: dirNameField
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 34
+                                property bool propertyModified: false
+                                enabled: !(root.homeHubVm && root.homeHubVm.isCloning)
+                                placeholderText: "nome-cartella"
+                                placeholderTextColor: "#475569"
+                                color: "#F8FAFC"
+                                font.pixelSize: 13
+                                selectByMouse: true
+                                background: Rectangle {
+                                    color: "#0B1120"
+                                    radius: 6
+                                    border.color: dirNameField.activeFocus ? "#38BDF8" : "#334155"
+                                    border.width: 1
+                                }
+                                onTextEdited: propertyModified = true
+                                onAccepted: {
+                                    if (cloneButton.enabled) cloneButton.clicked();
+                                }
+                            }
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+
+                            Text {
+                                text: "Nome nel Catalogo (opzionale):"
+                                color: "#94A3B8"
+                                font.pixelSize: 12
+                            }
+
+                            TextField {
+                                id: displayNameField
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 34
+                                enabled: !(root.homeHubVm && root.homeHubVm.isCloning)
+                                placeholderText: "Come mostrare in Git Flux"
+                                placeholderTextColor: "#475569"
+                                color: "#F8FAFC"
+                                font.pixelSize: 13
+                                selectByMouse: true
+                                background: Rectangle {
+                                    color: "#0B1120"
+                                    radius: 6
+                                    border.color: displayNameField.activeFocus ? "#38BDF8" : "#334155"
+                                    border.width: 1
+                                }
+                                onAccepted: {
+                                    if (cloneButton.enabled) cloneButton.clicked();
+                                }
+                            }
+                        }
                     }
 
+                    // Destination Path Preview
                     Text {
-                        text: root.homeHubVm ? root.homeHubVm.cloneStatusMessage : ""
+                        visible: destFolderField.text.trim().length > 0 && dirNameField.text.trim().length > 0
+                        text: "📁 Salvataggio in: " + destFolderField.text.trim() + "/" + dirNameField.text.trim()
                         color: "#38BDF8"
-                        font.pixelSize: 12
-                        wrapMode: Text.Wrap
+                        font.pixelSize: 11
+                        font.bold: true
+                        elide: Text.ElideMiddle
                         Layout.fillWidth: true
                     }
-                }
 
-                // Error Banner
-                Rectangle {
-                    Layout.fillWidth: true
-                    visible: (root.homeHubVm && root.homeHubVm.lastError.length > 0 && !root.homeHubVm.isCloning)
-                    color: "#450A0A"
-                    radius: 6
-                    border.color: "#DC2626"
-                    border.width: 1
-                    implicitHeight: errorText.implicitHeight + 16
+                    // Progress Indicator
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        visible: root.homeHubVm ? root.homeHubVm.isCloning : false
+                        spacing: 6
 
-                    Text {
-                        id: errorText
-                        anchors.fill: parent
-                        anchors.margins: 8
-                        text: root.homeHubVm ? root.homeHubVm.lastError : ""
-                        color: "#FECACA"
-                        font.pixelSize: 12
-                        wrapMode: Text.Wrap
+                        ProgressBar {
+                            Layout.fillWidth: true
+                            indeterminate: true
+                        }
+
+                        Text {
+                            text: root.homeHubVm ? root.homeHubVm.cloneStatusMessage : ""
+                            color: "#38BDF8"
+                            font.pixelSize: 12
+                            wrapMode: Text.Wrap
+                            Layout.fillWidth: true
+                        }
+                    }
+
+                    // Error Banner
+                    Rectangle {
+                        Layout.fillWidth: true
+                        visible: Boolean(root.homeHubVm && root.homeHubVm.lastError.length > 0 && !root.homeHubVm.isCloning)
+                        color: "#450A0A"
+                        radius: 6
+                        border.color: "#DC2626"
+                        border.width: 1
+                        implicitHeight: errorText.implicitHeight + 16
+
+                        Text {
+                            id: errorText
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            text: root.homeHubVm ? root.homeHubVm.lastError : ""
+                            color: "#FECACA"
+                            font.pixelSize: 12
+                            wrapMode: Text.Wrap
+                        }
                     }
                 }
             }
         }
 
         // ==========================================
-        // 4. MODAL FOOTER
+        // 3. MODAL FOOTER
         // ==========================================
         Rectangle {
             Layout.fillWidth: true
