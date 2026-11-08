@@ -811,6 +811,7 @@ Rectangle {
                         required property string graphColor
                         required property var graphRoutes
                         required property bool isMerge
+                        required property bool isOrphan
                         required property int index
 
                         width: commitTableListView.width
@@ -870,6 +871,16 @@ Rectangle {
                                 Layout.preferredWidth: root.branchTagColWidth
                                 Layout.fillHeight: true
                                 clip: true
+
+                                readonly property bool hasOrphanBadge: {
+                                    if (commitRow.isOrphan) return true;
+                                    var decs = commitRow.structuredDecorations;
+                                    if (!decs) return false;
+                                    for (var d = 0; d < decs.length; ++d) {
+                                        if (decs[d].isOrphan || (decs[d].name && decs[d].name.indexOf("gh-pages") !== -1)) return true;
+                                    }
+                                    return false;
+                                }
 
                                 Row {
                                     anchors.right: parent.right
@@ -1050,6 +1061,15 @@ Rectangle {
                                         }
 
                                         var centerY = height / 2;
+
+                                        // Horizontal connecting line from Col 1 into node
+                                        if (commitRow.structuredDecorations && commitRow.structuredDecorations.length > 0) {
+                                            ctx.strokeStyle = commitRow.graphColor || "#06B6D4";
+                                            ctx.beginPath();
+                                            ctx.moveTo(0, centerY);
+                                            ctx.lineTo(laneX(commitLane), centerY);
+                                            ctx.stroke();
+                                        }
 
                                         for (var i = 0; i < routes.length; ++i) {
                                             var r = routes[i];

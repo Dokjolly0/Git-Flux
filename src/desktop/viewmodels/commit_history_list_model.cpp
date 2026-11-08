@@ -6,6 +6,7 @@
 #include <QRegularExpression>
 #include <QVariantMap>
 #include <algorithm>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace gf::desktop {
@@ -220,16 +221,27 @@ QVariantList computeStructuredDecorations(const std::vector<std::string>& rawDec
 
         if (!hasMatchingRemoteAtSameCommit) {
             // Local branch is ahead or has no remote: show local badge!
+            bool isPages = (lb.name == QLatin1String("gh-pages") || lb.name.contains(QLatin1String("gh-pages")));
             QVariantMap badge;
             badge[QStringLiteral("name")] = lb.name;
             badge[QStringLiteral("type")] = QStringLiteral("local");
             badge[QStringLiteral("isHead")] = lb.isHead;
-            badge[QStringLiteral("label")] = lb.isHead
-                ? QStringLiteral("✓ %1 💻").arg(lb.name)
-                : QStringLiteral("%1 💻").arg(lb.name);
-            badge[QStringLiteral("bgColor")] = lb.isHead ? QStringLiteral("#0E7490") : QStringLiteral("#064E3B");
-            badge[QStringLiteral("borderColor")] = lb.isHead ? QStringLiteral("#06B6D4") : QStringLiteral("#10B981");
-            badge[QStringLiteral("fgColor")] = QStringLiteral("#FFFFFF");
+            badge[QStringLiteral("isOrphan")] = isPages;
+            if (isPages) {
+                badge[QStringLiteral("label")] = lb.isHead
+                    ? QStringLiteral("✓ 📄 %1 💻").arg(lb.name)
+                    : QStringLiteral("📄 %1 💻").arg(lb.name);
+                badge[QStringLiteral("bgColor")] = QStringLiteral("#2E1065");
+                badge[QStringLiteral("borderColor")] = QStringLiteral("#A855F7");
+                badge[QStringLiteral("fgColor")] = QStringLiteral("#E9D5FF");
+            } else {
+                badge[QStringLiteral("label")] = lb.isHead
+                    ? QStringLiteral("✓ %1 💻").arg(lb.name)
+                    : QStringLiteral("%1 💻").arg(lb.name);
+                badge[QStringLiteral("bgColor")] = lb.isHead ? QStringLiteral("#0E7490") : QStringLiteral("#064E3B");
+                badge[QStringLiteral("borderColor")] = lb.isHead ? QStringLiteral("#06B6D4") : QStringLiteral("#10B981");
+                badge[QStringLiteral("fgColor")] = QStringLiteral("#FFFFFF");
+            }
             result.append(badge);
         }
     }
@@ -241,13 +253,22 @@ QVariantList computeStructuredDecorations(const std::vector<std::string>& rawDec
         if (cleanName.startsWith(QLatin1String("origin/"))) {
             cleanName = cleanName.mid(7);
         }
+        bool isPages = (cleanName == QLatin1String("gh-pages") || rb.name.contains(QLatin1String("gh-pages")));
         badge[QStringLiteral("name")] = rb.name;
         badge[QStringLiteral("type")] = QStringLiteral("remote");
         badge[QStringLiteral("isHead")] = rb.isHead;
-        badge[QStringLiteral("label")] = QStringLiteral("%1 ☁").arg(cleanName);
-        badge[QStringLiteral("bgColor")] = QStringLiteral("#1E293B"); // GitKraken dark slate blue
-        badge[QStringLiteral("borderColor")] = QStringLiteral("#3B82F6"); // Slate border
-        badge[QStringLiteral("fgColor")] = QStringLiteral("#93C5FD"); // Light blue text
+        badge[QStringLiteral("isOrphan")] = isPages;
+        if (isPages) {
+            badge[QStringLiteral("label")] = QStringLiteral("📄 %1 ☁").arg(cleanName);
+            badge[QStringLiteral("bgColor")] = QStringLiteral("#2E1065"); // Dark violet for orphan/pages
+            badge[QStringLiteral("borderColor")] = QStringLiteral("#A855F7"); // Purple border
+            badge[QStringLiteral("fgColor")] = QStringLiteral("#E9D5FF"); // Soft violet text
+        } else {
+            badge[QStringLiteral("label")] = QStringLiteral("%1 ☁").arg(cleanName);
+            badge[QStringLiteral("bgColor")] = QStringLiteral("#1E293B"); // GitKraken dark slate blue
+            badge[QStringLiteral("borderColor")] = QStringLiteral("#3B82F6"); // Slate border
+            badge[QStringLiteral("fgColor")] = QStringLiteral("#93C5FD"); // Light blue text
+        }
         result.append(badge);
     }
 
@@ -348,6 +369,8 @@ QVariant CommitHistoryListModel::data(const QModelIndex& index, int role) const 
         return c.parents.size() > 1;
     case IsWipRole:
         return c.sha == "WIP";
+    case IsOrphanRole:
+        return (idx < m_graphItems.size()) ? m_graphItems[idx].isOrphan : false;
     default:
         return {};
     }
@@ -378,7 +401,8 @@ QHash<int, QByteArray> CommitHistoryListModel::roleNames() const {
         {GraphColorRole, "graphColor"},
         {GraphRoutesRole, "graphRoutes"},
         {IsMergeRole, "isMerge"},
-        {IsWipRole, "isWip"}
+        {IsWipRole, "isWip"},
+        {IsOrphanRole, "isOrphan"}
     };
 }
 
@@ -422,6 +446,7 @@ QVariantMap CommitHistoryListModel::getCommit(int index) const {
         map[QStringLiteral("graphLane")] = m_graphItems[idx].lane;
         map[QStringLiteral("graphColor")] = m_graphItems[idx].color;
         map[QStringLiteral("graphRoutes")] = m_graphItems[idx].routes;
+        map[QStringLiteral("isOrphan")] = m_graphItems[idx].isOrphan;
     }
     map[QStringLiteral("isMerge")] = (c.parents.size() > 1);
     map[QStringLiteral("isWip")] = (c.sha == "WIP");
@@ -449,20 +474,146 @@ void CommitHistoryListModel::rebuildGraph() {
 
     std::unordered_set<std::string> knownShas;
     knownShas.reserve(m_commits.size());
+    std::unordered_map<std::string, const git::bo::GitCommitLogItem*> commitMap;
+    commitMap.reserve(m_commits.size());
     for (const auto& c : m_commits) {
         knownShas.insert(c.sha);
+        commitMap[c.sha] = &c;
     }
+
+    // 1. Identify HEAD commit and all ancestors reachable from HEAD
+    std::string headSha;
+    for (const auto& c : m_commits) {
+        if (c.sha == "WIP") {
+            if (!c.parents.empty()) {
+                headSha = c.parents[0];
+                break;
+            }
+        }
+        for (const auto& dec : c.refDecorations) {
+            if (dec.starts_with("HEAD -> ") || dec == "HEAD") {
+                headSha = c.sha;
+                break;
+            }
+        }
+        if (!headSha.empty()) {
+            break;
+        }
+    }
+
+    if (headSha.empty() && !m_commits.empty()) {
+        for (const auto& c : m_commits) {
+            bool isPages = false;
+            for (const auto& dec : c.refDecorations) {
+                if (dec.find("gh-pages") != std::string::npos) {
+                    isPages = true;
+                    break;
+                }
+            }
+            if (!isPages) {
+                headSha = c.sha;
+                break;
+            }
+        }
+        if (headSha.empty()) {
+            headSha = m_commits[0].sha;
+        }
+    }
+
+    std::unordered_set<std::string> headReachable;
+    std::vector<std::string> queue;
+    if (!headSha.empty()) {
+        queue.push_back(headSha);
+        headReachable.insert(headSha);
+    }
+
+    while (!queue.empty()) {
+        std::string curr = queue.back();
+        queue.pop_back();
+
+        auto it = commitMap.find(curr);
+        if (it != commitMap.end()) {
+            for (const auto& p : it->second->parents) {
+                if (headReachable.insert(p).second) {
+                    queue.push_back(p);
+                }
+            }
+        }
+    }
+
+    // 2. Identify gh-pages / orphan commits
+    std::unordered_set<std::string> orphanShas;
+    for (const auto& c : m_commits) {
+        for (const auto& dec : c.refDecorations) {
+            if (dec.find("gh-pages") != std::string::npos) {
+                orphanShas.insert(c.sha);
+                break;
+            }
+        }
+    }
+
+    bool expanded = true;
+    while (expanded) {
+        expanded = false;
+        for (const auto& c : m_commits) {
+            if (orphanShas.count(c.sha) > 0) {
+                for (const auto& p : c.parents) {
+                    if (headReachable.count(p) == 0 && orphanShas.insert(p).second) {
+                        expanded = true;
+                    }
+                }
+            }
+        }
+    }
+
+    auto isOrphanCommit = [&](const git::bo::GitCommitLogItem& c) -> bool {
+        if (orphanShas.count(c.sha) > 0) {
+            return true;
+        }
+        if (c.sha != "WIP" && headReachable.count(c.sha) == 0 && c.parents.empty() && c.sha != headSha) {
+            return true;
+        }
+        return false;
+    };
+
+    bool hasOrphans = false;
+    for (const auto& c : m_commits) {
+        if (isOrphanCommit(c)) {
+            hasOrphans = true;
+            break;
+        }
+    }
+
+    int mainTrunkLane = hasOrphans ? 1 : 0;
 
     std::vector<std::string> activeLanes;
     std::vector<QString> laneColors;
 
+    if (hasOrphans) {
+        activeLanes.resize(2, "");
+        laneColors.resize(2);
+        laneColors[0] = QStringLiteral("#A855F7"); // Purple for orphan lane (left of main trunk)
+        laneColors[1] = QStringLiteral("#06B6D4"); // Cyan for main trunk
+    } else {
+        activeLanes.resize(1, "");
+        laneColors.resize(1);
+        laneColors[0] = QStringLiteral("#06B6D4"); // Cyan for main trunk
+    }
+
     for (std::size_t i = 0; i < m_commits.size(); ++i) {
         const auto& commit = m_commits[i];
+        bool isOrphan = isOrphanCommit(commit);
         int commitLane = -1;
 
         // 1. Locate if commit is already expected in activeLanes
         for (int l = 0; l < static_cast<int>(activeLanes.size()); ++l) {
             if (activeLanes[l] == commit.sha) {
+                if (isOrphan && l >= mainTrunkLane) {
+                    continue;
+                }
+                if (!isOrphan && l < mainTrunkLane) {
+                    continue;
+                }
                 commitLane = l;
                 break;
             }
@@ -470,17 +621,49 @@ void CommitHistoryListModel::rebuildGraph() {
 
         bool wasExpectedFromAbove = (commitLane != -1);
         if (commitLane == -1) {
-            for (int l = 0; l < static_cast<int>(activeLanes.size()); ++l) {
-                if (activeLanes[l].empty()) {
-                    commitLane = l;
-                    break;
+            if (isOrphan) {
+                // Orphan commit: locate first free lane in [0, mainTrunkLane - 1] (i.e. lane 0 on the left)
+                for (int l = 0; l < mainTrunkLane; ++l) {
+                    if (activeLanes[l].empty()) {
+                        commitLane = l;
+                        break;
+                    }
+                }
+                if (commitLane == -1) {
+                    commitLane = 0;
+                }
+            } else {
+                // Main trunk or regular branch:
+                if ((commit.sha == headSha || headReachable.count(commit.sha) > 0 || commit.sha == "WIP") &&
+                    activeLanes[mainTrunkLane].empty()) {
+                    commitLane = mainTrunkLane;
+                } else {
+                    for (int l = mainTrunkLane; l < static_cast<int>(activeLanes.size()); ++l) {
+                        if (activeLanes[l].empty()) {
+                            commitLane = l;
+                            break;
+                        }
+                    }
+                    if (commitLane == -1) {
+                        commitLane = std::max(mainTrunkLane, static_cast<int>(activeLanes.size()));
+                        while (static_cast<int>(activeLanes.size()) <= commitLane) {
+                            int newIdx = static_cast<int>(activeLanes.size());
+                            activeLanes.push_back("");
+                            laneColors.push_back(kGraphPalette[newIdx % kGraphPalette.size()]);
+                        }
+                    }
                 }
             }
-            if (commitLane == -1) {
-                commitLane = static_cast<int>(activeLanes.size());
-                activeLanes.push_back("");
-                laneColors.push_back(kGraphPalette[commitLane % kGraphPalette.size()]);
-            }
+        }
+
+        while (static_cast<int>(activeLanes.size()) <= commitLane) {
+            int newIdx = static_cast<int>(activeLanes.size());
+            activeLanes.push_back("");
+            laneColors.push_back(kGraphPalette[newIdx % kGraphPalette.size()]);
+        }
+        while (static_cast<int>(laneColors.size()) <= commitLane) {
+            int newIdx = static_cast<int>(laneColors.size());
+            laneColors.push_back(kGraphPalette[newIdx % kGraphPalette.size()]);
         }
 
         QString nodeColor = (commit.sha == "WIP") ? QStringLiteral("#F59E0B") : laneColors[commitLane];
@@ -560,16 +743,19 @@ void CommitHistoryListModel::rebuildGraph() {
                         }
                     }
                     if (pOtherLane == -1) {
-                        for (int l = 0; l < static_cast<int>(activeLanes.size()); ++l) {
+                        for (int l = mainTrunkLane; l < static_cast<int>(activeLanes.size()); ++l) {
                             if (activeLanes[l].empty()) {
                                 pOtherLane = l;
                                 break;
                             }
                         }
                         if (pOtherLane == -1) {
-                            pOtherLane = static_cast<int>(activeLanes.size());
-                            activeLanes.push_back("");
-                            laneColors.push_back(kGraphPalette[pOtherLane % kGraphPalette.size()]);
+                            pOtherLane = std::max(mainTrunkLane, static_cast<int>(activeLanes.size()));
+                            while (static_cast<int>(activeLanes.size()) <= pOtherLane) {
+                                int newIdx = static_cast<int>(activeLanes.size());
+                                activeLanes.push_back("");
+                                laneColors.push_back(kGraphPalette[newIdx % kGraphPalette.size()]);
+                            }
                         }
                         activeLanes[pOtherLane] = pOther;
                     }
@@ -584,8 +770,8 @@ void CommitHistoryListModel::rebuildGraph() {
             }
         }
 
-        // 5. Trim trailing empty lanes in activeLanes
-        while (!activeLanes.empty() && activeLanes.back().empty()) {
+        // 5. Trim trailing empty lanes in activeLanes beyond mainTrunkLane
+        while (activeLanes.size() > static_cast<std::size_t>(mainTrunkLane + 1) && activeLanes.back().empty()) {
             activeLanes.pop_back();
         }
 
@@ -595,7 +781,8 @@ void CommitHistoryListModel::rebuildGraph() {
         m_graphItems[i] = GraphItem{
             .lane = commitLane,
             .color = nodeColor,
-            .routes = std::move(routes)
+            .routes = std::move(routes),
+            .isOrphan = isOrphan
         };
     }
 

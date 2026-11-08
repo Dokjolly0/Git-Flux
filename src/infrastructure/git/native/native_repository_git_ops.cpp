@@ -1333,7 +1333,9 @@ NativeRepositoryGitOps::getCommitLog(const std::filesystem::path& repoPath,
         "--format=%H%x00%h%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%D%x00%s%x00%b%x1e"
     };
 
-    if (options.topoOrder) {
+    if (options.dateOrder) {
+        args.emplace_back("--date-order");
+    } else if (options.topoOrder) {
         args.emplace_back("--topo-order");
     }
 

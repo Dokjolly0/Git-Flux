@@ -1186,6 +1186,101 @@ TEST_CASE("BranchListModel and CommitHistoryListModel MVVM representations", "[v
         CHECK(model.rowCount() == 3);
         CHECK(model.totalCommitsCount() == 3);
     }
+
+    SECTION("CommitHistoryListModel isolates gh-pages and orphan branches in dedicated lanes") {
+        CommitHistoryListModel model;
+
+        std::vector<gf::git::bo::GitCommitLogItem> commits = {
+            gf::git::bo::GitCommitLogItem{
+                .sha = "46be7d4111112222333344445555666677778888",
+                .shortSha = "46be7d4",
+                .parents = {"94b5697d5d17b77ba65be7b14767ea07e35347c8"},
+                .authorName = "Dokjolly0",
+                .authorEmail = "alexviolattolibero.it@gmail.com",
+                .authorDateIso = "2026-11-08T18:00:44Z",
+                .subject = "feat(git): implement remote clone engine",
+                .refDecorations = {"HEAD -> develop"}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "2465a5b5a62988a6aba43096644e2a7b4284af1d",
+                .shortSha = "2465a5b",
+                .parents = {}, // Orphan commit
+                .authorName = "GitHub Actions",
+                .authorEmail = "actions@github.com",
+                .authorDateIso = "2026-11-08T16:53:06Z",
+                .subject = "deploy: build website",
+                .refDecorations = {"origin/gh-pages"}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "94b5697d5d17b77ba65be7b14767ea07e35347c8",
+                .shortSha = "94b5697",
+                .parents = {"root111122223333444455556666777788889999"},
+                .authorName = "Dokjolly0",
+                .authorEmail = "alexviolattolibero.it@gmail.com",
+                .authorDateIso = "2026-11-08T16:41:20Z",
+                .subject = "feat(windows): add console for debugging",
+                .refDecorations = {"origin/main"}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "root111122223333444455556666777788889999",
+                .shortSha = "root111",
+                .parents = {},
+                .authorName = "Dokjolly0",
+                .authorEmail = "alexviolattolibero.it@gmail.com",
+                .authorDateIso = "2026-11-08T10:00:00Z",
+                .subject = "Initial commit",
+                .refDecorations = {}
+            }
+        };
+
+        model.setCommits(commits);
+        REQUIRE(model.rowCount() == 4);
+
+        auto idxDevelop = model.index(0);
+        auto idxGhPages = model.index(1);
+        auto idxMain = model.index(2);
+        auto idxRoot = model.index(3);
+
+        // gh-pages must be identified as orphan
+        CHECK(model.data(idxGhPages, CommitHistoryListModel::IsOrphanRole).toBool() == true);
+        // develop, main and root must NOT be identified as orphan
+        CHECK(model.data(idxDevelop, CommitHistoryListModel::IsOrphanRole).toBool() == false);
+        CHECK(model.data(idxMain, CommitHistoryListModel::IsOrphanRole).toBool() == false);
+        CHECK(model.data(idxRoot, CommitHistoryListModel::IsOrphanRole).toBool() == false);
+
+        // gh-pages must be in Lane 0 (shifted to the left of the main trunk in Lane 1)
+        int ghPagesLane = model.data(idxGhPages, CommitHistoryListModel::GraphLaneRole).toInt();
+        int mainLane = model.data(idxMain, CommitHistoryListModel::GraphLaneRole).toInt();
+        int developLane = model.data(idxDevelop, CommitHistoryListModel::GraphLaneRole).toInt();
+        CHECK(ghPagesLane == 0);
+        CHECK(mainLane == 1);
+        CHECK(developLane == 1);
+        CHECK(ghPagesLane < mainLane); // gh-pages is to the left of main
+
+        // On the gh-pages row, Lane 1 must have a pass-through route (|) passing down for main
+        auto routes = model.data(idxGhPages, CommitHistoryListModel::GraphRoutesRole).toList();
+        REQUIRE(routes.size() == 1);
+        auto r0 = routes[0].toMap();
+        CHECK(r0["fromLane"].toInt() == 1);
+        CHECK(r0["toLane"].toInt() == 1);
+        CHECK(r0["type"].toInt() == 0); // straight pass-through route
+
+        // Check structured decorations for gh-pages badge
+        auto decs = model.data(idxGhPages, CommitHistoryListModel::StructuredDecorationsRole).toList();
+        REQUIRE(decs.size() == 1);
+        auto badge = decs[0].toMap();
+        CHECK(badge["isOrphan"].toBool() == true);
+        CHECK(badge["label"].toString().contains("📄"));
+        CHECK(badge["label"].toString().contains("gh-pages"));
+        CHECK(badge["bgColor"].toString() == "#2E1065");
+        CHECK(badge["borderColor"].toString() == "#A855F7");
+        CHECK(badge["fgColor"].toString() == "#E9D5FF");
+
+        // Commit map checks
+        auto commitMapGhPages = model.getCommit(1);
+        CHECK(commitMapGhPages["isOrphan"].toBool() == true);
+        CHECK(commitMapGhPages["graphLane"].toInt() == 0);
+    }
 }
 
 TEST_CASE("BranchManagerViewModel operations and signal propagation", "[viewmodel][branch][manager]") {

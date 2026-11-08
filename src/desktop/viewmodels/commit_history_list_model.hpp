@@ -49,7 +49,8 @@ public:
         GraphColorRole,
         GraphRoutesRole,
         IsMergeRole,
-        IsWipRole
+        IsWipRole,
+        IsOrphanRole
     };
 
     explicit CommitHistoryListModel(QObject* parent = nullptr);
@@ -80,6 +81,7 @@ private:
         int lane = 0;
         QString color;
         QVariantList routes;
+        bool isOrphan = false;
     };
 
     void applyWipAndRebuild();
