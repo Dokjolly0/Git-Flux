@@ -6,6 +6,7 @@
 #include "core/modules/git/bl/git_clone_service.hpp"
 
 #include <thread>
+#include <iostream>
 #include <QUrl>
 #include <QDesktopServices>
 #include <QProcess>
@@ -254,6 +255,10 @@ void HomeHubViewModel::cloneRepositoryAsync(const QString& remoteUrl,
                                            const QString& destinationParentFolder,
                                            const QString& directoryName,
                                            const QString& displayName) {
+    std::cout << "[HomeHubViewModel] cloneRepositoryAsync requested: URL=" << remoteUrl.toStdString()
+              << " Parent=" << destinationParentFolder.toStdString()
+              << " Dir=" << directoryName.toStdString()
+              << " DisplayName=" << displayName.toStdString() << std::endl;
     qInfo() << "[HomeHubViewModel] cloneRepositoryAsync requested:"
             << "URL:" << remoteUrl
             << "Parent:" << destinationParentFolder

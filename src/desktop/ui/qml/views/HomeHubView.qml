@@ -6,6 +6,8 @@ import QtQuick.Dialogs
 Item {
     id: root
 
+    readonly property var homeHubVmRef: (typeof homeHubVm !== "undefined") ? homeHubVm : null
+
     signal quickOpenRequested()
     signal repositoryOpened(string repoId, string name, string path)
     signal groupOpened(string groupId, string groupName, var repoIds)
@@ -1198,7 +1200,7 @@ Item {
     // Dialog: Clone Remote Repository Modal
     CloneRepositoryModal {
         id: cloneRepoModal
-        homeHubVm: (typeof homeHubVm !== "undefined") ? homeHubVm : null
+        hubVm: root.homeHubVmRef
         profilesVm: (typeof gitProfilesVm !== "undefined") ? gitProfilesVm : null
     }
 

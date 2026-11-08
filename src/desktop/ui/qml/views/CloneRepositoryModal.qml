@@ -15,8 +15,9 @@ Dialog {
     leftPadding: 0
     rightPadding: 0
 
-    property var homeHubVm: null
-    property var profilesVm: null
+    property var hubVm: null
+    readonly property var effectiveHubVm: root.hubVm !== null ? root.hubVm : ((typeof homeHubVm !== "undefined") ? homeHubVm : null)
+    property var profilesVm: (typeof gitProfilesVm !== "undefined") ? gitProfilesVm : null
 
     property bool showTokenConfig: false
     property bool showTokenText: false
@@ -31,7 +32,6 @@ Dialog {
         selectedRepoFullName = "";
         selectedRepoIsPrivate = false;
         showTokenConfig = false;
-        showRepoPicker = (root.profilesVm && root.profilesVm.activeProfileId !== "url");
         dirNameField.propertyModified = false;
 
         if (defaultParentFolder && defaultParentFolder.length > 0) {
@@ -39,8 +39,10 @@ Dialog {
         }
 
         if (root.profilesVm) {
-            root.profilesVm.selectProfile("bitbucket");
-            showRepoPicker = true;
+            if (!root.profilesVm.activeProfileId || root.profilesVm.activeProfileId.length === 0 || root.profilesVm.activeProfileId === "url") {
+                root.profilesVm.selectProfile("bitbucket");
+            }
+            showRepoPicker = (root.profilesVm.activeProfileId !== "url");
         }
 
         root.open();
@@ -52,7 +54,7 @@ Dialog {
     }
 
     Connections {
-        target: root.homeHubVm
+        target: root.effectiveHubVm
         function onCloneCompleted(success, message) {
             if (success) {
                 root.close();
@@ -63,6 +65,7 @@ Dialog {
     FolderDialog {
         id: cloneParentFolderDialog
         title: "Seleziona cartella di destinazione locale"
+        currentFolder: destFolderField.text.length > 0 ? ("file://" + destFolderField.text) : ""
         onAccepted: {
             var selected = cloneParentFolderDialog.selectedFolder.toString();
             if (selected.startsWith("file://")) {
@@ -117,7 +120,7 @@ Dialog {
                     flat: true
                     Layout.preferredWidth: 28
                     Layout.preferredHeight: 28
-                    enabled: !(root.homeHubVm && root.homeHubVm.isCloning)
+                    enabled: !(root.effectiveHubVm && root.effectiveHubVm.isCloning)
                     onClicked: root.close()
                     contentItem: Text {
                         text: "✕"
@@ -1054,7 +1057,7 @@ Dialog {
                             id: urlField
                             Layout.fillWidth: true
                             Layout.preferredHeight: 34
-                            enabled: !(root.homeHubVm && root.homeHubVm.isCloning)
+                            enabled: !(root.effectiveHubVm && root.effectiveHubVm.isCloning)
                             placeholderText: "es. https://github.com/utente/progetto.git o git@github.com:..."
                             placeholderTextColor: "#475569"
                             color: "#F8FAFC"
@@ -1067,8 +1070,8 @@ Dialog {
                                 border.width: 1
                             }
                             onTextChanged: {
-                                if (root.homeHubVm && text.length > 0 && root.profilesVm && root.profilesVm.activeProfileId === "url") {
-                                    var extracted = root.homeHubVm.extractRepoNameFromUrl(text);
+                                if (root.effectiveHubVm && text.length > 0 && root.profilesVm && root.profilesVm.activeProfileId === "url") {
+                                    var extracted = root.effectiveHubVm.extractRepoNameFromUrl(text);
                                     if (dirNameField.text.length === 0 || dirNameField.propertyModified !== true) {
                                         dirNameField.text = extracted;
                                     }
@@ -1102,7 +1105,7 @@ Dialog {
                                 id: destFolderField
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 34
-                                enabled: !(root.homeHubVm && root.homeHubVm.isCloning)
+                                enabled: !(root.effectiveHubVm && root.effectiveHubVm.isCloning)
                                 placeholderText: "Seleziona cartella in cui scaricare il progetto..."
                                 placeholderTextColor: "#475569"
                                 color: "#F8FAFC"
@@ -1123,7 +1126,7 @@ Dialog {
                                 text: "Sfoglia..."
                                 Layout.preferredHeight: 34
                                 Layout.preferredWidth: 84
-                                enabled: !(root.homeHubVm && root.homeHubVm.isCloning)
+                                enabled: !(root.effectiveHubVm && root.effectiveHubVm.isCloning)
                                 onClicked: cloneParentFolderDialog.open()
                                 contentItem: Text {
                                     text: "Sfoglia..."
@@ -1166,7 +1169,7 @@ Dialog {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 34
                                 property bool propertyModified: false
-                                enabled: !(root.homeHubVm && root.homeHubVm.isCloning)
+                                enabled: !(root.effectiveHubVm && root.effectiveHubVm.isCloning)
                                 placeholderText: "nome-cartella"
                                 placeholderTextColor: "#475569"
                                 color: "#F8FAFC"
@@ -1199,7 +1202,7 @@ Dialog {
                                 id: displayNameField
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 34
-                                enabled: !(root.homeHubVm && root.homeHubVm.isCloning)
+                                enabled: !(root.effectiveHubVm && root.effectiveHubVm.isCloning)
                                 placeholderText: "Come mostrare in Git Flux"
                                 placeholderTextColor: "#475569"
                                 color: "#F8FAFC"
@@ -1271,7 +1274,7 @@ Dialog {
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 38
-                        visible: destFolderField.text.trim().length > 0 && dirNameField.text.trim().length > 0 && !(root.homeHubVm && root.homeHubVm.isCloning)
+                        visible: destFolderField.text.trim().length > 0 && dirNameField.text.trim().length > 0 && !(root.effectiveHubVm && root.effectiveHubVm.isCloning)
                         color: "#0F172A"
                         radius: 6
                         border.color: "#1E293B"
@@ -1311,7 +1314,7 @@ Dialog {
                     // Progress Indicator with Real-Time Percentage
                     Rectangle {
                         Layout.fillWidth: true
-                        visible: root.homeHubVm ? root.homeHubVm.isCloning : false
+                        visible: Boolean(root.effectiveHubVm && root.effectiveHubVm.isCloning)
                         color: "#0B132B"
                         radius: 8
                         border.color: "#0284C7"
@@ -1337,8 +1340,8 @@ Dialog {
                                 }
 
                                 Text {
-                                    visible: Boolean(root.homeHubVm && root.homeHubVm.cloneProgressPercent > 0)
-                                    text: root.homeHubVm ? (root.homeHubVm.cloneProgressPercent + "%") : ""
+                                    visible: Boolean(root.effectiveHubVm && root.effectiveHubVm.cloneProgressPercent > 0)
+                                    text: root.effectiveHubVm ? (root.effectiveHubVm.cloneProgressPercent + "%") : ""
                                     color: "#38BDF8"
                                     font.pixelSize: 13
                                     font.bold: true
@@ -1351,10 +1354,10 @@ Dialog {
                                 Layout.preferredHeight: 8
                                 from: 0
                                 to: 100
-                                value: (root.homeHubVm && root.homeHubVm.cloneProgressPercent > 0)
-                                       ? root.homeHubVm.cloneProgressPercent
+                                value: (root.effectiveHubVm && root.effectiveHubVm.cloneProgressPercent > 0)
+                                       ? root.effectiveHubVm.cloneProgressPercent
                                        : 0
-                                indeterminate: (root.homeHubVm && root.homeHubVm.cloneProgressPercent <= 0)
+                                indeterminate: Boolean(root.effectiveHubVm && root.effectiveHubVm.cloneProgressPercent <= 0)
                                 background: Rectangle {
                                     implicitHeight: 8
                                     color: "#1E293B"
@@ -1362,21 +1365,38 @@ Dialog {
                                 }
                                 contentItem: Item {
                                     implicitHeight: 8
+                                    clip: true
                                     Rectangle {
-                                        width: parent.width * (cloneProgressBar.visualPosition)
+                                        id: barFill
+                                        width: cloneProgressBar.indeterminate
+                                               ? parent.width * 0.35
+                                               : Math.max(8, parent.width * cloneProgressBar.visualPosition)
                                         height: parent.height
                                         radius: 4
+                                        x: cloneProgressBar.indeterminate ? indetAnim.animX : 0
                                         gradient: Gradient {
                                             orientation: Gradient.Horizontal
                                             GradientStop { position: 0.0; color: "#0284C7" }
                                             GradientStop { position: 1.0; color: "#38BDF8" }
                                         }
                                     }
+
+                                    NumberAnimation {
+                                        id: indetAnim
+                                        property real animX: 0
+                                        target: indetAnim
+                                        property: "animX"
+                                        from: -cloneProgressBar.width * 0.35
+                                        to: cloneProgressBar.width
+                                        duration: 1200
+                                        loops: Animation.Infinite
+                                        running: cloneProgressBar.indeterminate && root.visible
+                                    }
                                 }
                             }
 
                             Text {
-                                text: root.homeHubVm ? root.homeHubVm.cloneStatusMessage : ""
+                                text: root.effectiveHubVm ? root.effectiveHubVm.cloneStatusMessage : ""
                                 color: "#94A3B8"
                                 font.pixelSize: 11
                                 font.family: "monospace"
@@ -1389,7 +1409,7 @@ Dialog {
                     // Error Banner
                     Rectangle {
                         Layout.fillWidth: true
-                        visible: Boolean(root.homeHubVm && root.homeHubVm.lastError.length > 0 && !root.homeHubVm.isCloning)
+                        visible: Boolean(root.effectiveHubVm && root.effectiveHubVm.lastError.length > 0 && !root.effectiveHubVm.isCloning)
                         color: "#450A0A"
                         radius: 6
                         border.color: "#DC2626"
@@ -1400,7 +1420,7 @@ Dialog {
                             id: errorText
                             anchors.fill: parent
                             anchors.margins: 8
-                            text: root.homeHubVm ? root.homeHubVm.lastError : ""
+                            text: root.effectiveHubVm ? root.effectiveHubVm.lastError : ""
                             color: "#FECACA"
                             font.pixelSize: 12
                             wrapMode: Text.Wrap
@@ -1437,7 +1457,7 @@ Dialog {
                 Button {
                     text: "Annulla"
                     Layout.preferredHeight: 34
-                    enabled: !(root.homeHubVm && root.homeHubVm.isCloning)
+                    enabled: !(root.effectiveHubVm && root.effectiveHubVm.isCloning)
                     onClicked: root.close()
                     contentItem: Text {
                         text: "Annulla"
@@ -1455,7 +1475,7 @@ Dialog {
                 Button {
                     id: cloneButton
                     Layout.preferredHeight: 36
-                    enabled: !(root.homeHubVm && root.homeHubVm.isCloning)
+                    enabled: !(root.effectiveHubVm && root.effectiveHubVm.isCloning)
                     onClicked: {
                         console.log("[CloneModal] Avvia Clonazione cliccato. URL=" + urlField.text + " DestFolder=" + destFolderField.text + " Dir=" + dirNameField.text);
                         if (urlField.text.trim().length === 0) {
@@ -1469,26 +1489,30 @@ Dialog {
                             destFolderField.forceActiveFocus();
                             return;
                         }
-                        if (root.homeHubVm) {
-                            root.homeHubVm.cloneRepositoryAsync(
+                        var vm = root.effectiveHubVm;
+                        if (vm) {
+                            console.log("[CloneModal] Invocazione cloneRepositoryAsync su ViewModel per: " + urlField.text.trim());
+                            vm.cloneRepositoryAsync(
                                 urlField.text.trim(),
                                 destFolderField.text.trim(),
                                 dirNameField.text.trim(),
                                 displayNameField.text.trim()
                             );
+                        } else {
+                            console.error("[CloneModal] ERRORE CRITICO: ViewModel HomeHub non disponibile!");
                         }
                     }
                     contentItem: Text {
-                        text: (root.homeHubVm && root.homeHubVm.isCloning)
-                              ? (root.homeHubVm.cloneProgressPercent > 0
-                                 ? ("⏳ " + root.homeHubVm.cloneProgressPercent + "% In corso...")
+                        text: (root.effectiveHubVm && root.effectiveHubVm.isCloning)
+                              ? (root.effectiveHubVm.cloneProgressPercent > 0
+                                 ? ("⏳ " + root.effectiveHubVm.cloneProgressPercent + "% In corso...")
                                  : "⏳ Clonazione in corso...")
                               : (urlField.text.trim().length === 0 && (root.profilesVm && root.profilesVm.activeProfileId !== "url")
                                  ? "⚠️ Scegli un repository per clonare"
                                  : (root.selectedRepoFullName.length > 0
                                     ? "⬇ Avvia Clonazione (" + (dirNameField.text.length > 0 ? dirNameField.text : root.selectedRepoFullName) + ")"
                                     : "⬇ Avvia Clonazione"))
-                        color: (root.homeHubVm && root.homeHubVm.isCloning)
+                        color: (root.effectiveHubVm && root.effectiveHubVm.isCloning)
                                ? "#38BDF8"
                                : (urlField.text.trim().length > 0 ? "#FFFFFF" : "#FDE68A")
                         font.pixelSize: 13
@@ -1497,7 +1521,7 @@ Dialog {
                         verticalAlignment: Text.AlignVCenter
                     }
                     background: Rectangle {
-                        color: (root.homeHubVm && root.homeHubVm.isCloning)
+                        color: (root.effectiveHubVm && root.effectiveHubVm.isCloning)
                                ? "#0C4A6E"
                                : (urlField.text.trim().length > 0
                                   ? (cloneButton.hovered ? "#0284C7" : "#0369A1")
