@@ -103,6 +103,8 @@ if(NOT MSVC)
     target_link_libraries(gf_sqlite3 PRIVATE ${CMAKE_DL_LIBS} pthread)
 endif()
 
+find_package(OpenSSL REQUIRED COMPONENTS Crypto)
+
 add_library(gf_persistence_sqlite STATIC
     src/infrastructure/persistence/sqlite/connection/sqlite_connection.cpp
     src/infrastructure/persistence/sqlite/connection/sqlite_statement.cpp
@@ -110,6 +112,9 @@ add_library(gf_persistence_sqlite STATIC
     src/infrastructure/persistence/repositories/sqlite_repository_store.cpp
     src/infrastructure/persistence/groups/sqlite_group_store.cpp
     src/infrastructure/persistence/workspaces/sqlite_workspace_store.cpp
+    src/infrastructure/persistence/profiles/sqlite_profile_store.cpp
+    src/infrastructure/security/crypto_vault.cpp
+    src/infrastructure/git/credentials/system_credential_detector.cpp
 )
 target_include_directories(gf_persistence_sqlite PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
@@ -117,6 +122,7 @@ target_include_directories(gf_persistence_sqlite PUBLIC
 target_link_libraries(gf_persistence_sqlite PUBLIC
     gf_domain
     gf_sqlite3
+    OpenSSL::Crypto
 )
 gf_apply_compiler_warnings(gf_persistence_sqlite)
 
@@ -208,6 +214,9 @@ if(GF_BUILD_DESKTOP)
         src/desktop/viewmodels/batch_operations_viewmodel.cpp
         src/desktop/viewmodels/home_hub_viewmodel.cpp
         src/desktop/viewmodels/quick_open_viewmodel.cpp
+        src/desktop/services/git_provider_api_client.cpp
+        src/desktop/viewmodels/remote_repo_list_model.cpp
+        src/desktop/viewmodels/git_profiles_viewmodel.cpp
         src/desktop/bootstrap/app_bootstrap.cpp
     )
     target_include_directories(gf_desktop_viewmodels PUBLIC
@@ -223,6 +232,7 @@ if(GF_BUILD_DESKTOP)
         Qt6::Quick
         Qt6::Qml
         Qt6::QuickControls2
+        Qt6::Network
     )
     gf_apply_compiler_warnings(gf_desktop_viewmodels)
 
@@ -366,6 +376,7 @@ if(GF_BUILD_TESTING)
         tests/unit/task_runner_unit_tests.cpp
         tests/unit/batch_coordinator_unit_tests.cpp
         tests/unit/syntax_highlighter_unit_tests.cpp
+        tests/unit/crypto_and_profiles_unit_tests.cpp
     )
     target_link_libraries(gf_unit_tests PRIVATE
         gf_git_cli_native

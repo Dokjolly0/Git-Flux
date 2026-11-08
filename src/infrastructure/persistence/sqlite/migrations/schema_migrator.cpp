@@ -92,6 +92,26 @@ CREATE TABLE IF NOT EXISTS workspace_sessions (
 );
 )";
 
+constexpr std::string_view kMigrationV2Sql = R"(
+-- 8. Git Provider Profiles
+CREATE TABLE IF NOT EXISTS git_provider_profiles (
+    id TEXT PRIMARY KEY,
+    provider_type TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    host TEXT NOT NULL,
+    username TEXT NOT NULL DEFAULT '',
+    encrypted_token TEXT NOT NULL DEFAULT '',
+    token_salt TEXT NOT NULL DEFAULT '',
+    token_iv TEXT NOT NULL DEFAULT '',
+    token_tag TEXT NOT NULL DEFAULT '',
+    preferred_protocol TEXT NOT NULL DEFAULT 'ssh',
+    custom_api_url TEXT NOT NULL DEFAULT '',
+    created_at_ms INTEGER NOT NULL,
+    updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_git_provider_host ON git_provider_profiles(host);
+)";
+
 } // namespace
 
 std::expected<int, SqliteError>
@@ -141,6 +161,41 @@ SchemaMigrator::migrateToLatest(SqliteConnection& conn) {
 
         auto recordStmt = SqliteStatement::prepare(
             conn, "INSERT INTO schema_migrations (version, applied_at_ms) VALUES (1, ?);");
+        if (!recordStmt) {
+            return std::unexpected(recordStmt.error());
+        }
+        auto bindRes = recordStmt->bindInt64(1, nowMs);
+        if (!bindRes) {
+            return std::unexpected(bindRes.error());
+        }
+        auto stepRes = recordStmt->step();
+        if (!stepRes) {
+            return std::unexpected(stepRes.error());
+        }
+
+        auto commitRes = tx->commit();
+        if (!commitRes) {
+            return std::unexpected(commitRes.error());
+        }
+    }
+
+    if (*curVer < 2) {
+        auto tx = SqliteTransaction::begin(conn);
+        if (!tx) {
+            return std::unexpected(tx.error());
+        }
+
+        auto execRes = conn.execute(kMigrationV2Sql);
+        if (!execRes) {
+            return std::unexpected(execRes.error());
+        }
+
+        const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                               std::chrono::system_clock::now().time_since_epoch())
+                               .count();
+
+        auto recordStmt = SqliteStatement::prepare(
+            conn, "INSERT INTO schema_migrations (version, applied_at_ms) VALUES (2, ?);");
         if (!recordStmt) {
             return std::unexpected(recordStmt.error());
         }
