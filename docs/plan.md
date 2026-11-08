@@ -626,7 +626,11 @@ Distinguere chiaramente:
 
 L'interfaccia diagnostica deve mostrare *quale remote*, *quale protocollo*, *quale comando sanificato* e *quale tipo di problema* (es. credenziali, rete, autorizzazioni, branch non-fast-forward, repository inesistente), senza promettere di identificare automaticamente ogni causa possibile.
 
-**Niente token in SQLite**, niente credenziali nei log, nessun tentativo di bypassare la gestione delle credenziali di sistema.
+**Sicurezza credenziali e token (Completato):**
+- **Niente token in SQLite in chiaro**: crittografia a riposo autenticata con **Argon2id** (KDF memory-hard a 256-bit) e **AES-256-GCM** (con salt a 16 byte, IV a 12 byte e authentication tag a 16 byte).
+- **Master Secret locale trasparente**: generato con `RAND_bytes` e salvato con permessi `0600` nella directory utente dell'applicazione (`~/.local/share/GitFlux/.vault_key`).
+- **Rilevamento automatico SSH & Git config**: scansione nativa di `~/.ssh/config` e `~/.ssh/` per associare host remoti e chiavi SSH, `git config user.name/user.email`, e variabili d'ambiente (`GITHUB_TOKEN`, ecc.).
+- **Recupero repository remoti stile GitKraken**: integrazione asincrona via API REST (GitHub, GitLab, Bitbucket, server custom) con filtro e ricerca istantanea in memoria e toggle SSH/HTTPS. Niente credenziali nei log.
 
 ### 10.5 Tutti i comandi Git: obiettivo futuro
 
