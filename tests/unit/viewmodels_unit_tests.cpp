@@ -1894,6 +1894,24 @@ TEST_CASE("DiffViewModel - View mode switching and property invariants", "[deskt
     diffVm.setViewMode("split");
     CHECK(diffVm.viewMode() == "split");
     CHECK(modeSpy.count() == 4);
+
+    CHECK(diffVm.maxLineLength() == 0);
+
+    // Test maxLineLength calculation on diff load (with tab expansion)
+    gf::git::bo::DiffHunk hunk;
+    hunk.header = "@@ -1,3 +1,3 @@";
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Context, .content = "short line"});
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Addition, .content = "this is a much longer line with 48 characters..."});
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Addition, .content = "\t\tabc"}); // 4 + 4 + 3 = 11 chars
+    mockOps.diffToReturn.hunks = {hunk};
+    mockOps.diffToReturn.newPath = "test.txt";
+    mockOps.diffToReturn.oldPath = "test.txt";
+
+    CHECK(diffVm.loadDiff("/tmp", "test.txt", "unstaged"));
+    CHECK(diffVm.maxLineLength() == 48);
+
+    diffVm.clear();
+    CHECK(diffVm.maxLineLength() == 0);
 }
 
 #include "desktop/viewmodels/remote_repo_list_model.hpp"

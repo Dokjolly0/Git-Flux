@@ -11,6 +11,147 @@ Rectangle {
     property bool showBackButton: false
     signal backRequested()
 
+    property real horizontalScrollX: 0
+
+    TextMetrics {
+        id: monoMetrics
+        font.family: "monospace"
+        font.pixelSize: 12
+        text: "M"
+    }
+
+    readonly property real charWidth: Math.max(7.5, monoMetrics.width)
+    readonly property int maxLineLength: (root.diffViewer && root.diffViewer.maxLineLength > 0) ? root.diffViewer.maxLineLength : 0
+    readonly property real maxCodeWidth: maxLineLength > 0 ? (maxLineLength * charWidth + 80) : 0
+
+    readonly property real inlineAvailWidth: Math.max(100, root.width - 108)
+    readonly property real inlineMaxScroll: Math.max(0, maxCodeWidth - inlineAvailWidth)
+
+    readonly property real splitAvailWidth: Math.max(100, Math.floor(root.width / 2) - 44)
+    readonly property real splitMaxScroll: Math.max(0, maxCodeWidth - splitAvailWidth)
+
+    readonly property real blameAvailWidth: Math.max(100, root.width - 320)
+    readonly property real blameMaxScroll: Math.max(0, maxCodeWidth - blameAvailWidth)
+
+    readonly property real currentMaxScroll: {
+        var mode = root.diffViewer ? root.diffViewer.viewMode : "split";
+        if (mode === "inline") return inlineMaxScroll;
+        if (mode === "blame") return blameMaxScroll;
+        return splitMaxScroll;
+    }
+
+    onCurrentMaxScrollChanged: {
+        if (root.horizontalScrollX > currentMaxScroll) {
+            root.horizontalScrollX = currentMaxScroll;
+        }
+    }
+
+    property string lastLoadedFileKey: ""
+
+    Connections {
+        target: root.diffViewer
+        function onDiffLoaded() {
+            var rev = (root.diffViewer && root.diffViewer.currentRevision) ? root.diffViewer.currentRevision : "";
+            var file = (root.diffViewer && root.diffViewer.filePath) ? root.diffViewer.filePath : "";
+            var key = rev + "::" + file;
+            if (key !== root.lastLoadedFileKey) {
+                root.lastLoadedFileKey = key;
+                root.horizontalScrollX = 0;
+            } else {
+                // Same file reloaded (e.g. background polling / git status check):
+                // Preserve user scroll position! Clamp to max scroll if file became shorter.
+                if (root.horizontalScrollX > root.currentMaxScroll) {
+                    root.horizontalScrollX = root.currentMaxScroll;
+                }
+            }
+        }
+        function onViewModeChanged() {
+            root.horizontalScrollX = 0;
+        }
+    }
+
+    component DiffHScrollBar: Rectangle {
+        id: hbar
+        property real contentWidth: 0
+        property real viewWidth: 0
+        property real scrollValue: 0
+        property real maxScroll: Math.max(0, contentWidth - viewWidth)
+        signal scrollRequested(real newValue)
+
+        height: 10
+        color: "#0F141C"
+        border.color: "#1E293B"
+        border.width: 1
+        radius: 4
+        visible: maxScroll > 0
+        z: 30
+
+        MouseArea {
+            id: trackMouseArea
+            anchors.fill: parent
+            hoverEnabled: true
+            preventStealing: true
+            onPressed: (mouse) => {
+                if (mouse.x < hThumb.x) {
+                    hbar.scrollRequested(Math.max(0, hbar.scrollValue - hbar.viewWidth * 0.4));
+                } else if (mouse.x > hThumb.x + hThumb.width) {
+                    hbar.scrollRequested(Math.min(hbar.maxScroll, hbar.scrollValue + hbar.viewWidth * 0.4));
+                }
+            }
+        }
+
+        Rectangle {
+            id: hThumb
+            height: 6
+            anchors.verticalCenter: parent.verticalCenter
+            radius: 3
+            color: hThumbArea.isDragging
+                   ? "#00E5FF"
+                   : (hThumbArea.containsMouse || trackMouseArea.containsMouse ? "#38BDF8" : "#475569")
+            opacity: (hThumbArea.isDragging || hThumbArea.containsMouse || trackMouseArea.containsMouse) ? 0.95 : 0.65
+
+            readonly property real trackWidth: hbar.width
+            readonly property real visibleRatio: Math.min(1.0, hbar.viewWidth / Math.max(1, hbar.contentWidth))
+            width: Math.max(36, trackWidth * visibleRatio)
+
+            x: hbar.maxScroll > 0 ? (hbar.scrollValue / hbar.maxScroll) * Math.max(1, trackWidth - width) : 0
+
+            MouseArea {
+                id: hThumbArea
+                anchors.fill: parent
+                anchors.margins: -4
+                hoverEnabled: true
+                preventStealing: true
+
+                property real startThumbTrackX: 0
+                property real startScroll: 0
+                property bool isDragging: false
+
+                onPressed: (mouse) => {
+                    var pt = mapToItem(hbar, mouse.x, mouse.y);
+                    startThumbTrackX = pt.x;
+                    startScroll = hbar.scrollValue;
+                    isDragging = true;
+                }
+                onPositionChanged: (mouse) => {
+                    if (isDragging && pressed) {
+                        var pt = mapToItem(hbar, mouse.x, mouse.y);
+                        var deltaX = pt.x - startThumbTrackX;
+                        var maxThumbX = Math.max(1, hbar.width - hThumb.width);
+                        var targetScroll = Math.max(0, Math.min(hbar.maxScroll, startScroll + (deltaX / maxThumbX) * hbar.maxScroll));
+                        hbar.scrollRequested(targetScroll);
+                    }
+                }
+                onReleased: {
+                    isDragging = false;
+                }
+                onCanceled: {
+                    isDragging = false;
+                }
+            }
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -289,97 +430,182 @@ Rectangle {
             // ------------------------------------------
             // 1. INLINE VIEW (Unified Diff)
             // ------------------------------------------
-            ScrollView {
+            Item {
                 anchors.fill: parent
                 visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "inline"
                 clip: true
-                ScrollBar.vertical: FluxScrollBar {}
-                ScrollBar.horizontal: FluxScrollBar {}
 
                 ListView {
                     id: inlineListView
-                    width: parent.width
+                    anchors.fill: parent
+                    anchors.bottomMargin: inlineHScrollBar.visible ? 12 : 0
+                    focus: true
                     model: root.diffViewer ? root.diffViewer.linesModel : null
                     boundsBehavior: Flickable.StopAtBounds
                     maximumFlickVelocity: 6000
                     flickDeceleration: 1000
+                    ScrollBar.vertical: FluxScrollBar {}
+
+                    Keys.onLeftPressed: (event) => {
+                        if (root.inlineMaxScroll > 0) {
+                            root.horizontalScrollX = Math.max(0, root.horizontalScrollX - 40);
+                            event.accepted = true;
+                        }
+                    }
+                    Keys.onRightPressed: (event) => {
+                        if (root.inlineMaxScroll > 0) {
+                            root.horizontalScrollX = Math.min(root.inlineMaxScroll, root.horizontalScrollX + 40);
+                            event.accepted = true;
+                        }
+                    }
 
                     delegate: Rectangle {
                         width: inlineListView.width
                         height: 20
                         color: model.bgColor
 
-                        RowLayout {
+                        Item {
                             anchors.fill: parent
-                            spacing: 0
 
-                            // Old Line Number
-                            Rectangle {
-                                Layout.preferredWidth: 44
-                                Layout.fillHeight: true
-                                color: "#090D13"
-                                Text {
-                                    anchors.fill: parent
-                                    anchors.rightMargin: 6
-                                    text: model.oldLineNumber || ""
-                                    color: "#64748B"
-                                    font.family: "monospace"
-                                    font.pixelSize: 11
-                                    horizontalAlignment: Text.AlignRight
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                            }
+                            // Pinned Left Gutter (Line Numbers + Indicator)
+                            Row {
+                                id: inlineGutter
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: 108
+                                z: 2
 
-                            // New Line Number
-                            Rectangle {
-                                Layout.preferredWidth: 44
-                                Layout.fillHeight: true
-                                color: "#0B1017"
-                                Text {
-                                    anchors.fill: parent
-                                    anchors.rightMargin: 6
-                                    text: model.newLineNumber || ""
-                                    color: "#64748B"
-                                    font.family: "monospace"
-                                    font.pixelSize: 11
-                                    horizontalAlignment: Text.AlignRight
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                            }
-
-                            // Prefix indicator (+/-)
-                            Rectangle {
-                                Layout.preferredWidth: 20
-                                Layout.fillHeight: true
-                                color: "transparent"
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: {
-                                        if (model.lineKind === "addition") return "+";
-                                        if (model.lineKind === "deletion") return "-";
-                                        return " ";
+                                // Old Line Number
+                                Rectangle {
+                                    width: 44
+                                    height: parent.height
+                                    color: "#090D13"
+                                    Text {
+                                        anchors.fill: parent
+                                        anchors.rightMargin: 6
+                                        text: model.oldLineNumber || ""
+                                        color: "#64748B"
+                                        font.family: "monospace"
+                                        font.pixelSize: 11
+                                        horizontalAlignment: Text.AlignRight
+                                        verticalAlignment: Text.AlignVCenter
                                     }
+                                }
+
+                                // New Line Number
+                                Rectangle {
+                                    width: 44
+                                    height: parent.height
+                                    color: "#0B1017"
+                                    Text {
+                                        anchors.fill: parent
+                                        anchors.rightMargin: 6
+                                        text: model.newLineNumber || ""
+                                        color: "#64748B"
+                                        font.family: "monospace"
+                                        font.pixelSize: 11
+                                        horizontalAlignment: Text.AlignRight
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                }
+
+                                // Prefix indicator (+/-)
+                                Rectangle {
+                                    width: 20
+                                    height: parent.height
+                                    color: "transparent"
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: {
+                                            if (model.lineKind === "addition") return "+";
+                                            if (model.lineKind === "deletion") return "-";
+                                            return " ";
+                                        }
+                                        color: model.fgColor
+                                        font.family: "monospace"
+                                        font.pixelSize: 12
+                                        font.bold: true
+                                    }
+                                }
+                            }
+
+                            // Horizontally Scrollable Content Line
+                            Item {
+                                anchors.left: inlineGutter.right
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                clip: true
+
+                                Text {
+                                    x: 6 - root.horizontalScrollX
+                                    width: Math.max(implicitWidth, Math.max(parent.width - 6, root.maxCodeWidth))
+                                    height: parent.height
+                                    text: model.richContent || model.content || ""
+                                    textFormat: Text.RichText
                                     color: model.fgColor
                                     font.family: "monospace"
                                     font.pixelSize: 12
-                                    font.bold: true
+                                    verticalAlignment: Text.AlignVCenter
+                                    elide: Text.ElideNone
                                 }
-                            }
-
-                            // Content Line
-                            Text {
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                text: model.richContent || model.content || ""
-                                textFormat: Text.RichText
-                                color: model.fgColor
-                                font.family: "monospace"
-                                font.pixelSize: 12
-                                verticalAlignment: Text.AlignVCenter
-                                elide: Text.ElideNone
                             }
                         }
                     }
+
+                    WheelHandler {
+                        id: inlineHWheel
+                        target: null
+                        orientation: Qt.Horizontal
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
+                        onWheel: (event) => {
+                            var dx = 0;
+                            if (event.pixelDelta && event.pixelDelta.x !== 0) {
+                                dx = event.pixelDelta.x;
+                            } else if (event.angleDelta && event.angleDelta.x !== 0) {
+                                dx = event.angleDelta.x;
+                            }
+                            if (dx !== 0) {
+                                root.horizontalScrollX = Math.max(0, Math.min(root.inlineMaxScroll, root.horizontalScrollX - dx));
+                                event.accepted = true;
+                            }
+                        }
+                    }
+
+                    WheelHandler {
+                        id: inlineShiftWheel
+                        target: null
+                        orientation: Qt.Vertical
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
+                        acceptedModifiers: Qt.ShiftModifier
+                        onWheel: (event) => {
+                            var dy = 0;
+                            if (event.pixelDelta && event.pixelDelta.y !== 0) {
+                                dy = event.pixelDelta.y;
+                            } else if (event.angleDelta && event.angleDelta.y !== 0) {
+                                dy = event.angleDelta.y;
+                            }
+                            if (dy !== 0) {
+                                root.horizontalScrollX = Math.max(0, Math.min(root.inlineMaxScroll, root.horizontalScrollX - dy));
+                                event.accepted = true;
+                            }
+                        }
+                    }
+                }
+
+                // Horizontal ScrollBar for Inline View
+                DiffHScrollBar {
+                    id: inlineHScrollBar
+                    anchors.left: parent.left
+                    anchors.leftMargin: 108
+                    anchors.right: parent.right
+                    anchors.rightMargin: 10
+                    anchors.bottom: parent.bottom
+                    contentWidth: root.maxCodeWidth
+                    viewWidth: root.inlineAvailWidth
+                    scrollValue: root.horizontalScrollX
+                    onScrollRequested: (val) => { root.horizontalScrollX = val; }
                 }
             }
 
@@ -437,20 +663,34 @@ Rectangle {
                     }
                 }
 
-                ScrollView {
+                Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
-                    ScrollBar.vertical: FluxScrollBar {}
-                    ScrollBar.horizontal: FluxScrollBar {}
 
                     ListView {
                         id: splitListView
-                        width: parent.width
+                        anchors.fill: parent
+                        anchors.bottomMargin: splitHScrollBar.visible ? 12 : 0
+                        focus: true
                         model: root.diffViewer ? root.diffViewer.splitLines : null
                         boundsBehavior: Flickable.StopAtBounds
                         maximumFlickVelocity: 6000
                         flickDeceleration: 1000
+                        ScrollBar.vertical: FluxScrollBar {}
+
+                        Keys.onLeftPressed: (event) => {
+                            if (root.splitMaxScroll > 0) {
+                                root.horizontalScrollX = Math.max(0, root.horizontalScrollX - 40);
+                                event.accepted = true;
+                            }
+                        }
+                        Keys.onRightPressed: (event) => {
+                            if (root.splitMaxScroll > 0) {
+                                root.horizontalScrollX = Math.min(root.splitMaxScroll, root.horizontalScrollX + 40);
+                                event.accepted = true;
+                            }
+                        }
 
                         delegate: Rectangle {
                             id: splitRow
@@ -486,7 +726,7 @@ Rectangle {
 
                                 // LEFT COLUMN (Original / Deletion)
                                 Rectangle {
-                                    Layout.preferredWidth: splitRow.width / 2
+                                    Layout.preferredWidth: Math.floor(splitRow.width / 2)
                                     Layout.fillHeight: true
                                     color: modelData.leftBgColor || "transparent"
 
@@ -510,17 +750,23 @@ Rectangle {
                                             }
                                         }
 
-                                        Text {
+                                        Item {
                                             Layout.fillWidth: true
                                             Layout.fillHeight: true
-                                            anchors.leftMargin: 6
-                                            text: modelData.leftRichContent || modelData.leftContent || ""
-                                            textFormat: Text.RichText
-                                            color: modelData.leftFgColor || "#CBD5E1"
-                                            font.family: "monospace"
-                                            font.pixelSize: 11
-                                            verticalAlignment: Text.AlignVCenter
-                                            elide: Text.ElideNone
+                                            clip: true
+
+                                            Text {
+                                                x: 6 - root.horizontalScrollX
+                                                width: Math.max(implicitWidth, Math.max(parent.width - 6, root.maxCodeWidth))
+                                                height: parent.height
+                                                text: modelData.leftRichContent || modelData.leftContent || ""
+                                                textFormat: Text.RichText
+                                                color: modelData.leftFgColor || "#CBD5E1"
+                                                font.family: "monospace"
+                                                font.pixelSize: 11
+                                                verticalAlignment: Text.AlignVCenter
+                                                elide: Text.ElideNone
+                                            }
                                         }
                                     }
                                 }
@@ -558,22 +804,81 @@ Rectangle {
                                             }
                                         }
 
-                                        Text {
+                                        Item {
                                             Layout.fillWidth: true
                                             Layout.fillHeight: true
-                                            anchors.leftMargin: 6
-                                            text: modelData.rightRichContent || modelData.rightContent || ""
-                                            textFormat: Text.RichText
-                                            color: modelData.rightFgColor || "#CBD5E1"
-                                            font.family: "monospace"
-                                            font.pixelSize: 11
-                                            verticalAlignment: Text.AlignVCenter
-                                            elide: Text.ElideNone
+                                            clip: true
+
+                                            Text {
+                                                x: 6 - root.horizontalScrollX
+                                                width: Math.max(implicitWidth, Math.max(parent.width - 6, root.maxCodeWidth))
+                                                height: parent.height
+                                                text: modelData.rightRichContent || modelData.rightContent || ""
+                                                textFormat: Text.RichText
+                                                color: modelData.rightFgColor || "#CBD5E1"
+                                                font.family: "monospace"
+                                                font.pixelSize: 11
+                                                verticalAlignment: Text.AlignVCenter
+                                                elide: Text.ElideNone
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
+
+                        WheelHandler {
+                            id: splitHWheel
+                            target: null
+                            orientation: Qt.Horizontal
+                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
+                            onWheel: (event) => {
+                                var dx = 0;
+                                if (event.pixelDelta && event.pixelDelta.x !== 0) {
+                                    dx = event.pixelDelta.x;
+                                } else if (event.angleDelta && event.angleDelta.x !== 0) {
+                                    dx = event.angleDelta.x;
+                                }
+                                if (dx !== 0) {
+                                    root.horizontalScrollX = Math.max(0, Math.min(root.splitMaxScroll, root.horizontalScrollX - dx));
+                                    event.accepted = true;
+                                }
+                            }
+                        }
+
+                        WheelHandler {
+                            id: splitShiftWheel
+                            target: null
+                            orientation: Qt.Vertical
+                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
+                            acceptedModifiers: Qt.ShiftModifier
+                            onWheel: (event) => {
+                                var dy = 0;
+                                if (event.pixelDelta && event.pixelDelta.y !== 0) {
+                                    dy = event.pixelDelta.y;
+                                } else if (event.angleDelta && event.angleDelta.y !== 0) {
+                                    dy = event.angleDelta.y;
+                                }
+                                if (dy !== 0) {
+                                    root.horizontalScrollX = Math.max(0, Math.min(root.splitMaxScroll, root.horizontalScrollX - dy));
+                                    event.accepted = true;
+                                }
+                            }
+                        }
+                    }
+
+                    // Horizontal ScrollBar for Split View
+                    DiffHScrollBar {
+                        id: splitHScrollBar
+                        anchors.left: parent.left
+                        anchors.leftMargin: 40
+                        anchors.right: parent.right
+                        anchors.rightMargin: 10
+                        anchors.bottom: parent.bottom
+                        contentWidth: root.maxCodeWidth
+                        viewWidth: root.splitAvailWidth
+                        scrollValue: root.horizontalScrollX
+                        onScrollRequested: (val) => { root.horizontalScrollX = val; }
                     }
                 }
             }
@@ -590,7 +895,7 @@ Rectangle {
 
                 ListView {
                     id: hunkListView
-                    width: parent.width
+                    width: Math.max(parent.width, root.maxCodeWidth + 120)
                     model: root.diffViewer ? root.diffViewer.hunks : null
                     spacing: 12
                     boundsBehavior: Flickable.StopAtBounds
@@ -701,20 +1006,34 @@ Rectangle {
             // ------------------------------------------
             // 4. BLAME VIEW (Line Annotations & Code)
             // ------------------------------------------
-            ScrollView {
+            Item {
                 anchors.fill: parent
                 visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "blame"
                 clip: true
-                ScrollBar.vertical: FluxScrollBar {}
-                ScrollBar.horizontal: FluxScrollBar {}
 
                 ListView {
                     id: blameListView
-                    width: parent.width
+                    anchors.fill: parent
+                    anchors.bottomMargin: blameHScrollBar.visible ? 12 : 0
+                    focus: true
                     model: root.diffViewer ? root.diffViewer.blameLines : null
                     boundsBehavior: Flickable.StopAtBounds
                     maximumFlickVelocity: 6000
                     flickDeceleration: 1000
+                    ScrollBar.vertical: FluxScrollBar {}
+
+                    Keys.onLeftPressed: (event) => {
+                        if (root.blameMaxScroll > 0) {
+                            root.horizontalScrollX = Math.max(0, root.horizontalScrollX - 40);
+                            event.accepted = true;
+                        }
+                    }
+                    Keys.onRightPressed: (event) => {
+                        if (root.blameMaxScroll > 0) {
+                            root.horizontalScrollX = Math.min(root.blameMaxScroll, root.horizontalScrollX + 40);
+                            event.accepted = true;
+                        }
+                    }
 
                     delegate: Rectangle {
                         width: blameListView.width
@@ -725,7 +1044,7 @@ Rectangle {
                             anchors.fill: parent
                             spacing: 8
 
-                            // Blame Annotation Column
+                            // Blame Annotation Column (Pinned left)
                             Rectangle {
                                 Layout.preferredWidth: 310
                                 Layout.fillHeight: true
@@ -801,20 +1120,80 @@ Rectangle {
                                 }
                             }
 
-                            // Code Line Content
-                            Text {
+                            // Code Line Content (Horizontally scrollable)
+                            Item {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                text: modelData.richContent || modelData.content || ""
-                                textFormat: Text.RichText
-                                color: "#F1F5F9"
-                                font.family: "monospace"
-                                font.pixelSize: 11
-                                verticalAlignment: Text.AlignVCenter
-                                elide: Text.ElideNone
+                                clip: true
+
+                                Text {
+                                    x: 6 - root.horizontalScrollX
+                                    width: Math.max(implicitWidth, Math.max(parent.width - 6, root.maxCodeWidth))
+                                    height: parent.height
+                                    text: modelData.richContent || modelData.content || ""
+                                    textFormat: Text.RichText
+                                    color: "#F1F5F9"
+                                    font.family: "monospace"
+                                    font.pixelSize: 11
+                                    verticalAlignment: Text.AlignVCenter
+                                    elide: Text.ElideNone
+                                }
                             }
                         }
                     }
+
+                    WheelHandler {
+                        id: blameHWheel
+                        target: null
+                        orientation: Qt.Horizontal
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
+                        onWheel: (event) => {
+                            var dx = 0;
+                            if (event.pixelDelta && event.pixelDelta.x !== 0) {
+                                dx = event.pixelDelta.x;
+                            } else if (event.angleDelta && event.angleDelta.x !== 0) {
+                                dx = event.angleDelta.x;
+                            }
+                            if (dx !== 0) {
+                                root.horizontalScrollX = Math.max(0, Math.min(root.blameMaxScroll, root.horizontalScrollX - dx));
+                                event.accepted = true;
+                            }
+                        }
+                    }
+
+                    WheelHandler {
+                        id: blameShiftWheel
+                        target: null
+                        orientation: Qt.Vertical
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
+                        acceptedModifiers: Qt.ShiftModifier
+                        onWheel: (event) => {
+                            var dy = 0;
+                            if (event.pixelDelta && event.pixelDelta.y !== 0) {
+                                dy = event.pixelDelta.y;
+                            } else if (event.angleDelta && event.angleDelta.y !== 0) {
+                                dy = event.angleDelta.y;
+                            }
+                            if (dy !== 0) {
+                                root.horizontalScrollX = Math.max(0, Math.min(root.blameMaxScroll, root.horizontalScrollX - dy));
+                                event.accepted = true;
+                            }
+                        }
+                    }
+                }
+
+                // Horizontal ScrollBar for Blame View
+                DiffHScrollBar {
+                    id: blameHScrollBar
+                    anchors.left: parent.left
+                    anchors.leftMargin: 318
+                    anchors.right: parent.right
+                    anchors.rightMargin: 10
+                    anchors.bottom: parent.bottom
+                    contentWidth: root.maxCodeWidth
+                    viewWidth: root.blameAvailWidth
+                    scrollValue: root.horizontalScrollX
+                    onScrollRequested: (val) => { root.horizontalScrollX = val; }
                 }
             }
         }

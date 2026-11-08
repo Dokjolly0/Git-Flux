@@ -99,6 +99,23 @@ void DiffViewModel::processFileDiff(const gf::git::bo::FileDiff& diff) {
     m_linesModel.setDiff(diff, langInfo.language);
     m_blameLines.clear();
 
+    m_maxLineLength = 0;
+    for (const auto& hunk : diff.hunks) {
+        for (const auto& line : hunk.lines) {
+            int visualLen = 0;
+            for (char c : line.content) {
+                if (c == '\t') {
+                    visualLen += 4 - (visualLen % 4);
+                } else {
+                    visualLen += 1;
+                }
+            }
+            if (visualLen > m_maxLineLength) {
+                m_maxLineLength = visualLen;
+            }
+        }
+    }
+
     // Compute Hunks
     m_hunks.clear();
     for (const auto& hunk : diff.hunks) {
@@ -326,7 +343,19 @@ bool DiffViewModel::loadBlame(const QString& repoPath, const QString& revision, 
 
     m_blameLines.clear();
     m_blameLines.reserve(static_cast<qsizetype>(result->size()));
+    m_maxLineLength = 0;
     for (const auto& bl : *result) {
+        int visualLen = 0;
+        for (char c : bl.content) {
+            if (c == '\t') {
+                visualLen += 4 - (visualLen % 4);
+            } else {
+                visualLen += 1;
+            }
+        }
+        if (visualLen > m_maxLineLength) {
+            m_maxLineLength = visualLen;
+        }
         QVariantMap map;
         map[QStringLiteral("commitSha")] = QString::fromStdString(bl.commitSha);
         map[QStringLiteral("shortSha")] = QString::fromStdString(bl.shortSha);
@@ -360,6 +389,7 @@ void DiffViewModel::clear() {
     m_isDeletedFile = false;
     m_isRenamed = false;
     m_isEmpty = true;
+    m_maxLineLength = 0;
     m_isBlameLoading = false;
 
     m_linesModel.clear();

@@ -20,6 +20,7 @@ Rectangle {
     property string fileSortOrder: "name_asc" // "name_asc" | "name_desc" | "git"
     property var treeItems: []
     property var collapsedFolders: ({})
+    property string fileSearchQuery: ""
 
     signal createBranchRequested(string startPoint)
     signal createPullRequestRequested(string sourceBranch, string targetBranch)
@@ -124,18 +125,26 @@ Rectangle {
         return count;
     }
 
-    // Filtered files according to category chip selection
+    // Filtered files according to category chip selection and search query
     readonly property var filteredCommitFiles: {
         if (!root.commitFiles) return [];
-        if (root.fileCategoryFilter === "all") return root.commitFiles;
         var res = [];
+        var q = root.fileSearchQuery.trim().toLowerCase();
         for (var i = 0; i < root.commitFiles.length; ++i) {
             var f = root.commitFiles[i];
             if (!f) continue;
-            if (root.fileCategoryFilter === "M" && f.status === "M") res.push(f);
-            else if (root.fileCategoryFilter === "A" && f.status === "A") res.push(f);
-            else if (root.fileCategoryFilter === "D" && f.status === "D") res.push(f);
-            else if ((root.fileCategoryFilter === "R" || root.fileCategoryFilter === "C") && (f.status === "R" || f.status === "C")) res.push(f);
+            if (root.fileCategoryFilter === "M" && f.status !== "M") continue;
+            else if (root.fileCategoryFilter === "A" && f.status !== "A") continue;
+            else if (root.fileCategoryFilter === "D" && f.status !== "D") continue;
+            else if ((root.fileCategoryFilter === "R" || root.fileCategoryFilter === "C") && (f.status !== "R" && f.status !== "C")) continue;
+
+            if (q !== "") {
+                var p = (f.path || "").toLowerCase();
+                var fn = (f.filename || root.getFilename(f.path) || "").toLowerCase();
+                if (p.indexOf(q) === -1 && fn.indexOf(q) === -1) continue;
+            }
+
+            res.push(f);
         }
         return res;
     }
@@ -163,6 +172,9 @@ Rectangle {
         root.updateTreeItems();
     }
     onFileSortOrderChanged: {
+        root.updateTreeItems();
+    }
+    onFileSearchQueryChanged: {
         root.updateTreeItems();
     }
 
@@ -424,7 +436,7 @@ Rectangle {
             for (var k = 0; k < childKeys.length; ++k) {
                 var key = childKeys[k];
                 var child = node.children[key];
-                var isCollapsed = !!root.collapsedFolders[child.fullPath];
+                var isCollapsed = (root.fileSearchQuery.trim() === "") && !!root.collapsedFolders[child.fullPath];
                 items.push({
                     isFolder: true,
                     name: child.name,
@@ -1939,6 +1951,83 @@ Rectangle {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: root.cycleFileSort()
+                        }
+                    }
+                }
+
+                // Quick Search Bar for Modified Files
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 30
+                    radius: 5
+                    color: "#0B0E14"
+                    border.color: fileSearchInput.activeFocus ? "#38BDF8" : "#30363D"
+                    border.width: 1
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 8
+                        anchors.rightMargin: 8
+                        spacing: 6
+
+                        Text {
+                            text: "🔍"
+                            font.pixelSize: 11
+                            color: "#64748B"
+                        }
+
+                        TextInput {
+                            id: fileSearchInput
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            verticalAlignment: TextInput.AlignVCenter
+                            color: "#F0F6FC"
+                            font.pixelSize: 11
+                            clip: true
+                            selectByMouse: true
+                            text: root.fileSearchQuery
+                            onTextChanged: root.fileSearchQuery = text
+
+                            Keys.onEscapePressed: {
+                                fileSearchInput.text = "";
+                                root.fileSearchQuery = "";
+                            }
+
+                            Text {
+                                text: "Filtra file modificati..."
+                                color: "#64748B"
+                                font.pixelSize: 11
+                                visible: fileSearchInput.text === "" && !fileSearchInput.activeFocus
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+
+                        // Clear button (visible when there is search text)
+                        Rectangle {
+                            Layout.preferredWidth: 16
+                            Layout.preferredHeight: 16
+                            radius: 8
+                            color: clearSearchMouse.containsMouse ? "#334155" : "transparent"
+                            visible: fileSearchInput.text !== ""
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "✕"
+                                color: "#94A3B8"
+                                font.pixelSize: 10
+                                font.bold: true
+                            }
+
+                            MouseArea {
+                                id: clearSearchMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    fileSearchInput.text = "";
+                                    root.fileSearchQuery = "";
+                                }
+                            }
                         }
                     }
                 }
