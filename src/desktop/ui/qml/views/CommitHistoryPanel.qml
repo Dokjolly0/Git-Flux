@@ -586,6 +586,82 @@ Rectangle {
                 spacing: 0
                 visible: !root.isDiffOpen
 
+                // Commit Search & Filter Bar
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 36
+                    color: "#0F141C"
+                    border.color: "#21262D"
+                    border.width: 1
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        spacing: 8
+
+                        Text {
+                            text: "🔍"
+                            font.pixelSize: 12
+                            color: "#8B949E"
+                        }
+
+                        TextField {
+                            id: commitFilterInput
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 28
+                            placeholderText: "Filtra per messaggio, autore o hash commit..."
+                            placeholderTextColor: "#484F58"
+                            color: "#F0F6FC"
+                            font.pixelSize: 12
+                            background: Rectangle {
+                                color: "transparent"
+                            }
+                            onTextChanged: {
+                                if (root.branchManager && root.branchManager.commitHistory) {
+                                    root.branchManager.commitHistory.searchFilter = text;
+                                }
+                            }
+                        }
+
+                        Button {
+                            visible: commitFilterInput.text.length > 0
+                            text: "✕"
+                            flat: true
+                            onClicked: commitFilterInput.text = ""
+                            contentItem: Text {
+                                text: "✕"
+                                color: "#8B949E"
+                                font.pixelSize: 11
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            background: Item {}
+                        }
+
+                        // Filter Counter Badge
+                        Rectangle {
+                            visible: root.branchManager && root.branchManager.commitHistory && root.branchManager.commitHistory.searchFilter.length > 0
+                            Layout.preferredHeight: 20
+                            Layout.preferredWidth: filterCountText.implicitWidth + 12
+                            color: "#1E293B"
+                            radius: 10
+                            border.color: "#38BDF8"
+                            border.width: 1
+
+                            Text {
+                                id: filterCountText
+                                anchors.centerIn: parent
+                                text: (root.branchManager && root.branchManager.commitHistory) ?
+                                      (root.branchManager.commitHistory.filteredCommitsCount + " / " + root.branchManager.commitHistory.totalCommitsCount) : ""
+                                color: "#38BDF8"
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+                        }
+                    }
+                }
+
                 // Table Header Bar (matching GitKraken header)
                 Rectangle {
                     Layout.fillWidth: true

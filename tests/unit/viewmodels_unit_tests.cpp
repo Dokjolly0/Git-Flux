@@ -1134,6 +1134,58 @@ TEST_CASE("BranchListModel and CommitHistoryListModel MVVM representations", "[v
         CHECK(model.data(idx, CommitHistoryListModel::CommitterAvatarUrlRole).toString() == "https://github.com/Dokjolly0.png?size=64");
         CHECK(model.data(idx, CommitHistoryListModel::IsMergeRole).toBool() == false);
     }
+
+    SECTION("CommitHistoryListModel filters commits by message, author, or SHA") {
+        CommitHistoryListModel model;
+
+        std::vector<gf::git::bo::GitCommitLogItem> commits = {
+            gf::git::bo::GitCommitLogItem{
+                .sha = "aaaa111122223333444455556666777788889999",
+                .shortSha = "aaaa111",
+                .authorName = "Alice Dev",
+                .authorEmail = "alice@example.com",
+                .subject = "feat(auth): implement oauth login"
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "bbbb111122223333444455556666777788889999",
+                .shortSha = "bbbb111",
+                .authorName = "Bob Coder",
+                .authorEmail = "bob@example.com",
+                .subject = "fix(memory): resolve heap buffer overflow"
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "cccc111122223333444455556666777788889999",
+                .shortSha = "cccc111",
+                .authorName = "Charlie Docs",
+                .authorEmail = "charlie@example.com",
+                .subject = "docs(readme): update build instructions"
+            }
+        };
+
+        model.setCommits(commits);
+        CHECK(model.totalCommitsCount() == 3);
+        CHECK(model.rowCount() == 3);
+
+        // Filter by subject keyword
+        model.setSearchFilter("oauth");
+        CHECK(model.rowCount() == 1);
+        CHECK(model.data(model.index(0), CommitHistoryListModel::SubjectRole).toString().contains("oauth"));
+
+        // Filter by author name (case-insensitive)
+        model.setSearchFilter("bob");
+        CHECK(model.rowCount() == 1);
+        CHECK(model.data(model.index(0), CommitHistoryListModel::AuthorNameRole).toString() == "Bob Coder");
+
+        // Filter by short SHA
+        model.setSearchFilter("cccc");
+        CHECK(model.rowCount() == 1);
+        CHECK(model.data(model.index(0), CommitHistoryListModel::ShortShaRole).toString() == "cccc111");
+
+        // Clear filter
+        model.setSearchFilter("");
+        CHECK(model.rowCount() == 3);
+        CHECK(model.totalCommitsCount() == 3);
+    }
 }
 
 TEST_CASE("BranchManagerViewModel operations and signal propagation", "[viewmodel][branch][manager]") {

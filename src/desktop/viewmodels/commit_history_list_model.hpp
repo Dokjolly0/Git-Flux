@@ -20,6 +20,9 @@ class CommitHistoryListModel final : public QAbstractListModel {
     Q_OBJECT
 
     Q_PROPERTY(int maxLanes READ maxLanes NOTIFY maxLanesChanged)
+    Q_PROPERTY(QString searchFilter READ searchFilter WRITE setSearchFilter NOTIFY searchFilterChanged)
+    Q_PROPERTY(int totalCommitsCount READ totalCommitsCount NOTIFY totalCommitsCountChanged)
+    Q_PROPERTY(int filteredCommitsCount READ rowCount NOTIFY searchFilterChanged)
 
 public:
     enum Roles {
@@ -62,10 +65,15 @@ public:
     [[nodiscard]] const std::vector<git::bo::GitCommitLogItem>& commits() const noexcept { return m_commits; }
 
     [[nodiscard]] int maxLanes() const noexcept { return m_maxLanes; }
+    [[nodiscard]] QString searchFilter() const noexcept { return m_searchFilter; }
+    void setSearchFilter(const QString& filter);
+    [[nodiscard]] int totalCommitsCount() const noexcept { return static_cast<int>(m_rawCommits.size()); }
     Q_INVOKABLE [[nodiscard]] QVariantMap getCommit(int index) const;
 
 signals:
     void maxLanesChanged();
+    void searchFilterChanged(const QString& filter);
+    void totalCommitsCountChanged();
 
 private:
     struct GraphItem {
@@ -77,6 +85,7 @@ private:
     void applyWipAndRebuild();
     void rebuildGraph();
 
+    QString m_searchFilter;
     std::vector<git::bo::GitCommitLogItem> m_rawCommits;
     std::vector<git::bo::GitCommitLogItem> m_commits;
     std::vector<GraphItem> m_graphItems;

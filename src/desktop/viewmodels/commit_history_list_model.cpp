@@ -602,26 +602,67 @@ void CommitHistoryListModel::rebuildGraph() {
     emit maxLanesChanged();
 }
 
+void CommitHistoryListModel::setSearchFilter(const QString& filter) {
+    QString trimmed = filter.trimmed();
+    if (m_searchFilter == trimmed) {
+        return;
+    }
+    beginResetModel();
+    m_searchFilter = trimmed;
+    applyWipAndRebuild();
+    endResetModel();
+    emit searchFilterChanged(m_searchFilter);
+}
+
 void CommitHistoryListModel::applyWipAndRebuild() {
-    m_commits = m_rawCommits;
-    if (m_hasWip) {
-        git::bo::GitCommitLogItem wip;
-        wip.sha = "WIP";
-        wip.shortSha = "WIP";
-        wip.subject = QString("// WIP - %1 %2")
-            .arg(m_wipCount)
-            .arg(m_wipCount == 1 ? QStringLiteral("file modificato") : QStringLiteral("file modificati"))
-            .toStdString();
-        wip.authorName = "Modifiche locali";
-        wip.authorEmail = "";
-        wip.authorDateIso = QDateTime::currentDateTimeUtc().toString(Qt::ISODate).toStdString();
-        wip.committerName = "Modifiche locali";
-        wip.committerEmail = "";
-        wip.committerDateIso = wip.authorDateIso;
-        if (!m_commits.empty()) {
-            wip.parents = {m_commits[0].sha};
+    m_commits.clear();
+
+    if (m_searchFilter.isEmpty()) {
+        m_commits = m_rawCommits;
+    } else {
+        const QString lowerFilter = m_searchFilter.toLower();
+        m_commits.reserve(m_rawCommits.size());
+
+        for (const auto& c : m_rawCommits) {
+            QString subj = QString::fromStdString(c.subject).toLower();
+            QString author = QString::fromStdString(c.authorName).toLower();
+            QString email = QString::fromStdString(c.authorEmail).toLower();
+            QString sha = QString::fromStdString(c.sha).toLower();
+            QString shortSha = QString::fromStdString(c.shortSha).toLower();
+
+            if (subj.contains(lowerFilter) ||
+                author.contains(lowerFilter) ||
+                email.contains(lowerFilter) ||
+                sha.startsWith(lowerFilter) ||
+                shortSha.contains(lowerFilter)) {
+                m_commits.push_back(c);
+            }
         }
-        m_commits.insert(m_commits.begin(), std::move(wip));
+    }
+
+    if (m_hasWip) {
+        bool matchWip = m_searchFilter.isEmpty() ||
+                        QStringLiteral("wip").contains(m_searchFilter.toLower()) ||
+                        QStringLiteral("modifiche locali").contains(m_searchFilter.toLower());
+        if (matchWip) {
+            git::bo::GitCommitLogItem wip;
+            wip.sha = "WIP";
+            wip.shortSha = "WIP";
+            wip.subject = QString("// WIP - %1 %2")
+                .arg(m_wipCount)
+                .arg(m_wipCount == 1 ? QStringLiteral("file modificato") : QStringLiteral("file modificati"))
+                .toStdString();
+            wip.authorName = "Modifiche locali";
+            wip.authorEmail = "";
+            wip.authorDateIso = QDateTime::currentDateTimeUtc().toString(Qt::ISODate).toStdString();
+            wip.committerName = "Modifiche locali";
+            wip.committerEmail = "";
+            wip.committerDateIso = wip.authorDateIso;
+            if (!m_commits.empty()) {
+                wip.parents = {m_commits[0].sha};
+            }
+            m_commits.insert(m_commits.begin(), std::move(wip));
+        }
     }
     rebuildGraph();
 }
@@ -631,6 +672,7 @@ void CommitHistoryListModel::setCommits(std::vector<gf::git::bo::GitCommitLogIte
     m_rawCommits = std::move(commits);
     applyWipAndRebuild();
     endResetModel();
+    emit totalCommitsCountChanged();
 }
 
 void CommitHistoryListModel::setWip(bool hasWip, int changedFilesCount) {
