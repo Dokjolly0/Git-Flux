@@ -1,0 +1,406 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Git Flux — GitHub Pages & APT Repository Generator
+# ==============================================================================
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+PUBLIC_DIR="${ROOT_DIR}/public"
+DIST_DIR="${ROOT_DIR}/dist-release"
+
+if [ ! -d "${DIST_DIR}" ]; then
+    DIST_DIR="${ROOT_DIR}/build/packages"
+fi
+
+rm -rf "${PUBLIC_DIR}"
+mkdir -p "${PUBLIC_DIR}"
+
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "🌐 Generating GitHub Pages & Linux APT Repository"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+# 1. Copy Public GPG Key
+if [ -f "${ROOT_DIR}/packaging/apt/KEY.gpg" ]; then
+    cp "${ROOT_DIR}/packaging/apt/KEY.gpg" "${PUBLIC_DIR}/KEY.gpg"
+    echo "✔ Copied public GPG key to public/KEY.gpg"
+fi
+
+# 2. Copy Debian (.deb) packages
+mkdir -p "${PUBLIC_DIR}/pool/main"
+if compgen -G "${DIST_DIR}/*.deb" > /dev/null; then
+    cp "${DIST_DIR}"/*.deb "${PUBLIC_DIR}/pool/main/"
+    echo "✔ Copied Debian packages to repository (pool/main)"
+fi
+
+# 3. Generate APT Metadata (Packages, Packages.gz, Release)
+(
+    cd "${PUBLIC_DIR}"
+    echo "📦 Indexing Debian packages with dpkg-scanpackages..."
+    dpkg-scanpackages --multiversion pool/main /dev/null > Packages
+    gzip -9kc Packages > Packages.gz
+
+    DATE_NOW="$(date -Ru)"
+    cat <<EOF > Release
+Origin: GitFlux
+Label: Git Flux
+Suite: stable
+Codename: stable
+Components: main
+Architectures: amd64
+Date: ${DATE_NOW}
+Description: Git Flux Official Debian & Ubuntu Package Repository
+SHA256:
+ $(sha256sum Packages | cut -d' ' -f1) $(wc -c < Packages) Packages
+ $(sha256sum Packages.gz | cut -d' ' -f1) $(wc -c < Packages.gz) Packages.gz
+MD5Sum:
+ $(md5sum Packages | cut -d' ' -f1) $(wc -c < Packages) Packages
+ $(md5sum Packages.gz | cut -d' ' -f1) $(wc -c < Packages.gz) Packages.gz
+EOF
+    echo "✔ Generated Packages, Packages.gz and Release"
+
+    # 4. Sign Release with GPG if private key is available
+    if [ -n "${APT_GPG_PRIVATE_KEY:-}" ]; then
+        echo "🔐 Signing APT Release with GPG private key..."
+        GPG_TEMP="$(mktemp -d)"
+        export GNUPGHOME="${GPG_TEMP}"
+        echo "${APT_GPG_PRIVATE_KEY}" | gpg --batch --import 2>/dev/null || true
+        KEY_ID="$(gpg --list-secret-keys --with-colons 2>/dev/null | grep sec | head -n1 | cut -d: -f5 || true)"
+        if [ -n "${KEY_ID}" ]; then
+            gpg --batch --yes --default-key "${KEY_ID}" --armor --detach-sign -o Release.gpg Release
+            gpg --batch --yes --default-key "${KEY_ID}" --clearsign -o InRelease Release
+            # Also ensure KEY.gpg in public matches exported public key
+            gpg --armor --export "${KEY_ID}" > KEY.gpg
+            echo "✔ Signed Release.gpg and InRelease with Key ID: ${KEY_ID}"
+        else
+            echo "⚠️ Could not extract GPG Key ID. Skipping signature."
+        fi
+        rm -rf "${GPG_TEMP}"
+    else
+        echo "ℹ️ APT_GPG_PRIVATE_KEY not set. Release will be unsigned in this run."
+    fi
+)
+
+# 5. Generate Universal Linux Installer Script (install.sh)
+cat <<'EOF' > "${PUBLIC_DIR}/install.sh"
+#!/usr/bin/env bash
+# ==============================================================================
+# Git Flux — Universal Linux One-Liner Installer
+# ==============================================================================
+set -euo pipefail
+
+BOLD="\033[1m"
+GREEN="\033[32m"
+CYAN="\033[36m"
+YELLOW="\033[33m"
+RED="\033[31m"
+RESET="\033[0m"
+
+echo -e "${CYAN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e "${GREEN}${BOLD}🚀 Git Flux — Installing Git Flux on Linux${RESET}"
+echo -e "${CYAN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo -e "${RED}✖ Please run this installer with root privileges (e.g. sudo bash install.sh)${RESET}"
+    exit 1
+fi
+
+BASE_URL="https://dokjolly0.github.io/Git-Flux"
+
+# Detect Distribution
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    DISTRO_ID="${ID:-unknown}"
+    DISTRO_LIKE="${ID_LIKE:-}"
+else
+    DISTRO_ID="unknown"
+    DISTRO_LIKE=""
+fi
+
+case "${DISTRO_ID}" in
+    ubuntu|debian|linuxmint|pop|elementary|zorin)
+        echo -e "${YELLOW}▶ Detected Debian/Ubuntu family (${DISTRO_ID}). Setting up APT repository...${RESET}"
+        mkdir -p /etc/apt/keyrings
+        curl -fsSL "${BASE_URL}/KEY.gpg" | gpg --dearmor --yes -o /etc/apt/keyrings/gitflux.gpg
+        echo "deb [signed-by=/etc/apt/keyrings/gitflux.gpg] ${BASE_URL}/ ./" > /etc/apt/sources.list.d/gitflux.list
+        apt-get update -qq
+        apt-get install -y git-flux
+        echo -e "${GREEN}${BOLD}✔ Git Flux successfully installed via APT!${RESET}"
+        ;;
+
+    fedora|rhel|centos|rocky|almalinux)
+        echo -e "${YELLOW}▶ Detected Fedora/RHEL family (${DISTRO_ID}). Installing RPM...${RESET}"
+        dnf install -y "https://github.com/Dokjolly0/Git-Flux/releases/download/v0.1.0/git-flux-0.1.0-1.x86_64.rpm" || \
+        rpm -Uvh "https://github.com/Dokjolly0/Git-Flux/releases/download/v0.1.0/git-flux-0.1.0-1.x86_64.rpm"
+        echo -e "${GREEN}${BOLD}✔ Git Flux successfully installed via RPM!${RESET}"
+        ;;
+
+    arch|manjaro|endeavouros)
+        echo -e "${YELLOW}▶ Detected Arch Linux family (${DISTRO_ID}). Installing Arch package...${RESET}"
+        pacman -U --noconfirm "https://github.com/Dokjolly0/Git-Flux/releases/download/v0.1.0/git-flux-0.1.0-1-x86_64.pkg.tar.zst"
+        echo -e "${GREEN}${BOLD}✔ Git Flux successfully installed via Pacman!${RESET}"
+        ;;
+
+    *)
+        if [[ "${DISTRO_LIKE}" =~ (debian|ubuntu) ]]; then
+            echo -e "${YELLOW}▶ Detected Debian-like system. Setting up APT repository...${RESET}"
+            mkdir -p /etc/apt/keyrings
+            curl -fsSL "${BASE_URL}/KEY.gpg" | gpg --dearmor --yes -o /etc/apt/keyrings/gitflux.gpg
+            echo "deb [signed-by=/etc/apt/keyrings/gitflux.gpg] ${BASE_URL}/ ./" > /etc/apt/sources.list.d/gitflux.list
+            apt-get update -qq
+            apt-get install -y git-flux
+            echo -e "${GREEN}${BOLD}✔ Git Flux successfully installed!${RESET}"
+        else
+            echo -e "${RED}✖ Unsupported distribution: ${DISTRO_ID}. Please download the portable tarball from:${RESET}"
+            echo -e "  https://github.com/Dokjolly0/Git-Flux/releases/latest"
+            exit 1
+        fi
+        ;;
+esac
+
+echo -e "${GREEN}${BOLD}🎉 You can now launch Git Flux by running 'git_flux' or from your application menu!${RESET}"
+EOF
+chmod +x "${PUBLIC_DIR}/install.sh"
+echo "✔ Generated public/install.sh"
+
+# 6. Generate Modern Web Landing Page (index.html)
+cat <<'EOF' > "${PUBLIC_DIR}/index.html"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Git Flux — Official Linux Package Repositories</title>
+  <meta name="description" content="Official Linux distribution packages and APT repository for Git Flux — Modern local-first desktop Git client.">
+  <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/Dokjolly0/Git-Flux/main/assets/logo.png">
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card-bg: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --primary: #58a6ff;
+      --primary-hover: #1f6feb;
+      --accent: #2ea043;
+      --code-bg: #090d13;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 2rem 1rem;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
+    .logo {
+      width: 72px;
+      height: 72px;
+      margin-bottom: 1rem;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+    h1 {
+      font-size: 2.2rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, #58a6ff, #bc8cff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    p.lead {
+      color: var(--text-muted);
+      font-size: 1.1rem;
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.6rem;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      background: rgba(88,166,255,0.15);
+      color: var(--primary);
+      margin-top: 0.5rem;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    h2 {
+      font-size: 1.3rem;
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .code-block {
+      position: relative;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      overflow-x: auto;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 0.9rem;
+      color: #79c0ff;
+      margin-top: 0.5rem;
+    }
+    .copy-btn {
+      position: absolute;
+      top: 0.5rem;
+      right: 0.5rem;
+      background: #21262d;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 0.3rem 0.6rem;
+      font-size: 0.75rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .copy-btn:hover {
+      color: var(--text);
+      background: #30363d;
+    }
+    .copy-btn.copied {
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+    .links-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    .btn {
+      display: block;
+      text-align: center;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.95rem;
+      background: #21262d;
+      color: var(--text);
+      border: 1px solid var(--border);
+      transition: all 0.2s;
+    }
+    .btn:hover {
+      background: #30363d;
+      border-color: var(--primary);
+    }
+    .btn-primary {
+      background: var(--primary-hover);
+      color: #fff;
+      border-color: transparent;
+    }
+    .btn-primary:hover {
+      background: var(--primary);
+    }
+    footer {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      margin-top: 3rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+    }
+    footer a { color: var(--primary); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <img src="https://raw.githubusercontent.com/Dokjolly0/Git-Flux/main/assets/logo.png" alt="Git Flux Logo" class="logo">
+      <h1>Git Flux</h1>
+      <p class="lead">Modern local-first desktop Git client engineered in C++23 and Qt Quick 6</p>
+      <span class="badge">Official Linux Distribution Repository</span>
+    </header>
+
+    <!-- 1. Universal One-Liner -->
+    <div class="card">
+      <h2>⚡ One-Line Automatic Install (Debian, Ubuntu, Fedora, Arch)</h2>
+      <p style="color: var(--text-muted); font-size: 0.95rem;">Detects your distribution and installs the native package automatically:</p>
+      <div class="code-block" id="block-oneliner">
+        <button class="copy-btn" onclick="copyCode('block-oneliner')">Copy</button>
+curl -fsSL https://dokjolly0.github.io/Git-Flux/install.sh | sudo bash
+      </div>
+    </div>
+
+    <!-- 2. Debian & Ubuntu (APT) -->
+    <div class="card">
+      <h2>🐧 Ubuntu, Debian &amp; Linux Mint (APT)</h2>
+      <p style="color: var(--text-muted); font-size: 0.95rem;">Add the official APT repository to receive automatic updates with <code>sudo apt update</code>:</p>
+      <div class="code-block" id="block-apt">
+        <button class="copy-btn" onclick="copyCode('block-apt')">Copy</button>
+# 1. Install official repository GPG key
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://dokjolly0.github.io/Git-Flux/KEY.gpg | sudo gpg --dearmor --yes -o /etc/apt/keyrings/gitflux.gpg
+
+# 2. Add repository source
+echo "deb [signed-by=/etc/apt/keyrings/gitflux.gpg] https://dokjolly0.github.io/Git-Flux/ ./" | sudo tee /etc/apt/sources.list.d/gitflux.list
+
+# 3. Update & Install
+sudo apt update &amp;&amp; sudo apt install -y git-flux
+      </div>
+    </div>
+
+    <!-- 3. Fedora, RHEL & Arch -->
+    <div class="card">
+      <h2>📦 Other Linux Distributions &amp; Direct Downloads</h2>
+      <div class="links-grid">
+        <a class="btn" href="https://github.com/Dokjolly0/Git-Flux/releases/download/v0.1.0/git-flux-0.1.0-1.x86_64.rpm">Fedora / RHEL (.rpm)</a>
+        <a class="btn" href="https://github.com/Dokjolly0/Git-Flux/releases/download/v0.1.0/git-flux-0.1.0-1-x86_64.pkg.tar.zst">Arch Linux (.pkg.tar.zst)</a>
+        <a class="btn" href="https://github.com/Dokjolly0/Git-Flux/releases/download/v0.1.0/git-flux-0.1.0-linux-x86_64.tar.gz">Portable Linux (.tar.gz)</a>
+        <a class="btn" href="https://github.com/Dokjolly0/Git-Flux/releases/download/v0.1.0/git-flux-0.1.0-windows-x64.zip">Windows x64 (.zip)</a>
+        <a class="btn" href="https://github.com/Dokjolly0/Git-Flux/releases/download/v0.1.0/git-flux-0.1.0-macos.dmg">macOS Installer (.dmg)</a>
+      </div>
+    </div>
+
+    <!-- 4. Windows WinGet -->
+    <div class="card">
+      <h2>🪟 Windows Package Manager (WinGet)</h2>
+      <div class="code-block" id="block-winget">
+        <button class="copy-btn" onclick="copyCode('block-winget')">Copy</button>
+winget install GitFlux.GitFlux
+      </div>
+    </div>
+
+    <footer>
+      <p>Git Flux is released under the <a href="https://github.com/Dokjolly0/Git-Flux/blob/main/LICENSE" target="_blank">MIT License</a>.</p>
+      <p style="margin-top: 0.3rem;"><a href="https://github.com/Dokjolly0/Git-Flux" target="_blank">View on GitHub</a> &bull; <a href="https://github.com/Dokjolly0/Git-Flux/releases" target="_blank">Releases &amp; Changelogs</a></p>
+    </footer>
+  </div>
+
+  <script>
+    function copyCode(id) {
+      const block = document.getElementById(id);
+      const text = block.innerText.replace('Copy', '').trim();
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = block.querySelector('.copy-btn');
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.textContent = 'Copy';
+          btn.classList.remove('copied');
+        }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>
+EOF
+echo "✔ Generated public/index.html"
+echo "🎉 GitHub Pages & APT repository generation completed successfully!"

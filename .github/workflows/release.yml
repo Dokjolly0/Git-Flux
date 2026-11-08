@@ -321,3 +321,44 @@ jobs:
           installers-regex: 'windows-x64\.zip$'
           release-tag: ${{ needs.publish-release.outputs.tag_name }}
           max-versions-to-keep: 5
+
+  # ==============================================================================
+  # 7. PUBLISH LINUX REPOSITORIES & GITHUB PAGES
+  # ==============================================================================
+  publish-pages:
+    name: 🌐 Publish GitHub Pages (APT Repo & Website)
+    needs: publish-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download All Package Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-release
+          merge-multiple: true
+
+      - name: Install APT Repository Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends dpkg-dev gnupg
+
+      - name: Build Pages & APT Repository
+        env:
+          APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+        run: |
+          bash scripts/package/generate_pages.sh
+
+      - name: Deploy to GitHub Pages (gh-pages)
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+          keep_files: false
+          force_orphan: true
