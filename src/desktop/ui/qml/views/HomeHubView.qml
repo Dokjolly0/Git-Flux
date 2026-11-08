@@ -1199,6 +1199,7 @@ Item {
     CloneRepositoryModal {
         id: cloneRepoModal
         homeHubVm: (typeof homeHubVm !== "undefined") ? homeHubVm : null
+        profilesVm: (typeof gitProfilesVm !== "undefined") ? gitProfilesVm : null
     }
 
     // Native Folder Dialog: Add Repository (Direct Explorer Navigation)
