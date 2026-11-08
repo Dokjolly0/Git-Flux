@@ -24,6 +24,7 @@ Dialog {
     property bool showRepoPicker: false
     property string selectedRepoFullName: ""
     property bool selectedRepoIsPrivate: false
+    property bool cloneAttempted: false
 
     function resetFormAndCache() {
         console.log("[CloneModal] Reset completo del form e della cache...");
@@ -35,6 +36,7 @@ Dialog {
         selectedRepoIsPrivate = false;
         showTokenConfig = false;
         showRepoPicker = false;
+        cloneAttempted = false;
         dirNameField.propertyModified = false;
 
         if (typeof searchField !== "undefined" && searchField) {
@@ -737,8 +739,10 @@ Dialog {
                             height: 42
                             radius: 6
                             color: repoSelectorMouse.containsMouse ? "#1E293B" : "#0B1120"
-                            border.color: root.showRepoPicker ? "#38BDF8" : (root.selectedRepoFullName.length > 0 ? "#0284C7" : "#334155")
-                            border.width: root.showRepoPicker ? 2 : 1
+                            border.color: (root.cloneAttempted && root.selectedRepoFullName.length === 0)
+                                          ? "#F59E0B"
+                                          : (root.showRepoPicker ? "#38BDF8" : (root.selectedRepoFullName.length > 0 ? "#0284C7" : "#334155"))
+                            border.width: (root.showRepoPicker || (root.cloneAttempted && root.selectedRepoFullName.length === 0)) ? 2 : 1
 
                             RowLayout {
                                 anchors.fill: parent
@@ -1050,6 +1054,7 @@ Dialog {
                                                     dirNameField.text = defaultName;
                                                     dirNameField.propertyModified = true;
                                                     root.showRepoPicker = false;
+                                                    root.cloneAttempted = false;
                                                     console.log("[CloneModal] Repo selezionato:", model.fullName, "URL:", targetUrl, "Cartella:", defaultName);
                                                 }
                                             }
@@ -1099,10 +1104,13 @@ Dialog {
                             background: Rectangle {
                                 color: "#0B1120"
                                 radius: 6
-                                border.color: urlField.activeFocus ? "#38BDF8" : "#334155"
+                                border.color: (root.cloneAttempted && urlField.text.trim().length === 0)
+                                              ? "#F59E0B"
+                                              : (urlField.activeFocus ? "#38BDF8" : "#334155")
                                 border.width: 1
                             }
                             onTextChanged: {
+                                if (root.cloneAttempted && text.trim().length > 0) root.cloneAttempted = false;
                                 if (root.effectiveHubVm && text.length > 0 && root.profilesVm && root.profilesVm.activeProfileId === "url") {
                                     var extracted = root.effectiveHubVm.extractRepoNameFromUrl(text);
                                     if (dirNameField.text.length === 0 || dirNameField.propertyModified !== true) {
@@ -1147,8 +1155,13 @@ Dialog {
                                 background: Rectangle {
                                     color: "#0B1120"
                                     radius: 6
-                                    border.color: destFolderField.activeFocus ? "#38BDF8" : "#334155"
+                                    border.color: (root.cloneAttempted && destFolderField.text.trim().length === 0)
+                                                  ? "#F59E0B"
+                                                  : (destFolderField.activeFocus ? "#38BDF8" : "#334155")
                                     border.width: 1
+                                }
+                                onTextChanged: {
+                                    if (root.cloneAttempted && text.trim().length > 0) root.cloneAttempted = false;
                                 }
                                 onAccepted: {
                                     if (cloneButton.enabled) cloneButton.clicked();
@@ -1176,6 +1189,13 @@ Dialog {
                                     border.width: 1
                                 }
                             }
+                        }
+
+                        Text {
+                            visible: root.cloneAttempted && destFolderField.text.trim().length === 0
+                            text: "⚠️ Specifica una cartella di destinazione prima di avviare la clonazione"
+                            color: "#FCA5A5"
+                            font.pixelSize: 11
                         }
                     }
 
@@ -1254,11 +1274,11 @@ Dialog {
                         }
                     }
 
-                    // Warning when no repo is selected in provider mode
+                    // Warning when no repo is selected in provider mode (only shown after clone attempt)
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 38
-                        visible: root.profilesVm && root.profilesVm.activeProfileId !== "url" && root.selectedRepoFullName.length === 0
+                        visible: root.cloneAttempted && root.profilesVm && root.profilesVm.activeProfileId !== "url" && root.selectedRepoFullName.length === 0
                         color: "#451A03"
                         radius: 6
                         border.color: "#D97706"
@@ -1543,14 +1563,12 @@ Dialog {
                               ? (root.effectiveHubVm.cloneProgressPercent > 0
                                  ? ("⏳ " + root.effectiveHubVm.cloneProgressPercent + "% In corso...")
                                  : "⏳ Clonazione in corso...")
-                              : (urlField.text.trim().length === 0 && (root.profilesVm && root.profilesVm.activeProfileId !== "url")
-                                 ? "⚠️ Scegli un repository per clonare"
-                                 : (root.selectedRepoFullName.length > 0
-                                    ? "⬇ Avvia Clonazione (" + (dirNameField.text.length > 0 ? dirNameField.text : root.selectedRepoFullName) + ")"
-                                    : "⬇ Avvia Clonazione"))
+                              : (root.selectedRepoFullName.length > 0
+                                 ? "⬇ Avvia Clonazione (" + (dirNameField.text.length > 0 ? dirNameField.text : root.selectedRepoFullName) + ")"
+                                 : "⬇ Avvia Clonazione")
                         color: (root.effectiveHubVm && root.effectiveHubVm.isCloning)
                                ? "#38BDF8"
-                               : (urlField.text.trim().length > 0 ? "#FFFFFF" : "#FDE68A")
+                               : (urlField.text.trim().length > 0 ? "#FFFFFF" : "#94A3B8")
                         font.pixelSize: 13
                         font.bold: true
                         horizontalAlignment: Text.AlignHCenter
@@ -1561,9 +1579,11 @@ Dialog {
                                ? "#0C4A6E"
                                : (urlField.text.trim().length > 0
                                   ? (cloneButton.hovered ? "#0284C7" : "#0369A1")
-                                  : (cloneButton.hovered ? "#78350F" : "#451A03"))
+                                  : (cloneButton.hovered ? "#1E293B" : "#0F172A"))
                         radius: 6
-                        border.color: (urlField.text.trim().length > 0) ? "#38BDF8" : "#F59E0B"
+                        border.color: (root.effectiveHubVm && root.effectiveHubVm.isCloning)
+                                      ? "#38BDF8"
+                                      : (urlField.text.trim().length > 0 ? "#38BDF8" : "#334155")
                         border.width: 1
                     }
                 }
