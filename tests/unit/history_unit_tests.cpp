@@ -441,4 +441,9 @@ TEST_CASE("GitHistoryService business logic and delegation", "[git][history][ser
         CHECK(mockOps.deleteTagCalled);
         CHECK(mockOps.lastDeleteTagName == "v1.0.0");
     }
+
+    SECTION("listTrackedFiles delega al port git") {
+        auto res = historyService.listTrackedFiles(validTempDir);
+        REQUIRE(res.has_value());
+    }
 }

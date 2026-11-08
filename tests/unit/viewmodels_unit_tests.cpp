@@ -1385,6 +1385,20 @@ TEST_CASE("BranchManagerViewModel operations and signal propagation", "[viewmode
     CHECK(branchVmWithRebase.mergeBranchInto("feature/test", "main"));
 
     branchVmWithRebase.copyToClipboard("sample commit sha");
+
+    // File history & repository files
+    QSignalSpy fileHistorySpy(&branchVmWithRebase, &BranchManagerViewModel::fileHistoryPathChanged);
+    CHECK(branchVmWithRebase.fileHistoryPath().isEmpty());
+    CHECK(branchVmWithRebase.loadFileHistory("src/main.cpp"));
+    CHECK(branchVmWithRebase.fileHistoryPath() == "src/main.cpp");
+    CHECK(fileHistorySpy.count() == 1);
+
+    branchVmWithRebase.clearFileHistory();
+    CHECK(branchVmWithRebase.fileHistoryPath().isEmpty());
+    CHECK(fileHistorySpy.count() == 2);
+
+    auto repoFiles = branchVmWithRebase.listRepositoryFiles();
+    (void)repoFiles;
 }
 
 TEST_CASE("StashListModel and StashManagerViewModel operations", "[viewmodel][stash]") {

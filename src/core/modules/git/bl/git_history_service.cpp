@@ -130,6 +130,15 @@ GitHistoryService::getCommitFiles(const std::filesystem::path& repoPath,
     return m_gitOps.getCommitFiles(repoPath, commitSha);
 }
 
+std::expected<std::vector<std::string>, ports::GitOpsError>
+GitHistoryService::listTrackedFiles(const std::filesystem::path& repoPath) {
+    if (auto valid = validateRepoPath(repoPath); !valid) {
+        return std::unexpected(valid.error());
+    }
+
+    return m_gitOps.listTrackedFiles(repoPath);
+}
+
 std::expected<std::vector<bo::GitTag>, ports::GitOpsError>
 GitHistoryService::listTags(const std::filesystem::path& repoPath) {
     if (auto valid = validateRepoPath(repoPath); !valid) {

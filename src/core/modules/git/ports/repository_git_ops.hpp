@@ -162,6 +162,13 @@ public:
     getCommitLog(const std::filesystem::path& repoPath,
                  const bo::CommitLogOptions& options) = 0;
 
+    /// Returns the list of tracked files in the repository (`git ls-files`).
+    [[nodiscard]] virtual std::expected<std::vector<std::string>, GitOpsError>
+    listTrackedFiles(const std::filesystem::path& repoPath) {
+        (void)repoPath;
+        return std::vector<std::string>{};
+    }
+
     /// Returns the list of local tags (lightweight and annotated).
     [[nodiscard]] virtual std::expected<std::vector<bo::GitTag>, GitOpsError>
     listTags(const std::filesystem::path& repoPath) = 0;

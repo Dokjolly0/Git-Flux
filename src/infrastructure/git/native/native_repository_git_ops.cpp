@@ -1396,6 +1396,54 @@ NativeRepositoryGitOps::getCommitLog(const std::filesystem::path& repoPath,
     return gf::git::bl::CommitLogParser::parse(execResult->stdoutBytes);
 }
 
+std::expected<std::vector<std::string>, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::listTrackedFiles(const std::filesystem::path& repoPath) {
+    gf::git::bo::GitCommand cmd{
+        .args = {"ls-files"},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
+        .timeout = std::chrono::milliseconds{15'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile recuperare i file del repository: " + execResult.error().message,
+            .command = "git ls-files"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = execResult->exitCode,
+            .message = execResult->stderrBytes,
+            .command = "git ls-files"
+        });
+    }
+
+    std::vector<std::string> files;
+    std::string_view out = execResult->stdoutBytes;
+    std::size_t start = 0;
+    while (start < out.size()) {
+        std::size_t end = out.find('\n', start);
+        if (end == std::string_view::npos) {
+            end = out.size();
+        }
+        std::string_view line = out.substr(start, end - start);
+        if (!line.empty() && line.back() == '\r') {
+            line.remove_suffix(1);
+        }
+        if (!line.empty()) {
+            files.emplace_back(line);
+        }
+        start = end + 1;
+    }
+    return files;
+}
+
 std::expected<std::vector<gf::git::bo::GitTag>, gf::git::ports::GitOpsError>
 NativeRepositoryGitOps::listTags(const std::filesystem::path& repoPath) {
     gf::git::bo::GitCommand cmd{
