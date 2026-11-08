@@ -293,12 +293,16 @@ Rectangle {
                 anchors.fill: parent
                 visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "inline"
                 clip: true
+                ScrollBar.vertical: FluxScrollBar {}
+                ScrollBar.horizontal: FluxScrollBar {}
 
                 ListView {
                     id: inlineListView
                     width: parent.width
                     model: root.diffViewer ? root.diffViewer.linesModel : null
                     boundsBehavior: Flickable.StopAtBounds
+                    maximumFlickVelocity: 6000
+                    flickDeceleration: 1000
 
                     delegate: Rectangle {
                         width: inlineListView.width
@@ -437,12 +441,16 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
+                    ScrollBar.vertical: FluxScrollBar {}
+                    ScrollBar.horizontal: FluxScrollBar {}
 
                     ListView {
                         id: splitListView
                         width: parent.width
                         model: root.diffViewer ? root.diffViewer.splitLines : null
                         boundsBehavior: Flickable.StopAtBounds
+                        maximumFlickVelocity: 6000
+                        flickDeceleration: 1000
 
                         delegate: Rectangle {
                             id: splitRow
@@ -577,6 +585,8 @@ Rectangle {
                 anchors.fill: parent
                 visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "hunk"
                 clip: true
+                ScrollBar.vertical: FluxScrollBar {}
+                ScrollBar.horizontal: FluxScrollBar {}
 
                 ListView {
                     id: hunkListView
@@ -584,6 +594,8 @@ Rectangle {
                     model: root.diffViewer ? root.diffViewer.hunks : null
                     spacing: 12
                     boundsBehavior: Flickable.StopAtBounds
+                    maximumFlickVelocity: 6000
+                    flickDeceleration: 1000
 
                     delegate: Rectangle {
                         x: 12
@@ -693,12 +705,16 @@ Rectangle {
                 anchors.fill: parent
                 visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "blame"
                 clip: true
+                ScrollBar.vertical: FluxScrollBar {}
+                ScrollBar.horizontal: FluxScrollBar {}
 
                 ListView {
                     id: blameListView
                     width: parent.width
                     model: root.diffViewer ? root.diffViewer.blameLines : null
                     boundsBehavior: Flickable.StopAtBounds
+                    maximumFlickVelocity: 6000
+                    flickDeceleration: 1000
 
                     delegate: Rectangle {
                         width: blameListView.width

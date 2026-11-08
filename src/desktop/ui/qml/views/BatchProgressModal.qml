@@ -132,6 +132,10 @@ Dialog {
                 anchors.fill: parent
                 anchors.margins: 8
                 spacing: 6
+                boundsBehavior: Flickable.StopAtBounds
+                maximumFlickVelocity: 6000
+                flickDeceleration: 1000
+                ScrollBar.vertical: FluxScrollBar {}
                 model: batchOperationsVm ? batchOperationsVm.lastReportItems : []
 
                 delegate: Rectangle {

@@ -267,6 +267,7 @@ if(GF_BUILD_DESKTOP)
             src/desktop/ui/qml/views/StashManagerModal.qml
             src/desktop/ui/qml/views/ConflictResolverModal.qml
             src/desktop/ui/qml/views/CommitHistoryPanel.qml
+            src/desktop/ui/qml/views/FluxScrollBar.qml
             src/desktop/ui/qml/views/CloneRepositoryModal.qml
             src/desktop/ui/qml/views/BatchProgressModal.qml
             src/desktop/ui/qml/views/PullRequestModal.qml

@@ -575,6 +575,10 @@ Item {
                             Layout.fillHeight: true
                             clip: true
                             flickableDirection: Flickable.VerticalFlick
+                            boundsBehavior: Flickable.StopAtBounds
+                            maximumFlickVelocity: 6000
+                            flickDeceleration: 1000
+                            ScrollBar.vertical: FluxScrollBar {}
                             model: homeHubVm.repositories
                             spacing: 8
 
@@ -990,6 +994,10 @@ Item {
                             Layout.fillHeight: true
                             clip: true
                             flickableDirection: Flickable.VerticalFlick
+                            boundsBehavior: Flickable.StopAtBounds
+                            maximumFlickVelocity: 6000
+                            flickDeceleration: 1000
+                            ScrollBar.vertical: FluxScrollBar {}
                             model: homeHubVm.groups
                             spacing: 8
 
@@ -1362,6 +1370,10 @@ Item {
                             Layout.fillHeight: true
                             clip: true
                             flickableDirection: Flickable.VerticalFlick
+                            boundsBehavior: Flickable.StopAtBounds
+                            maximumFlickVelocity: 6000
+                            flickDeceleration: 1000
+                            ScrollBar.vertical: FluxScrollBar {}
                             model: homeHubVm.workspaces
                             spacing: 8
 

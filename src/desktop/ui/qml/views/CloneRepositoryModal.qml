@@ -1028,7 +1028,10 @@ Dialog {
                                         anchors.margins: 4
                                         spacing: 4
                                         model: root.profilesVm ? root.profilesVm.remoteReposModel : null
-                                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                                        boundsBehavior: Flickable.StopAtBounds
+                                        maximumFlickVelocity: 6000
+                                        flickDeceleration: 1000
+                                        ScrollBar.vertical: FluxScrollBar {}
 
                                         delegate: Rectangle {
                                             id: repoCard

@@ -96,6 +96,10 @@ Dialog {
                 spacing: 12
                 clip: true
                 model: root.conflictResolver ? root.conflictResolver.hunksModel : null
+                boundsBehavior: Flickable.StopAtBounds
+                maximumFlickVelocity: 6000
+                flickDeceleration: 1000
+                ScrollBar.vertical: FluxScrollBar {}
 
                 delegate: Rectangle {
                     id: hunkCard

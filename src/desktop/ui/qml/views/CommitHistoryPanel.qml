@@ -771,6 +771,9 @@ Rectangle {
                     clip: true
                     model: root.branchManager ? root.branchManager.commitHistory : null
                     boundsBehavior: Flickable.StopAtBounds
+                    maximumFlickVelocity: 6000
+                    flickDeceleration: 1000
+                    ScrollBar.vertical: FluxScrollBar {}
                     focus: true
                     keyNavigationWraps: false
                     Keys.onUpPressed: function(event) {
@@ -1206,6 +1209,7 @@ Rectangle {
                                     anchors.left: parent.left
                                     anchors.right: parent.right
                                     anchors.leftMargin: 8
+                                    anchors.rightMargin: 14
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: (commitRow.sha === "WIP") ? "Modifiche locali" : (commitRow.authorName || "")
                                     color: (commitRow.sha === "WIP") ? "#F59E0B" : "#94A3B8"
@@ -1225,6 +1229,7 @@ Rectangle {
                                     anchors.left: parent.left
                                     anchors.right: parent.right
                                     anchors.leftMargin: 8
+                                    anchors.rightMargin: 14
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: (commitRow.sha === "WIP") ? "Adesso" : (commitRow.authorDateFormatted || commitRow.authorDate || "")
                                     color: "#94A3B8"
@@ -1946,6 +1951,7 @@ Rectangle {
                     Layout.fillHeight: true
                     clip: true
                     visible: root.fileViewMode === "path"
+                    ScrollBar.vertical: FluxScrollBar {}
 
                     ListView {
                         id: gitKrakenFilesList
@@ -1953,6 +1959,8 @@ Rectangle {
                         model: root.sortedPathFiles
                         spacing: 2
                         boundsBehavior: Flickable.StopAtBounds
+                        maximumFlickVelocity: 6000
+                        flickDeceleration: 1000
 
                         delegate: Rectangle {
                             id: fDelegate
@@ -2144,6 +2152,7 @@ Rectangle {
                     Layout.fillHeight: true
                     clip: true
                     visible: root.fileViewMode === "tree"
+                    ScrollBar.vertical: FluxScrollBar {}
 
                     ListView {
                         id: gitKrakenTreeList
@@ -2151,6 +2160,8 @@ Rectangle {
                         model: root.treeItems
                         spacing: 2
                         boundsBehavior: Flickable.StopAtBounds
+                        maximumFlickVelocity: 6000
+                        flickDeceleration: 1000
 
                         delegate: Rectangle {
                             id: treeDelegate
