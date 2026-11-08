@@ -159,6 +159,9 @@ jobs:
       - name: Build git_flux
         run: cmake --build build/qt-msvc --target git_flux
 
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress
+
       - name: Run Windows Packaging Script
         shell: pwsh
         run: |
@@ -168,7 +171,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: packages-windows
-          path: build/packages/*.zip
+          path: |
+            build/packages/*.zip
+            build/packages/*.exe
           if-no-files-found: error
 
   # ==============================================================================
@@ -262,7 +267,7 @@ jobs:
             - **Fedora / Red Hat**: `.rpm` package
             - **Arch Linux / Manjaro**: `.pkg.tar.zst` package
             - **Generic Linux**: `.tar.gz` portable standalone archive
-            - **Windows**: `.zip` standalone portable bundle (includes Qt runtime)
+            - **Windows**: `.exe` setup installer & `.zip` portable bundle (includes Qt runtime)
             - **macOS**: `.dmg` installer & `.zip` bundle
 
             ### Integrity:

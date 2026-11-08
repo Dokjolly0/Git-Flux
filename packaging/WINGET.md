@@ -16,6 +16,10 @@ Questo modulo gestisce la distribuzione e l'aggiornamento automatico di **Git Fl
 | **Command Alias** | `git-flux` |
 | **Install Command** | `winget install GitFlux.GitFlux` |
 
+Nelle GitHub Releases ufficiali sono distribuiti due formati per Windows:
+- **git-flux-<version>-windows-x64-setup.exe**: Installer moderno Inno Setup (scelta installazione utente/macchina, aggiunta al PATH, icona Start/Desktop).
+- **git-flux-<version>-windows-x64.zip**: Pacchetto portable standalone (utilizzato attualmente dal manifest WinGet).
+
 I file manifest inclusi in questa directory seguono lo standard **WinGet Manifest Schema v1.6.0**:
 - `GitFlux.GitFlux.yaml`: Manifest della versione
 - `GitFlux.GitFlux.installer.yaml`: Configurazione dell'installer ZIP portable e mappatura dell'eseguibile

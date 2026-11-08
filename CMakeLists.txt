@@ -226,8 +226,13 @@ if(GF_BUILD_DESKTOP)
     gf_apply_compiler_warnings(gf_desktop_viewmodels)
 
     # Desktop Executable Application (Qt Quick 6)
+    set(WINDOWS_RC "")
+    if(WIN32)
+        set(WINDOWS_RC "${CMAKE_CURRENT_SOURCE_DIR}/packaging/windows/git-flux.rc")
+    endif()
     qt_add_executable(git_flux
         src/desktop/main.cpp
+        ${WINDOWS_RC}
     )
     qt_add_qml_module(git_flux
         URI "GitFlux.Desktop"
