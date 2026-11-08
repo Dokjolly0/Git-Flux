@@ -23,6 +23,8 @@ struct WorkspaceItem {
     int totalRepoCount{0};
     QString summary;
     QString lastOpenedAt;
+    QStringList repositoryIds;
+    QStringList repositoryNames;
 };
 
 class WorkspaceListModel : public QAbstractListModel {
@@ -36,7 +38,9 @@ public:
         DirectRepoCountRole,
         TotalRepoCountRole,
         SummaryRole,
-        LastOpenedAtRole
+        LastOpenedAtRole,
+        RepositoryIdsRole,
+        RepositoryNamesRole
     };
 
     explicit WorkspaceListModel(QObject* parent = nullptr);

@@ -83,6 +83,10 @@ QVariant WorkspaceListModel::data(const QModelIndex& index, int role) const {
         return item.summary;
     case LastOpenedAtRole:
         return item.lastOpenedAt;
+    case RepositoryIdsRole:
+        return item.repositoryIds;
+    case RepositoryNamesRole:
+        return item.repositoryNames;
     case Qt::DisplayRole:
         return item.name;
     default:
@@ -98,7 +102,9 @@ QHash<int, QByteArray> WorkspaceListModel::roleNames() const {
         {DirectRepoCountRole, "directRepoCount"},
         {TotalRepoCountRole, "totalRepoCount"},
         {SummaryRole, "summary"},
-        {LastOpenedAtRole, "lastOpenedAt"}
+        {LastOpenedAtRole, "lastOpenedAt"},
+        {RepositoryIdsRole, "repositoryIds"},
+        {RepositoryNamesRole, "repositoryNames"}
     };
 }
 
@@ -118,6 +124,10 @@ void WorkspaceListModel::setWorkspaces(const std::vector<gf::workspaces::bo::Wor
         auto resolved = workspaceService.resolveWorkspaceRepositories(ws.id);
         if (resolved) {
             item.totalRepoCount = static_cast<int>(resolved->size());
+            for (const auto& r : *resolved) {
+                item.repositoryIds.append(QString::fromStdString(r.id.value()));
+                item.repositoryNames.append(QString::fromStdString(r.displayName));
+            }
         } else {
             item.totalRepoCount = item.directRepoCount;
         }

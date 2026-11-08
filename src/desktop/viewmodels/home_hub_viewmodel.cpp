@@ -1,8 +1,11 @@
 #include "desktop/viewmodels/home_hub_viewmodel.hpp"
 
 #include "core/modules/repositories/bl/repository_service.hpp"
+#include "core/modules/repositories/bo/repository.hpp"
 #include "core/modules/groups/bl/group_service.hpp"
+#include "core/modules/groups/bo/group.hpp"
 #include "core/modules/workspaces/bl/workspace_service.hpp"
+#include "core/modules/workspaces/bo/workspace.hpp"
 #include "core/modules/git/bl/git_clone_service.hpp"
 
 #include <thread>
@@ -38,6 +41,14 @@ HomeHubViewModel::HomeHubViewModel(gf::repositories::bl::RepositoryService& repo
         if (allRepos.has_value() && !allRepos->empty()) {
             m_lastCloneDestinationPath = QString::fromStdString(allRepos->front().localPath.parent_path().string());
         }
+    }
+    m_showRepositories = settings.value(QStringLiteral("home/showRepositories"), true).toBool();
+    m_showGroups = settings.value(QStringLiteral("home/showGroups"), true).toBool();
+    m_showWorkspaces = settings.value(QStringLiteral("home/showWorkspaces"), true).toBool();
+    if (!m_showRepositories && !m_showGroups && !m_showWorkspaces) {
+        m_showRepositories = true;
+        m_showGroups = true;
+        m_showWorkspaces = true;
     }
     refreshAll();
 }
@@ -423,6 +434,45 @@ void HomeHubViewModel::setLastCloneDestinationPath(const QString& path) {
     emit lastCloneDestinationPathChanged(m_lastCloneDestinationPath);
 }
 
+void HomeHubViewModel::setShowRepositories(bool show) {
+    if (m_showRepositories == show) return;
+    if (!show && !m_showGroups && !m_showWorkspaces) return; // Prevent disabling all 3
+    m_showRepositories = show;
+    QSettings settings;
+    settings.setValue(QStringLiteral("home/showRepositories"), m_showRepositories);
+    emit showRepositoriesChanged(m_showRepositories);
+}
+
+void HomeHubViewModel::setShowGroups(bool show) {
+    if (m_showGroups == show) return;
+    if (!show && !m_showRepositories && !m_showWorkspaces) return; // Prevent disabling all 3
+    m_showGroups = show;
+    QSettings settings;
+    settings.setValue(QStringLiteral("home/showGroups"), m_showGroups);
+    emit showGroupsChanged(m_showGroups);
+}
+
+void HomeHubViewModel::setShowWorkspaces(bool show) {
+    if (m_showWorkspaces == show) return;
+    if (!show && !m_showRepositories && !m_showGroups) return; // Prevent disabling all 3
+    m_showWorkspaces = show;
+    QSettings settings;
+    settings.setValue(QStringLiteral("home/showWorkspaces"), m_showWorkspaces);
+    emit showWorkspacesChanged(m_showWorkspaces);
+}
+
+void HomeHubViewModel::toggleShowRepositories() {
+    setShowRepositories(!m_showRepositories);
+}
+
+void HomeHubViewModel::toggleShowGroups() {
+    setShowGroups(!m_showGroups);
+}
+
+void HomeHubViewModel::toggleShowWorkspaces() {
+    setShowWorkspaces(!m_showWorkspaces);
+}
+
 void HomeHubViewModel::resetCloneState() {
     m_isCloning = false;
     m_cloneProgressPercent = 0;
@@ -783,6 +833,211 @@ void HomeHubViewModel::openWorkspace(const QString& workspaceId) {
         return;
     }
     emit workspaceOpened(workspaceId);
+}
+
+bool HomeHubViewModel::isRepositoryInGroup(const QString& groupId, const QString& repoId) const {
+    const auto gId = groupId.trimmed().toStdString();
+    const auto rId = repoId.trimmed().toStdString();
+    if (gId.empty() || rId.empty()) return false;
+
+    auto grpOpt = m_groupService.getGroup(gf::groups::bo::GroupId{gId});
+    if (!grpOpt || !grpOpt->has_value()) return false;
+
+    const auto& repoIds = (*grpOpt)->repositoryIds;
+    return std::find(repoIds.begin(), repoIds.end(), gf::repositories::bo::RepositoryId{rId}) != repoIds.end();
+}
+
+bool HomeHubViewModel::isRepositoryInWorkspace(const QString& workspaceId, const QString& repoId) const {
+    const auto wsId = workspaceId.trimmed().toStdString();
+    const auto rId = repoId.trimmed().toStdString();
+    if (wsId.empty() || rId.empty()) return false;
+
+    auto reposExpected = m_workspaceService.resolveWorkspaceRepositories(gf::workspaces::bo::WorkspaceId{wsId});
+    if (!reposExpected) return false;
+
+    for (const auto& r : *reposExpected) {
+        if (r.id.value() == rId) {
+            return true;
+        }
+    }
+    return false;
+}
+
+QStringList HomeHubViewModel::getRepositoryIdsForGroup(const QString& groupId) const {
+    QStringList result;
+    const auto gId = groupId.trimmed().toStdString();
+    if (gId.empty()) return result;
+
+    auto grpOpt = m_groupService.getGroup(gf::groups::bo::GroupId{gId});
+    if (!grpOpt || !grpOpt->has_value()) return result;
+
+    for (const auto& rId : (*grpOpt)->repositoryIds) {
+        result.append(QString::fromStdString(rId.value()));
+    }
+    return result;
+}
+
+QStringList HomeHubViewModel::getRepositoryIdsForWorkspace(const QString& workspaceId) const {
+    QStringList result;
+    const auto wsId = workspaceId.trimmed().toStdString();
+    if (wsId.empty()) return result;
+
+    auto reposExpected = m_workspaceService.resolveWorkspaceRepositories(gf::workspaces::bo::WorkspaceId{wsId});
+    if (!reposExpected) return result;
+
+    for (const auto& r : *reposExpected) {
+        result.append(QString::fromStdString(r.id.value()));
+    }
+    return result;
+}
+
+QVariantList HomeHubViewModel::getAvailableRepositoriesForGroup(const QString& groupId) const {
+    QVariantList list;
+    const auto gId = groupId.trimmed().toStdString();
+    if (gId.empty()) return list;
+
+    auto grpOpt = m_groupService.getGroup(gf::groups::bo::GroupId{gId});
+    if (!grpOpt || !grpOpt->has_value()) return list;
+
+    const auto& existingRepoIds = (*grpOpt)->repositoryIds;
+    auto allRepos = m_repoService.getAllRepositories();
+    if (!allRepos) return list;
+
+    for (const auto& repo : *allRepos) {
+        bool alreadyInGroup = std::find(existingRepoIds.begin(), existingRepoIds.end(), repo.id) != existingRepoIds.end();
+        if (!alreadyInGroup) {
+            QVariantMap map;
+            const QString rIdQStr = QString::fromStdString(repo.id.value());
+            map[QStringLiteral("id")] = rIdQStr;
+            map[QStringLiteral("displayName")] = QString::fromStdString(repo.displayName);
+            map[QStringLiteral("localPath")] = QString::fromStdString(repo.localPath.string());
+            auto cached = m_repoModel ? m_repoModel->findById(rIdQStr) : std::nullopt;
+            map[QStringLiteral("branch")] = cached ? cached->branch : QString();
+            map[QStringLiteral("isMissing")] = (repo.pathStatus == gf::repositories::bo::RepositoryPathStatus::Missing);
+            list.append(map);
+        }
+    }
+    return list;
+}
+
+QVariantList HomeHubViewModel::getAvailableRepositoriesForWorkspace(const QString& workspaceId) const {
+    QVariantList list;
+    const auto wsId = workspaceId.trimmed().toStdString();
+    if (wsId.empty()) return list;
+
+    auto resolved = m_workspaceService.resolveWorkspaceRepositories(gf::workspaces::bo::WorkspaceId{wsId});
+    std::vector<std::string> existingIds;
+    if (resolved) {
+        for (const auto& r : *resolved) {
+            existingIds.push_back(r.id.value());
+        }
+    }
+
+    auto allRepos = m_repoService.getAllRepositories();
+    if (!allRepos) return list;
+
+    for (const auto& repo : *allRepos) {
+        bool alreadyInWs = std::find(existingIds.begin(), existingIds.end(), repo.id.value()) != existingIds.end();
+        if (!alreadyInWs) {
+            QVariantMap map;
+            const QString rIdQStr = QString::fromStdString(repo.id.value());
+            map[QStringLiteral("id")] = rIdQStr;
+            map[QStringLiteral("displayName")] = QString::fromStdString(repo.displayName);
+            map[QStringLiteral("localPath")] = QString::fromStdString(repo.localPath.string());
+            auto cached = m_repoModel ? m_repoModel->findById(rIdQStr) : std::nullopt;
+            map[QStringLiteral("branch")] = cached ? cached->branch : QString();
+            map[QStringLiteral("isMissing")] = (repo.pathStatus == gf::repositories::bo::RepositoryPathStatus::Missing);
+            list.append(map);
+        }
+    }
+    return list;
+}
+
+QVariantList HomeHubViewModel::getAvailableGroupsForRepository(const QString& repoId) const {
+    QVariantList list;
+    const auto rId = repoId.trimmed().toStdString();
+    if (rId.empty()) return list;
+
+    auto allGroups = m_groupService.getAllGroups();
+    if (!allGroups) return list;
+
+    for (const auto& grp : *allGroups) {
+        bool containsRepo = std::find(grp.repositoryIds.begin(), grp.repositoryIds.end(), gf::repositories::bo::RepositoryId{rId}) != grp.repositoryIds.end();
+        if (!containsRepo) {
+            QVariantMap map;
+            map[QStringLiteral("id")] = QString::fromStdString(grp.id.value());
+            map[QStringLiteral("name")] = QString::fromStdString(grp.name);
+            map[QStringLiteral("repositoryCount")] = static_cast<int>(grp.repositoryIds.size());
+            list.append(map);
+        }
+    }
+    return list;
+}
+
+bool HomeHubViewModel::addRepositoryToWorkspace(const QString& workspaceId, const QString& repoId) {
+    const auto wsIdStr = workspaceId.trimmed().toStdString();
+    const auto rIdStr = repoId.trimmed().toStdString();
+    if (wsIdStr.empty() || rIdStr.empty()) {
+        const QString err = QStringLiteral("Parametri non validi per l'aggiunta al workspace.");
+        setLastError(err);
+        emit errorOccurred(err);
+        return false;
+    }
+
+    auto wsOptExp = m_workspaceService.getWorkspace(gf::workspaces::bo::WorkspaceId{wsIdStr});
+    if (!wsOptExp || !wsOptExp->has_value()) {
+        const QString err = QStringLiteral("Workspace non trovato.");
+        setLastError(err);
+        emit errorOccurred(err);
+        return false;
+    }
+
+    auto ws = **wsOptExp;
+    gf::repositories::bo::RepositoryId targetRepoId{rIdStr};
+    auto it = std::find(ws.directRepositoryIds.begin(), ws.directRepositoryIds.end(), targetRepoId);
+    if (it != ws.directRepositoryIds.end()) {
+        const QString err = QStringLiteral("Il repository fa già parte di questo workspace.");
+        setLastError(err);
+        emit errorOccurred(err);
+        return false;
+    }
+
+    ws.directRepositoryIds.push_back(targetRepoId);
+    auto updateRes = m_workspaceService.updateWorkspaceComposition(ws.id, ws.groupIds, ws.directRepositoryIds);
+    if (!updateRes) {
+        const QString err = QStringLiteral("Impossibile aggiornare la composizione del workspace.");
+        setLastError(err);
+        emit errorOccurred(err);
+        return false;
+    }
+
+    setLastSuccessMessage(QStringLiteral("Repository aggiunto al workspace '%1'").arg(QString::fromStdString(ws.name)));
+    refreshAll();
+    emit workspacesChanged();
+    return true;
+}
+
+bool HomeHubViewModel::removeRepositoryFromWorkspace(const QString& workspaceId, const QString& repoId) {
+    const auto wsIdStr = workspaceId.trimmed().toStdString();
+    const auto rIdStr = repoId.trimmed().toStdString();
+    if (wsIdStr.empty() || rIdStr.empty()) return false;
+
+    auto wsOptExp = m_workspaceService.getWorkspace(gf::workspaces::bo::WorkspaceId{wsIdStr});
+    if (!wsOptExp || !wsOptExp->has_value()) return false;
+
+    auto ws = **wsOptExp;
+    gf::repositories::bo::RepositoryId targetRepoId{rIdStr};
+    auto it = std::find(ws.directRepositoryIds.begin(), ws.directRepositoryIds.end(), targetRepoId);
+    if (it == ws.directRepositoryIds.end()) return false;
+
+    ws.directRepositoryIds.erase(it);
+    auto updateRes = m_workspaceService.updateWorkspaceComposition(ws.id, ws.groupIds, ws.directRepositoryIds);
+    if (!updateRes) return false;
+
+    setLastSuccessMessage(QStringLiteral("Repository rimosso dal workspace"));
+    refreshAll();
+    emit workspacesChanged();
+    return true;
 }
 
 } // namespace gf::desktop

@@ -1924,22 +1924,131 @@ TEST_CASE("HomeHubViewModel: lastCloneDestinationPath persistence and signals", 
     HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService, nullptr);
     QSignalSpy destSpy(&vm, &HomeHubViewModel::lastCloneDestinationPathChanged);
 
-    const QString testPath = QStringLiteral("/projects/cloned_repos");
-    vm.setLastCloneDestinationPath(testPath);
+    const QString testPathA = QStringLiteral("/projects/test_dest_A_") + QString::number(QDateTime::currentMSecsSinceEpoch());
+    const QString testPathB = QStringLiteral("/projects/test_dest_B_") + QString::number(QDateTime::currentMSecsSinceEpoch());
 
-    CHECK(vm.lastCloneDestinationPath() == testPath);
-    CHECK(destSpy.count() == 1);
-    CHECK(destSpy.takeFirst().at(0).toString() == testPath);
+    vm.setLastCloneDestinationPath(testPathA);
+    CHECK(vm.lastCloneDestinationPath() == testPathA);
+    REQUIRE(destSpy.count() == 1);
+    CHECK(destSpy.takeFirst().at(0).toString() == testPathA);
 
     // Setting same path again should not re-emit
-    vm.setLastCloneDestinationPath(testPath);
+    vm.setLastCloneDestinationPath(testPathA);
     CHECK(destSpy.count() == 0);
+
+    // Setting new path emits signal
+    vm.setLastCloneDestinationPath(testPathB);
+    CHECK(vm.lastCloneDestinationPath() == testPathB);
+    REQUIRE(destSpy.count() == 1);
+    CHECK(destSpy.takeFirst().at(0).toString() == testPathB);
 
     // Setting empty/whitespace path should be ignored
     vm.setLastCloneDestinationPath(QStringLiteral("   "));
-    CHECK(vm.lastCloneDestinationPath() == testPath);
+    CHECK(vm.lastCloneDestinationPath() == testPathB);
     CHECK(destSpy.count() == 0);
 }
+
+TEST_CASE("HomeHubViewModel: section visibility customization and persistence rules", "[desktop][viewmodels][sections]") {
+    TestContext ctx;
+    HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService, nullptr);
+
+    // Reset to all 3 sections visible
+    vm.setShowRepositories(true);
+    vm.setShowGroups(true);
+    vm.setShowWorkspaces(true);
+    CHECK(vm.showRepositories());
+    CHECK(vm.showGroups());
+    CHECK(vm.showWorkspaces());
+
+    QSignalSpy repoSpy(&vm, &HomeHubViewModel::showRepositoriesChanged);
+    QSignalSpy grpSpy(&vm, &HomeHubViewModel::showGroupsChanged);
+    QSignalSpy wsSpy(&vm, &HomeHubViewModel::showWorkspacesChanged);
+
+    // Turn off groups and workspaces
+    vm.setShowGroups(false);
+    CHECK_FALSE(vm.showGroups());
+    CHECK(grpSpy.count() == 1);
+
+    vm.setShowWorkspaces(false);
+    CHECK_FALSE(vm.showWorkspaces());
+    CHECK(wsSpy.count() == 1);
+
+    // Repositories is now the ONLY visible section. Attempting to turn it off should be prevented!
+    vm.setShowRepositories(false);
+    CHECK(vm.showRepositories());
+    CHECK(repoSpy.count() == 0);
+
+    // Toggle back on
+    vm.toggleShowGroups();
+    CHECK(vm.showGroups());
+    CHECK(grpSpy.count() == 2);
+}
+
+TEST_CASE("HomeHubViewModel: workspace repo composition and available repos filtering", "[desktop][viewmodels][workspace_composition]") {
+    TestContext ctx;
+    HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService, nullptr);
+
+    // Create 2 repositories
+    REQUIRE(vm.addRepository(QString::fromStdString(ctx.repoAPath.string()), QStringLiteral("Repo 1")));
+    REQUIRE(vm.addRepository(QString::fromStdString(ctx.repoBPath.string()), QStringLiteral("Repo 2")));
+    REQUIRE(vm.repositoriesCount() == 2);
+
+    auto allRepos = ctx.repoService->getAllRepositories();
+    REQUIRE(allRepos.has_value());
+    const QString r1Id = QString::fromStdString(allRepos->at(0).id.value());
+    const QString r2Id = QString::fromStdString(allRepos->at(1).id.value());
+
+    // Create Group
+    REQUIRE(vm.createGroup(QStringLiteral("Dev Group")));
+    auto allGroups = ctx.groupService->getAllGroups();
+    REQUIRE(allGroups.has_value());
+    const QString gId = QString::fromStdString(allGroups->at(0).id.value());
+
+    // Initially both repos are available for group
+    auto availForGrp = vm.getAvailableRepositoriesForGroup(gId);
+    CHECK(availForGrp.size() == 2);
+
+    // Add r1 to group
+    REQUIRE(vm.addRepositoryToGroup(gId, r1Id));
+    CHECK(vm.isRepositoryInGroup(gId, r1Id));
+    CHECK_FALSE(vm.isRepositoryInGroup(gId, r2Id));
+
+    // Now only r2 is available for group (r1 is excluded)
+    availForGrp = vm.getAvailableRepositoriesForGroup(gId);
+    REQUIRE(availForGrp.size() == 1);
+    CHECK(availForGrp.at(0).toMap()[QStringLiteral("id")].toString() == r2Id);
+
+    // Check available groups for repo: r1 has 0 available groups, r2 has 1 available group
+    CHECK(vm.getAvailableGroupsForRepository(r1Id).size() == 0);
+    CHECK(vm.getAvailableGroupsForRepository(r2Id).size() == 1);
+
+    // Create Workspace
+    REQUIRE(vm.createWorkspace(QStringLiteral("Main Workspace")));
+    auto allWs = ctx.workspaceService->getAllWorkspaces();
+    REQUIRE(allWs.has_value());
+    const QString wsId = QString::fromStdString(allWs->at(0).id.value());
+
+    // Initially both repos are available for workspace
+    auto availForWs = vm.getAvailableRepositoriesForWorkspace(wsId);
+    CHECK(availForWs.size() == 2);
+
+    // Add r2 to workspace
+    REQUIRE(vm.addRepositoryToWorkspace(wsId, r2Id));
+    CHECK(vm.isRepositoryInWorkspace(wsId, r2Id));
+    CHECK_FALSE(vm.isRepositoryInWorkspace(wsId, r1Id));
+
+    // Now only r1 is available for workspace (r2 is excluded)
+    availForWs = vm.getAvailableRepositoriesForWorkspace(wsId);
+    REQUIRE(availForWs.size() == 1);
+    CHECK(availForWs.at(0).toMap()[QStringLiteral("id")].toString() == r1Id);
+
+    // Remove r2 from workspace
+    REQUIRE(vm.removeRepositoryFromWorkspace(wsId, r2Id));
+    CHECK_FALSE(vm.isRepositoryInWorkspace(wsId, r2Id));
+    availForWs = vm.getAvailableRepositoriesForWorkspace(wsId);
+    CHECK(availForWs.size() == 2);
+}
+
 
 
 
