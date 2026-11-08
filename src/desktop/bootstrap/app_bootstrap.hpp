@@ -28,6 +28,11 @@
 #include "desktop/viewmodels/home_hub_viewmodel.hpp"
 #include "desktop/viewmodels/quick_open_viewmodel.hpp"
 #include "desktop/viewmodels/workspace_session_viewmodel.hpp"
+#include "desktop/viewmodels/git_profiles_viewmodel.hpp"
+#include "infrastructure/persistence/profiles/sqlite_profile_store.hpp"
+#include "infrastructure/security/crypto_vault.hpp"
+#include "infrastructure/git/credentials/system_credential_detector.hpp"
+#include "desktop/services/git_provider_api_client.hpp"
 
 #include <filesystem>
 #include <memory>
@@ -53,6 +58,7 @@ public:
     [[nodiscard]] QuickOpenViewModel& quickOpenViewModel() noexcept;
     [[nodiscard]] WorkspaceSessionViewModel& workspaceSessionViewModel() noexcept;
     [[nodiscard]] BatchOperationsViewModel& batchOperationsViewModel() noexcept;
+    [[nodiscard]] viewmodels::GitProfilesViewModel& gitProfilesViewModel() noexcept;
     [[nodiscard]] git::bl::GitRepositoryWatcherService& watcherService() noexcept;
     [[nodiscard]] git::bl::MultiRepoBatchCoordinator& batchCoordinator() noexcept;
     [[nodiscard]] repositories::bl::RepositoryService& repositoryService() noexcept;
@@ -96,6 +102,13 @@ private:
     std::unique_ptr<QuickOpenViewModel> m_quickOpenVm;
     std::unique_ptr<WorkspaceSessionViewModel> m_workspaceSessionVm;
     std::unique_ptr<BatchOperationsViewModel> m_batchOperationsVm;
+
+    std::unique_ptr<infra::persistence::profiles::SqliteProfileStore> m_profileStore;
+    std::unique_ptr<infra::security::CryptoVault> m_cryptoVault;
+    std::unique_ptr<infra::git::credentials::SystemCredentialDetector> m_credentialDetector;
+    std::unique_ptr<QNetworkAccessManager> m_nam;
+    std::unique_ptr<services::GitProviderApiClient> m_gitApiClient;
+    std::unique_ptr<viewmodels::GitProfilesViewModel> m_gitProfilesVm;
 };
 
 } // namespace gf::desktop

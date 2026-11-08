@@ -1801,3 +1801,91 @@ TEST_CASE("DiffViewModel - View mode switching and property invariants", "[deskt
     CHECK(modeSpy.count() == 4);
 }
 
+#include "desktop/viewmodels/remote_repo_list_model.hpp"
+
+TEST_CASE("RemoteRepoListModel: Real-Time Filtering and Protocol Switching", "[desktop][viewmodels][remote_repo]") {
+    using namespace gf::desktop::viewmodels;
+
+    RemoteRepoListModel model;
+    CHECK(model.rowCount() == 0);
+    CHECK(model.totalCount() == 0);
+    CHECK(model.filteredCount() == 0);
+
+    std::vector<gf::core::git::bo::RemoteRepositoryItem> items = {
+        {
+            .name = "Git-Flux",
+            .fullName = "Dokjolly0/Git-Flux",
+            .description = "Modern local-first desktop Git client",
+            .isPrivate = false,
+            .defaultBranch = "main",
+            .httpsUrl = "https://github.com/Dokjolly0/Git-Flux.git",
+            .sshUrl = "git@github.com:Dokjolly0/Git-Flux.git",
+            .updatedAt = "2026-11-08",
+            .starsCount = 42,
+            .forksCount = 5
+        },
+        {
+            .name = "agentic-seek",
+            .fullName = "Dokjolly0/agentic-seek",
+            .description = "Autonomous AI agent search system",
+            .isPrivate = true,
+            .defaultBranch = "develop",
+            .httpsUrl = "https://github.com/Dokjolly0/agentic-seek.git",
+            .sshUrl = "git@github.com:Dokjolly0/agentic-seek.git",
+            .updatedAt = "2026-11-07",
+            .starsCount = 10,
+            .forksCount = 1
+        },
+        {
+            .name = "angular-library",
+            .fullName = "Dokjolly0/angular-library",
+            .description = "Reusable enterprise UI components",
+            .isPrivate = false,
+            .defaultBranch = "master",
+            .httpsUrl = "https://github.com/Dokjolly0/angular-library.git",
+            .sshUrl = "git@github.com:Dokjolly0/angular-library.git",
+            .updatedAt = "2026-10-20",
+            .starsCount = 3,
+            .forksCount = 0
+        }
+    };
+
+    model.setRepositories(items);
+    CHECK(model.rowCount() == 3);
+    CHECK(model.totalCount() == 3);
+    CHECK(model.filteredCount() == 3);
+
+    // Default protocol is SSH
+    CHECK(model.selectedProtocol() == "ssh");
+    auto repo0 = model.getRepoAt(0);
+    CHECK(repo0["activeCloneUrl"].toString() == "git@github.com:Dokjolly0/Git-Flux.git");
+
+    // Switch protocol to HTTPS
+    model.setSelectedProtocol("https");
+    CHECK(model.selectedProtocol() == "https");
+    repo0 = model.getRepoAt(0);
+    CHECK(repo0["activeCloneUrl"].toString() == "https://github.com/Dokjolly0/Git-Flux.git");
+
+    // Real-time search filter by repository name
+    model.setSearchFilter("agent");
+    CHECK(model.rowCount() == 1);
+    CHECK(model.filteredCount() == 1);
+    CHECK(model.totalCount() == 3);
+    auto filteredRepo = model.getRepoAt(0);
+    CHECK(filteredRepo["name"].toString() == "agentic-seek");
+    CHECK(filteredRepo["isPrivate"].toBool() == true);
+
+    // Real-time search filter by description
+    model.setSearchFilter("desktop Git client");
+    CHECK(model.rowCount() == 1);
+    CHECK(model.filteredCount() == 1);
+    auto fluxRepo = model.getRepoAt(0);
+    CHECK(fluxRepo["name"].toString() == "Git-Flux");
+
+    // Clear filter
+    model.setSearchFilter("");
+    CHECK(model.rowCount() == 3);
+    CHECK(model.filteredCount() == 3);
+}
+
+

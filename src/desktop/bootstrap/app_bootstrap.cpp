@@ -95,6 +95,16 @@ void AppBootstrap::initialize() {
         m_watcherService.get()
     );
     m_batchOperationsVm = std::make_unique<BatchOperationsViewModel>(*m_batchCoordinator);
+
+    m_profileStore = std::make_unique<infra::persistence::profiles::SqliteProfileStore>(*m_connection);
+    m_cryptoVault = std::make_unique<infra::security::CryptoVault>();
+    m_credentialDetector = std::make_unique<infra::git::credentials::SystemCredentialDetector>();
+    m_nam = std::make_unique<QNetworkAccessManager>();
+    m_gitApiClient = std::make_unique<services::GitProviderApiClient>(m_nam.get());
+    m_gitProfilesVm = std::make_unique<viewmodels::GitProfilesViewModel>(
+        *m_profileStore, *m_cryptoVault, *m_credentialDetector, m_gitApiClient.get()
+    );
+    m_gitProfilesVm->initialize();
 }
 
 void AppBootstrap::registerWithQml(QQmlApplicationEngine& engine) {
@@ -137,12 +147,17 @@ void AppBootstrap::registerWithQml(QQmlApplicationEngine& engine) {
         "ViewModel managed by bootstrap");
     qmlRegisterUncreatableType<BatchOperationsViewModel>("GitFlux.Desktop", 1, 0, "BatchOperationsViewModel",
         "ViewModel managed by bootstrap");
+    qmlRegisterUncreatableType<viewmodels::RemoteRepoListModel>("GitFlux.Desktop", 1, 0, "RemoteRepoListModel",
+        "Model provided by GitProfilesViewModel");
+    qmlRegisterUncreatableType<viewmodels::GitProfilesViewModel>("GitFlux.Desktop", 1, 0, "GitProfilesViewModel",
+        "ViewModel managed by bootstrap");
 
     auto* rootCtx = engine.rootContext();
     rootCtx->setContextProperty(QStringLiteral("homeHubVm"), m_homeHubVm.get());
     rootCtx->setContextProperty(QStringLiteral("quickOpenVm"), m_quickOpenVm.get());
     rootCtx->setContextProperty(QStringLiteral("workspaceSessionVm"), m_workspaceSessionVm.get());
     rootCtx->setContextProperty(QStringLiteral("batchOperationsVm"), m_batchOperationsVm.get());
+    rootCtx->setContextProperty(QStringLiteral("gitProfilesVm"), m_gitProfilesVm.get());
 }
 
 HomeHubViewModel& AppBootstrap::homeHubViewModel() noexcept {
@@ -159,6 +174,10 @@ WorkspaceSessionViewModel& AppBootstrap::workspaceSessionViewModel() noexcept {
 
 BatchOperationsViewModel& AppBootstrap::batchOperationsViewModel() noexcept {
     return *m_batchOperationsVm;
+}
+
+viewmodels::GitProfilesViewModel& AppBootstrap::gitProfilesViewModel() noexcept {
+    return *m_gitProfilesVm;
 }
 
 git::bl::GitRepositoryWatcherService& AppBootstrap::watcherService() noexcept {
