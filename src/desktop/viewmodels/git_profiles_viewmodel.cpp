@@ -53,6 +53,31 @@ void GitProfilesViewModel::initialize() {
         stored = std::move(*storedRes);
     }
 
+    // Purge any stored custom profiles that are NOT git hosts (cleans up any old non-git VPS servers)
+    for (auto it = stored.begin(); it != stored.end();) {
+        if (it->id.starts_with("custom_")) {
+            std::string h = it->host;
+            std::transform(h.begin(), h.end(), h.begin(), ::tolower);
+            std::string d = it->displayName;
+            std::transform(d.begin(), d.end(), d.begin(), ::tolower);
+            std::string u = it->username;
+            std::transform(u.begin(), u.end(), u.begin(), ::tolower);
+
+            bool isGit = (u == "git") ||
+                         (h.find("git") != std::string::npos) ||
+                         (d.find("git") != std::string::npos) ||
+                         (h.find("gitea") != std::string::npos) ||
+                         (h.find("forgejo") != std::string::npos) ||
+                         (h.find("codeberg") != std::string::npos);
+            if (!isGit) {
+                (void)m_store.deleteProfile(it->id);
+                it = stored.erase(it);
+                continue;
+            }
+        }
+        ++it;
+    }
+
     // 3. Merge: augment stored with detected SSH keys, or add newly detected
     for (const auto& det : detected) {
         auto it = std::find_if(stored.begin(), stored.end(), [&](const auto& s) {
@@ -77,7 +102,7 @@ void GitProfilesViewModel::initialize() {
     m_profiles = std::move(stored);
     emit profilesChanged();
 
-    // Set initial active profile
+    // Set initial active profile and fetch
     selectProfile(QStringLiteral("github"));
 }
 
@@ -179,7 +204,6 @@ void GitProfilesViewModel::setSelectedProtocol(const QString& proto) {
 }
 
 void GitProfilesViewModel::selectProfile(const QString& profileId) {
-    if (m_activeProfileId == profileId) return;
     m_activeProfileId = profileId;
     m_fetchError.clear();
     emit activeProfileChanged();
@@ -219,6 +243,33 @@ void GitProfilesViewModel::fetchActiveProfileRepos() {
         auto decRes = m_vault.decrypt(p->tokenSecret);
         if (decRes) {
             decryptedToken = QString::fromStdString(*decRes);
+        }
+    }
+
+    if (decryptedToken.isEmpty()) {
+        const char* envTok = nullptr;
+        if (p->providerType == core::git::bo::GitProviderType::GitHub) {
+            envTok = std::getenv("GITHUB_TOKEN");
+            if (!envTok) envTok = std::getenv("GH_TOKEN");
+        } else if (p->providerType == core::git::bo::GitProviderType::GitLab) {
+            envTok = std::getenv("GITLAB_TOKEN");
+        } else if (p->providerType == core::git::bo::GitProviderType::Bitbucket) {
+            envTok = std::getenv("BITBUCKET_TOKEN");
+            if (!envTok) envTok = std::getenv("BITBUCKET_APP_PASSWORD");
+        }
+        if (envTok && std::char_traits<char>::length(envTok) > 0) {
+            decryptedToken = QString::fromUtf8(envTok);
+            auto* pMut = findProfileMut(m_activeProfileId);
+            if (pMut && !pMut->hasToken) {
+                auto encRes = m_vault.encrypt(std::string(envTok));
+                if (encRes) {
+                    pMut->tokenSecret = *encRes;
+                    pMut->hasToken = true;
+                    (void)m_store.saveProfile(*pMut);
+                    emit profilesChanged();
+                    emit activeProfileChanged();
+                }
+            }
         }
     }
 

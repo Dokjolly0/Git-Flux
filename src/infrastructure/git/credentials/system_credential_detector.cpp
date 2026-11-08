@@ -104,6 +104,37 @@ void SystemCredentialDetector::parseSshConfig(std::vector<core::git::bo::GitProv
         const auto keyPath = expandTilde(currentIdentityFile);
         const bool keyExists = !currentIdentityFile.empty() && std::filesystem::exists(keyPath, ec);
 
+        // Check if this host is actually a Git host (filter out general VPS/SSH boxes like remote-viewer, alex-violatto)
+        std::string lowerHost = currentHost;
+        std::transform(lowerHost.begin(), lowerHost.end(), lowerHost.begin(), ::tolower);
+        std::string lowerHostName = currentHostName;
+        std::transform(lowerHostName.begin(), lowerHostName.end(), lowerHostName.begin(), ::tolower);
+        std::string lowerUser = currentUser;
+        std::transform(lowerUser.begin(), lowerUser.end(), lowerUser.begin(), ::tolower);
+        std::string lowerIdentity = currentIdentityFile;
+        std::transform(lowerIdentity.begin(), lowerIdentity.end(), lowerIdentity.begin(), ::tolower);
+
+        bool isGitHost = (lowerUser == "git") ||
+                         (lowerHost.find("github") != std::string::npos) ||
+                         (lowerHost.find("gitlab") != std::string::npos) ||
+                         (lowerHost.find("bitbucket") != std::string::npos) ||
+                         (lowerHost.find("gitea") != std::string::npos) ||
+                         (lowerHost.find("forgejo") != std::string::npos) ||
+                         (lowerHost.find("codeberg") != std::string::npos) ||
+                         (lowerHostName.find("github") != std::string::npos) ||
+                         (lowerHostName.find("gitlab") != std::string::npos) ||
+                         (lowerHostName.find("bitbucket") != std::string::npos) ||
+                         (lowerHostName.find("gitea") != std::string::npos) ||
+                         (lowerHostName.find("forgejo") != std::string::npos) ||
+                         (lowerHostName.find("codeberg") != std::string::npos) ||
+                         (lowerHost.starts_with("git.") || lowerHostName.starts_with("git.")) ||
+                         (lowerHost.find(".git.") != std::string::npos || lowerHostName.find(".git.") != std::string::npos) ||
+                         (lowerIdentity.find("git") != std::string::npos);
+
+        if (!isGitHost) {
+            return;
+        }
+
         // Find if profile for host already exists
         auto it = std::find_if(profiles.begin(), profiles.end(), [&](const auto& p) {
             return p.host == hostToUse || p.host == currentHost;

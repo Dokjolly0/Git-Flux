@@ -40,7 +40,7 @@ void GitProviderApiClient::fetchGitHub(
 ) {
     QUrl url;
     if (!token.isEmpty()) {
-        url = QUrl(QStringLiteral("https://api.github.com/user/repos?per_page=100&sort=updated"));
+        url = QUrl(QStringLiteral("https://api.github.com/user/repos?per_page=100&sort=updated&visibility=all&affiliation=owner,collaborator,organization_member"));
     } else if (!profile.username.empty()) {
         url = QUrl(QStringLiteral("https://api.github.com/users/%1/repos?per_page=100&sort=updated")
                        .arg(QString::fromStdString(profile.username)));
@@ -51,7 +51,8 @@ void GitProviderApiClient::fetchGitHub(
 
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("GitFlux-Desktop"));
-    request.setRawHeader("Accept", "application/vnd.github.v3+json");
+    request.setRawHeader("Accept", "application/vnd.github+json");
+    request.setRawHeader("X-GitHub-Api-Version", "2022-11-28");
     if (!token.isEmpty()) {
         request.setRawHeader("Authorization", QStringLiteral("Bearer %1").arg(token).toUtf8());
     }
@@ -60,7 +61,14 @@ void GitProviderApiClient::fetchGitHub(
     connect(reply, &QNetworkReply::finished, this, [this, reply, profileId]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit fetchFailed(profileId, QStringLiteral("Errore API GitHub: %1").arg(reply->errorString()));
+            const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            if (statusCode == 401) {
+                emit fetchFailed(profileId, QStringLiteral("Token non valido o scaduto (HTTP 401). Verifica il token inserito."));
+            } else if (statusCode == 403) {
+                emit fetchFailed(profileId, QStringLiteral("Permessi insufficienti (HTTP 403). Assicurati che il token abbia lo scope 'repo' per visualizzare i repository privati."));
+            } else {
+                emit fetchFailed(profileId, QStringLiteral("Errore API GitHub (%1): %2").arg(statusCode).arg(reply->errorString()));
+            }
             return;
         }
 

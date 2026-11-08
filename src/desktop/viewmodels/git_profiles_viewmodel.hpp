@@ -55,7 +55,7 @@ public:
     [[nodiscard]] bool activeProfileHasToken() const;
 
     [[nodiscard]] QString selectedProtocol() const noexcept { return m_selectedProtocol; }
-    void setSelectedProtocol(const QString& proto);
+    Q_INVOKABLE void setSelectedProtocol(const QString& proto);
 
     [[nodiscard]] bool isFetching() const noexcept { return m_isFetching; }
     [[nodiscard]] QString fetchError() const noexcept { return m_fetchError; }
