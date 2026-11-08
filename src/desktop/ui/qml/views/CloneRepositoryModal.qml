@@ -488,7 +488,9 @@ Dialog {
                                     id: tokenUsernameInput
                                     Layout.preferredWidth: 150
                                     Layout.preferredHeight: 32
-                                    placeholderText: "Username (es. Dokjolly0)"
+                                    placeholderText: root.profilesVm && root.profilesVm.activeProfileId === "bitbucket"
+                                                     ? "Bitbucket Username"
+                                                     : "Username (es. Dokjolly0)"
                                     placeholderTextColor: "#475569"
                                     selectByMouse: true
                                     text: root.profilesVm ? root.profilesVm.activeProfileUsername : ""
@@ -507,7 +509,9 @@ Dialog {
                                     id: tokenSecretInput
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: 32
-                                    placeholderText: "Personal Access Token (ghp_... o github_pat_...)"
+                                    placeholderText: root.profilesVm && root.profilesVm.activeProfileId === "bitbucket"
+                                                     ? "Bitbucket App Password"
+                                                     : "Personal Access Token (ghp_... o API token)"
                                     placeholderTextColor: "#475569"
                                     selectByMouse: true
                                     echoMode: root.showTokenText ? TextInput.Normal : TextInput.Password

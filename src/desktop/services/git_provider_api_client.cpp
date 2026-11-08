@@ -166,7 +166,7 @@ void GitProviderApiClient::fetchGitLab(
 
 void GitProviderApiClient::fetchBitbucket(
     const QString& profileId,
-    const core::git::bo::GitProviderProfile& /*profile*/,
+    const core::git::bo::GitProviderProfile& profile,
     const QString& token
 ) {
     if (token.isEmpty()) {
@@ -177,13 +177,28 @@ void GitProviderApiClient::fetchBitbucket(
     const QUrl url(QStringLiteral("https://api.bitbucket.org/2.0/repositories?role=member&pagelen=100&sort=-updated_on"));
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("GitFlux-Desktop"));
-    request.setRawHeader("Authorization", QStringLiteral("Bearer %1").arg(token).toUtf8());
+    request.setRawHeader("Accept", "application/json");
+
+    if (!profile.username.empty()) {
+        const QString credentials = QStringLiteral("%1:%2").arg(QString::fromStdString(profile.username), token);
+        const QString authHeader = QStringLiteral("Basic %1").arg(QString::fromLatin1(credentials.toUtf8().toBase64()));
+        request.setRawHeader("Authorization", authHeader.toUtf8());
+    } else {
+        request.setRawHeader("Authorization", QStringLiteral("Bearer %1").arg(token).toUtf8());
+    }
 
     auto* reply = m_nam->get(request);
     connect(reply, &QNetworkReply::finished, this, [this, reply, profileId]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit fetchFailed(profileId, QStringLiteral("Errore API Bitbucket: %1").arg(reply->errorString()));
+            const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            if (statusCode == 401) {
+                emit fetchFailed(profileId, QStringLiteral("Autenticazione fallita (HTTP 401). Verifica Bitbucket Username e App Password (in Personal settings > App passwords con permesso 'Repositories: Read')."));
+            } else if (statusCode == 403) {
+                emit fetchFailed(profileId, QStringLiteral("Accesso negato (HTTP 403). Assicurati che l'App Password abbia i permessi di lettura per i repository."));
+            } else {
+                emit fetchFailed(profileId, QStringLiteral("Errore API Bitbucket (%1): %2").arg(statusCode).arg(reply->errorString()));
+            }
             return;
         }
 
