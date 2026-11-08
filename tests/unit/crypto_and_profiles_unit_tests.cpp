@@ -143,4 +143,12 @@ TEST_CASE("SystemCredentialDetector: Default Profiles and SSH config", "[git][cr
     CHECK(hasGitHub);
     CHECK(hasBitbucket);
     CHECK(hasGitLab);
+
+    // If git.alexviolatto.dev exists in SSH config, verify API URL is on https:// without SSH port 2222
+    for (const auto& p : profiles) {
+        if (p.host == "git.alexviolatto.dev") {
+            CHECK(p.customApiUrl == "https://git.alexviolatto.dev");
+            CHECK(p.customApiUrl.find(":2222") == std::string::npos);
+        }
+    }
 }

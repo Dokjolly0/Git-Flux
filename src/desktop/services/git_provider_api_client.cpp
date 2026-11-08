@@ -236,24 +236,32 @@ void GitProviderApiClient::fetchCustom(
     const core::git::bo::GitProviderProfile& profile,
     const QString& token
 ) {
-    if (profile.customApiUrl.empty()) {
-        emit fetchFailed(profileId, QStringLiteral("Nessun endpoint API configurato per questo server personalizzato."));
-        return;
+    QString apiUrl = profile.customApiUrl.empty()
+                         ? QStringLiteral("https://%1").arg(QString::fromStdString(profile.host))
+                         : QString::fromStdString(profile.customApiUrl);
+
+    // Strip accidental SSH port like :2222 if present
+    if (apiUrl.contains(QStringLiteral(":2222"))) {
+        apiUrl.replace(QStringLiteral(":2222"), QStringLiteral(""));
+    }
+    if (apiUrl.endsWith(QLatin1Char('/'))) apiUrl.chop(1);
+
+    QString baseApi = apiUrl;
+    if (!baseApi.contains(QStringLiteral("/api/v1"))) {
+        baseApi.append(QStringLiteral("/api/v1"));
     }
 
-    QString apiUrl = QString::fromStdString(profile.customApiUrl);
-    if (!apiUrl.endsWith(QLatin1Char('/'))) apiUrl.append(QLatin1Char('/'));
-    
-    // Attempt standard Gitea / Forgejo API format: /api/v1/user/repos
     QUrl url;
-    if (apiUrl.contains(QStringLiteral("/api/v1"))) {
-        url = QUrl(apiUrl + QStringLiteral("user/repos?limit=50"));
+    if (!token.isEmpty()) {
+        url = QUrl(baseApi + QStringLiteral("/user/repos?limit=100"));
     } else {
-        url = QUrl(apiUrl + QStringLiteral("api/v1/user/repos?limit=50"));
+        // Without token: search all public repositories on Gitea/Forgejo instance
+        url = QUrl(baseApi + QStringLiteral("/repos/search?limit=100"));
     }
 
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("GitFlux-Desktop"));
+    request.setRawHeader("Accept", "application/json");
     if (!token.isEmpty()) {
         request.setRawHeader("Authorization", QStringLiteral("token %1").arg(token).toUtf8());
     }
@@ -262,18 +270,28 @@ void GitProviderApiClient::fetchCustom(
     connect(reply, &QNetworkReply::finished, this, [this, reply, profileId]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            emit fetchFailed(profileId, QStringLiteral("Errore connessione server: %1").arg(reply->errorString()));
+            const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            emit fetchFailed(profileId, QStringLiteral("Errore connessione server personalizzato (%1): %2").arg(statusCode).arg(reply->errorString()));
             return;
         }
 
         const auto doc = QJsonDocument::fromJson(reply->readAll());
-        if (!doc.isArray()) {
+        QJsonArray arr;
+        if (doc.isArray()) {
+            arr = doc.array();
+        } else if (doc.isObject()) {
+            const auto obj = doc.object();
+            if (obj.contains(QStringLiteral("data")) && obj.value(QStringLiteral("data")).isArray()) {
+                arr = obj.value(QStringLiteral("data")).toArray();
+            }
+        }
+
+        if (arr.isEmpty() && !doc.isArray() && (!doc.isObject() || !doc.object().contains(QStringLiteral("data")))) {
             emit fetchFailed(profileId, QStringLiteral("Risposta non valida dal server personalizzato"));
             return;
         }
 
         std::vector<core::git::bo::RemoteRepositoryItem> items;
-        const auto arr = doc.array();
         items.reserve(arr.size());
 
         for (const auto& val : arr) {
@@ -287,6 +305,10 @@ void GitProviderApiClient::fetchCustom(
             item.isPrivate = obj.value(QStringLiteral("private")).toBool();
             item.httpsUrl = obj.value(QStringLiteral("clone_url")).toString().toStdString();
             item.sshUrl = obj.value(QStringLiteral("ssh_url")).toString().toStdString();
+            item.defaultBranch = obj.value(QStringLiteral("default_branch")).toString(QStringLiteral("main")).toStdString();
+            item.starsCount = obj.value(QStringLiteral("stars_count")).toInt();
+            item.forksCount = obj.value(QStringLiteral("forks_count")).toInt();
+            item.updatedAt = obj.value(QStringLiteral("updated_at")).toString().toStdString();
 
             items.push_back(std::move(item));
         }

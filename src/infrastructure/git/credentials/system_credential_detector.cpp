@@ -159,9 +159,7 @@ void SystemCredentialDetector::parseSshConfig(std::vector<core::git::bo::GitProv
                 custom.hasSshKey = true;
                 custom.sshKeyPath = keyPath.string();
             }
-            if (currentPort != 22) {
-                custom.customApiUrl = "https://" + hostToUse + ":" + std::to_string(currentPort);
-            }
+            custom.customApiUrl = "https://" + hostToUse;
             profiles.push_back(custom);
         }
     };

@@ -74,6 +74,12 @@ void GitProfilesViewModel::initialize() {
                 it = stored.erase(it);
                 continue;
             }
+
+            // Sanitize customApiUrl: strip SSH ports (like :2222) and ensure valid https://
+            if (it->customApiUrl.find(":2222") != std::string::npos || it->customApiUrl.empty()) {
+                it->customApiUrl = "https://" + it->host;
+                (void)m_store.saveProfile(*it);
+            }
         }
         ++it;
     }
@@ -91,6 +97,9 @@ void GitProfilesViewModel::initialize() {
             }
             if (it->username.empty() && !det.username.empty()) {
                 it->username = det.username;
+            }
+            if (!det.customApiUrl.empty() && (it->customApiUrl.empty() || it->customApiUrl.find(":2222") != std::string::npos)) {
+                it->customApiUrl = det.customApiUrl;
             }
             (void)m_store.saveProfile(*it);
         } else {
@@ -178,7 +187,9 @@ QString GitProfilesViewModel::activeProfileType() const {
 
 QString GitProfilesViewModel::activeProfileUsername() const {
     const auto* p = findProfile(m_activeProfileId);
-    return p ? QString::fromStdString(p->username) : QStringLiteral("");
+    if (!p) return QStringLiteral("");
+    if (p->username == "git") return QStringLiteral("");
+    return QString::fromStdString(p->username);
 }
 
 bool GitProfilesViewModel::activeProfileHasSsh() const {
