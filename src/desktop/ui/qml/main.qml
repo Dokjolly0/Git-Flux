@@ -81,4 +81,71 @@ ApplicationWindow {
             }
         }
     }
+
+    // =========================================================================
+    // GLOBAL KEYBOARD SHORTCUTS
+    // =========================================================================
+
+    // Quick Open (Ctrl+P / Cmd+P)
+    Shortcut {
+        sequence: "Ctrl+P"
+        onActivated: quickOpenModal.open()
+    }
+    Shortcut {
+        sequence: "Ctrl+Shift+P"
+        onActivated: quickOpenModal.open()
+    }
+
+    // Add Local Repository (Ctrl+O)
+    Shortcut {
+        sequences: [StandardKey.Open]
+        onActivated: {
+            if (appWindow.currentView !== "home") {
+                appWindow.currentView = "home";
+            }
+            homeHubView.openAddRepoDialog();
+        }
+    }
+
+    // Clone Remote Repository (Ctrl+Shift+O / Ctrl+N)
+    Shortcut {
+        sequence: "Ctrl+Shift+O"
+        onActivated: {
+            if (appWindow.currentView !== "home") {
+                appWindow.currentView = "home";
+            }
+            homeHubView.openCloneModal();
+        }
+    }
+    Shortcut {
+        sequences: [StandardKey.New]
+        onActivated: {
+            if (appWindow.currentView !== "home") {
+                appWindow.currentView = "home";
+            }
+            homeHubView.openCloneModal();
+        }
+    }
+
+    // Global Refresh (F5 / Ctrl+R)
+    Shortcut {
+        sequences: [StandardKey.Refresh]
+        onActivated: {
+            if (appWindow.currentView === "home") {
+                if (typeof homeHubVm !== "undefined") homeHubVm.refreshAll();
+            } else {
+                if (typeof workspaceSessionVm !== "undefined") workspaceSessionVm.refreshActiveRepository();
+            }
+        }
+    }
+
+    // Global Escape
+    Shortcut {
+        sequence: "Escape"
+        onActivated: {
+            if (quickOpenModal.visible) {
+                quickOpenModal.close();
+            }
+        }
+    }
 }
