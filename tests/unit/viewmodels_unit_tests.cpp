@@ -2047,6 +2047,30 @@ TEST_CASE("HomeHubViewModel: workspace repo composition and available repos filt
     CHECK_FALSE(vm.isRepositoryInWorkspace(wsId, r2Id));
     availForWs = vm.getAvailableRepositoriesForWorkspace(wsId);
     CHECK(availForWs.size() == 2);
+
+    // Group-Workspace association tests
+    auto availGroupsForWs = vm.getAvailableGroupsForWorkspace(wsId);
+    REQUIRE(availGroupsForWs.size() == 1);
+    CHECK(availGroupsForWs.at(0).toMap()[QStringLiteral("id")].toString() == gId);
+
+    REQUIRE(vm.addGroupToWorkspace(wsId, gId));
+    CHECK(vm.isGroupInWorkspace(wsId, gId));
+
+    availGroupsForWs = vm.getAvailableGroupsForWorkspace(wsId);
+    CHECK(availGroupsForWs.empty());
+
+    // Verify workspace model exposes the added group
+    QModelIndex wsIdx = vm.workspaceModel()->index(0, 0);
+    QStringList grpIds = vm.workspaceModel()->data(wsIdx, WorkspaceListModel::GroupIdsRole).toStringList();
+    QStringList grpNames = vm.workspaceModel()->data(wsIdx, WorkspaceListModel::GroupNamesRole).toStringList();
+    CHECK(grpIds.contains(gId));
+    CHECK(grpNames.contains(QStringLiteral("Dev Group")));
+
+    REQUIRE(vm.removeGroupFromWorkspace(wsId, gId));
+    CHECK_FALSE(vm.isGroupInWorkspace(wsId, gId));
+
+    availGroupsForWs = vm.getAvailableGroupsForWorkspace(wsId);
+    CHECK(availGroupsForWs.size() == 1);
 }
 
 

@@ -196,7 +196,7 @@ void HomeHubViewModel::refreshAll() {
             }
         }
     }
-    m_workspaceModel->setWorkspaces(filteredWorkspaces, m_workspaceService);
+    m_workspaceModel->setWorkspaces(filteredWorkspaces, m_workspaceService, &m_groupService);
     emit workspacesChanged();
 }
 
@@ -1038,6 +1038,109 @@ bool HomeHubViewModel::removeRepositoryFromWorkspace(const QString& workspaceId,
     refreshAll();
     emit workspacesChanged();
     return true;
+}
+
+bool HomeHubViewModel::addGroupToWorkspace(const QString& workspaceId, const QString& groupId) {
+    const auto wsIdStr = workspaceId.trimmed().toStdString();
+    const auto gIdStr = groupId.trimmed().toStdString();
+    if (wsIdStr.empty() || gIdStr.empty()) {
+        const QString err = QStringLiteral("Parametri non validi per l'aggiunta del gruppo al workspace.");
+        setLastError(err);
+        emit errorOccurred(err);
+        return false;
+    }
+
+    auto wsOptExp = m_workspaceService.getWorkspace(gf::workspaces::bo::WorkspaceId{wsIdStr});
+    if (!wsOptExp || !wsOptExp->has_value()) {
+        const QString err = QStringLiteral("Workspace non trovato.");
+        setLastError(err);
+        emit errorOccurred(err);
+        return false;
+    }
+
+    auto ws = **wsOptExp;
+    gf::groups::bo::GroupId targetGrpId{gIdStr};
+    auto it = std::find(ws.groupIds.begin(), ws.groupIds.end(), targetGrpId);
+    if (it != ws.groupIds.end()) {
+        const QString err = QStringLiteral("Il gruppo fa già parte di questo workspace.");
+        setLastError(err);
+        emit errorOccurred(err);
+        return false;
+    }
+
+    ws.groupIds.push_back(targetGrpId);
+    auto updateRes = m_workspaceService.updateWorkspaceComposition(ws.id, ws.groupIds, ws.directRepositoryIds);
+    if (!updateRes) {
+        const QString err = QStringLiteral("Impossibile aggiornare la composizione del workspace.");
+        setLastError(err);
+        emit errorOccurred(err);
+        return false;
+    }
+
+    setLastSuccessMessage(QStringLiteral("Gruppo aggiunto al workspace '%1'").arg(QString::fromStdString(ws.name)));
+    refreshAll();
+    emit workspacesChanged();
+    return true;
+}
+
+bool HomeHubViewModel::removeGroupFromWorkspace(const QString& workspaceId, const QString& groupId) {
+    const auto wsIdStr = workspaceId.trimmed().toStdString();
+    const auto gIdStr = groupId.trimmed().toStdString();
+    if (wsIdStr.empty() || gIdStr.empty()) return false;
+
+    auto wsOptExp = m_workspaceService.getWorkspace(gf::workspaces::bo::WorkspaceId{wsIdStr});
+    if (!wsOptExp || !wsOptExp->has_value()) return false;
+
+    auto ws = **wsOptExp;
+    gf::groups::bo::GroupId targetGrpId{gIdStr};
+    auto it = std::find(ws.groupIds.begin(), ws.groupIds.end(), targetGrpId);
+    if (it == ws.groupIds.end()) return false;
+
+    ws.groupIds.erase(it);
+    auto updateRes = m_workspaceService.updateWorkspaceComposition(ws.id, ws.groupIds, ws.directRepositoryIds);
+    if (!updateRes) return false;
+
+    setLastSuccessMessage(QStringLiteral("Gruppo rimosso dal workspace"));
+    refreshAll();
+    emit workspacesChanged();
+    return true;
+}
+
+bool HomeHubViewModel::isGroupInWorkspace(const QString& workspaceId, const QString& groupId) const {
+    const auto wsIdStr = workspaceId.trimmed().toStdString();
+    const auto gIdStr = groupId.trimmed().toStdString();
+    if (wsIdStr.empty() || gIdStr.empty()) return false;
+
+    auto wsOptExp = m_workspaceService.getWorkspace(gf::workspaces::bo::WorkspaceId{wsIdStr});
+    if (!wsOptExp || !wsOptExp->has_value()) return false;
+
+    const auto& grpIds = (*wsOptExp)->groupIds;
+    return std::find(grpIds.begin(), grpIds.end(), gf::groups::bo::GroupId{gIdStr}) != grpIds.end();
+}
+
+QVariantList HomeHubViewModel::getAvailableGroupsForWorkspace(const QString& workspaceId) const {
+    QVariantList list;
+    const auto wsIdStr = workspaceId.trimmed().toStdString();
+    if (wsIdStr.empty()) return list;
+
+    auto wsOptExp = m_workspaceService.getWorkspace(gf::workspaces::bo::WorkspaceId{wsIdStr});
+    if (!wsOptExp || !wsOptExp->has_value()) return list;
+
+    const auto& existingGrpIds = (*wsOptExp)->groupIds;
+    auto allGroups = m_groupService.getAllGroups();
+    if (!allGroups) return list;
+
+    for (const auto& grp : *allGroups) {
+        bool alreadyInWs = std::find(existingGrpIds.begin(), existingGrpIds.end(), grp.id) != existingGrpIds.end();
+        if (!alreadyInWs) {
+            QVariantMap map;
+            map[QStringLiteral("id")] = QString::fromStdString(grp.id.value());
+            map[QStringLiteral("name")] = QString::fromStdString(grp.name);
+            map[QStringLiteral("repositoryCount")] = static_cast<int>(grp.repositoryIds.size());
+            list.append(map);
+        }
+    }
+    return list;
 }
 
 } // namespace gf::desktop

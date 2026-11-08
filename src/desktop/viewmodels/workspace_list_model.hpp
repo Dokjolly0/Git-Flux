@@ -13,6 +13,10 @@ namespace gf::workspaces::bl {
 class WorkspaceService;
 }
 
+namespace gf::groups::bl {
+class GroupService;
+}
+
 namespace gf::desktop {
 
 struct WorkspaceItem {
@@ -25,6 +29,8 @@ struct WorkspaceItem {
     QString lastOpenedAt;
     QStringList repositoryIds;
     QStringList repositoryNames;
+    QStringList groupIds;
+    QStringList groupNames;
 };
 
 class WorkspaceListModel : public QAbstractListModel {
@@ -40,7 +46,9 @@ public:
         SummaryRole,
         LastOpenedAtRole,
         RepositoryIdsRole,
-        RepositoryNamesRole
+        RepositoryNamesRole,
+        GroupIdsRole,
+        GroupNamesRole
     };
 
     explicit WorkspaceListModel(QObject* parent = nullptr);
@@ -51,7 +59,8 @@ public:
     [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
 
     void setWorkspaces(const std::vector<gf::workspaces::bo::Workspace>& workspaces,
-                       gf::workspaces::bl::WorkspaceService& workspaceService);
+                       gf::workspaces::bl::WorkspaceService& workspaceService,
+                       gf::groups::bl::GroupService* groupService = nullptr);
     [[nodiscard]] const std::vector<WorkspaceItem>& items() const noexcept;
     [[nodiscard]] std::optional<WorkspaceItem> findById(const QString& id) const;
 

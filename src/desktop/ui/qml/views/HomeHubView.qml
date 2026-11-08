@@ -11,6 +11,9 @@ Item {
     property bool isDraggingRepo: false
     property string draggedRepoId: ""
     property string draggedRepoName: ""
+    property bool isDraggingGroup: false
+    property string draggedGroupId: ""
+    property string draggedGroupName: ""
     property string hoveredGroupId: ""
     property string hoveredGroupName: ""
     property string hoveredWorkspaceId: ""
@@ -26,10 +29,19 @@ Item {
         draggedRepoName = repoName;
     }
 
+    function startDraggingGroup(groupId, groupName) {
+        isDraggingGroup = true;
+        draggedGroupId = groupId;
+        draggedGroupName = groupName;
+    }
+
     function clearDragState() {
         isDraggingRepo = false;
         draggedRepoId = "";
         draggedRepoName = "";
+        isDraggingGroup = false;
+        draggedGroupId = "";
+        draggedGroupName = "";
         hoveredGroupId = "";
         hoveredGroupName = "";
         hoveredWorkspaceId = "";
@@ -39,8 +51,9 @@ Item {
     function findGroupAtRootPos(rootX, rootY) {
         if (!homeHubVmRef || !homeHubVmRef.showGroups || homeHubVmRef.groupsCount === 0) return null;
         var listPt = root.mapToItem(groupListView, rootX, rootY);
-        if (listPt.x < 0 || listPt.x > groupListView.width || listPt.y < 0 || listPt.y > groupListView.height) return null;
-        var item = groupListView.itemAt(listPt.x + groupListView.contentX, listPt.y + groupListView.contentY);
+        if (listPt.x < -30 || listPt.x > groupListView.width + 30 || listPt.y < 0 || listPt.y > groupListView.height) return null;
+        var sampleX = Math.max(10, Math.min(groupListView.width - 10, listPt.x + groupListView.contentX));
+        var item = groupListView.itemAt(sampleX, listPt.y + groupListView.contentY);
         if (item && item.grpCardId) return { id: item.grpCardId, name: item.grpCardName };
         return null;
     }
@@ -48,8 +61,9 @@ Item {
     function findWorkspaceAtRootPos(rootX, rootY) {
         if (!homeHubVmRef || !homeHubVmRef.showWorkspaces || homeHubVmRef.workspacesCount === 0) return null;
         var listPt = root.mapToItem(wsListView, rootX, rootY);
-        if (listPt.x < 0 || listPt.x > wsListView.width || listPt.y < 0 || listPt.y > wsListView.height) return null;
-        var item = wsListView.itemAt(listPt.x + wsListView.contentX, listPt.y + wsListView.contentY);
+        if (listPt.x < -30 || listPt.x > wsListView.width + 30 || listPt.y < 0 || listPt.y > wsListView.height) return null;
+        var sampleX = Math.max(10, Math.min(wsListView.width - 10, listPt.x + wsListView.contentX));
+        var item = wsListView.itemAt(sampleX, listPt.y + wsListView.contentY);
         if (item && item.wsCardId) return { id: item.wsCardId, name: item.wsCardName };
         return null;
     }
@@ -73,6 +87,17 @@ Item {
         }
         if (homeHubVmRef.addRepositoryToWorkspace(workspaceId, repoId)) {
             feedbackBanner.showSuccess("Repository '" + repoName + "' aggiunto al workspace '" + workspaceName + "'!");
+        }
+    }
+
+    function dropGroupOnWorkspace(workspaceId, workspaceName, groupId, groupName) {
+        if (!homeHubVmRef) return;
+        if (homeHubVmRef.isGroupInWorkspace(workspaceId, groupId)) {
+            feedbackBanner.showError("Il gruppo '" + groupName + "' fa già parte del workspace '" + workspaceName + "'.");
+            return;
+        }
+        if (homeHubVmRef.addGroupToWorkspace(workspaceId, groupId)) {
+            feedbackBanner.showSuccess("Gruppo '" + groupName + "' aggiunto al workspace '" + workspaceName + "'!");
         }
     }
 
@@ -222,7 +247,7 @@ Item {
                     // Section View Switcher Pills
                     Rectangle {
                         height: 32
-                        implicitWidth: sectionPillsLayout.implicitWidth + 8
+                        implicitWidth: sectionPillsLayout.implicitWidth + 16
                         radius: 6
                         color: "#161B22"
                         border.color: "#30363D"
@@ -230,18 +255,19 @@ Item {
                         RowLayout {
                             id: sectionPillsLayout
                             anchors.centerIn: parent
-                            spacing: 4
+                            spacing: 6
 
                             // Toggle Repositories
                             Rectangle {
                                 height: 24
-                                implicitWidth: repoPillText.implicitWidth + 16
+                                implicitWidth: repoPillInnerRow.implicitWidth + 18
                                 radius: 4
                                 color: (homeHubVm && homeHubVm.showRepositories) ? "#0F2634" : "transparent"
                                 border.color: (homeHubVm && homeHubVm.showRepositories) ? "#0284C7" : "transparent"
                                 border.width: 1
 
                                 RowLayout {
+                                    id: repoPillInnerRow
                                     anchors.centerIn: parent
                                     spacing: 4
                                     Text {
@@ -270,13 +296,14 @@ Item {
                             // Toggle Gruppi
                             Rectangle {
                                 height: 24
-                                implicitWidth: grpPillText.implicitWidth + 16
+                                implicitWidth: grpPillInnerRow.implicitWidth + 18
                                 radius: 4
                                 color: (homeHubVm && homeHubVm.showGroups) ? "#2E1065" : "transparent"
                                 border.color: (homeHubVm && homeHubVm.showGroups) ? "#7C4DFF" : "transparent"
                                 border.width: 1
 
                                 RowLayout {
+                                    id: grpPillInnerRow
                                     anchors.centerIn: parent
                                     spacing: 4
                                     Text {
@@ -305,13 +332,14 @@ Item {
                             // Toggle Workspace
                             Rectangle {
                                 height: 24
-                                implicitWidth: wsPillText.implicitWidth + 16
+                                implicitWidth: wsPillInnerRow.implicitWidth + 18
                                 radius: 4
                                 color: (homeHubVm && homeHubVm.showWorkspaces) ? "#1B2F23" : "transparent"
                                 border.color: (homeHubVm && homeHubVm.showWorkspaces) ? "#3FB950" : "transparent"
                                 border.width: 1
 
                                 RowLayout {
+                                    id: wsPillInnerRow
                                     anchors.centerIn: parent
                                     spacing: 4
                                     Text {
@@ -546,6 +574,7 @@ Item {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
+                            flickableDirection: Flickable.VerticalFlick
                             model: homeHubVm.repositories
                             spacing: 8
 
@@ -791,6 +820,7 @@ Item {
                                     id: repoHover
                                     anchors.fill: parent
                                     hoverEnabled: true
+                                    preventStealing: true
                                     z: -1
                                     cursorShape: !repoCardRect.isMissing ? (pressed ? Qt.ClosedHandCursor : Qt.PointingHandCursor) : Qt.ArrowCursor
                                     onDoubleClicked: homeHubVm.openRepository(repoCardRect.id)
@@ -808,8 +838,8 @@ Item {
                                             }
                                             if (root.isDraggingRepo) {
                                                 var pt = mapToItem(root, mouse.x, mouse.y);
-                                                dragGhostRepo.x = pt.x + 12;
-                                                dragGhostRepo.y = pt.y + 12;
+                                                dragGhostRepo.x = pt.x - dragGhostRepo.width / 2;
+                                                dragGhostRepo.y = pt.y - dragGhostRepo.height / 2;
 
                                                 var grp = root.findGroupAtRootPos(pt.x, pt.y);
                                                 if (grp) {
@@ -850,6 +880,11 @@ Item {
                                             } else if (wId && wId.length > 0) {
                                                 root.dropRepoOnWorkspace(wId, wName, rId, rName);
                                             }
+                                        }
+                                    }
+                                    onCanceled: function() {
+                                        if (root.isDraggingRepo) {
+                                            root.clearDragState();
                                         }
                                     }
                                 }
@@ -954,6 +989,7 @@ Item {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
+                            flickableDirection: Flickable.VerticalFlick
                             model: homeHubVm.groups
                             spacing: 8
 
@@ -988,6 +1024,14 @@ Item {
                                     RowLayout {
                                         Layout.fillWidth: true
                                         spacing: 8
+
+                                        Text {
+                                            text: "⋮⋮"
+                                            color: grpHover.containsMouse ? "#C084FC" : "#475569"
+                                            font.pixelSize: 13
+                                            ToolTip.visible: grpHover.containsMouse && !root.isDraggingGroup
+                                            ToolTip.text: "Trascina su un workspace per associarlo"
+                                        }
 
                                         Text {
                                             text: "🗂️"
@@ -1192,8 +1236,57 @@ Item {
                                     id: grpHover
                                     anchors.fill: parent
                                     hoverEnabled: true
+                                    preventStealing: true
                                     z: -1
+                                    cursorShape: pressed ? Qt.ClosedHandCursor : Qt.PointingHandCursor
                                     onDoubleClicked: homeHubVm.openGroup(grpCardRect.id)
+
+                                    property point pressPoint: Qt.point(0, 0)
+                                    onPressed: function(mouse) {
+                                        pressPoint = Qt.point(mouse.x, mouse.y);
+                                    }
+                                    onPositionChanged: function(mouse) {
+                                        if (pressed) {
+                                            var dx = mouse.x - pressPoint.x;
+                                            var dy = mouse.y - pressPoint.y;
+                                            if (!root.isDraggingGroup && !root.isDraggingRepo && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
+                                                root.startDraggingGroup(grpCardRect.id, grpCardRect.name);
+                                            }
+                                            if (root.isDraggingGroup) {
+                                                var pt = mapToItem(root, mouse.x, mouse.y);
+                                                dragGhostGroup.x = pt.x - dragGhostGroup.width / 2;
+                                                dragGhostGroup.y = pt.y - dragGhostGroup.height / 2;
+
+                                                var ws = root.findWorkspaceAtRootPos(pt.x, pt.y);
+                                                if (ws) {
+                                                    root.hoveredWorkspaceId = ws.id;
+                                                    root.hoveredWorkspaceName = ws.name;
+                                                } else {
+                                                    root.hoveredWorkspaceId = "";
+                                                    root.hoveredWorkspaceName = "";
+                                                }
+                                            }
+                                        }
+                                    }
+                                    onReleased: function(mouse) {
+                                        if (root.isDraggingGroup) {
+                                            var gId = root.draggedGroupId;
+                                            var gName = root.draggedGroupName;
+                                            var wId = root.hoveredWorkspaceId;
+                                            var wName = root.hoveredWorkspaceName;
+
+                                            root.clearDragState();
+
+                                            if (wId && wId.length > 0) {
+                                                root.dropGroupOnWorkspace(wId, wName, gId, gName);
+                                            }
+                                        }
+                                    }
+                                    onCanceled: function() {
+                                        if (root.isDraggingGroup) {
+                                            root.clearDragState();
+                                        }
+                                    }
                                 }
                             }
 
@@ -1268,6 +1361,7 @@ Item {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
+                            flickableDirection: Flickable.VerticalFlick
                             model: homeHubVm.workspaces
                             spacing: 8
 
@@ -1280,16 +1374,20 @@ Item {
                                 required property int totalRepoCount
                                 required property var repositoryIds
                                 required property var repositoryNames
+                                required property var groupIds
+                                required property var groupNames
 
                                 property string wsCardId: wsCardRect.id
                                 property string wsCardName: wsCardRect.name
-                                readonly property bool isDropTarget: root.isDraggingRepo && (root.hoveredWorkspaceId === wsCardRect.id)
+                                readonly property bool isDropTargetGroup: root.isDraggingGroup && (root.hoveredWorkspaceId === wsCardRect.id)
+                                readonly property bool isDropTargetRepo: root.isDraggingRepo && (root.hoveredWorkspaceId === wsCardRect.id)
+                                readonly property bool isDropTarget: isDropTargetRepo || isDropTargetGroup
 
                                 width: wsListView.width
                                 implicitHeight: wsColLayout.implicitHeight + 16
                                 radius: 6
-                                color: isDropTarget ? "#143823" : (wsHover.containsMouse ? "#21262D" : "#191E27")
-                                border.color: isDropTarget ? "#4ADE80" : (wsHover.containsMouse ? "#3FB950" : "#30363D")
+                                color: isDropTarget ? (root.isDraggingGroup ? "#2E1065" : "#143823") : (wsHover.containsMouse ? "#21262D" : "#191E27")
+                                border.color: isDropTarget ? (root.isDraggingGroup ? "#C084FC" : "#4ADE80") : (wsHover.containsMouse ? "#3FB950" : "#30363D")
                                 border.width: isDropTarget ? 2 : 1
                                 scale: isDropTarget ? 1.02 : 1.0
                                 Behavior on scale { NumberAnimation { duration: 100 } }
@@ -1377,6 +1475,23 @@ Item {
                                             background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
                                         }
 
+                                        // Add Group to Workspace Button
+                                        Button {
+                                            Layout.preferredWidth: 24
+                                            Layout.preferredHeight: 24
+                                            ToolTip.visible: hovered
+                                            ToolTip.text: "Associa un gruppo a questo workspace"
+                                            onClicked: {
+                                                addGrpToWsDialog.targetWorkspaceId = wsCardRect.id;
+                                                addGrpToWsDialog.targetWorkspaceName = wsCardRect.name;
+                                                addGrpToWsDialog.selectedGroupId = "";
+                                                addGrpToWsDialog.refreshAvailable();
+                                                addGrpToWsDialog.open();
+                                            }
+                                            contentItem: Text { text: "🗂️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter }
+                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                        }
+
                                         Button {
                                             Layout.preferredWidth: 24
                                             Layout.preferredHeight: 24
@@ -1401,20 +1516,79 @@ Item {
                                         }
                                     }
 
-                                    // Drop Indicator Banner when dragging a repo over this workspace
+                                    // Drop Indicator Banner when dragging a repo or group over this workspace
                                     Rectangle {
                                         Layout.fillWidth: true
                                         height: 24
                                         visible: wsCardRect.isDropTarget
                                         radius: 4
-                                        color: "#052E16"
-                                        border.color: "#22C55E"
+                                        color: root.isDraggingGroup ? "#3B0764" : "#052E16"
+                                        border.color: root.isDraggingGroup ? "#A855F7" : "#22C55E"
                                         Text {
                                             anchors.centerIn: parent
-                                            text: "📥 Rilascia per aggiungere al workspace '" + wsCardRect.name + "'"
-                                            color: "#86EFAC"
+                                            text: root.isDraggingGroup
+                                                  ? ("📥 Rilascia per aggiungere il gruppo '" + root.draggedGroupName + "' al workspace")
+                                                  : ("📥 Rilascia per aggiungere il repository '" + root.draggedRepoName + "' al workspace")
+                                            color: root.isDraggingGroup ? "#E9D5FF" : "#86EFAC"
                                             font.pixelSize: 10
                                             font.bold: true
+                                        }
+                                    }
+
+                                    // Groups inside this workspace
+                                    Flow {
+                                        Layout.fillWidth: true
+                                        spacing: 4
+                                        visible: wsCardRect.groupIds && wsCardRect.groupIds.length > 0
+
+                                        Repeater {
+                                            model: wsCardRect.groupNames || []
+
+                                            delegate: Rectangle {
+                                                height: 22
+                                                implicitWidth: wsGrpChipRow.implicitWidth + 10
+                                                radius: 4
+                                                color: "#2E1065"
+                                                border.color: "#7C4DFF"
+
+                                                RowLayout {
+                                                    id: wsGrpChipRow
+                                                    anchors.centerIn: parent
+                                                    spacing: 4
+
+                                                    Text {
+                                                        text: "🗂️"
+                                                        font.pixelSize: 9
+                                                    }
+
+                                                    Text {
+                                                        text: modelData
+                                                        color: "#E9D5FF"
+                                                        font.pixelSize: 10
+                                                        font.bold: true
+                                                    }
+
+                                                    MouseArea {
+                                                        width: 14
+                                                        height: 14
+                                                        hoverEnabled: true
+                                                        cursorShape: Qt.PointingHandCursor
+                                                        ToolTip.visible: containsMouse
+                                                        ToolTip.text: "Rimuovi gruppo dal workspace"
+                                                        Text {
+                                                            anchors.centerIn: parent
+                                                            text: "×"
+                                                            color: parent.containsMouse ? "#EF4444" : "#A855F7"
+                                                            font.pixelSize: 11
+                                                            font.bold: true
+                                                        }
+                                                        onClicked: {
+                                                            var gId = wsCardRect.groupIds[index];
+                                                            homeHubVm.removeGroupFromWorkspace(wsCardRect.id, gId);
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
 
@@ -2125,6 +2299,120 @@ Item {
         }
     }
 
+    // Dialog: Add Group into Workspace (from Workspace card)
+    Dialog {
+        id: addGrpToWsDialog
+        anchors.centerIn: parent
+        width: 420
+        title: "Aggiungi Gruppo al Workspace"
+        standardButtons: Dialog.Ok | Dialog.Cancel
+
+        property string targetWorkspaceId: ""
+        property string targetWorkspaceName: ""
+        property string selectedGroupId: ""
+        property var availableGroups: []
+
+        function refreshAvailable() {
+            if (homeHubVm && targetWorkspaceId.length > 0) {
+                availableGroups = homeHubVm.getAvailableGroupsForWorkspace(targetWorkspaceId);
+            } else {
+                availableGroups = [];
+            }
+        }
+
+        onAboutToShow: {
+            selectedGroupId = "";
+            refreshAvailable();
+        }
+
+        background: Rectangle {
+            color: "#161B22"
+            radius: 8
+            border.color: "#30363D"
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 12
+
+            Text {
+                text: "Aggiungi un gruppo a '" + addGrpToWsDialog.targetWorkspaceName + "':"
+                color: "#F0F6FC"
+                font.pixelSize: 12
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
+
+            ListView {
+                id: wsGrpPickList
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.min(200, count * 40)
+                clip: true
+                model: addGrpToWsDialog.availableGroups
+
+                delegate: Rectangle {
+                    width: wsGrpPickList.width
+                    height: 36
+                    radius: 4
+                    color: (addGrpToWsDialog.selectedGroupId === modelData.id) ? "#2E1065" : (wsGrpPickHover.containsMouse ? "#21262D" : "#0B0E14")
+                    border.color: (addGrpToWsDialog.selectedGroupId === modelData.id) ? "#7C4DFF" : "#30363D"
+
+                    MouseArea {
+                        id: wsGrpPickHover
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: {
+                            addGrpToWsDialog.selectedGroupId = modelData.id;
+                        }
+                    }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 8
+                        anchors.rightMargin: 8
+                        spacing: 8
+
+                        Text {
+                            text: "🗂️"
+                            font.pixelSize: 12
+                        }
+
+                        Text {
+                            text: modelData.name
+                            color: "#F0F6FC"
+                            font.pixelSize: 12
+                            font.bold: true
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                        }
+
+                        Text {
+                            text: modelData.repositoryCount + (modelData.repositoryCount === 1 ? " progetto" : " progetti")
+                            color: "#E9D5FF"
+                            font.pixelSize: 10
+                            font.bold: true
+                        }
+                    }
+                }
+            }
+
+            Text {
+                visible: addGrpToWsDialog.availableGroups.length === 0
+                text: (homeHubVm && homeHubVm.groupsCount === 0)
+                      ? "Nessun gruppo disponibile. Crea prima un gruppo."
+                      : "Tutti i gruppi esistenti fanno già parte di questo workspace."
+                color: "#8B949E"
+                font.pixelSize: 12
+            }
+        }
+
+        onAccepted: {
+            if (targetWorkspaceId.length > 0 && selectedGroupId.length > 0) {
+                homeHubVm.addGroupToWorkspace(targetWorkspaceId, selectedGroupId);
+            }
+        }
+    }
+
     // Dialog: Create Workspace
     Dialog {
         id: addWorkspaceDialog
@@ -2238,7 +2526,7 @@ Item {
     }
 
     // =========================================================================
-    // FLOATING DRAG GHOST FOR REPOSITORY DRAG & DROP
+    // FLOATING DRAG GHOST FOR REPOSITORY & GROUP DRAG & DROP
     // =========================================================================
     Rectangle {
         id: dragGhostRepo
@@ -2251,6 +2539,7 @@ Item {
         border.width: 1.5
         z: 99999
         opacity: 0.95
+        enabled: false
 
         RowLayout {
             anchors.fill: parent
@@ -2259,6 +2548,35 @@ Item {
             Text { text: "📁"; font.pixelSize: 15 }
             Text {
                 text: root.draggedRepoName
+                color: "#F0F6FC"
+                font.pixelSize: 12
+                font.bold: true
+                elide: Text.ElideRight
+                Layout.fillWidth: true
+            }
+        }
+    }
+
+    Rectangle {
+        id: dragGhostGroup
+        visible: root.isDraggingGroup
+        width: 220
+        height: 38
+        radius: 6
+        color: "#2E1065"
+        border.color: "#A855F7"
+        border.width: 1.5
+        z: 99999
+        opacity: 0.95
+        enabled: false
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.margins: 8
+            spacing: 8
+            Text { text: "🗂️"; font.pixelSize: 15 }
+            Text {
+                text: root.draggedGroupName
                 color: "#F0F6FC"
                 font.pixelSize: 12
                 font.bold: true

@@ -120,14 +120,18 @@ public:
     Q_INVOKABLE bool removeWorkspace(const QString& workspaceId);
     Q_INVOKABLE bool addRepositoryToWorkspace(const QString& workspaceId, const QString& repoId);
     Q_INVOKABLE bool removeRepositoryFromWorkspace(const QString& workspaceId, const QString& repoId);
+    Q_INVOKABLE bool addGroupToWorkspace(const QString& workspaceId, const QString& groupId);
+    Q_INVOKABLE bool removeGroupFromWorkspace(const QString& workspaceId, const QString& groupId);
 
     Q_INVOKABLE bool isRepositoryInGroup(const QString& groupId, const QString& repoId) const;
     Q_INVOKABLE bool isRepositoryInWorkspace(const QString& workspaceId, const QString& repoId) const;
+    Q_INVOKABLE bool isGroupInWorkspace(const QString& workspaceId, const QString& groupId) const;
     Q_INVOKABLE QStringList getRepositoryIdsForGroup(const QString& groupId) const;
     Q_INVOKABLE QStringList getRepositoryIdsForWorkspace(const QString& workspaceId) const;
     Q_INVOKABLE QVariantList getAvailableRepositoriesForGroup(const QString& groupId) const;
     Q_INVOKABLE QVariantList getAvailableRepositoriesForWorkspace(const QString& workspaceId) const;
     Q_INVOKABLE QVariantList getAvailableGroupsForRepository(const QString& repoId) const;
+    Q_INVOKABLE QVariantList getAvailableGroupsForWorkspace(const QString& workspaceId) const;
 
     Q_INVOKABLE void openRepository(const QString& repoId);
     Q_INVOKABLE void openGroup(const QString& groupId);
