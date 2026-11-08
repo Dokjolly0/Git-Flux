@@ -484,6 +484,7 @@ Dialog {
                                     Layout.preferredHeight: 32
                                     placeholderText: "Username (es. Dokjolly0)"
                                     placeholderTextColor: "#475569"
+                                    selectByMouse: true
                                     text: root.profilesVm ? root.profilesVm.activeProfileUsername : ""
                                     color: "#F8FAFC"
                                     font.pixelSize: 12
@@ -492,14 +493,17 @@ Dialog {
                                         radius: 4
                                         border.color: "#334155"
                                     }
+                                    Keys.onReturnPressed: tokenSecretInput.forceActiveFocus()
+                                    onAccepted: tokenSecretInput.forceActiveFocus()
                                 }
 
                                 TextField {
                                     id: tokenSecretInput
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: 32
-                                    placeholderText: "Token (ghp_... o API token)"
+                                    placeholderText: "Personal Access Token (ghp_... o github_pat_...)"
                                     placeholderTextColor: "#475569"
+                                    selectByMouse: true
                                     echoMode: root.showTokenText ? TextInput.Normal : TextInput.Password
                                     color: "#F8FAFC"
                                     font.pixelSize: 12
@@ -508,6 +512,8 @@ Dialog {
                                         radius: 4
                                         border.color: "#334155"
                                     }
+                                    Keys.onReturnPressed: saveTokenBtn.clicked()
+                                    onAccepted: saveTokenBtn.clicked()
                                 }
 
                                 Button {
@@ -519,6 +525,7 @@ Dialog {
                                 }
 
                                 Button {
+                                    id: saveTokenBtn
                                     text: "💾 Salva e Carica"
                                     Layout.preferredHeight: 32
                                     enabled: tokenSecretInput.text.trim().length > 0 || tokenUsernameInput.text.trim().length > 0
@@ -576,38 +583,84 @@ Dialog {
                         }
                     }
 
-                    // Informative Banner when token is not yet configured on GitHub
+                    // Informative Banner: Public consultation mode (no token configured)
                     Rectangle {
                         Layout.fillWidth: true
-                        visible: Boolean(root.profilesVm && root.profilesVm.activeProfileId === "github" && !root.profilesVm.activeProfileHasToken && !root.showTokenConfig)
-                        implicitHeight: tokenTipText.implicitHeight + 14
+                        visible: Boolean(root.profilesVm && root.profilesVm.activeProfileId !== "url" && !root.profilesVm.activeProfileHasToken && !root.showTokenConfig)
+                        implicitHeight: tokenTipLayout.implicitHeight + 14
                         color: "#0F2942"
                         radius: 6
                         border.color: "#0284C7"
                         border.width: 1
 
                         RowLayout {
+                            id: tokenTipLayout
                             anchors.fill: parent
-                            anchors.margins: 6
-                            spacing: 8
+                            anchors.margins: 8
+                            spacing: 10
                             Text {
                                 text: "💡"
-                                font.pixelSize: 13
+                                font.pixelSize: 15
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 2
+                                Text {
+                                    text: "Consultazione pubblica: visualizzazione limitata ai soli repository pubblici"
+                                    color: "#38BDF8"
+                                    font.bold: true
+                                    font.pixelSize: 11
+                                }
+                                Text {
+                                    text: "Git Flux è collegato al tuo account, ma senza un Personal Access Token (PAT) GitHub restituisce solo le repo pubbliche. Per mostrare anche i repository privati e aziendali, inserisci un token."
+                                    color: "#BAE6FD"
+                                    font.pixelSize: 11
+                                    wrapMode: Text.Wrap
+                                    Layout.fillWidth: true
+                                }
+                            }
+                            Button {
+                                text: "🔑 Inserisci Token"
+                                Layout.preferredHeight: 28
+                                onClicked: root.showTokenConfig = true
+                                background: Rectangle { color: parent.hovered ? "#0284C7" : "#0369A1"; radius: 4 }
+                                contentItem: Text { text: "🔑 Inserisci Token"; color: "#FFFFFF"; font.pixelSize: 11; font.bold: true }
+                            }
+                        }
+                    }
+
+                    // Success Banner: Token is active (public + private repos unlocked)
+                    Rectangle {
+                        Layout.fillWidth: true
+                        visible: Boolean(root.profilesVm && root.profilesVm.activeProfileId !== "url" && root.profilesVm.activeProfileHasToken && !root.showTokenConfig)
+                        implicitHeight: authTipLayout.implicitHeight + 14
+                        color: "#06281D"
+                        radius: 6
+                        border.color: "#059669"
+                        border.width: 1
+
+                        RowLayout {
+                            id: authTipLayout
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            spacing: 8
+                            Text {
+                                text: "🔒"
+                                font.pixelSize: 14
                             }
                             Text {
-                                id: tokenTipText
-                                text: "Visualizzazione repository pubblici di @" + (root.profilesVm ? root.profilesVm.activeProfileUsername : "utente") + ". Per includere anche i repository privati e aziendali, inserisci un token."
-                                color: "#BAE6FD"
+                                text: "Token PAT attivo (Argon2id + AES-256): accesso a tutti i repository pubblici e privati abilitato."
+                                color: "#A7F3D0"
+                                font.bold: true
                                 font.pixelSize: 11
-                                wrapMode: Text.Wrap
                                 Layout.fillWidth: true
                             }
                             Button {
-                                text: "+ Inserisci Token"
+                                text: "Modifica"
                                 Layout.preferredHeight: 24
                                 onClicked: root.showTokenConfig = true
-                                background: Rectangle { color: "#0369A1"; radius: 4 }
-                                contentItem: Text { text: "+ Inserisci Token"; color: "#FFFFFF"; font.pixelSize: 10; font.bold: true }
+                                background: Rectangle { color: parent.hovered ? "#047857" : "#065F46"; radius: 4 }
+                                contentItem: Text { text: "Modifica"; color: "#ECFDF5"; font.pixelSize: 10; font.bold: true }
                             }
                         }
                     }

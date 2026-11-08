@@ -243,6 +243,9 @@ void GitProfilesViewModel::fetchActiveProfileRepos() {
         auto decRes = m_vault.decrypt(p->tokenSecret);
         if (decRes) {
             decryptedToken = QString::fromStdString(*decRes);
+        } else {
+            m_fetchError = QStringLiteral("Errore decrittazione token Argon2id: %1").arg(QString::fromStdString(decRes.error()));
+            emit fetchErrorChanged();
         }
     }
 
@@ -294,10 +297,20 @@ void GitProfilesViewModel::saveProfileToken(const QString& profileId, const QStr
         if (encRes) {
             p->tokenSecret = *encRes;
             p->hasToken = true;
+        } else {
+            m_fetchError = QStringLiteral("Errore durante la crittografia con Argon2id: %1").arg(QString::fromStdString(encRes.error()));
+            emit fetchErrorChanged();
+            return;
         }
     }
 
-    (void)m_store.saveProfile(*p);
+    auto saveRes = m_store.saveProfile(*p);
+    if (!saveRes) {
+        m_fetchError = QStringLiteral("Errore durante il salvataggio su SQLite: %1").arg(QString::fromStdString(saveRes.error().message));
+        emit fetchErrorChanged();
+        return;
+    }
+
     emit profilesChanged();
     emit activeProfileChanged();
 
