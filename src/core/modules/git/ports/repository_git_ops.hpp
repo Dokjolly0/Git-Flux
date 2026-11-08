@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/modules/git/bo/branch_models.hpp"
+#include "core/modules/git/bo/clone_models.hpp"
 #include "core/modules/git/bo/commit_options.hpp"
 #include "core/modules/git/bo/diff_models.hpp"
 #include "core/modules/git/bo/history_models.hpp"
@@ -45,6 +46,8 @@ struct GitOpsError {
         NoRebaseInProgress,
         CherryPickConflict,
         CommitNotFound,
+        DestinationAlreadyExists,
+        InvalidRemoteUrl,
         StorageError
     };
 
@@ -326,6 +329,13 @@ public:
         (void)worktreePath;
         (void)commitOrBranch;
         return {};
+    }
+
+    /// Clones a remote repository into the specified destination (`git clone`).
+    [[nodiscard]] virtual std::expected<bo::CloneRepositoryResult, GitOpsError>
+    cloneRepository(const bo::CloneRepositoryOptions& options) {
+        (void)options;
+        return bo::CloneRepositoryResult{};
     }
 };
 

@@ -58,6 +58,7 @@ add_library(gf_application STATIC
     src/core/modules/git/bl/commit_log_parser.cpp
     src/core/modules/git/bl/git_history_service.cpp
     src/core/modules/git/bl/git_remote_merge_service.cpp
+    src/core/modules/git/bl/git_clone_service.cpp
     src/core/modules/git/bl/git_stash_service.cpp
     src/core/modules/git/bl/git_rebase_service.cpp
     src/core/modules/git/bl/conflict_marker_parser.cpp
@@ -356,6 +357,7 @@ if(GF_BUILD_TESTING)
         tests/unit/branch_unit_tests.cpp
         tests/unit/history_unit_tests.cpp
         tests/unit/remote_merge_unit_tests.cpp
+        tests/unit/clone_unit_tests.cpp
         tests/unit/stash_unit_tests.cpp
         tests/unit/rebase_unit_tests.cpp
         tests/unit/conflict_unit_tests.cpp

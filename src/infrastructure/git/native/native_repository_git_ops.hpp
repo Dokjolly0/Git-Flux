@@ -198,6 +198,9 @@ public:
                    const std::filesystem::path& worktreePath,
                    const std::string& commitOrBranch) override;
 
+    [[nodiscard]] std::expected<gf::git::bo::CloneRepositoryResult, gf::git::ports::GitOpsError>
+    cloneRepository(const gf::git::bo::CloneRepositoryOptions& options) override;
+
 private:
     gf::git::ports::IGitCommandExecutor& m_executor;
 };

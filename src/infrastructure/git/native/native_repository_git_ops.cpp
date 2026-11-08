@@ -3097,4 +3097,123 @@ NativeRepositoryGitOps::createWorktree(const std::filesystem::path& repoPath,
     return {};
 }
 
+std::expected<gf::git::bo::CloneRepositoryResult, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::cloneRepository(const gf::git::bo::CloneRepositoryOptions& options) {
+    if (options.remoteUrl.empty()) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::InvalidRemoteUrl,
+            .exitCode = -1,
+            .message = "L'URL del repository remoto non può essere vuoto",
+            .command = "git clone"
+        });
+    }
+
+    if (options.destinationPath.empty()) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::InvalidRepositoryPath,
+            .exitCode = -1,
+            .message = "Il percorso di destinazione non può essere vuoto",
+            .command = "git clone"
+        });
+    }
+
+    std::error_code ec;
+    if (std::filesystem::exists(options.destinationPath, ec) && !std::filesystem::is_empty(options.destinationPath, ec)) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::DestinationAlreadyExists,
+            .exitCode = -1,
+            .message = "La cartella di destinazione esiste già e non è vuota: " + options.destinationPath.string(),
+            .command = "git clone"
+        });
+    }
+
+    // Ensure parent directory exists
+    const auto parentDir = options.destinationPath.parent_path();
+    if (!parentDir.empty() && !std::filesystem::exists(parentDir, ec)) {
+        std::filesystem::create_directories(parentDir, ec);
+    }
+
+    std::vector<std::string> args = {"clone"};
+    if (options.recursiveSubmodules) {
+        args.emplace_back("--recurse-submodules");
+    }
+    if (options.branch.has_value() && !options.branch->empty()) {
+        args.emplace_back("-b");
+        args.push_back(*options.branch);
+    }
+    args.push_back(options.remoteUrl);
+    args.push_back(options.destinationPath.string());
+
+    const auto workingDir = (!parentDir.empty() && std::filesystem::exists(parentDir, ec))
+                                ? parentDir
+                                : std::filesystem::temp_directory_path();
+
+    gf::git::bo::GitCommand cmd{
+        .args = std::move(args),
+        .workingDirectory = workingDir,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = options.timeout
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile eseguire il clone: " + execResult.error().message,
+            .command = "git clone"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+        const auto& err = execResult->stderrBytes;
+
+        if (err.find("already exists and is not an empty directory") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::DestinationAlreadyExists;
+        } else if (err.find("Could not resolve host") != std::string::npos ||
+                   err.find("Authentication failed") != std::string::npos ||
+                   err.find("Permission denied") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::NetworkAuthenticationFailed;
+        } else if (err.find("does not appear to be a git repository") != std::string::npos ||
+                   err.find("not found") != std::string::npos ||
+                   err.find("fatal: repository") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::RemoteNotFound;
+        }
+
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = kind,
+            .exitCode = execResult->exitCode,
+            .message = err.empty() ? execResult->stdoutBytes : err,
+            .command = "git clone"
+        });
+    }
+
+    // Detect initial branch of cloned repository
+    std::string branchName = "main";
+    gf::git::bo::GitCommand branchCmd{
+        .args = {"branch", "--show-current"},
+        .workingDirectory = options.destinationPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+        .timeout = std::chrono::milliseconds{5'000}
+    };
+    if (auto branchRes = m_executor.execute(branchCmd); branchRes && branchRes->exitCode == 0) {
+        auto out = branchRes->stdoutBytes;
+        while (!out.empty() && (out.back() == '\n' || out.back() == '\r')) {
+            out.pop_back();
+        }
+        if (!out.empty()) {
+            branchName = std::move(out);
+        }
+    }
+
+    std::string displayName = options.destinationPath.filename().string();
+
+    return gf::git::bo::CloneRepositoryResult{
+        .repositoryPath = options.destinationPath,
+        .displayName = std::move(displayName),
+        .initialBranch = std::move(branchName)
+    };
+}
+
 } // namespace gf::infra::git

@@ -364,4 +364,32 @@ TEST_CASE("NativeRepositoryGitOps and GitRemoteMergeService real Git integration
         auto restoredContent = sandbox.readFile(sandbox.localRepoA, "file_conflict.txt");
         CHECK(restoredContent == "Line 1 from main differently\n");
     }
+
+    SECTION("NativeRepositoryGitOps::cloneRepository clones bare remote into target directory") {
+        REQUIRE(service.addRemote(sandbox.localRepoA, "origin", sandbox.bareRemote.string()).has_value());
+        REQUIRE(service.pushRemote(sandbox.localRepoA, gf::git::bo::RemoteOperationOptions{
+            .remoteName = "origin",
+            .branchName = "main",
+            .setUpstream = true
+        }).has_value());
+
+        const auto clonedDir = sandbox.root / "cloned_repo";
+
+        gf::git::bo::CloneRepositoryOptions opts{
+            .remoteUrl = sandbox.bareRemote.string(),
+            .destinationPath = clonedDir
+        };
+
+        auto cloneRes = gitOps.cloneRepository(opts);
+        REQUIRE(cloneRes.has_value());
+        CHECK(cloneRes->repositoryPath == clonedDir);
+        CHECK(cloneRes->displayName == "cloned_repo");
+        CHECK(std::filesystem::exists(clonedDir / ".git"));
+        CHECK(std::filesystem::exists(clonedDir / "README.md"));
+
+        // Cloning into existing non-empty directory returns DestinationAlreadyExists
+        auto duplicateRes = gitOps.cloneRepository(opts);
+        REQUIRE_FALSE(duplicateRes.has_value());
+        CHECK(duplicateRes.error().kind == gf::git::ports::GitOpsError::Kind::DestinationAlreadyExists);
+    }
 }
