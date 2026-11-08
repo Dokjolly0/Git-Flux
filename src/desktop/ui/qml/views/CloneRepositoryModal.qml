@@ -473,7 +473,9 @@ Dialog {
                             }
 
                             Text {
-                                text: "Il token viene crittografato sul database locale con Argon2id (KDF) e AES-256-GCM. Sblocca tutti i repository privati e delle organizzazioni."
+                                text: root.profilesVm && root.profilesVm.activeProfileId === "bitbucket"
+                                      ? "Bitbucket ha deprecato le App Password a Luglio 2026. Crea un 'API token with scopes' su id.atlassian.com selezionando l'app Bitbucket e lo scope 'read:repository:bitbucket'."
+                                      : "Il token viene crittografato sul database locale con Argon2id (KDF) e AES-256-GCM. Sblocca tutti i repository privati e delle organizzazioni."
                                 color: "#94A3B8"
                                 font.pixelSize: 11
                                 wrapMode: Text.Wrap
@@ -486,10 +488,10 @@ Dialog {
 
                                 TextField {
                                     id: tokenUsernameInput
-                                    Layout.preferredWidth: 150
+                                    Layout.preferredWidth: 160
                                     Layout.preferredHeight: 32
                                     placeholderText: root.profilesVm && root.profilesVm.activeProfileId === "bitbucket"
-                                                     ? "Bitbucket Username"
+                                                     ? "Email Atlassian"
                                                      : "Username (es. Dokjolly0)"
                                     placeholderTextColor: "#475569"
                                     selectByMouse: true
@@ -510,7 +512,7 @@ Dialog {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: 32
                                     placeholderText: root.profilesVm && root.profilesVm.activeProfileId === "bitbucket"
-                                                     ? "Bitbucket App Password"
+                                                     ? "Atlassian Scoped API Token (ATATT...)"
                                                      : "Personal Access Token (ghp_... o API token)"
                                     placeholderTextColor: "#475569"
                                     selectByMouse: true

@@ -217,11 +217,11 @@ void GitProviderApiClient::fetchBitbucket(
             }
 
             if (!apiMsg.isEmpty()) {
-                emit fetchFailed(profileId, QStringLiteral("Bitbucket: %1 (HTTP %2). Crea una 'App Password' con permesso 'Repositories: Read' su bitbucket.org.").arg(apiMsg).arg(statusCode));
+                emit fetchFailed(profileId, QStringLiteral("Bitbucket (%1): %2. Crea un 'API token with scopes' su id.atlassian.com con lo scope 'read:repository:bitbucket'.").arg(statusCode).arg(apiMsg));
             } else if (statusCode == 401) {
-                emit fetchFailed(profileId, QStringLiteral("Autenticazione fallita (HTTP 401). Su Bitbucket occorre una 'App Password' creata in Personal settings > App passwords con permesso 'Repositories: Read'."));
+                emit fetchFailed(profileId, QStringLiteral("Autenticazione fallita (HTTP 401). Verifica email e token: su id.atlassian.com genera un 'API token with scopes' selezionando Bitbucket e lo scope 'read:repository:bitbucket'."));
             } else if (statusCode == 403) {
-                emit fetchFailed(profileId, QStringLiteral("Accesso negato (HTTP 403). Assicurati che l'App Password abbia i permessi di lettura per i repository."));
+                emit fetchFailed(profileId, QStringLiteral("Accesso negato (HTTP 403). Assicurati che l'API token abbia lo scope 'read:repository:bitbucket'."));
             } else {
                 emit fetchFailed(profileId, QStringLiteral("Errore API Bitbucket (%1): %2").arg(statusCode).arg(reply->errorString()));
             }
