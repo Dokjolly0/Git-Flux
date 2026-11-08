@@ -234,6 +234,9 @@ if(GF_BUILD_DESKTOP)
         src/desktop/main.cpp
         ${WINDOWS_RC}
     )
+    if(WIN32)
+        set_target_properties(git_flux PROPERTIES WIN32_EXECUTABLE TRUE)
+    endif()
     qt_add_qml_module(git_flux
         URI "GitFlux.Desktop"
         VERSION 1.0

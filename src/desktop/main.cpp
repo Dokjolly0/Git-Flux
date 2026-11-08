@@ -12,6 +12,56 @@
 #include <QQuickWindow>
 #include <iostream>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <cstdio>
+#include <initializer_list>
+#include <string_view>
+
+namespace {
+
+void setupWindowsConsole(bool forceNewConsole = false) {
+    bool attached = false;
+    if (!forceNewConsole) {
+        attached = (AttachConsole(ATTACH_PARENT_PROCESS) != 0);
+    }
+    if (!attached) {
+        if (!AllocConsole()) {
+            return;
+        }
+    }
+
+    FILE* fp = nullptr;
+    freopen_s(&fp, "CONOUT$", "w", stdout);
+    freopen_s(&fp, "CONOUT$", "w", stderr);
+    freopen_s(&fp, "CONIN$", "r", stdin);
+
+    std::cout.clear();
+    std::cerr.clear();
+    std::cin.clear();
+
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+}
+
+bool hasCliFlag(int argc, char* argv[], std::initializer_list<std::string_view> flags) {
+    for (int i = 1; i < argc; ++i) {
+        std::string_view arg = argv[i];
+        for (auto flag : flags) {
+            if (arg == flag) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+} // namespace
+#endif
+
 namespace {
 
 class RedirectNetworkAccessManagerFactory final : public QQmlNetworkAccessManagerFactory {
@@ -26,6 +76,25 @@ public:
 } // namespace
 
 int main(int argc, char* argv[]) {
+#ifdef _WIN32
+    const bool wantsDebug = hasCliFlag(argc, argv, {"--debug", "-debug", "--console", "-console", "--verbose", "-v"});
+    const bool wantsCliInfo = hasCliFlag(argc, argv, {"--help", "-h", "-?", "/?", "--version", "--test-startup"});
+
+    if (wantsDebug) {
+        setupWindowsConsole(false);
+        qputenv("QT_ASSUME_STDERR_HAS_CONSOLE", "1");
+        std::cout << "[DEBUG] Git Flux console logging enabled." << std::endl;
+    } else if (wantsCliInfo) {
+        if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+            FILE* fp = nullptr;
+            freopen_s(&fp, "CONOUT$", "w", stdout);
+            freopen_s(&fp, "CONOUT$", "w", stderr);
+            std::cout.clear();
+            std::cerr.clear();
+        }
+    }
+#endif
+
     QCoreApplication::setOrganizationName(QStringLiteral("GitFlux"));
     QCoreApplication::setApplicationName(QStringLiteral("GitFlux"));
     QCoreApplication::setApplicationVersion(QStringLiteral("0.1.0"));
@@ -52,6 +121,12 @@ int main(int argc, char* argv[]) {
     parser.setApplicationDescription(QStringLiteral("Git Flux — Modern local-first desktop Git client"));
     parser.addHelpOption();
     parser.addVersionOption();
+
+    QCommandLineOption debugOption(
+        QStringList() << QStringLiteral("debug") << QStringLiteral("console"),
+        QStringLiteral("Enables debug console output and logs")
+    );
+    parser.addOption(debugOption);
 
     QCommandLineOption dbOption(
         QStringList() << QStringLiteral("d") << QStringLiteral("db"),
