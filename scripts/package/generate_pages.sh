@@ -402,5 +402,7 @@ winget install GitFlux.GitFlux
 </body>
 </html>
 EOF
+touch "${PUBLIC_DIR}/.nojekyll"
+echo "✔ Created .nojekyll to disable Jekyll processing"
 echo "✔ Generated public/index.html"
 echo "🎉 GitHub Pages & APT repository generation completed successfully!"
