@@ -1,0 +1,31 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+Origin: GitFlux
+Label: Git Flux
+Suite: stable
+Codename: stable
+Components: main
+Architectures: amd64
+Date: Mon, 09 Nov 2026 07:41:39 +0000
+Description: Git Flux Official Debian & Ubuntu Package Repository
+SHA256:
+ 5c4515843a318dbe32911e7523a506bc124b3079554154949594163998515a1d 1023 Packages
+ b507d6c4e83c5c2f841f2a8d99ccdf5568639a9427d2348313af038da9837ec4 581 Packages.gz
+MD5Sum:
+ 8af111331aa3159f8fac955ce82710cd 1023 Packages
+ 7e5b7a8854385d1c2832cbcfb3708c7f 581 Packages.gz
+-----BEGIN PGP SIGNATURE-----
+
+iQGzBAEBCgAdFiEENSACPT+KQE2K/u7OtsKUdtjoOyEFAmrxeTMACgkQtsKUdtjo
+OyElGgv9EjDQwfjH6784FqUliJdak3t5UqjhE2nC2TuqiggUp/BDhmWU0F2DLVEC
+64s07o214ipklMf3rqwb3lNdLz29E99affeuB5tIinnF570vJPcdSOXSSjudMpKS
+cALXRGuHzC8NAYdYHf9gRV+smF+G7uPU39U/sJpJjM5C0LVh9Q4hei6RsRW9VpuY
+q2I4iYTwhqfVN8mde7huSsELFn4wp8ZFLk+FpzUDbDiM4mLBlxZG4+kga0H3h0D4
+cbqUqMS9ux66KOy1g4qq+ryB00PSKBoYRBVRsg+7YgXeJX4F+CNLsBgzQtPx6SSR
+Vxdwnrm+m25UdreVxNFyhjCd6avqENo/h1IZnuKbzOsCrH3x3gyCscu6SK+7Kz+O
+e5fqli1HVffLIlj1RhkCHeMdPcUWon6l4w9/g8p8mA3UsYdyw6Uq3WlBFs2x3a72
+220h5UnW7RTVhycCeJvgNyVi5X3c6JW6a8o5AozYLSgVmh2kTlkpGARfB6zbxOmz
+UVxDAhg8
+=lekI
+-----END PGP SIGNATURE-----

@@ -1,0 +1,14 @@
+Origin: GitFlux
+Label: Git Flux
+Suite: stable
+Codename: stable
+Components: main
+Architectures: amd64
+Date: Mon, 09 Nov 2026 07:41:39 +0000
+Description: Git Flux Official Debian & Ubuntu Package Repository
+SHA256:
+ 5c4515843a318dbe32911e7523a506bc124b3079554154949594163998515a1d 1023 Packages
+ b507d6c4e83c5c2f841f2a8d99ccdf5568639a9427d2348313af038da9837ec4 581 Packages.gz
+MD5Sum:
+ 8af111331aa3159f8fac955ce82710cd 1023 Packages
+ 7e5b7a8854385d1c2832cbcfb3708c7f 581 Packages.gz
