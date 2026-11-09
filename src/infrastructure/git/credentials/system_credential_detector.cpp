@@ -1,4 +1,5 @@
 #include "infrastructure/git/credentials/system_credential_detector.hpp"
+#include "core/shared/env_var.hpp"
 
 #include <fstream>
 #include <sstream>
@@ -18,12 +19,12 @@ std::string trim(const std::string& str) {
 }
 
 std::filesystem::path getSystemHomeDir() {
-    const char* home = std::getenv("HOME");
+    auto home = gf::core::getEnvVar("HOME");
     if (!home) {
-        home = std::getenv("USERPROFILE");
+        home = gf::core::getEnvVar("USERPROFILE");
     }
     if (home) {
-        return std::filesystem::path(home);
+        return std::filesystem::path(*home);
     }
     return std::filesystem::current_path();
 }
@@ -229,8 +230,8 @@ void SystemCredentialDetector::checkDefaultSshKeys(std::vector<core::git::bo::Gi
 
 void SystemCredentialDetector::checkEnvironmentTokens(std::vector<core::git::bo::GitProviderProfile>& profiles) const {
     auto setEnvToken = [&](const std::string& profileId, const char* envVar) {
-        const char* val = std::getenv(envVar);
-        if (val && std::char_traits<char>::length(val) > 0) {
+        const auto val = gf::core::getEnvVar(envVar);
+        if (val && !val->empty()) {
             auto it = std::find_if(profiles.begin(), profiles.end(), [&](const auto& p) {
                 return p.id == profileId;
             });

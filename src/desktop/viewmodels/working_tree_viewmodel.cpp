@@ -52,10 +52,10 @@ bool WorkingTreeViewModel::refresh(const QString& repoPath) {
     m_untrackedModel.setItems(status.untrackedFiles);
     m_conflictedModel.setItems(status.conflictedFiles);
 
-    m_stagedCount = status.stagedCount();
-    m_unstagedCount = status.unstagedCount();
-    m_untrackedCount = status.untrackedCount();
-    m_conflictedCount = status.conflictedCount();
+    m_stagedCount = static_cast<int>(status.stagedCount());
+    m_unstagedCount = static_cast<int>(status.unstagedCount());
+    m_untrackedCount = static_cast<int>(status.untrackedCount());
+    m_conflictedCount = static_cast<int>(status.conflictedCount());
     m_isClean = status.isClean();
 
     m_branchName = QString::fromStdString(status.branch.headName);

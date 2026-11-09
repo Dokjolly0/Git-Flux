@@ -1,4 +1,5 @@
 #include "infrastructure/security/crypto_vault.hpp"
+#include "core/shared/env_var.hpp"
 
 #include <openssl/evp.h>
 #include <openssl/kdf.h>
@@ -101,12 +102,12 @@ deriveArgon2idKey(const std::string& masterSecret, const std::vector<unsigned ch
 }
 
 std::filesystem::path getDefaultVaultDir() {
-    const char* home = std::getenv("HOME");
+    auto home = gf::core::getEnvVar("HOME");
     if (!home) {
-        home = std::getenv("USERPROFILE");
+        home = gf::core::getEnvVar("USERPROFILE");
     }
     if (home) {
-        return std::filesystem::path(home) / ".local" / "share" / "GitFlux";
+        return std::filesystem::path(*home) / ".local" / "share" / "GitFlux";
     }
     return std::filesystem::current_path() / ".gitflux_vault";
 }

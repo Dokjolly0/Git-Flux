@@ -144,8 +144,8 @@ QString computeInitials(const QString& name) {
 
 QString computeAuthorColor(const QString& name, const QString& email) {
     QString key = email.isEmpty() ? name : email;
-    uint hash = qHash(key);
-    int idx = static_cast<int>(hash % static_cast<uint>(kAuthorPalette.size()));
+    const size_t hash = qHash(key);
+    const int idx = static_cast<int>(hash % kAuthorPalette.size());
     return kAuthorPalette[idx];
 }
 

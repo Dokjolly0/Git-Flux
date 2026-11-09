@@ -59,8 +59,8 @@ QString computeBlameInitials(const QString& name) {
 }
 
 QString computeBlameColor(const QString& key) {
-    uint hash = qHash(key);
-    int idx = static_cast<int>(hash % static_cast<uint>(kBlameColors.size()));
+    const size_t hash = qHash(key);
+    const int idx = static_cast<int>(hash % kBlameColors.size());
     return kBlameColors[idx];
 }
 

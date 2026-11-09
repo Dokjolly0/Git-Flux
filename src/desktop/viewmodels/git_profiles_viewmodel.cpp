@@ -1,5 +1,7 @@
 #include "desktop/viewmodels/git_profiles_viewmodel.hpp"
+#include "core/shared/env_var.hpp"
 #include <algorithm>
+#include <optional>
 
 namespace gf::desktop::viewmodels {
 
@@ -261,21 +263,21 @@ void GitProfilesViewModel::fetchActiveProfileRepos() {
     }
 
     if (decryptedToken.isEmpty()) {
-        const char* envTok = nullptr;
+        std::optional<std::string> envTok;
         if (p->providerType == core::git::bo::GitProviderType::GitHub) {
-            envTok = std::getenv("GITHUB_TOKEN");
-            if (!envTok) envTok = std::getenv("GH_TOKEN");
+            envTok = gf::core::getEnvVar("GITHUB_TOKEN");
+            if (!envTok) envTok = gf::core::getEnvVar("GH_TOKEN");
         } else if (p->providerType == core::git::bo::GitProviderType::GitLab) {
-            envTok = std::getenv("GITLAB_TOKEN");
+            envTok = gf::core::getEnvVar("GITLAB_TOKEN");
         } else if (p->providerType == core::git::bo::GitProviderType::Bitbucket) {
-            envTok = std::getenv("BITBUCKET_TOKEN");
-            if (!envTok) envTok = std::getenv("BITBUCKET_APP_PASSWORD");
+            envTok = gf::core::getEnvVar("BITBUCKET_TOKEN");
+            if (!envTok) envTok = gf::core::getEnvVar("BITBUCKET_APP_PASSWORD");
         }
-        if (envTok && std::char_traits<char>::length(envTok) > 0) {
-            decryptedToken = QString::fromUtf8(envTok);
+        if (envTok && !envTok->empty()) {
+            decryptedToken = QString::fromUtf8(envTok->c_str());
             auto* pMut = findProfileMut(m_activeProfileId);
             if (pMut && !pMut->hasToken) {
-                auto encRes = m_vault.encrypt(std::string(envTok));
+                auto encRes = m_vault.encrypt(*envTok);
                 if (encRes) {
                     pMut->tokenSecret = *encRes;
                     pMut->hasToken = true;
