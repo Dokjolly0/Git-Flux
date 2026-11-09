@@ -118,7 +118,14 @@ if (-not $env:OPENSSL_ROOT_DIR) {
 if ($env:OPENSSL_ROOT_DIR) {
     $SslBin = Join-Path $env:OPENSSL_ROOT_DIR "bin"
     if ($env:PATH -notlike "*$SslBin*") {
-        $env:PATH = "$SslBin;$env:PATH"
+        # Append (not prepend): Anaconda's Library\bin ships DLLs that share
+        # names with Qt's own dependencies (zlib, libpng, icu, pcre2, harfbuzz,
+        # freetype...). Putting it ahead of $QtBin in PATH caused Windows to
+        # resolve Qt's QML plugins (e.g. workerscriptplugin.dll) against the
+        # wrong-version Anaconda DLLs, failing with "procedure not found".
+        # Qt's own bin dir must stay highest priority; OpenSSL's bin only
+        # needs to be reachable for libcrypto/libssl.
+        $env:PATH = "$env:PATH;$SslBin"
     }
 }
 
