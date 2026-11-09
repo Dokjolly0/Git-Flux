@@ -153,6 +153,27 @@ jobs:
           target: 'desktop'
           arch: 'win64_msvc2019_64'
 
+      - name: Ensure OpenSSL is available
+        shell: pwsh
+        run: |
+          $sslPaths = @("C:\Program Files\OpenSSL", "C:\Program Files\OpenSSL-Win64")
+          $found = $false
+          foreach ($p in $sslPaths) {
+            if (Test-Path $p) {
+              Write-Host "Found pre-installed OpenSSL at: $p"
+              "OPENSSL_ROOT_DIR=$p" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+              "$p\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+              $found = $true
+              break
+            }
+          }
+          if (-not $found) {
+            Write-Host "Installing OpenSSL via Chocolatey..."
+            choco install openssl --no-progress
+            "OPENSSL_ROOT_DIR=C:\Program Files\OpenSSL-Win64" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            "C:\Program Files\OpenSSL-Win64\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          }
+
       - name: Configure CMake
         run: cmake -B build/qt-msvc -G Ninja -DCMAKE_BUILD_TYPE=Release -DGF_BUILD_DESKTOP=ON -DGF_BUILD_TESTING=OFF -DGF_BUILD_BENCHMARKS=OFF
 
