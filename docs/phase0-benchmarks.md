@@ -14,7 +14,7 @@ Ogni suite valida una decisione architetturale precisa:
 
 1. **Suite A — Costo di Spawn `git.exe`, Lock Contention e Batching (`git-cli` & `OperationCoordinator`)**
    - Verifica che i refresh passivi con `--no-optional-locks` eliminino al 100% gli errori `index.lock` durante operazioni concorrenti dell'utente o di un IDE esterno.
-   - Misura su Windows la differenza tra lo shim `cmd\git.exe` e il binario nativo `mingw64\bin\git.exe`.
+   - Misura su Windows la differenza tra lo shim `cmd\git.exe` e il binario nativo diretto (`ucrt64\bin\git.exe` / `mingw64\bin\git.exe`).
    - Confronta **`Win32 CreateProcessW`** vs **`Qt QProcess`** dietro lo stesso port `IGitCommandExecutor`.
    - Individua il limite ottimale di concorrenza dell'`OperationCoordinator` su 30 e 100 repository e verifica la priorità al repository attivo (*Active-Repo-First*).
    - Misura il guadagno di una sessione persistente **`git cat-file --batch`** (`IGitBatchSession`) rispetto a invocazioni singole ripetute.
@@ -59,7 +59,8 @@ cmake --build --preset qt-release
 ctest --preset qt-release --output-on-failure
 
 # 3. Esecuzione Suite A Benchmark (con report comparativo)
-.\build\qt-msvc\tests\performance\gf_bench_suite_a.exe
+.\build\qt-msvc\Release\gf_bench_suite_a.exe
+.\build\qt-msvc\Release\gf_bench_suite_a.exe "[micro]"
 ```
 
 ### Su Linux (Bash / GCC o Clang + Ninja)

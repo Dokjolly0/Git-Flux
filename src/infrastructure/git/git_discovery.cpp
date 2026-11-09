@@ -64,6 +64,7 @@ GitDiscovery::discover() {
     if (toLowerAscii(parentDir.filename().string()) == "cmd") {
         const fs::path gitRoot = parentDir.parent_path();
         const fs::path candidates[] = {
+            gitRoot / "ucrt64" / "bin" / "git.exe",
             gitRoot / "mingw64" / "bin" / "git.exe",
             gitRoot / "clangarm64" / "bin" / "git.exe",
             gitRoot / "mingw32" / "bin" / "git.exe"
