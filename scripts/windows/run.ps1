@@ -181,7 +181,11 @@ if ($VisualStudio) {
         }
     }
     if ($Devenv) {
-        & $Devenv /debugexe "$BinPath" $FinalArgs
+        if ($FinalArgs.Count -gt 0) {
+            & $Devenv /debugexe "$BinPath" $FinalArgs
+        } else {
+            & $Devenv /debugexe "$BinPath"
+        }
     } else {
         throw "Visual Studio executable (devenv.exe) not found."
     }
@@ -191,19 +195,38 @@ if ($VisualStudio) {
     if (-not $Windbg) {
         throw "WinDbg (windbg.exe) not found in PATH."
     }
-    & $Windbg -G "$BinPath" $FinalArgs
+    if ($FinalArgs.Count -gt 0) {
+        & $Windbg -G "$BinPath" $FinalArgs
+    } else {
+        & $Windbg -G "$BinPath"
+    }
 } elseif ($Smoke) {
-    & "$BinPath" $FinalArgs
+    if ($FinalArgs.Count -gt 0) {
+        & "$BinPath" $FinalArgs
+    } else {
+        & "$BinPath"
+    }
     exit $LASTEXITCODE
 } elseif ($Debug) {
     Write-Host "💡 Debug mode: output streamed to console." -ForegroundColor Yellow
-    & "$BinPath" $FinalArgs
+    if ($FinalArgs.Count -gt 0) {
+        & "$BinPath" $FinalArgs
+    } else {
+        & "$BinPath"
+    }
 } elseif ($Wait) {
-    $proc = Start-Process -FilePath "$BinPath" -ArgumentList $FinalArgs -PassThru
-    $proc.WaitForExit()
+    if ($FinalArgs.Count -gt 0) {
+        $proc = Start-Process -FilePath "$BinPath" -ArgumentList $FinalArgs -PassThru -Wait
+    } else {
+        $proc = Start-Process -FilePath "$BinPath" -PassThru -Wait
+    }
     exit $proc.ExitCode
 } else {
-    $proc = Start-Process -FilePath "$BinPath" -ArgumentList $FinalArgs -PassThru
+    if ($FinalArgs.Count -gt 0) {
+        $proc = Start-Process -FilePath "$BinPath" -ArgumentList $FinalArgs -PassThru
+    } else {
+        $proc = Start-Process -FilePath "$BinPath" -PassThru
+    }
     Start-Sleep -Milliseconds 400
     if ($proc.HasExited) {
         if ($proc.ExitCode -ne 0) {
