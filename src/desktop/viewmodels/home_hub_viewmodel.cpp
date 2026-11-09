@@ -211,11 +211,22 @@ bool HomeHubViewModel::addRepository(const QString& path, const QString& display
     }
 
     // Convert QUrl if needed (e.g. from QML FolderDialog file:///path)
-    const QUrl url(cleanPath);
-    if (url.isLocalFile()) {
-        cleanPath = url.toLocalFile();
-    } else if (cleanPath.startsWith(QLatin1String("file://"))) {
-        cleanPath = cleanPath.sliced(7);
+    if (cleanPath.startsWith(QLatin1String("file:"), Qt::CaseInsensitive)) {
+        const QUrl url(cleanPath);
+        if (url.isValid() && url.isLocalFile() && !url.toLocalFile().startsWith(QLatin1String("//"))) {
+            cleanPath = url.toLocalFile();
+        } else {
+            if (cleanPath.startsWith(QLatin1String("file:///"), Qt::CaseInsensitive)) {
+                cleanPath = cleanPath.sliced(8);
+            } else if (cleanPath.startsWith(QLatin1String("file://"), Qt::CaseInsensitive)) {
+                cleanPath = cleanPath.sliced(7);
+            }
+#ifndef _WIN32
+            if (!cleanPath.startsWith(QLatin1Char('/'))) {
+                cleanPath.prepend(QLatin1Char('/'));
+            }
+#endif
+        }
     }
 
     while (cleanPath.length() > 1 && (cleanPath.endsWith(QLatin1Char('/')) || cleanPath.endsWith(QLatin1Char('\\')))) {

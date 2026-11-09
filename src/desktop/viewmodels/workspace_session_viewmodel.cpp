@@ -121,10 +121,9 @@ QString WorkspaceSessionViewModel::activeRepoPath() const {
     return {};
 }
 
-void WorkspaceSessionViewModel::openRepository(const QString& repoId,
+void WorkspaceSessionViewModel::addTabInternal(const QString& repoId,
                                               const QString& name,
                                               const QString& path) {
-    // Look up display name or path if missing
     QString resolvedName = name;
     QString resolvedPath = path;
 
@@ -142,39 +141,82 @@ void WorkspaceSessionViewModel::openRepository(const QString& repoId,
         resolvedName = QString::fromStdString(std::filesystem::path(resolvedPath.toStdString()).filename().string());
     }
 
-    // Check if repository is already open in an existing tab
-    for (std::size_t i = 0; i < m_tabs.size(); ++i) {
-        if (m_tabs[i].repoId == repoId || (!resolvedPath.isEmpty() && m_tabs[i].path == resolvedPath)) {
-            setActiveTabIndex(static_cast<int>(i));
-            return;
-        }
-    }
-
-    SessionTabItem newItem{
+    m_tabs.push_back(SessionTabItem{
         .repoId = repoId,
         .name = resolvedName.isEmpty() ? QStringLiteral("Repository") : resolvedName,
         .path = resolvedPath,
         .isDirty = false,
         .branch = {}
-    };
-
-    m_tabs.push_back(std::move(newItem));
-    emit tabsChanged();
+    });
 
     if (m_watcherService && !resolvedPath.isEmpty()) {
         [[maybe_unused]] auto res = m_watcherService->startWatching(std::filesystem::path(resolvedPath.toStdString()));
     }
+}
 
+void WorkspaceSessionViewModel::openRepository(const QString& repoId,
+                                              const QString& name,
+                                              const QString& path) {
+    // Check if repository is already open in an existing tab
+    for (std::size_t i = 0; i < m_tabs.size(); ++i) {
+        if (m_tabs[i].repoId == repoId || (!path.isEmpty() && m_tabs[i].path == path)) {
+            setActiveTabIndex(static_cast<int>(i));
+            return;
+        }
+    }
+
+    addTabInternal(repoId, name, path);
+    emit tabsChanged();
     setActiveTabIndex(static_cast<int>(m_tabs.size() - 1));
 }
 
 void WorkspaceSessionViewModel::openRepositories(const QStringList& repoIds) {
+    if (repoIds.isEmpty()) {
+        return;
+    }
+
+    bool anyAdded = false;
+    int firstNewIndex = -1;
+
     for (const auto& id : repoIds) {
         auto repoRes = m_repoService.getRepository(repositories::bo::RepositoryId{id.toStdString()});
-        if (repoRes && repoRes->has_value()) {
-            openRepository(QString::fromStdString((*repoRes)->id.value()),
-                           QString::fromStdString((*repoRes)->displayName),
-                           QString::fromStdString((*repoRes)->localPath.string()));
+        if (!repoRes || !repoRes->has_value()) {
+            continue;
+        }
+
+        QString rId = QString::fromStdString((*repoRes)->id.value());
+        QString rPath = QString::fromStdString((*repoRes)->localPath.string());
+        QString rName = QString::fromStdString((*repoRes)->displayName);
+
+        bool alreadyOpen = false;
+        for (std::size_t i = 0; i < m_tabs.size(); ++i) {
+            if (m_tabs[i].repoId == rId || (!rPath.isEmpty() && m_tabs[i].path == rPath)) {
+                alreadyOpen = true;
+                if (firstNewIndex < 0) {
+                    firstNewIndex = static_cast<int>(i);
+                }
+                break;
+            }
+        }
+
+        if (!alreadyOpen) {
+            if (firstNewIndex < 0) {
+                firstNewIndex = static_cast<int>(m_tabs.size());
+            }
+            addTabInternal(rId, rName, rPath);
+            anyAdded = true;
+        }
+    }
+
+    if (anyAdded) {
+        emit tabsChanged();
+    }
+
+    if (!m_tabs.empty()) {
+        if (m_activeTabIndex < 0) {
+            setActiveTabIndex(firstNewIndex >= 0 ? firstNewIndex : 0);
+        } else if (firstNewIndex >= 0 && m_activeTabIndex != firstNewIndex) {
+            setActiveTabIndex(firstNewIndex);
         }
     }
 }
@@ -187,16 +229,33 @@ void WorkspaceSessionViewModel::openGroup(const QString& groupName, const QStrin
 }
 
 void WorkspaceSessionViewModel::openWorkspace(const QString& workspaceId) {
+    auto wsOpt = m_workspaceService.getWorkspace(workspaces::bo::WorkspaceId{workspaceId.toStdString()});
+    if (!wsOpt || !wsOpt->has_value()) {
+        return;
+    }
+
+    closeAllTabs();
+
+    m_currentGroupName = QString::fromStdString((*wsOpt)->name);
+    emit currentGroupNameChanged();
+
     auto reposRes = m_workspaceService.resolveWorkspaceRepositories(
         workspaces::bo::WorkspaceId{workspaceId.toStdString()});
-    if (!reposRes) {
+    if (!reposRes || reposRes->empty()) {
         return;
     }
 
     for (const auto& repo : *reposRes) {
-        openRepository(QString::fromStdString(repo.id.value()),
-                       QString::fromStdString(repo.displayName),
-                       QString::fromStdString(repo.localPath.string()));
+        QString rId = QString::fromStdString(repo.id.value());
+        QString rPath = QString::fromStdString(repo.localPath.string());
+        QString rName = QString::fromStdString(repo.displayName);
+        addTabInternal(rId, rName, rPath);
+    }
+
+    emit tabsChanged();
+
+    if (!m_tabs.empty()) {
+        setActiveTabIndex(0);
     }
 }
 

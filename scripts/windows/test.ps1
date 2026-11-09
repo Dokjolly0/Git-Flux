@@ -83,8 +83,35 @@ if ($Help) {
 }
 
 $ScriptDir = Split-Path -Parent (Resolve-Path $MyInvocation.MyCommand.Path)
-$RootDir = Split-Path -Parent $ScriptDir
+$RootDir = Split-Path -Parent (Split-Path -Parent $ScriptDir)
 Set-Location $RootDir
+
+# Auto-detect Qt and OpenSSL in PATH / QT_PLUGIN_PATH
+$QtDir = "C:\Qt\6.6.2\msvc2019_64"
+if (Test-Path $QtDir) {
+    if (-not $env:QT_PLUGIN_PATH) {
+        $env:QT_PLUGIN_PATH = Join-Path $QtDir "plugins"
+    }
+    $QtBin = Join-Path $QtDir "bin"
+    if ($env:PATH -notlike "*$QtBin*") {
+        $env:PATH = "$QtBin;$env:PATH"
+    }
+}
+if (-not $env:OPENSSL_ROOT_DIR) {
+    if (Test-Path "$env:USERPROFILE\anaconda3\Library\include\openssl") {
+        $env:OPENSSL_ROOT_DIR = "$env:USERPROFILE\anaconda3\Library"
+    } elseif (Test-Path "C:\Program Files\OpenSSL-Win64") {
+        $env:OPENSSL_ROOT_DIR = "C:\Program Files\OpenSSL-Win64"
+    } elseif (Test-Path "C:\Program Files\OpenSSL") {
+        $env:OPENSSL_ROOT_DIR = "C:\Program Files\OpenSSL"
+    }
+}
+if ($env:OPENSSL_ROOT_DIR) {
+    $SslBin = Join-Path $env:OPENSSL_ROOT_DIR "bin"
+    if ((Test-Path $SslBin) -and ($env:PATH -notlike "*$SslBin*")) {
+        $env:PATH = "$SslBin;$env:PATH"
+    }
+}
 
 function Find-GitFluxExe {
     $Candidates = @(

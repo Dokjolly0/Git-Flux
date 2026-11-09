@@ -9,6 +9,7 @@
 #include <QNetworkRequest>
 #include <QQmlApplicationEngine>
 #include <QQmlNetworkAccessManagerFactory>
+#include <QQuickStyle>
 #include <QQuickWindow>
 #include <iostream>
 
@@ -103,6 +104,12 @@ int main(int argc, char* argv[]) {
     if (qEnvironmentVariableIsEmpty("QT_QUICK_FLICKABLE_WHEEL_DECELERATION")) {
         qputenv("QT_QUICK_FLICKABLE_WHEEL_DECELERATION", "2500");
     }
+
+    // Use "Basic" Qt Quick Controls style so custom backgrounds and contentItems in QML components are fully supported
+    if (qEnvironmentVariableIsEmpty("QT_QUICK_CONTROLS_STYLE")) {
+        qputenv("QT_QUICK_CONTROLS_STYLE", "Basic");
+    }
+    QQuickStyle::setStyle(QStringLiteral("Basic"));
 
     QGuiApplication app(argc, argv);
     app.setApplicationDisplayName(QStringLiteral("Git Flux"));

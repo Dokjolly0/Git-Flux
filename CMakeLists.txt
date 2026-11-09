@@ -110,6 +110,18 @@ if(NOT MSVC)
     target_link_libraries(gf_sqlite3 PRIVATE ${CMAKE_DL_LIBS} pthread)
 endif()
 
+if(WIN32 AND NOT DEFINED OPENSSL_ROOT_DIR AND NOT DEFINED ENV{OPENSSL_ROOT_DIR})
+    if(EXISTS "$ENV{USERPROFILE}/anaconda3/Library/include/openssl")
+        set(OPENSSL_ROOT_DIR "$ENV{USERPROFILE}/anaconda3/Library")
+    elseif(EXISTS "C:/Program Files/OpenSSL-Win64")
+        set(OPENSSL_ROOT_DIR "C:/Program Files/OpenSSL-Win64")
+    elseif(EXISTS "C:/Program Files/OpenSSL")
+        set(OPENSSL_ROOT_DIR "C:/Program Files/OpenSSL")
+    elseif(EXISTS "C:/OpenSSL-Win64")
+        set(OPENSSL_ROOT_DIR "C:/OpenSSL-Win64")
+    endif()
+endif()
+
 find_package(OpenSSL REQUIRED COMPONENTS Crypto)
 
 # On Windows, resolve OpenSSL runtime DLLs so they can be bundled

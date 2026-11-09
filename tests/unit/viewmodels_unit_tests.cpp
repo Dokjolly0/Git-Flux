@@ -998,6 +998,20 @@ TEST_CASE("WorkspaceSessionViewModel multi-tab orchestration", "[viewmodel][sess
     sessionVm.closeAllTabs();
     CHECK_FALSE(sessionVm.hasOpenTabs());
     CHECK(sessionVm.currentGroupName().isEmpty());
+
+    // Test openWorkspace orchestration: closes previous tabs, sets workspace name, batch opens repos, activates tab 0
+    auto wsRes = ctx.workspaceService->createWorkspace("Production Team", {}, {r1Res->id, r2Res->id});
+    REQUIRE(wsRes.has_value());
+
+    sessionVm.openWorkspace(QString::fromStdString(wsRes->id.value()));
+    CHECK(sessionVm.currentGroupName() == "Production Team");
+    CHECK(sessionVm.tabs().size() == 2);
+    CHECK(sessionVm.hasOpenTabs());
+    CHECK(sessionVm.activeTabIndex() == 0);
+    CHECK(sessionVm.activeRepoName().toStdString() == "Repo 1");
+
+    sessionVm.closeAllTabs();
+    CHECK_FALSE(sessionVm.hasOpenTabs());
 }
 
 TEST_CASE("BranchListModel and CommitHistoryListModel MVVM representations", "[viewmodel][models][branch][history]") {
@@ -1921,7 +1935,7 @@ TEST_CASE("DiffViewModel - View mode switching and property invariants", "[deskt
     mockOps.diffToReturn.newPath = "test.txt";
     mockOps.diffToReturn.oldPath = "test.txt";
 
-    CHECK(diffVm.loadDiff("/tmp", "test.txt", "unstaged"));
+    CHECK(diffVm.loadDiff(QString::fromStdString(std::filesystem::temp_directory_path().string()), "test.txt", "unstaged"));
     CHECK(diffVm.maxLineLength() == 48);
 
     diffVm.clear();

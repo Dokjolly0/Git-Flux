@@ -90,8 +90,19 @@ if ($Help) {
 
 # Repository root directory
 $ScriptDir = Split-Path -Parent (Resolve-Path $MyInvocation.MyCommand.Path)
-$RootDir = Split-Path -Parent $ScriptDir
+$RootDir = Split-Path -Parent (Split-Path -Parent $ScriptDir)
 Set-Location $RootDir
+
+# Auto-detect OpenSSL location on Windows if not set
+if (-not $env:OPENSSL_ROOT_DIR) {
+    if (Test-Path "$env:USERPROFILE\anaconda3\Library\include\openssl") {
+        $env:OPENSSL_ROOT_DIR = "$env:USERPROFILE\anaconda3\Library"
+    } elseif (Test-Path "C:\Program Files\OpenSSL-Win64") {
+        $env:OPENSSL_ROOT_DIR = "C:\Program Files\OpenSSL-Win64"
+    } elseif (Test-Path "C:\Program Files\OpenSSL") {
+        $env:OPENSSL_ROOT_DIR = "C:\Program Files\OpenSSL"
+    }
+}
 
 # Default preset selection
 if (-not $Qt -and -not $Core -and -not $All) {

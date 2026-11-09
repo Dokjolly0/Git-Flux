@@ -133,6 +133,7 @@ signals:
     void rebaseConflictDetected();
 
 private:
+    void addTabInternal(const QString& repoId, const QString& name, const QString& path);
     void onCommitSucceeded(const QString& sha, const QString& summary);
     void onFsDebouncedBatch(const gf::git::bo::FsDebouncedBatch& batch);
 

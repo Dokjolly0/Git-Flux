@@ -72,7 +72,7 @@ if ($Help) {
 }
 
 $ScriptDir = Split-Path -Parent (Resolve-Path $MyInvocation.MyCommand.Path)
-$RootDir = Split-Path -Parent $ScriptDir
+$RootDir = Split-Path -Parent (Split-Path -Parent $ScriptDir)
 Set-Location $RootDir
 
 if (-not $Qt -and -not $Core -and -not $Packages -and -not $All) {
