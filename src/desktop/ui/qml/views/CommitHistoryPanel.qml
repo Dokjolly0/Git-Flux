@@ -1347,7 +1347,6 @@ Rectangle {
                                     color: commitRow.graphColor || "#06B6D4"
                                     border.color: commitRow.isSelected ? "#38BDF8" : (commitRow.graphColor || "#1E293B")
                                     border.width: commitRow.isSelected ? 2 : 1.5
-                                    clip: true
 
                                     Image {
                                         id: nodeAvatarImg
@@ -1356,6 +1355,49 @@ Rectangle {
                                         fillMode: Image.PreserveAspectCrop
                                         smooth: true
                                         mipmap: true
+                                    }
+
+                                    Canvas {
+                                        id: nodeCornerMask
+                                        anchors.fill: parent
+                                        visible: nodeAvatarImg.status === Image.Ready
+                                        property string maskBg: commitRow.isHoveredTargetRow
+                                                                ? "#132043"
+                                                                : (commitRow.isSelected
+                                                                   ? "#1A2E4C"
+                                                                   : (rowMouse.containsMouse ? "#12161E" : "#0E1117"))
+                                        property string ringColor: commitRow.isSelected ? "#38BDF8" : (commitRow.graphColor || "#1E293B")
+                                        property real ringWidth: commitRow.isSelected ? 2.0 : 1.5
+                                        onMaskBgChanged: requestPaint()
+                                        onRingColorChanged: requestPaint()
+                                        onRingWidthChanged: requestPaint()
+                                        onVisibleChanged: if (visible) requestPaint()
+                                        onAvailableChanged: if (available) requestPaint()
+                                        onPaint: {
+                                            var ctx = getContext("2d");
+                                            ctx.reset();
+                                            var cx = width / 2;
+                                            var cy = height / 2;
+                                            var r = Math.min(width, height) / 2 - 0.5;
+
+                                            ctx.globalCompositeOperation = "source-over";
+                                            ctx.fillStyle = maskBg;
+                                            ctx.fillRect(0, 0, width, height);
+
+                                            ctx.globalCompositeOperation = "destination-out";
+                                            ctx.beginPath();
+                                            ctx.arc(cx, cy, r, 0, Math.PI * 2, false);
+                                            ctx.closePath();
+                                            ctx.fillStyle = "#000000";
+                                            ctx.fill();
+
+                                            ctx.globalCompositeOperation = "source-over";
+                                            ctx.beginPath();
+                                            ctx.arc(cx, cy, r - ringWidth / 2 + 0.5, 0, Math.PI * 2, false);
+                                            ctx.strokeStyle = ringColor;
+                                            ctx.lineWidth = ringWidth;
+                                            ctx.stroke();
+                                        }
                                     }
 
                                     Text {
@@ -1645,7 +1687,6 @@ Rectangle {
                                 color: root.selectedCommit ? (root.selectedCommit.authorColor || "#6366F1") : "#6366F1"
                                 border.color: "#30363D"
                                 border.width: 1
-                                clip: true
 
                                 Image {
                                     id: cardAvatarImg
@@ -1654,6 +1695,39 @@ Rectangle {
                                     fillMode: Image.PreserveAspectCrop
                                     smooth: true
                                     mipmap: true
+                                }
+
+                                Canvas {
+                                    id: cardCornerMask
+                                    anchors.fill: parent
+                                    visible: cardAvatarImg.status === Image.Ready
+                                    onVisibleChanged: if (visible) requestPaint()
+                                    onAvailableChanged: if (available) requestPaint()
+                                    onPaint: {
+                                        var ctx = getContext("2d");
+                                        ctx.reset();
+                                        var cx = width / 2;
+                                        var cy = height / 2;
+                                        var r = Math.min(width, height) / 2 - 0.5;
+
+                                        ctx.globalCompositeOperation = "source-over";
+                                        ctx.fillStyle = "#0D1117";
+                                        ctx.fillRect(0, 0, width, height);
+
+                                        ctx.globalCompositeOperation = "destination-out";
+                                        ctx.beginPath();
+                                        ctx.arc(cx, cy, r, 0, Math.PI * 2, false);
+                                        ctx.closePath();
+                                        ctx.fillStyle = "#000000";
+                                        ctx.fill();
+
+                                        ctx.globalCompositeOperation = "source-over";
+                                        ctx.beginPath();
+                                        ctx.arc(cx, cy, r, 0, Math.PI * 2, false);
+                                        ctx.strokeStyle = "#30363D";
+                                        ctx.lineWidth = 1;
+                                        ctx.stroke();
+                                    }
                                 }
 
                                 Text {

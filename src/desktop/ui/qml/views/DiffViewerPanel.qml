@@ -1064,13 +1064,40 @@ Rectangle {
                                         height: 16
                                         radius: 8
                                         color: modelData.color || "#6366F1"
-                                        clip: true
 
                                         Image {
+                                            id: blameAvatarImg
                                             anchors.fill: parent
                                             source: modelData.avatarUrl || ""
                                             fillMode: Image.PreserveAspectCrop
                                             smooth: true
+                                            mipmap: true
+                                        }
+
+                                        Canvas {
+                                            id: blameCornerMask
+                                            anchors.fill: parent
+                                            visible: blameAvatarImg.status === Image.Ready
+                                            onVisibleChanged: if (visible) requestPaint()
+                                            onAvailableChanged: if (available) requestPaint()
+                                            onPaint: {
+                                                var ctx = getContext("2d");
+                                                ctx.reset();
+                                                var cx = width / 2;
+                                                var cy = height / 2;
+                                                var r = Math.min(width, height) / 2 - 0.5;
+
+                                                ctx.globalCompositeOperation = "source-over";
+                                                ctx.fillStyle = "#0B0F19";
+                                                ctx.fillRect(0, 0, width, height);
+
+                                                ctx.globalCompositeOperation = "destination-out";
+                                                ctx.beginPath();
+                                                ctx.arc(cx, cy, r, 0, Math.PI * 2, false);
+                                                ctx.closePath();
+                                                ctx.fillStyle = "#000000";
+                                                ctx.fill();
+                                            }
                                         }
 
                                         Text {
@@ -1079,7 +1106,7 @@ Rectangle {
                                             color: "#FFFFFF"
                                             font.pixelSize: 8
                                             font.bold: true
-                                            visible: parent.children[0].status !== Image.Ready
+                                            visible: blameAvatarImg.status !== Image.Ready
                                         }
                                     }
 
