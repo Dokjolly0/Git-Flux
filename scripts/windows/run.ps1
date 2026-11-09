@@ -15,6 +15,9 @@
 .PARAMETER Debug
     Launch application with debug console logging enabled (--debug).
 
+.PARAMETER Wait
+    Wait for the desktop application to close before returning to shell prompt.
+
 .PARAMETER VisualStudio
     Launch application inside Visual Studio debugger (devenv.exe /debugexe).
 
@@ -29,6 +32,7 @@
     .\scripts\windows\run.ps1 -Build
     .\scripts\windows\run.ps1 -Debug
     .\scripts\windows\run.ps1 -Smoke
+    .\scripts\windows\run.ps1 -Wait
     .\scripts\windows\run.ps1 -VisualStudio
     .\scripts\windows\run.ps1 --db C:\my\gitflux.db
 #>
@@ -37,6 +41,7 @@ param(
     [Alias("b")][switch]$Build,
     [Alias("s")][switch]$Smoke,
     [Alias("d")][switch]$Debug,
+    [switch]$Wait,
     [Alias("vs")][switch]$VisualStudio,
     [Alias("w")][switch]$WinDbg,
     [Alias("h")][switch]$Help
@@ -57,6 +62,7 @@ function Show-Usage {
     Write-Host "  -b, -Build          Automatically build git_flux target before launching"
     Write-Host "  -s, -Smoke          Run headless startup smoke test (--test-startup)"
     Write-Host "  -d, -Debug          Launch application with console logging enabled (--debug)"
+    Write-Host "  -Wait               Wait for the application to exit before returning"
     Write-Host "  -vs, -VisualStudio  Launch application inside Visual Studio debugger"
     Write-Host "  -w, -WinDbg         Launch application under WinDbg if installed"
     Write-Host "  -h, -Help           Show this help message"
@@ -66,6 +72,7 @@ function Show-Usage {
     Write-Host "  .\scripts\windows\run.ps1 -Build                  # Build and then launch application"
     Write-Host "  .\scripts\windows\run.ps1 -Debug                  # Run with debug console logging"
     Write-Host "  .\scripts\windows\run.ps1 -Smoke                  # Run fast headless smoke test"
+    Write-Host "  .\scripts\windows\run.ps1 -Wait                   # Run and keep terminal attached until closed"
     Write-Host "  .\scripts\windows\run.ps1 -VisualStudio           # Interactive debugging with Visual Studio"
     Write-Host "  .\scripts\windows\run.ps1 --help                  # Pass arguments directly to Git Flux"
 }
@@ -78,6 +85,42 @@ if ($Help) {
 $ScriptDir = Split-Path -Parent (Resolve-Path $MyInvocation.MyCommand.Path)
 $RootDir = Split-Path -Parent (Split-Path -Parent $ScriptDir)
 Set-Location $RootDir
+
+# Auto-detect Qt and OpenSSL in PATH / QT_PLUGIN_PATH / QML2_IMPORT_PATH
+$QtDir = "C:\Qt\6.6.2\msvc2019_64"
+if (-not (Test-Path $QtDir)) {
+    if ($env:QT_DIR -and (Test-Path $env:QT_DIR)) {
+        $QtDir = $env:QT_DIR
+    }
+}
+if (Test-Path $QtDir) {
+    $QtBin = Join-Path $QtDir "bin"
+    if ($env:PATH -notlike "$QtBin;*") {
+        $env:PATH = "$QtBin;$env:PATH"
+    }
+    if (-not $env:QT_PLUGIN_PATH) {
+        $env:QT_PLUGIN_PATH = Join-Path $QtDir "plugins"
+    }
+    if (-not $env:QML2_IMPORT_PATH) {
+        $env:QML2_IMPORT_PATH = Join-Path $QtDir "qml"
+    }
+}
+
+if (-not $env:OPENSSL_ROOT_DIR) {
+    if (Test-Path "$env:USERPROFILE\anaconda3\Library\include\openssl") {
+        $env:OPENSSL_ROOT_DIR = "$env:USERPROFILE\anaconda3\Library"
+    } elseif (Test-Path "C:\Program Files\OpenSSL-Win64") {
+        $env:OPENSSL_ROOT_DIR = "C:\Program Files\OpenSSL-Win64"
+    } elseif (Test-Path "C:\Program Files\OpenSSL") {
+        $env:OPENSSL_ROOT_DIR = "C:\Program Files\OpenSSL"
+    }
+}
+if ($env:OPENSSL_ROOT_DIR) {
+    $SslBin = Join-Path $env:OPENSSL_ROOT_DIR "bin"
+    if ($env:PATH -notlike "*$SslBin*") {
+        $env:PATH = "$SslBin;$env:PATH"
+    }
+}
 
 function Find-GitFluxExe {
     $Candidates = @(
@@ -149,6 +192,26 @@ if ($VisualStudio) {
         throw "WinDbg (windbg.exe) not found in PATH."
     }
     & $Windbg -G "$BinPath" $FinalArgs
-} else {
+} elseif ($Smoke) {
     & "$BinPath" $FinalArgs
+    exit $LASTEXITCODE
+} elseif ($Debug) {
+    Write-Host "💡 Debug mode: output streamed to console." -ForegroundColor Yellow
+    & "$BinPath" $FinalArgs
+} elseif ($Wait) {
+    $proc = Start-Process -FilePath "$BinPath" -ArgumentList $FinalArgs -PassThru
+    $proc.WaitForExit()
+    exit $proc.ExitCode
+} else {
+    $proc = Start-Process -FilePath "$BinPath" -ArgumentList $FinalArgs -PassThru
+    Start-Sleep -Milliseconds 400
+    if ($proc.HasExited) {
+        if ($proc.ExitCode -ne 0) {
+            Write-Host "❌ Git Flux exited immediately with code $($proc.ExitCode)." -ForegroundColor Red
+            Write-Host "   Run with -Debug to inspect diagnostic logs: .\scripts\windows\run.ps1 -Debug" -ForegroundColor Yellow
+            exit $proc.ExitCode
+        }
+    } else {
+        Write-Host "✔ Git Flux Desktop launched (PID: $($proc.Id))." -ForegroundColor Green
+    }
 }

@@ -5,6 +5,7 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QIcon>
+#include <QLibraryInfo>
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QQmlApplicationEngine>
@@ -111,6 +112,28 @@ int main(int argc, char* argv[]) {
     }
     QQuickStyle::setStyle(QStringLiteral("Basic"));
 
+#ifdef _WIN32
+    // Ensure Qt bin directory is in DLL search path before system PATH
+    const QString qtBinPath = QLibraryInfo::path(QLibraryInfo::BinariesPath);
+    if (!qtBinPath.isEmpty() && std::filesystem::exists(qtBinPath.toStdWString())) {
+        SetDllDirectoryW(reinterpret_cast<LPCWSTR>(qtBinPath.utf16()));
+    }
+#endif
+
+    // Ensure Qt plugins (e.g. platforms/qwindows.dll) and QML imports are found in dev environments
+    const QString qtPluginsPath = QLibraryInfo::path(QLibraryInfo::PluginsPath);
+    if (!qtPluginsPath.isEmpty()) {
+        QCoreApplication::addLibraryPath(qtPluginsPath);
+        if (qEnvironmentVariableIsEmpty("QT_PLUGIN_PATH")) {
+            qputenv("QT_PLUGIN_PATH", qtPluginsPath.toLocal8Bit());
+        }
+    }
+
+    const QString qtQmlPath = QLibraryInfo::path(QLibraryInfo::QmlImportsPath);
+    if (!qtQmlPath.isEmpty() && qEnvironmentVariableIsEmpty("QML2_IMPORT_PATH")) {
+        qputenv("QML2_IMPORT_PATH", qtQmlPath.toLocal8Bit());
+    }
+
     QGuiApplication app(argc, argv);
     app.setApplicationDisplayName(QStringLiteral("Git Flux"));
     app.setDesktopFileName(QStringLiteral("git-flux"));
@@ -172,6 +195,10 @@ int main(int argc, char* argv[]) {
         QQmlApplicationEngine engine;
         engine.setNetworkAccessManagerFactory(new RedirectNetworkAccessManagerFactory());
         bootstrap.registerWithQml(engine);
+
+        if (!qtQmlPath.isEmpty()) {
+            engine.addImportPath(qtQmlPath);
+        }
 
         const QUrl url(QStringLiteral("qrc:/qt/qml/GitFlux/Desktop/src/desktop/ui/qml/main.qml"));
         QObject::connect(

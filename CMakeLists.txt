@@ -219,7 +219,7 @@ if(GF_BUILD_DESKTOP)
         endif()
     endif()
 
-    find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml QuickControls2 Network)
+    find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml QuickControls2 QuickTemplates2 Network)
     if(GF_BUILD_TESTING)
         find_package(Qt6 REQUIRED COMPONENTS Test)
     endif()
@@ -284,6 +284,7 @@ if(GF_BUILD_DESKTOP)
         Qt6::Quick
         Qt6::Qml
         Qt6::QuickControls2
+        Qt6::QuickTemplates2
         Qt6::Network
     )
     gf_apply_compiler_warnings(gf_desktop_viewmodels)
@@ -338,6 +339,7 @@ if(GF_BUILD_DESKTOP)
         Qt6::Quick
         Qt6::Qml
         Qt6::QuickControls2
+        Qt6::QuickTemplates2
         Qt6::Network
     )
     gf_apply_compiler_warnings(git_flux)
