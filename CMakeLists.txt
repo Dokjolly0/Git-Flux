@@ -34,6 +34,13 @@ function(gf_deploy_runtime_dlls target_name)
                 $<TARGET_FILE_DIR:${target_name}>
             COMMAND_EXPAND_LISTS
         )
+        if(OPENSSL_RUNTIME_DLLS)
+            add_custom_command(TARGET ${target_name} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    ${OPENSSL_RUNTIME_DLLS}
+                    $<TARGET_FILE_DIR:${target_name}>
+            )
+        endif()
     endif()
 endfunction()
 
@@ -104,6 +111,39 @@ if(NOT MSVC)
 endif()
 
 find_package(OpenSSL REQUIRED COMPONENTS Crypto)
+
+# On Windows, resolve OpenSSL runtime DLLs so they can be bundled
+if(WIN32)
+    set(OPENSSL_RUNTIME_DLLS "")
+    if(DEFINED OPENSSL_CRYPTO_LIBRARY)
+        get_filename_component(_ssl_lib_dir "${OPENSSL_CRYPTO_LIBRARY}" DIRECTORY)
+        get_filename_component(_ssl_root "${_ssl_lib_dir}/.." ABSOLUTE)
+        file(GLOB _found_ssl_dlls
+            "${_ssl_root}/bin/libcrypto*.dll"
+            "${_ssl_root}/bin/libssl*.dll"
+            "${_ssl_lib_dir}/../bin/libcrypto*.dll"
+            "${_ssl_lib_dir}/../bin/libssl*.dll"
+            "${_ssl_lib_dir}/libcrypto*.dll"
+            "${_ssl_lib_dir}/libssl*.dll"
+        )
+        if(_found_ssl_dlls)
+            list(APPEND OPENSSL_RUNTIME_DLLS ${_found_ssl_dlls})
+        endif()
+    endif()
+    if(OPENSSL_ROOT_DIR)
+        file(GLOB _root_ssl_dlls
+            "${OPENSSL_ROOT_DIR}/bin/libcrypto*.dll"
+            "${OPENSSL_ROOT_DIR}/bin/libssl*.dll"
+        )
+        if(_root_ssl_dlls)
+            list(APPEND OPENSSL_RUNTIME_DLLS ${_root_ssl_dlls})
+        endif()
+    endif()
+    if(OPENSSL_RUNTIME_DLLS)
+        list(REMOVE_DUPLICATES OPENSSL_RUNTIME_DLLS)
+        message(STATUS "OpenSSL Windows runtime DLLs detected: ${OPENSSL_RUNTIME_DLLS}")
+    endif()
+endif()
 
 add_library(gf_persistence_sqlite STATIC
     src/infrastructure/persistence/sqlite/connection/sqlite_connection.cpp
