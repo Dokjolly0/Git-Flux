@@ -1623,11 +1623,11 @@ Rectangle {
                         elide: Text.ElideRight
                     }
 
-                    // Author Card (matching GitKraken author card with square rounded avatar)
+                    // Author Card with circular profile avatar (modern UI/UX)
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 52
-                        radius: 6
+                        radius: 8
                         color: "#0D1117"
                         border.color: "#21262D"
                         border.width: 1
@@ -1635,14 +1635,16 @@ Rectangle {
                         RowLayout {
                             anchors.fill: parent
                             anchors.margins: 8
-                            spacing: 10
+                            spacing: 12
 
-                            // Square Author Avatar
+                            // Circular Author Avatar
                             Rectangle {
                                 width: 36
                                 height: 36
-                                radius: 6
+                                radius: 18
                                 color: root.selectedCommit ? (root.selectedCommit.authorColor || "#6366F1") : "#6366F1"
+                                border.color: "#30363D"
+                                border.width: 1
                                 clip: true
 
                                 Image {
