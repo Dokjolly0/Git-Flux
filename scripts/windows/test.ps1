@@ -1,6 +1,6 @@
-<#
+﻿<#
 .SYNOPSIS
-    Git Flux — Windows Test Runner Script (PowerShell)
+    Git Flux - Windows Test Runner Script (PowerShell)
 
 .DESCRIPTION
     Runs CTest test suites (unit, MVVM, integration) and headless smoke test on Windows.
@@ -53,7 +53,7 @@ $ErrorActionPreference = "Stop"
 
 function Show-Usage {
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
-    Write-Host "Git Flux — Windows Test Runner Script" -ForegroundColor Green
+    Write-Host "Git Flux - Windows Test Runner Script" -ForegroundColor Green
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "Usage:" -ForegroundColor Cyan

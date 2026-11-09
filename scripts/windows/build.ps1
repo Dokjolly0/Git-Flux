@@ -1,6 +1,6 @@
-<#
+﻿<#
 .SYNOPSIS
-    Git Flux — Windows Build Utility Script (PowerShell)
+    Git Flux - Windows Build Utility Script (PowerShell)
 
 .DESCRIPTION
     Builds the project using CMake Presets (Desktop or Zero-Qt Core) on Windows.
@@ -57,7 +57,7 @@ $ErrorActionPreference = "Stop"
 
 function Show-Usage {
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
-    Write-Host "Git Flux — Windows Build Script" -ForegroundColor Green
+    Write-Host "Git Flux - Windows Build Script" -ForegroundColor Green
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "Usage:" -ForegroundColor Cyan

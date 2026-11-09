@@ -1,6 +1,6 @@
-<#
+﻿<#
 .SYNOPSIS
-    Git Flux — Windows Application Runner Script (PowerShell)
+    Git Flux - Windows Application Runner Script (PowerShell)
 
 .DESCRIPTION
     Launches the Git Flux desktop application on Windows, optionally with auto-rebuild,
@@ -47,7 +47,7 @@ $ErrorActionPreference = "Stop"
 
 function Show-Usage {
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
-    Write-Host "Git Flux — Windows Application Runner Script" -ForegroundColor Green
+    Write-Host "Git Flux - Windows Application Runner Script" -ForegroundColor Green
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "Usage:" -ForegroundColor Cyan

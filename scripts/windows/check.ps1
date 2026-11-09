@@ -1,6 +1,6 @@
-<#
+﻿<#
 .SYNOPSIS
-    Git Flux — Windows Full Health Check (Pre-Commit / Local Verification Pipeline)
+    Git Flux - Windows Full Health Check (Pre-Commit / Local Verification Pipeline)
 
 .DESCRIPTION
     Runs the complete health check pipeline on Windows in sequence:
@@ -26,7 +26,7 @@ $ErrorActionPreference = "Stop"
 
 function Show-Usage {
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
-    Write-Host "Git Flux — Windows Full Health Check Pipeline" -ForegroundColor Green
+    Write-Host "Git Flux - Windows Full Health Check Pipeline" -ForegroundColor Green
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "Usage:" -ForegroundColor Cyan

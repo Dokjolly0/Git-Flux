@@ -1,6 +1,6 @@
-<#
+﻿<#
 .SYNOPSIS
-    Git Flux — Windows Clean Utility Script (PowerShell)
+    Git Flux - Windows Clean Utility Script (PowerShell)
 
 .DESCRIPTION
     Selectively or globally cleans compiled build artifact directories on Windows.
@@ -44,7 +44,7 @@ $ErrorActionPreference = "Stop"
 
 function Show-Usage {
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
-    Write-Host "Git Flux — Windows Build Cleaning Script" -ForegroundColor Green
+    Write-Host "Git Flux - Windows Build Cleaning Script" -ForegroundColor Green
     Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "Usage:" -ForegroundColor Cyan
@@ -96,9 +96,9 @@ function Remove-TargetPath {
 }
 
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Blue
-Write-Host "🧹 Git Flux — Build Cleanup" -ForegroundColor Cyan
+Write-Host "🧹 Git Flux - Build Cleanup" -ForegroundColor Cyan
 if ($DryRun) {
-    Write-Host "   (DRY-RUN mode enabled — no files will be deleted)" -ForegroundColor Yellow
+    Write-Host "   (DRY-RUN mode enabled - no files will be deleted)" -ForegroundColor Yellow
 }
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Blue
 
