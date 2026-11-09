@@ -198,6 +198,55 @@ Git Flux includes ready-to-use developer scripts in [`scripts/linux/`](scripts/l
 
 ---
 
+## 🪟 Quick Start (Windows)
+
+Git Flux includes ready-to-use PowerShell developer scripts in [`scripts/windows/`](scripts/windows/):
+
+### 1. Build the Desktop Application
+```powershell
+# Standard desktop build (builds build/qt-msvc)
+.\scripts\windows\build.ps1
+
+# Or build only the Zero-Qt Core (no Qt dependencies required)
+.\scripts\windows\build.ps1 -Core
+```
+
+### 2. Run the Test Suites
+```powershell
+# Run all tests (unit, viewmodels, and real Git integration tests)
+.\scripts\windows\test.ps1
+
+# Filter tests by suite or regex pattern
+.\scripts\windows\test.ps1 -Filter viewmodels
+.\scripts\windows\test.ps1 -Filter watcher
+
+# Run headless startup smoke test
+.\scripts\windows\test.ps1 -Smoke
+```
+
+### 3. Launch Git Flux
+```powershell
+# Launch the desktop UI (clean GUI without terminal window)
+.\scripts\windows\run.ps1
+
+# Launch with live debug console output attached
+.\scripts\windows\run.ps1 -Debug
+
+# Auto-rebuild before launching
+.\scripts\windows\run.ps1 -Build
+
+# Launch under Visual Studio Debugger
+.\scripts\windows\run.ps1 -VisualStudio
+```
+
+### 4. Full Pre-Commit / Local Verification
+```powershell
+# Executes complete verification pipeline (Core build/test + Desktop build/test + Smoke test)
+.\scripts\windows\check.ps1
+```
+
+---
+
 ## 💻 Standard CMake Presets
 
 You can also use standard CMake commands across all supported platforms:
