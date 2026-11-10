@@ -9,6 +9,7 @@ Rectangle {
     property var sessionVm: null
 
     signal returnToHomeRequested()
+
     signal quickOpenRequested()
 
     ColumnLayout {
@@ -361,7 +362,8 @@ Rectangle {
                                     }
                                 }
                             }
-                            MenuSeparator {}
+                            MenuSeparator {
+                            }
                             MenuItem {
                                 text: "⬇ Fetch da tutti i remote (--all)"
                                 font.pixelSize: 11
@@ -596,7 +598,8 @@ Rectangle {
                                     }
                                 }
                             }
-                            MenuSeparator {}
+                            MenuSeparator {
+                            }
                             MenuItem {
                                 text: "⚙ Gestione completa Stash..."
                                 font.pixelSize: 11
@@ -743,8 +746,12 @@ Rectangle {
                     text: "✕"
                     Layout.preferredWidth: 24
                     Layout.preferredHeight: 24
-                    background: Rectangle { color: "transparent" }
-                    contentItem: Text { text: "✕"; color: "#FFFFFF"; font.bold: true; horizontalAlignment: Text.AlignHCenter }
+                    background: Rectangle {
+                        color: "transparent"
+                    }
+                    contentItem: Text {
+                        text: "✕"; color: "#FFFFFF"; font.bold: true; horizontalAlignment: Text.AlignHCenter
+                    }
                     onClicked: bannerText.text = ""
                 }
             }
@@ -758,6 +765,7 @@ Rectangle {
 
         Connections {
             target: (root.sessionVm && root.sessionVm.branchManager) ? root.sessionVm.branchManager : null
+
             function onOperationCompleted(success, message) {
                 notificationBanner.bannerIsError = !success;
                 bannerText.text = message;
@@ -863,19 +871,19 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             sessionVm: root.sessionVm
-            onCreateBranchRequested: function(startPoint) {
+            onCreateBranchRequested: function (startPoint) {
                 createBranchModal.openWithStartPoint(startPoint);
             }
-            onCreatePullRequestRequested: function(sourceBranch, targetBranch) {
+            onCreatePullRequestRequested: function (sourceBranch, targetBranch) {
                 pullRequestModal.openWithBranches(sourceBranch, targetBranch);
             }
-            onCreateTagRequested: function(commitSha) {
+            onCreateTagRequested: function (commitSha) {
                 createTagModal.openWithCommit(commitSha);
             }
-            onCreateWorktreeRequested: function(target) {
+            onCreateWorktreeRequested: function (target) {
                 createWorktreeModal.openWithTarget(target);
             }
-            onStashModalRequested: function() {
+            onStashModalRequested: function () {
                 stashModal.open();
             }
         }
@@ -922,6 +930,7 @@ Rectangle {
 
     Connections {
         target: (root.sessionVm && root.sessionVm.conflictResolver) ? root.sessionVm.conflictResolver : null
+
         function onResolutionApplied(filePath) {
             if (root.sessionVm) {
                 root.sessionVm.refreshActiveTab();
@@ -946,6 +955,7 @@ Rectangle {
 
     Connections {
         target: Qt.application
+
         function onStateChanged() {
             if (Qt.application.state === Qt.ApplicationActive && root.sessionVm && root.sessionVm.hasOpenTabs) {
                 root.sessionVm.checkWorkingTreeUpdates();

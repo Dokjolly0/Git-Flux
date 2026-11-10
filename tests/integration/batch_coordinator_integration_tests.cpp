@@ -39,84 +39,93 @@ using namespace gf::infra::persistence::repositories;
 using namespace gf::infra::persistence::groups;
 using namespace gf::infra::persistence::workspaces;
 
-namespace {
+namespace
+{
+    struct RealMultiRepoFixture
+    {
+        std::filesystem::path baseDir;
+        std::filesystem::path bareOrigin1;
+        std::filesystem::path bareOrigin2;
+        std::filesystem::path repoDir1;
+        std::filesystem::path repoDir2;
 
-struct RealMultiRepoFixture {
-    std::filesystem::path baseDir;
-    std::filesystem::path bareOrigin1;
-    std::filesystem::path bareOrigin2;
-    std::filesystem::path repoDir1;
-    std::filesystem::path repoDir2;
+        RealMultiRepoFixture()
+        {
+            auto now = std::chrono::system_clock::now().time_since_epoch().count();
+            baseDir = std::filesystem::temp_directory_path() / ("gf_batch_integ_" + std::to_string(now));
+            bareOrigin1 = baseDir / "origin1.git";
+            bareOrigin2 = baseDir / "origin2.git";
+            repoDir1 = baseDir / "repo1";
+            repoDir2 = baseDir / "repo2";
 
-    RealMultiRepoFixture() {
-        auto now = std::chrono::system_clock::now().time_since_epoch().count();
-        baseDir = std::filesystem::temp_directory_path() / ("gf_batch_integ_" + std::to_string(now));
-        bareOrigin1 = baseDir / "origin1.git";
-        bareOrigin2 = baseDir / "origin2.git";
-        repoDir1 = baseDir / "repo1";
-        repoDir2 = baseDir / "repo2";
+            std::filesystem::create_directories(bareOrigin1);
+            std::filesystem::create_directories(bareOrigin2);
+            std::filesystem::create_directories(repoDir1);
+            std::filesystem::create_directories(repoDir2);
 
-        std::filesystem::create_directories(bareOrigin1);
-        std::filesystem::create_directories(bareOrigin2);
-        std::filesystem::create_directories(repoDir1);
-        std::filesystem::create_directories(repoDir2);
+            // Init bare origins
+            std::string initBare1 = "git init --bare -b main \"" + bareOrigin1.string() + "\" > /dev/null 2>&1";
+            [[maybe_unused]] int r1 = std::system(initBare1.c_str());
+            std::string initBare2 = "git init --bare -b main \"" + bareOrigin2.string() + "\" > /dev/null 2>&1";
+            [[maybe_unused]] int r2 = std::system(initBare2.c_str());
 
-        // Init bare origins
-        std::string initBare1 = "git init --bare -b main \"" + bareOrigin1.string() + "\" > /dev/null 2>&1";
-        [[maybe_unused]] int r1 = std::system(initBare1.c_str());
-        std::string initBare2 = "git init --bare -b main \"" + bareOrigin2.string() + "\" > /dev/null 2>&1";
-        [[maybe_unused]] int r2 = std::system(initBare2.c_str());
+            // Init repo 1
+            std::string init1 = "git -C \"" + repoDir1.string() + "\" init -b main > /dev/null 2>&1";
+            [[maybe_unused]] int r3 = std::system(init1.c_str());
+            std::string cfgU1 = "git -C \"" + repoDir1.string() + "\" config user.name \"Batch Tester\"";
+            [[maybe_unused]] int r4 = std::system(cfgU1.c_str());
+            std::string cfgE1 = "git -C \"" + repoDir1.string() + "\" config user.email \"batch@test.com\"";
+            [[maybe_unused]] int r5 = std::system(cfgE1.c_str());
 
-        // Init repo 1
-        std::string init1 = "git -C \"" + repoDir1.string() + "\" init -b main > /dev/null 2>&1";
-        [[maybe_unused]] int r3 = std::system(init1.c_str());
-        std::string cfgU1 = "git -C \"" + repoDir1.string() + "\" config user.name \"Batch Tester\"";
-        [[maybe_unused]] int r4 = std::system(cfgU1.c_str());
-        std::string cfgE1 = "git -C \"" + repoDir1.string() + "\" config user.email \"batch@test.com\"";
-        [[maybe_unused]] int r5 = std::system(cfgE1.c_str());
+            std::ofstream f1(repoDir1 / "f1.txt");
+            f1 << "file1\n";
+            f1.close();
+            std::string a1 = "git -C \"" + repoDir1.string() + "\" add f1.txt > /dev/null 2>&1";
+            [[maybe_unused]] int r6 = std::system(a1.c_str());
+            std::string c1 = "git -C \"" + repoDir1.string() + "\" commit -m \"Init 1\" > /dev/null 2>&1";
+            [[maybe_unused]] int r7 = std::system(c1.c_str());
+            std::string rem1 = "git -C \"" + repoDir1.string() + "\" remote add origin \"" + bareOrigin1.string() +
+                "\" > /dev/null 2>&1";
+            [[maybe_unused]] int r8 = std::system(rem1.c_str());
+            std::string p1 = "git -C \"" + repoDir1.string() + "\" push -u origin main > /dev/null 2>&1";
+            [[maybe_unused]] int r9 = std::system(p1.c_str());
 
-        std::ofstream f1(repoDir1 / "f1.txt");
-        f1 << "file1\n";
-        f1.close();
-        std::string a1 = "git -C \"" + repoDir1.string() + "\" add f1.txt > /dev/null 2>&1";
-        [[maybe_unused]] int r6 = std::system(a1.c_str());
-        std::string c1 = "git -C \"" + repoDir1.string() + "\" commit -m \"Init 1\" > /dev/null 2>&1";
-        [[maybe_unused]] int r7 = std::system(c1.c_str());
-        std::string rem1 = "git -C \"" + repoDir1.string() + "\" remote add origin \"" + bareOrigin1.string() + "\" > /dev/null 2>&1";
-        [[maybe_unused]] int r8 = std::system(rem1.c_str());
-        std::string p1 = "git -C \"" + repoDir1.string() + "\" push -u origin main > /dev/null 2>&1";
-        [[maybe_unused]] int r9 = std::system(p1.c_str());
+            // Init repo 2
+            std::string init2 = "git -C \"" + repoDir2.string() + "\" init -b main > /dev/null 2>&1";
+            [[maybe_unused]] int r10 = std::system(init2.c_str());
+            std::string cfgU2 = "git -C \"" + repoDir2.string() + "\" config user.name \"Batch Tester\"";
+            [[maybe_unused]] int r11 = std::system(cfgU2.c_str());
+            std::string cfgE2 = "git -C \"" + repoDir2.string() + "\" config user.email \"batch@test.com\"";
+            [[maybe_unused]] int r12 = std::system(cfgE2.c_str());
 
-        // Init repo 2
-        std::string init2 = "git -C \"" + repoDir2.string() + "\" init -b main > /dev/null 2>&1";
-        [[maybe_unused]] int r10 = std::system(init2.c_str());
-        std::string cfgU2 = "git -C \"" + repoDir2.string() + "\" config user.name \"Batch Tester\"";
-        [[maybe_unused]] int r11 = std::system(cfgU2.c_str());
-        std::string cfgE2 = "git -C \"" + repoDir2.string() + "\" config user.email \"batch@test.com\"";
-        [[maybe_unused]] int r12 = std::system(cfgE2.c_str());
+            std::ofstream f2(repoDir2 / "f2.txt");
+            f2 << "file2\n";
+            f2.close();
+            std::string a2 = "git -C \"" + repoDir2.string() + "\" add f2.txt > /dev/null 2>&1";
+            [[maybe_unused]] int r13 = std::system(a2.c_str());
+            std::string c2 = "git -C \"" + repoDir2.string() + "\" commit -m \"Init 2\" > /dev/null 2>&1";
+            [[maybe_unused]] int r14 = std::system(c2.c_str());
+            std::string rem2 = "git -C \"" + repoDir2.string() + "\" remote add origin \"" + bareOrigin2.string() +
+                "\" > /dev/null 2>&1";
+            [[maybe_unused]] int r15 = std::system(rem2.c_str());
+            std::string p2 = "git -C \"" + repoDir2.string() + "\" push -u origin main > /dev/null 2>&1";
+            [[maybe_unused]] int r16 = std::system(p2.c_str());
+        }
 
-        std::ofstream f2(repoDir2 / "f2.txt");
-        f2 << "file2\n";
-        f2.close();
-        std::string a2 = "git -C \"" + repoDir2.string() + "\" add f2.txt > /dev/null 2>&1";
-        [[maybe_unused]] int r13 = std::system(a2.c_str());
-        std::string c2 = "git -C \"" + repoDir2.string() + "\" commit -m \"Init 2\" > /dev/null 2>&1";
-        [[maybe_unused]] int r14 = std::system(c2.c_str());
-        std::string rem2 = "git -C \"" + repoDir2.string() + "\" remote add origin \"" + bareOrigin2.string() + "\" > /dev/null 2>&1";
-        [[maybe_unused]] int r15 = std::system(rem2.c_str());
-        std::string p2 = "git -C \"" + repoDir2.string() + "\" push -u origin main > /dev/null 2>&1";
-        [[maybe_unused]] int r16 = std::system(p2.c_str());
-    }
-
-    ~RealMultiRepoFixture() {
-        std::error_code ec;
-        std::filesystem::remove_all(baseDir, ec);
-    }
-};
-
+        ~RealMultiRepoFixture()
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(baseDir, ec);
+        }
+    };
 } // namespace
 
-TEST_CASE("MultiRepoBatchCoordinator integration on real Git repositories", "[git][batch][integration]") {
+TEST_CASE (
+"MultiRepoBatchCoordinator integration on real Git repositories"
+,
+"[git][batch][integration]"
+)
+ {
     RealMultiRepoFixture fixture;
 
     auto gitDiscovery = GitDiscovery::discover();

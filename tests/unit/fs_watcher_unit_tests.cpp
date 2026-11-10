@@ -14,7 +14,12 @@ using namespace gf::git::bl;
 using namespace gf::git::bo;
 using namespace gf::git::ports;
 
-TEST_CASE("FsEventClassifier classifies paths correctly", "[watcher][classifier]") {
+TEST_CASE (
+"FsEventClassifier classifies paths correctly"
+,
+"[watcher][classifier]"
+)
+ {
     std::filesystem::path repoRoot = "/workspaces/my-project";
 
     SECTION("Identifies Git metadata files") {
@@ -63,7 +68,12 @@ TEST_CASE("FsEventClassifier classifies paths correctly", "[watcher][classifier]
     }
 }
 
-TEST_CASE("FsEventDebouncer aggregates rapid events deterministically", "[watcher][debouncer]") {
+TEST_CASE (
+"FsEventDebouncer aggregates rapid events deterministically"
+,
+"[watcher][debouncer]"
+)
+ {
     using namespace std::chrono_literals;
 
     FsEventDebouncer debouncer(200ms, 1000ms);
@@ -177,31 +187,41 @@ TEST_CASE("FsEventDebouncer aggregates rapid events deterministically", "[watche
     }
 }
 
-class MockFsWatcherPort final : public IFsWatcherPort {
+class MockFsWatcherPort final : public IFsWatcherPort
+{
 public:
     std::vector<std::filesystem::path> watchedRepos;
     FsRawEventCallback callback;
 
-    std::expected<void, FsWatcherError> watchRepository(const std::filesystem::path& repoPath) override {
+    std::expected<void, FsWatcherError> watchRepository(const std::filesystem::path& repoPath) override
+    {
         watchedRepos.push_back(repoPath);
         return {};
     }
 
-    std::expected<void, FsWatcherError> unwatchRepository(const std::filesystem::path& repoPath) override {
+    std::expected<void, FsWatcherError> unwatchRepository(const std::filesystem::path& repoPath) override
+    {
         std::erase(watchedRepos, repoPath);
         return {};
     }
 
-    bool isWatching(const std::filesystem::path& repoPath) const override {
+    bool isWatching(const std::filesystem::path& repoPath) const override
+    {
         return std::find(watchedRepos.begin(), watchedRepos.end(), repoPath) != watchedRepos.end();
     }
 
-    void setEventCallback(FsRawEventCallback cb) override {
+    void setEventCallback(FsRawEventCallback cb) override
+    {
         callback = std::move(cb);
     }
 };
 
-TEST_CASE("GitRepositoryWatcherService orchestrates port, debouncer and notifications", "[watcher][service]") {
+TEST_CASE (
+"GitRepositoryWatcherService orchestrates port, debouncer and notifications"
+,
+"[watcher][service]"
+)
+ {
     using namespace std::chrono_literals;
 
     MockFsWatcherPort mockPort;

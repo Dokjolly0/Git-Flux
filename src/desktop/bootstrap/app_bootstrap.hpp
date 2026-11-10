@@ -39,76 +39,76 @@
 
 class QQmlApplicationEngine;
 
-namespace gf::desktop {
+namespace gf::desktop
+{
+    class AppBootstrap
+    {
+    public:
+        explicit AppBootstrap(const std::filesystem::path& databasePath);
+        ~AppBootstrap();
 
-class AppBootstrap {
-public:
-    explicit AppBootstrap(const std::filesystem::path& databasePath);
-    ~AppBootstrap();
+        AppBootstrap(const AppBootstrap&) = delete;
+        AppBootstrap& operator=(const AppBootstrap&) = delete;
+        AppBootstrap(AppBootstrap&&) = default;
+        AppBootstrap& operator=(AppBootstrap&&) = default;
 
-    AppBootstrap(const AppBootstrap&) = delete;
-    AppBootstrap& operator=(const AppBootstrap&) = delete;
-    AppBootstrap(AppBootstrap&&) = default;
-    AppBootstrap& operator=(AppBootstrap&&) = default;
+        void initialize();
+        void registerWithQml(QQmlApplicationEngine& engine);
 
-    void initialize();
-    void registerWithQml(QQmlApplicationEngine& engine);
+        [[nodiscard]] HomeHubViewModel& homeHubViewModel() noexcept;
+        [[nodiscard]] QuickOpenViewModel& quickOpenViewModel() noexcept;
+        [[nodiscard]] WorkspaceSessionViewModel& workspaceSessionViewModel() noexcept;
+        [[nodiscard]] BatchOperationsViewModel& batchOperationsViewModel() noexcept;
+        [[nodiscard]] viewmodels::GitProfilesViewModel& gitProfilesViewModel() noexcept;
+        [[nodiscard]] git::bl::GitRepositoryWatcherService& watcherService() noexcept;
+        [[nodiscard]] git::bl::MultiRepoBatchCoordinator& batchCoordinator() noexcept;
+        [[nodiscard]] repositories::bl::RepositoryService& repositoryService() noexcept;
+        [[nodiscard]] groups::bl::GroupService& groupService() noexcept;
+        [[nodiscard]] workspaces::bl::WorkspaceService& workspaceService() noexcept;
 
-    [[nodiscard]] HomeHubViewModel& homeHubViewModel() noexcept;
-    [[nodiscard]] QuickOpenViewModel& quickOpenViewModel() noexcept;
-    [[nodiscard]] WorkspaceSessionViewModel& workspaceSessionViewModel() noexcept;
-    [[nodiscard]] BatchOperationsViewModel& batchOperationsViewModel() noexcept;
-    [[nodiscard]] viewmodels::GitProfilesViewModel& gitProfilesViewModel() noexcept;
-    [[nodiscard]] git::bl::GitRepositoryWatcherService& watcherService() noexcept;
-    [[nodiscard]] git::bl::MultiRepoBatchCoordinator& batchCoordinator() noexcept;
-    [[nodiscard]] repositories::bl::RepositoryService& repositoryService() noexcept;
-    [[nodiscard]] groups::bl::GroupService& groupService() noexcept;
-    [[nodiscard]] workspaces::bl::WorkspaceService& workspaceService() noexcept;
+        static std::filesystem::path defaultDatabasePath();
 
-    static std::filesystem::path defaultDatabasePath();
+    private:
+        std::filesystem::path m_dbPath;
+        std::unique_ptr<infra::persistence::sqlite::SqliteConnection> m_connection;
+        std::unique_ptr<infra::persistence::repositories::SqliteRepositoryStore> m_repoStore;
+        std::unique_ptr<infra::persistence::groups::SqliteGroupStore> m_groupStore;
+        std::unique_ptr<infra::persistence::workspaces::SqliteWorkspaceStore> m_workspaceStore;
 
-private:
-    std::filesystem::path m_dbPath;
-    std::unique_ptr<infra::persistence::sqlite::SqliteConnection> m_connection;
-    std::unique_ptr<infra::persistence::repositories::SqliteRepositoryStore> m_repoStore;
-    std::unique_ptr<infra::persistence::groups::SqliteGroupStore> m_groupStore;
-    std::unique_ptr<infra::persistence::workspaces::SqliteWorkspaceStore> m_workspaceStore;
+        std::unique_ptr<repositories::bl::RepositoryService> m_repoService;
+        std::unique_ptr<groups::bl::GroupService> m_groupService;
+        std::unique_ptr<workspaces::bl::WorkspaceService> m_workspaceService;
 
-    std::unique_ptr<repositories::bl::RepositoryService> m_repoService;
-    std::unique_ptr<groups::bl::GroupService> m_groupService;
-    std::unique_ptr<workspaces::bl::WorkspaceService> m_workspaceService;
+        std::unique_ptr<infra::git::NativeGitCommandExecutor> m_gitExecutor;
+        std::unique_ptr<infra::git::NativeRepositoryGitOps> m_gitOps;
 
-    std::unique_ptr<infra::git::NativeGitCommandExecutor> m_gitExecutor;
-    std::unique_ptr<infra::git::NativeRepositoryGitOps> m_gitOps;
+        std::unique_ptr<git::bl::GitWorkingTreeService> m_workingTreeService;
+        std::unique_ptr<git::bl::GitStagingService> m_stagingService;
+        std::unique_ptr<git::bl::GitDiffService> m_diffService;
+        std::unique_ptr<git::bl::GitBranchService> m_branchService;
+        std::unique_ptr<git::bl::GitHistoryService> m_historyService;
+        std::unique_ptr<git::bl::GitRemoteMergeService> m_remoteMergeService;
+        std::unique_ptr<git::bl::GitCloneService> m_cloneService;
+        std::unique_ptr<git::bl::GitStashService> m_stashService;
+        std::unique_ptr<git::bl::GitRebaseService> m_rebaseService;
+        std::unique_ptr<git::bl::GitConflictService> m_conflictService;
 
-    std::unique_ptr<git::bl::GitWorkingTreeService> m_workingTreeService;
-    std::unique_ptr<git::bl::GitStagingService> m_stagingService;
-    std::unique_ptr<git::bl::GitDiffService> m_diffService;
-    std::unique_ptr<git::bl::GitBranchService> m_branchService;
-    std::unique_ptr<git::bl::GitHistoryService> m_historyService;
-    std::unique_ptr<git::bl::GitRemoteMergeService> m_remoteMergeService;
-    std::unique_ptr<git::bl::GitCloneService> m_cloneService;
-    std::unique_ptr<git::bl::GitStashService> m_stashService;
-    std::unique_ptr<git::bl::GitRebaseService> m_rebaseService;
-    std::unique_ptr<git::bl::GitConflictService> m_conflictService;
+        std::unique_ptr<infra::watcher::NativePollingFsWatcher> m_watcherPort;
+        std::unique_ptr<git::bl::GitRepositoryWatcherService> m_watcherService;
+        std::unique_ptr<tasks::bl::BackgroundTaskRunner> m_taskRunner;
+        std::unique_ptr<git::bl::AsyncGitService> m_asyncGitService;
+        std::unique_ptr<git::bl::MultiRepoBatchCoordinator> m_batchCoordinator;
 
-    std::unique_ptr<infra::watcher::NativePollingFsWatcher> m_watcherPort;
-    std::unique_ptr<git::bl::GitRepositoryWatcherService> m_watcherService;
-    std::unique_ptr<tasks::bl::BackgroundTaskRunner> m_taskRunner;
-    std::unique_ptr<git::bl::AsyncGitService> m_asyncGitService;
-    std::unique_ptr<git::bl::MultiRepoBatchCoordinator> m_batchCoordinator;
+        std::unique_ptr<HomeHubViewModel> m_homeHubVm;
+        std::unique_ptr<QuickOpenViewModel> m_quickOpenVm;
+        std::unique_ptr<WorkspaceSessionViewModel> m_workspaceSessionVm;
+        std::unique_ptr<BatchOperationsViewModel> m_batchOperationsVm;
 
-    std::unique_ptr<HomeHubViewModel> m_homeHubVm;
-    std::unique_ptr<QuickOpenViewModel> m_quickOpenVm;
-    std::unique_ptr<WorkspaceSessionViewModel> m_workspaceSessionVm;
-    std::unique_ptr<BatchOperationsViewModel> m_batchOperationsVm;
-
-    std::unique_ptr<infra::persistence::profiles::SqliteProfileStore> m_profileStore;
-    std::unique_ptr<infra::security::CryptoVault> m_cryptoVault;
-    std::unique_ptr<infra::git::credentials::SystemCredentialDetector> m_credentialDetector;
-    std::unique_ptr<QNetworkAccessManager> m_nam;
-    std::unique_ptr<services::GitProviderApiClient> m_gitApiClient;
-    std::unique_ptr<viewmodels::GitProfilesViewModel> m_gitProfilesVm;
-};
-
+        std::unique_ptr<infra::persistence::profiles::SqliteProfileStore> m_profileStore;
+        std::unique_ptr<infra::security::CryptoVault> m_cryptoVault;
+        std::unique_ptr<infra::git::credentials::SystemCredentialDetector> m_credentialDetector;
+        std::unique_ptr<QNetworkAccessManager> m_nam;
+        std::unique_ptr<services::GitProviderApiClient> m_gitApiClient;
+        std::unique_ptr<viewmodels::GitProfilesViewModel> m_gitProfilesVm;
+    };
 } // namespace gf::desktop

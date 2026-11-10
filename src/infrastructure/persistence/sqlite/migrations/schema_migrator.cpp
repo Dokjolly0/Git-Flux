@@ -3,18 +3,18 @@
 
 #include <chrono>
 
-namespace gf::infra::persistence::sqlite {
-
-namespace {
-
-constexpr std::string_view kCreateMigrationTableSql = R"(
+namespace gf::infra::persistence::sqlite
+{
+    namespace
+    {
+        constexpr std::string_view kCreateMigrationTableSql = R"(
 CREATE TABLE IF NOT EXISTS schema_migrations (
     version INTEGER PRIMARY KEY,
     applied_at_ms INTEGER NOT NULL
 );
 )";
 
-constexpr std::string_view kMigrationV1Sql = R"(
+        constexpr std::string_view kMigrationV1Sql = R"(
 -- 1. Repositories
 CREATE TABLE IF NOT EXISTS repositories (
     id TEXT PRIMARY KEY,
@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS workspace_sessions (
 );
 )";
 
-constexpr std::string_view kMigrationV2Sql = R"(
+        constexpr std::string_view kMigrationV2Sql = R"(
 -- 8. Git Provider Profiles
 CREATE TABLE IF NOT EXISTS git_provider_profiles (
     id TEXT PRIMARY KEY,
@@ -111,110 +111,129 @@ CREATE TABLE IF NOT EXISTS git_provider_profiles (
 );
 CREATE INDEX IF NOT EXISTS idx_git_provider_host ON git_provider_profiles(host);
 )";
+    } // namespace
 
-} // namespace
-
-std::expected<int, SqliteError>
-SchemaMigrator::getCurrentVersion(SqliteConnection& conn) {
-    auto initRes = conn.execute(kCreateMigrationTableSql);
-    if (!initRes) {
-        return std::unexpected(initRes.error());
-    }
-
-    auto stmtRes = SqliteStatement::prepare(
-        conn, "SELECT COALESCE(MAX(version), 0) FROM schema_migrations;");
-    if (!stmtRes) {
-        return std::unexpected(stmtRes.error());
-    }
-
-    auto stepRes = stmtRes->step();
-    if (!stepRes) {
-        return std::unexpected(stepRes.error());
-    }
-    if (*stepRes) {
-        return stmtRes->getInt(0);
-    }
-    return 0;
-}
-
-std::expected<void, SqliteError>
-SchemaMigrator::migrateToLatest(SqliteConnection& conn) {
-    auto curVer = getCurrentVersion(conn);
-    if (!curVer) {
-        return std::unexpected(curVer.error());
-    }
-
-    if (*curVer < 1) {
-        auto tx = SqliteTransaction::begin(conn);
-        if (!tx) {
-            return std::unexpected(tx.error());
+    std::expected<int, SqliteError>
+    SchemaMigrator::getCurrentVersion(SqliteConnection& conn)
+    {
+        auto initRes = conn.execute(kCreateMigrationTableSql);
+        if (!initRes)
+        {
+            return std::unexpected(initRes.error());
         }
 
-        auto execRes = conn.execute(kMigrationV1Sql);
-        if (!execRes) {
-            return std::unexpected(execRes.error());
+        auto stmtRes = SqliteStatement::prepare(
+            conn, "SELECT COALESCE(MAX(version), 0) FROM schema_migrations;");
+        if (!stmtRes)
+        {
+            return std::unexpected(stmtRes.error());
         }
 
-        const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                               std::chrono::system_clock::now().time_since_epoch())
-                               .count();
-
-        auto recordStmt = SqliteStatement::prepare(
-            conn, "INSERT INTO schema_migrations (version, applied_at_ms) VALUES (1, ?);");
-        if (!recordStmt) {
-            return std::unexpected(recordStmt.error());
-        }
-        auto bindRes = recordStmt->bindInt64(1, nowMs);
-        if (!bindRes) {
-            return std::unexpected(bindRes.error());
-        }
-        auto stepRes = recordStmt->step();
-        if (!stepRes) {
+        auto stepRes = stmtRes->step();
+        if (!stepRes)
+        {
             return std::unexpected(stepRes.error());
         }
-
-        auto commitRes = tx->commit();
-        if (!commitRes) {
-            return std::unexpected(commitRes.error());
+        if (*stepRes)
+        {
+            return stmtRes->getInt(0);
         }
+        return 0;
     }
 
-    if (*curVer < 2) {
-        auto tx = SqliteTransaction::begin(conn);
-        if (!tx) {
-            return std::unexpected(tx.error());
+    std::expected<void, SqliteError>
+    SchemaMigrator::migrateToLatest(SqliteConnection& conn)
+    {
+        auto curVer = getCurrentVersion(conn);
+        if (!curVer)
+        {
+            return std::unexpected(curVer.error());
         }
 
-        auto execRes = conn.execute(kMigrationV2Sql);
-        if (!execRes) {
-            return std::unexpected(execRes.error());
+        if (*curVer < 1)
+        {
+            auto tx = SqliteTransaction::begin(conn);
+            if (!tx)
+            {
+                return std::unexpected(tx.error());
+            }
+
+            auto execRes = conn.execute(kMigrationV1Sql);
+            if (!execRes)
+            {
+                return std::unexpected(execRes.error());
+            }
+
+            const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch())
+                .count();
+
+            auto recordStmt = SqliteStatement::prepare(
+                conn, "INSERT INTO schema_migrations (version, applied_at_ms) VALUES (1, ?);");
+            if (!recordStmt)
+            {
+                return std::unexpected(recordStmt.error());
+            }
+            auto bindRes = recordStmt->bindInt64(1, nowMs);
+            if (!bindRes)
+            {
+                return std::unexpected(bindRes.error());
+            }
+            auto stepRes = recordStmt->step();
+            if (!stepRes)
+            {
+                return std::unexpected(stepRes.error());
+            }
+
+            auto commitRes = tx->commit();
+            if (!commitRes)
+            {
+                return std::unexpected(commitRes.error());
+            }
         }
 
-        const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                               std::chrono::system_clock::now().time_since_epoch())
-                               .count();
+        if (*curVer < 2)
+        {
+            auto tx = SqliteTransaction::begin(conn);
+            if (!tx)
+            {
+                return std::unexpected(tx.error());
+            }
 
-        auto recordStmt = SqliteStatement::prepare(
-            conn, "INSERT INTO schema_migrations (version, applied_at_ms) VALUES (2, ?);");
-        if (!recordStmt) {
-            return std::unexpected(recordStmt.error());
-        }
-        auto bindRes = recordStmt->bindInt64(1, nowMs);
-        if (!bindRes) {
-            return std::unexpected(bindRes.error());
-        }
-        auto stepRes = recordStmt->step();
-        if (!stepRes) {
-            return std::unexpected(stepRes.error());
+            auto execRes = conn.execute(kMigrationV2Sql);
+            if (!execRes)
+            {
+                return std::unexpected(execRes.error());
+            }
+
+            const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch())
+                .count();
+
+            auto recordStmt = SqliteStatement::prepare(
+                conn, "INSERT INTO schema_migrations (version, applied_at_ms) VALUES (2, ?);");
+            if (!recordStmt)
+            {
+                return std::unexpected(recordStmt.error());
+            }
+            auto bindRes = recordStmt->bindInt64(1, nowMs);
+            if (!bindRes)
+            {
+                return std::unexpected(bindRes.error());
+            }
+            auto stepRes = recordStmt->step();
+            if (!stepRes)
+            {
+                return std::unexpected(stepRes.error());
+            }
+
+            auto commitRes = tx->commit();
+            if (!commitRes)
+            {
+                return std::unexpected(commitRes.error());
+            }
         }
 
-        auto commitRes = tx->commit();
-        if (!commitRes) {
-            return std::unexpected(commitRes.error());
-        }
+        return {};
     }
-
-    return {};
-}
-
 } // namespace gf::infra::persistence::sqlite

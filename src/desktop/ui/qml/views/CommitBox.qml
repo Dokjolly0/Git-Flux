@@ -29,7 +29,9 @@ Rectangle {
                 font.letterSpacing: 1
             }
 
-            Item { Layout.fillWidth: true }
+            Item {
+                Layout.fillWidth: true
+            }
 
             // Amend Checkbox
             CheckBox {
@@ -79,7 +81,7 @@ Rectangle {
                         }
                     }
 
-                    Keys.onReturnPressed: function(event) {
+                    Keys.onReturnPressed: function (event) {
                         if (event.modifiers & Qt.ControlModifier) {
                             doCommit();
                             event.accepted = true;

@@ -14,45 +14,53 @@ using namespace gf::git::bl;
 using namespace gf::git::bo;
 using namespace gf::infra::watcher;
 
-namespace {
+namespace
+{
+    struct IntegrationTestRepo
+    {
+        std::filesystem::path path;
 
-struct IntegrationTestRepo {
-    std::filesystem::path path;
+        IntegrationTestRepo()
+        {
+            path = std::filesystem::temp_directory_path() / ("gf_fs_watcher_test_" + std::to_string(
+                std::chrono::system_clock::now().time_since_epoch().count()));
+            std::filesystem::remove_all(path);
+            std::filesystem::create_directories(path);
 
-    IntegrationTestRepo() {
-        path = std::filesystem::temp_directory_path() / ("gf_fs_watcher_test_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count()));
-        std::filesystem::remove_all(path);
-        std::filesystem::create_directories(path);
+            // Initialize git repo
+            std::string initCmd = "git -C \"" + path.string() + "\" init -b main > /dev/null 2>&1";
+            [[maybe_unused]] int r1 = std::system(initCmd.c_str());
 
-        // Initialize git repo
-        std::string initCmd = "git -C \"" + path.string() + "\" init -b main > /dev/null 2>&1";
-        [[maybe_unused]] int r1 = std::system(initCmd.c_str());
+            std::string configUser = "git -C \"" + path.string() + "\" config user.name \"Watcher Tester\"";
+            [[maybe_unused]] int r2 = std::system(configUser.c_str());
+            std::string configEmail = "git -C \"" + path.string() + "\" config user.email \"watcher@test.com\"";
+            [[maybe_unused]] int r3 = std::system(configEmail.c_str());
 
-        std::string configUser = "git -C \"" + path.string() + "\" config user.name \"Watcher Tester\"";
-        [[maybe_unused]] int r2 = std::system(configUser.c_str());
-        std::string configEmail = "git -C \"" + path.string() + "\" config user.email \"watcher@test.com\"";
-        [[maybe_unused]] int r3 = std::system(configEmail.c_str());
+            // Initial commit
+            std::ofstream ofs(path / "initial.txt");
+            ofs << "Initial commit\n";
+            ofs.close();
 
-        // Initial commit
-        std::ofstream ofs(path / "initial.txt");
-        ofs << "Initial commit\n";
-        ofs.close();
+            std::string addCmd = "git -C \"" + path.string() + "\" add initial.txt > /dev/null 2>&1";
+            [[maybe_unused]] int r4 = std::system(addCmd.c_str());
+            std::string commitCmd = "git -C \"" + path.string() + "\" commit -m \"Initial\" > /dev/null 2>&1";
+            [[maybe_unused]] int r5 = std::system(commitCmd.c_str());
+        }
 
-        std::string addCmd = "git -C \"" + path.string() + "\" add initial.txt > /dev/null 2>&1";
-        [[maybe_unused]] int r4 = std::system(addCmd.c_str());
-        std::string commitCmd = "git -C \"" + path.string() + "\" commit -m \"Initial\" > /dev/null 2>&1";
-        [[maybe_unused]] int r5 = std::system(commitCmd.c_str());
-    }
-
-    ~IntegrationTestRepo() {
-        std::error_code ec;
-        std::filesystem::remove_all(path, ec);
-    }
-};
-
+        ~IntegrationTestRepo()
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(path, ec);
+        }
+    };
 } // namespace
 
-TEST_CASE("NativePollingFsWatcher and GitRepositoryWatcherService on real Git repo", "[watcher][integration]") {
+TEST_CASE (
+"NativePollingFsWatcher and GitRepositoryWatcherService on real Git repo"
+,
+"[watcher][integration]"
+)
+ {
     using namespace std::chrono_literals;
 
     IntegrationTestRepo repo;

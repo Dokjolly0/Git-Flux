@@ -23,9 +23,13 @@ Rectangle {
     property string fileSearchQuery: ""
 
     signal createBranchRequested(string startPoint)
+
     signal createPullRequestRequested(string sourceBranch, string targetBranch)
+
     signal createTagRequested(string commitSha)
+
     signal createWorktreeRequested(string target)
+
     signal stashModalRequested()
 
     property string draggingBranchName: ""
@@ -153,13 +157,13 @@ Rectangle {
     readonly property var sortedPathFiles: {
         var list = (root.filteredCommitFiles || []).slice(0);
         if (root.fileSortOrder === "name_asc") {
-            list.sort(function(a, b) {
+            list.sort(function (a, b) {
                 var fa = root.getFilename(a.path).toLowerCase();
                 var fb = root.getFilename(b.path).toLowerCase();
                 return fa.localeCompare(fb);
             });
         } else if (root.fileSortOrder === "name_desc") {
-            list.sort(function(a, b) {
+            list.sort(function (a, b) {
                 var fa = root.getFilename(a.path).toLowerCase();
                 var fb = root.getFilename(b.path).toLowerCase();
                 return fb.localeCompare(fa);
@@ -196,9 +200,11 @@ Rectangle {
     // Automatically select first commit or preserve selection on model load/update
     Connections {
         target: (root.branchManager && root.branchManager.commitHistory) ? root.branchManager.commitHistory : null
+
         function onModelReset() {
             root.preserveOrAutoSelect();
         }
+
         function onDataChanged() {
             if (root.selectedCommit && root.selectedCommit.sha !== "WIP" && commitTableListView.currentIndex >= 0) {
                 var model = (root.branchManager && root.branchManager.commitHistory) ? root.branchManager.commitHistory : null;
@@ -210,6 +216,7 @@ Rectangle {
                 }
             }
         }
+
         function onRowsInserted() {
             root.preserveOrAutoSelect();
         }
@@ -218,6 +225,7 @@ Rectangle {
     // Auto-select when session active tab changes
     Connections {
         target: root.sessionVm
+
         function onActiveTabChanged() {
             root.isDiffOpen = false;
             root.selectedFile = null;
@@ -228,6 +236,7 @@ Rectangle {
     // Auto-select when active branch switches
     Connections {
         target: root.branchManager
+
         function onCurrentBranchChanged() {
             root.isDiffOpen = false;
             root.selectedFile = null;
@@ -238,6 +247,7 @@ Rectangle {
     // Refresh WIP files when working tree status changes
     Connections {
         target: (root.sessionVm && root.sessionVm.workingTree) ? root.sessionVm.workingTree : null
+
         function onStatusChanged() {
             if (root.isWipSelected) {
                 root.reloadWipFiles();
@@ -257,7 +267,7 @@ Rectangle {
 
     // Keyboard navigation and shortcuts
     focus: true
-    Keys.onEscapePressed: function(event) {
+    Keys.onEscapePressed: function (event) {
         if (fileHistoryModal.visible) {
             fileHistoryModal.close();
             event.accepted = true;
@@ -277,7 +287,7 @@ Rectangle {
         }
     }
 
-    Keys.onPressed: function(event) {
+    Keys.onPressed: function (event) {
         if ((event.modifiers & Qt.ControlModifier) && (event.key === Qt.Key_F || event.key === Qt.Key_Find)) {
             root.focusCommitSearch();
             event.accepted = true;
@@ -293,7 +303,7 @@ Rectangle {
         }
         commitFilterInput.forceActiveFocus();
         commitFilterInput.selectAll();
-        Qt.callLater(function() {
+        Qt.callLater(function () {
             commitFilterInput.forceActiveFocus();
             commitFilterInput.selectAll();
         });
@@ -325,13 +335,13 @@ Rectangle {
         }
     }
 
-    Keys.onUpPressed: function(event) {
+    Keys.onUpPressed: function (event) {
         if (!root.isDiffOpen && commitTableListView.currentIndex > 0) {
             root.selectCommitByIndex(commitTableListView.currentIndex - 1);
             event.accepted = true;
         }
     }
-    Keys.onDownPressed: function(event) {
+    Keys.onDownPressed: function (event) {
         if (!root.isDiffOpen && commitTableListView.currentIndex < commitTableListView.count - 1) {
             root.selectCommitByIndex(commitTableListView.currentIndex + 1);
             event.accepted = true;
@@ -441,7 +451,7 @@ Rectangle {
         // If file history mode is active, automatically open the diff of the tracked file in this commit!
         if (root.branchManager && root.branchManager.fileHistoryPath !== "" && root.sessionVm && root.sessionVm.commitDiffViewer) {
             var repoPath = root.sessionVm.activeRepoPath;
-            root.selectedFile = { path: root.branchManager.fileHistoryPath, isStaged: false };
+            root.selectedFile = {path: root.branchManager.fileHistoryPath, isStaged: false};
             root.sessionVm.commitDiffViewer.loadCommitFileDiff(repoPath, commit.sha, root.branchManager.fileHistoryPath);
             root.isDiffOpen = true;
         }
@@ -479,12 +489,14 @@ Rectangle {
             return;
         }
 
-        var rootNode = { name: "", fullPath: "", children: {}, files: [], fileCount: 0 };
+        var rootNode = {name: "", fullPath: "", children: {}, files: [], fileCount: 0};
         for (var i = 0; i < files.length; ++i) {
             var f = files[i];
             if (!f || !f.path) continue;
             var cleanPath = f.path.replace(/\\/g, '/');
-            var parts = cleanPath.split('/').filter(function(p) { return p.length > 0; });
+            var parts = cleanPath.split('/').filter(function (p) {
+                return p.length > 0;
+            });
             var filename = parts.pop();
             var curr = rootNode;
             var currPath = "";
@@ -508,12 +520,17 @@ Rectangle {
         }
 
         var items = [];
+
         function traverse(node, depth) {
             var childKeys = Object.keys(node.children);
             if (root.fileSortOrder === "name_desc") {
-                childKeys.sort(function(a, b) { return b.toLowerCase().localeCompare(a.toLowerCase()); });
+                childKeys.sort(function (a, b) {
+                    return b.toLowerCase().localeCompare(a.toLowerCase());
+                });
             } else {
-                childKeys.sort(function(a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); });
+                childKeys.sort(function (a, b) {
+                    return a.toLowerCase().localeCompare(b.toLowerCase());
+                });
             }
 
             for (var k = 0; k < childKeys.length; ++k) {
@@ -535,13 +552,13 @@ Rectangle {
 
             var nodeFiles = node.files.slice(0);
             if (root.fileSortOrder === "name_desc") {
-                nodeFiles.sort(function(a, b) {
+                nodeFiles.sort(function (a, b) {
                     var fa = root.getFilename(a.path).toLowerCase();
                     var fb = root.getFilename(b.path).toLowerCase();
                     return fb.localeCompare(fa);
                 });
             } else if (root.fileSortOrder === "name_asc") {
-                nodeFiles.sort(function(a, b) {
+                nodeFiles.sort(function (a, b) {
                     var fa = root.getFilename(a.path).toLowerCase();
                     var fb = root.getFilename(b.path).toLowerCase();
                     return fa.localeCompare(fb);
@@ -586,7 +603,9 @@ Rectangle {
         var c = {};
         for (var i = 0; i < files.length; ++i) {
             var cleanPath = files[i].path.replace(/\\/g, '/');
-            var parts = cleanPath.split('/').filter(function(p) { return p.length > 0; });
+            var parts = cleanPath.split('/').filter(function (p) {
+                return p.length > 0;
+            });
             parts.pop();
             var pStr = "";
             for (var p = 0; p < parts.length; ++p) {
@@ -767,7 +786,8 @@ Rectangle {
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
                             }
-                            background: Item {}
+                            background: Item {
+                            }
                         }
 
                         // Filter Counter Badge
@@ -784,7 +804,7 @@ Rectangle {
                                 id: filterCountText
                                 anchors.centerIn: parent
                                 text: (root.branchManager && root.branchManager.commitHistory) ?
-                                      (root.branchManager.commitHistory.filteredCommitsCount + " / " + root.branchManager.commitHistory.totalCommitsCount) : ""
+                                    (root.branchManager.commitHistory.filteredCommitsCount + " / " + root.branchManager.commitHistory.totalCommitsCount) : ""
                                 color: "#38BDF8"
                                 font.pixelSize: 11
                                 font.bold: true
@@ -802,7 +822,9 @@ Rectangle {
                             }
                             contentItem: RowLayout {
                                 spacing: 4
-                                Text { text: "📄"; font.pixelSize: 10 }
+                                Text {
+                                    text: "📄"; font.pixelSize: 10
+                                }
                                 Text {
                                     text: (root.branchManager && root.branchManager.fileHistoryPath !== "") ? "Cronologia attiva" : "Cronologia file (Ctrl+H)"
                                     color: (root.branchManager && root.branchManager.fileHistoryPath !== "") ? "#38BDF8" : "#94A3B8"
@@ -830,7 +852,9 @@ Rectangle {
                         anchors.rightMargin: 12
                         spacing: 8
 
-                        Text { text: "📄"; font.pixelSize: 12 }
+                        Text {
+                            text: "📄"; font.pixelSize: 12
+                        }
                         Text {
                             text: "Cronologia file:"
                             color: "#94A3B8"
@@ -849,7 +873,9 @@ Rectangle {
                             color: "#64748B"
                             font.pixelSize: 10
                         }
-                        Item { Layout.fillWidth: true }
+                        Item {
+                            Layout.fillWidth: true
+                        }
                         Button {
                             Layout.preferredHeight: 22
                             background: Rectangle {
@@ -860,8 +886,12 @@ Rectangle {
                             }
                             contentItem: RowLayout {
                                 spacing: 4
-                                Text { text: "✕"; color: "#F87171"; font.bold: true; font.pixelSize: 10 }
-                                Text { text: "Chiudi cronologia file"; color: "#F1F5F9"; font.pixelSize: 10 }
+                                Text {
+                                    text: "✕"; color: "#F87171"; font.bold: true; font.pixelSize: 10
+                                }
+                                Text {
+                                    text: "Chiudi cronologia file"; color: "#F1F5F9"; font.pixelSize: 10
+                                }
                             }
                             onClicked: {
                                 if (root.branchManager) {
@@ -984,22 +1014,23 @@ Rectangle {
                     boundsBehavior: Flickable.StopAtBounds
                     maximumFlickVelocity: 6000
                     flickDeceleration: 1000
-                    ScrollBar.vertical: FluxScrollBar {}
+                    ScrollBar.vertical: FluxScrollBar {
+                    }
                     focus: true
                     keyNavigationWraps: false
-                    Keys.onUpPressed: function(event) {
+                    Keys.onUpPressed: function (event) {
                         if (commitTableListView.currentIndex > 0) {
                             root.selectCommitByIndex(commitTableListView.currentIndex - 1);
                         }
                         event.accepted = true;
                     }
-                    Keys.onDownPressed: function(event) {
+                    Keys.onDownPressed: function (event) {
                         if (commitTableListView.currentIndex < commitTableListView.count - 1) {
                             root.selectCommitByIndex(commitTableListView.currentIndex + 1);
                         }
                         event.accepted = true;
                     }
-                    Keys.onPressed: function(event) {
+                    Keys.onPressed: function (event) {
                         if ((event.modifiers & Qt.ControlModifier) && (event.key === Qt.Key_F || event.key === Qt.Key_Find)) {
                             root.focusCommitSearch();
                             event.accepted = true;
@@ -1044,10 +1075,10 @@ Rectangle {
                         property bool isHoveredTargetRow: (root.draggingBranchName !== "" && root.hoveredTargetBranch !== "" && commitRow.structuredDecorations && root.hasBranchDecoration(commitRow.structuredDecorations, root.hoveredTargetBranch))
 
                         color: commitRow.isHoveredTargetRow
-                               ? "#1E3A8A55"
-                               : (isSelected
-                                  ? "#1A2E4C" // GitKraken blue row selection
-                                  : (rowMouse.containsMouse ? "#161B2288" : "transparent"))
+                            ? "#1E3A8A55"
+                            : (isSelected
+                                ? "#1A2E4C" // GitKraken blue row selection
+                                : (rowMouse.containsMouse ? "#161B2288" : "transparent"))
                         border.color: commitRow.isHoveredTargetRow ? "#38BDF8" : "transparent"
                         border.width: commitRow.isHoveredTargetRow ? 1.5 : 0
 
@@ -1067,7 +1098,7 @@ Rectangle {
                             acceptedButtons: Qt.LeftButton | Qt.RightButton
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: function(mouse) {
+                            onClicked: function (mouse) {
                                 commitTableListView.forceActiveFocus();
                                 root.selectCommitByIndex(commitRow.index);
                                 if (mouse.button === Qt.RightButton) {
@@ -1122,14 +1153,18 @@ Rectangle {
                                             radius: 4
                                             property bool isHoveredTarget: (root.hoveredTargetBranch !== "" && root.draggingBranchName !== "" && root.isSameBranchRef(root.hoveredTargetBranch, modelData.name))
                                             color: branchBadge.isHoveredTarget
-                                                   ? "#2563EB"
-                                                   : (modelData.bgColor || "#0E7490")
+                                                ? "#2563EB"
+                                                : (modelData.bgColor || "#0E7490")
                                             border.color: branchBadge.isHoveredTarget
-                                                   ? "#93C5FD"
-                                                   : (modelData.borderColor || "#06B6D4")
+                                                ? "#93C5FD"
+                                                : (modelData.borderColor || "#06B6D4")
                                             border.width: branchBadge.isHoveredTarget ? 2 : 1
                                             scale: branchBadge.isHoveredTarget ? 1.08 : 1.0
-                                            Behavior on scale { NumberAnimation { duration: 100 } }
+                                            Behavior on scale {
+                                                NumberAnimation {
+                                                    duration: 100
+                                                }
+                                            }
                                             z: 10
 
                                             property string badgeBranchName: modelData.name || ""
@@ -1161,7 +1196,7 @@ Rectangle {
                                                         root.hoveredTargetBranch = "";
                                                     }
                                                 }
-                                                onDropped: function(drop) {
+                                                onDropped: function (drop) {
                                                     var src = root.draggingBranchName;
                                                     var tgt = modelData.name;
                                                     root.hoveredTargetBranch = "";
@@ -1186,14 +1221,14 @@ Rectangle {
                                                 property point startPos: Qt.point(0, 0)
                                                 property bool isDraggingBadge: false
 
-                                                onPressed: function(mouse) {
+                                                onPressed: function (mouse) {
                                                     if (mouse.button === Qt.LeftButton && (modelData.type === "local" || modelData.type === "remote")) {
                                                         startPos = Qt.point(mouse.x, mouse.y);
                                                         isDraggingBadge = false;
                                                     }
                                                 }
 
-                                                onPositionChanged: function(mouse) {
+                                                onPositionChanged: function (mouse) {
                                                     if (pressed && (mouse.buttons & Qt.LeftButton) && (modelData.type === "local" || modelData.type === "remote")) {
                                                         var dx = mouse.x - startPos.x;
                                                         var dy = mouse.y - startPos.y;
@@ -1218,7 +1253,7 @@ Rectangle {
                                                     }
                                                 }
 
-                                                onReleased: function(mouse) {
+                                                onReleased: function (mouse) {
                                                     if (isDraggingBadge) {
                                                         isDraggingBadge = false;
                                                         dragGhostBadge.visible = false;
@@ -1376,10 +1411,10 @@ Rectangle {
                                         anchors.fill: parent
                                         visible: nodeAvatarImg.status === Image.Ready
                                         property string maskBg: commitRow.isHoveredTargetRow
-                                                                ? "#132043"
-                                                                : (commitRow.isSelected
-                                                                   ? "#1A2E4C"
-                                                                   : (rowMouse.containsMouse ? "#12161E" : "#0E1117"))
+                                            ? "#132043"
+                                            : (commitRow.isSelected
+                                                ? "#1A2E4C"
+                                                : (rowMouse.containsMouse ? "#12161E" : "#0E1117"))
                                         property string ringColor: commitRow.isSelected ? "#38BDF8" : (commitRow.graphColor || "#1E293B")
                                         property real ringWidth: commitRow.isSelected ? 2.0 : 1.5
                                         onMaskBgChanged: requestPaint()
@@ -1513,7 +1548,9 @@ Rectangle {
                         ColumnLayout {
                             anchors.centerIn: parent
                             spacing: 10
-                            Text { text: "📜"; font.pixelSize: 32; Layout.alignment: Qt.AlignHCenter }
+                            Text {
+                                text: "📜"; font.pixelSize: 32; Layout.alignment: Qt.AlignHCenter
+                            }
                             Text {
                                 text: "Nessun commit trovato per questo repository."
                                 color: "#F0F6FC"
@@ -1525,8 +1562,12 @@ Rectangle {
                             Button {
                                 Layout.alignment: Qt.AlignHCenter
                                 text: "🔄 Ricarica cronologia"
-                                contentItem: Text { text: "🔄 Ricarica cronologia"; color: "#38BDF8"; font.bold: true; font.pixelSize: 11 }
-                                background: Rectangle { color: parent.hovered ? "#1E293B" : "#0F172A"; radius: 4; border.color: "#38BDF8" }
+                                contentItem: Text {
+                                    text: "🔄 Ricarica cronologia"; color: "#38BDF8"; font.bold: true; font.pixelSize: 11
+                                }
+                                background: Rectangle {
+                                    color: parent.hovered ? "#1E293B" : "#0F172A"; radius: 4; border.color: "#38BDF8"
+                                }
                                 onClicked: if (root.branchManager) root.branchManager.refresh();
                             }
                         }
@@ -1571,7 +1612,9 @@ Rectangle {
                 ColumnLayout {
                     anchors.centerIn: parent
                     spacing: 8
-                    Text { text: "👆"; font.pixelSize: 28; Layout.alignment: Qt.AlignHCenter }
+                    Text {
+                        text: "👆"; font.pixelSize: 28; Layout.alignment: Qt.AlignHCenter
+                    }
                     Text {
                         text: "Seleziona un commit per visualizzarne dettagli e file modificati."
                         color: "#64748B"
@@ -1612,7 +1655,9 @@ Rectangle {
                             font.bold: true
                         }
 
-                        Item { Layout.fillWidth: true }
+                        Item {
+                            Layout.fillWidth: true
+                        }
 
                         // Quick action: Create branch at this commit
                         Rectangle {
@@ -1860,7 +1905,9 @@ Rectangle {
                             id: totalChipRow
                             anchors.centerIn: parent
                             spacing: 5
-                            Text { text: "📁"; font.pixelSize: 11 }
+                            Text {
+                                text: "📁"; font.pixelSize: 11
+                            }
                             Text {
                                 text: root.totalFilesCount + (root.totalFilesCount === 1 ? " file" : " file")
                                 color: root.fileCategoryFilter === "all" ? "#F1F5F9" : "#94A3B8"
@@ -1890,7 +1937,9 @@ Rectangle {
                             id: modChipRow
                             anchors.centerIn: parent
                             spacing: 4
-                            Text { text: "✏️"; font.pixelSize: 10 }
+                            Text {
+                                text: "✏️"; font.pixelSize: 10
+                            }
                             Text {
                                 text: root.modifiedFilesCount + " mod"
                                 color: "#FBBF24"
@@ -1922,7 +1971,9 @@ Rectangle {
                             id: addChipRow
                             anchors.centerIn: parent
                             spacing: 4
-                            Text { text: "➕"; font.pixelSize: 10 }
+                            Text {
+                                text: "➕"; font.pixelSize: 10
+                            }
                             Text {
                                 text: root.addedFilesCount + " creati"
                                 color: "#34D399"
@@ -1954,7 +2005,9 @@ Rectangle {
                             id: delChipRow
                             anchors.centerIn: parent
                             spacing: 4
-                            Text { text: "🗑️"; font.pixelSize: 10 }
+                            Text {
+                                text: "🗑️"; font.pixelSize: 10
+                            }
                             Text {
                                 text: root.deletedFilesCount + " del"
                                 color: "#F87171"
@@ -1986,7 +2039,9 @@ Rectangle {
                             id: renChipRow
                             anchors.centerIn: parent
                             spacing: 4
-                            Text { text: "⇄"; font.pixelSize: 10 }
+                            Text {
+                                text: "⇄"; font.pixelSize: 10
+                            }
                             Text {
                                 text: root.renamedFilesCount + " rinominati"
                                 color: "#38BDF8"
@@ -2073,7 +2128,9 @@ Rectangle {
                         }
                     }
 
-                    Item { Layout.fillWidth: true }
+                    Item {
+                        Layout.fillWidth: true
+                    }
 
                     // WIP Action: Stage All
                     Rectangle {
@@ -2324,7 +2381,8 @@ Rectangle {
                     Layout.fillHeight: true
                     clip: true
                     visible: root.fileViewMode === "path"
-                    ScrollBar.vertical: FluxScrollBar {}
+                    ScrollBar.vertical: FluxScrollBar {
+                    }
 
                     ListView {
                         id: gitKrakenFilesList
@@ -2344,8 +2402,8 @@ Rectangle {
                             property bool isSelected: (root.selectedFile && root.selectedFile.path === modelData.path)
 
                             color: isSelected
-                                   ? "#1E3A8A55"
-                                   : (fileRowMouse.containsMouse ? "#1F242C" : "transparent")
+                                ? "#1E3A8A55"
+                                : (fileRowMouse.containsMouse ? "#1F242C" : "transparent")
 
                             border.color: isSelected ? "#38BDF8" : "transparent"
                             border.width: 1
@@ -2432,7 +2490,7 @@ Rectangle {
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
                                             preventStealing: true
-                                            onClicked: function(mouse) {
+                                            onClicked: function (mouse) {
                                                 mouse.accepted = true;
                                                 if (root.sessionVm && root.sessionVm.workingTree) {
                                                     root.sessionVm.workingTree.unstageFile(root.sessionVm.activeRepoPath, modelData.path);
@@ -2463,7 +2521,7 @@ Rectangle {
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
                                             preventStealing: true
-                                            onClicked: function(mouse) {
+                                            onClicked: function (mouse) {
                                                 mouse.accepted = true;
                                                 if (root.sessionVm && root.sessionVm.workingTree) {
                                                     root.sessionVm.workingTree.stageFile(root.sessionVm.activeRepoPath, modelData.path);
@@ -2492,7 +2550,7 @@ Rectangle {
                                             preventStealing: true
                                             ToolTip.visible: containsMouse
                                             ToolTip.text: "Scarta modifiche (ripristina file)"
-                                            onClicked: function(mouse) {
+                                            onClicked: function (mouse) {
                                                 mouse.accepted = true;
                                                 if (root.sessionVm && root.sessionVm.workingTree) {
                                                     root.sessionVm.workingTree.discardFile(root.sessionVm.activeRepoPath, modelData.path);
@@ -2510,7 +2568,7 @@ Rectangle {
                                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: function(mouse) {
+                                onClicked: function (mouse) {
                                     if (mouse.button === Qt.RightButton) {
                                         changedFileContextMenu.targetPath = modelData.path;
                                         changedFileContextMenu.popup();
@@ -2531,7 +2589,8 @@ Rectangle {
                     Layout.fillHeight: true
                     clip: true
                     visible: root.fileViewMode === "tree"
-                    ScrollBar.vertical: FluxScrollBar {}
+                    ScrollBar.vertical: FluxScrollBar {
+                    }
 
                     ListView {
                         id: gitKrakenTreeList
@@ -2552,8 +2611,8 @@ Rectangle {
                             property bool isSelected: (!isFolder && root.selectedFile && root.selectedFile.path === modelData.path)
 
                             color: isSelected
-                                   ? "#1E3A8A55"
-                                   : (treeRowMouse.containsMouse ? "#1F242C" : "transparent")
+                                ? "#1E3A8A55"
+                                : (treeRowMouse.containsMouse ? "#1F242C" : "transparent")
 
                             border.color: isSelected ? "#38BDF8" : "transparent"
                             border.width: 1
@@ -2679,7 +2738,7 @@ Rectangle {
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
                                             preventStealing: true
-                                            onClicked: function(mouse) {
+                                            onClicked: function (mouse) {
                                                 mouse.accepted = true;
                                                 if (root.sessionVm && root.sessionVm.workingTree) {
                                                     root.sessionVm.workingTree.unstageFile(root.sessionVm.activeRepoPath, modelData.path);
@@ -2710,7 +2769,7 @@ Rectangle {
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
                                             preventStealing: true
-                                            onClicked: function(mouse) {
+                                            onClicked: function (mouse) {
                                                 mouse.accepted = true;
                                                 if (root.sessionVm && root.sessionVm.workingTree) {
                                                     root.sessionVm.workingTree.stageFile(root.sessionVm.activeRepoPath, modelData.path);
@@ -2739,7 +2798,7 @@ Rectangle {
                                             preventStealing: true
                                             ToolTip.visible: containsMouse
                                             ToolTip.text: "Scarta modifiche (ripristina file)"
-                                            onClicked: function(mouse) {
+                                            onClicked: function (mouse) {
                                                 mouse.accepted = true;
                                                 if (root.sessionVm && root.sessionVm.workingTree) {
                                                     root.sessionVm.workingTree.discardFile(root.sessionVm.activeRepoPath, modelData.path);
@@ -2757,7 +2816,7 @@ Rectangle {
                                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: function(mouse) {
+                                onClicked: function (mouse) {
                                     if (mouse.button === Qt.RightButton && !treeDelegate.isFolder && modelData.file) {
                                         changedFileContextMenu.targetPath = modelData.file.path;
                                         changedFileContextMenu.popup();
@@ -2894,8 +2953,18 @@ Rectangle {
         border.width: (root.hoveredTargetBranch !== "") ? 2 : 1.5
         opacity: 0.95
 
-        Behavior on color { ColorAnimation { duration: 100 } }
-        Behavior on border.color { ColorAnimation { duration: 100 } }
+        Behavior on color {
+            ColorAnimation {
+                duration: 100
+            }
+        }
+        Behavior on border
+        .
+        color {
+            ColorAnimation {
+                duration: 100
+            }
+        }
 
         RowLayout {
             anchors.fill: parent
@@ -2911,8 +2980,8 @@ Rectangle {
             Text {
                 id: dragGhostLabel
                 text: (root.hoveredTargetBranch !== "")
-                      ? (root.draggingBranchName + " ➔ " + root.hoveredTargetBranch + " (Rilascia per unire)")
-                      : (root.draggingBranchName + " (Trascina su un altro branch)")
+                    ? (root.draggingBranchName + " ➔ " + root.hoveredTargetBranch + " (Rilascia per unire)")
+                    : (root.draggingBranchName + " (Trascina su un altro branch)")
                 color: "#FFFFFF"
                 font.pixelSize: 11
                 font.bold: true
@@ -2954,7 +3023,8 @@ Rectangle {
             }
         }
 
-        MenuSeparator {}
+        MenuSeparator {
+        }
 
         Menu {
             title: "🔄 Reset branch corrente a questo commit"
@@ -2982,7 +3052,8 @@ Rectangle {
             }
         }
 
-        MenuSeparator {}
+        MenuSeparator {
+        }
 
         MenuItem {
             text: "🍒 Cherry-pick di questo commit"
@@ -3008,7 +3079,8 @@ Rectangle {
             }
         }
 
-        MenuSeparator {}
+        MenuSeparator {
+        }
 
         MenuItem {
             text: "📋 Copia SHA (" + (commitContextMenu.targetSha ? commitContextMenu.targetSha.substring(0, 7) : "") + ")"
@@ -3102,7 +3174,7 @@ Rectangle {
             font.pixelSize: 11
             onClicked: {
                 var current = (root.branchManager && root.branchManager.currentBranch && root.branchManager.currentBranch !== badgeContextMenu.targetName)
-                              ? root.branchManager.currentBranch : "main";
+                    ? root.branchManager.currentBranch : "main";
                 root.createPullRequestRequested(badgeContextMenu.targetName, current);
             }
         }
@@ -3135,7 +3207,8 @@ Rectangle {
             }
         }
 
-        MenuSeparator {}
+        MenuSeparator {
+        }
 
         MenuItem {
             text: "✏ Rinomina branch..."
@@ -3262,7 +3335,9 @@ Rectangle {
                 Layout.preferredHeight: 32
                 color: "#F8FAFC"
                 font.pixelSize: 12
-                background: Rectangle { color: "#020617"; radius: 4; border.color: "#334155" }
+                background: Rectangle {
+                    color: "#020617"; radius: 4; border.color: "#334155"
+                }
                 onAccepted: confirmRenameBtn.clicked()
             }
             Text {
@@ -3281,7 +3356,9 @@ Rectangle {
                 anchors.fill: parent
                 anchors.rightMargin: 12
                 spacing: 8
-                Item { Layout.fillWidth: true }
+                Item {
+                    Layout.fillWidth: true
+                }
                 Button {
                     text: "Annulla"
                     onClicked: renameBranchModal.close()
@@ -3324,10 +3401,14 @@ Rectangle {
             open();
         }
 
-        background: Rectangle { color: "#0F172A"; radius: 8; border.color: "#334155"; border.width: 1 }
+        background: Rectangle {
+            color: "#0F172A"; radius: 8; border.color: "#334155"; border.width: 1
+        }
         header: Rectangle {
             color: "#1E293B"; height: 38; radius: 8
-            Text { anchors.centerIn: parent; text: "🗑 Elimina Branch"; color: "#EF4444"; font.bold: true; font.pixelSize: 12 }
+            Text {
+                anchors.centerIn: parent; text: "🗑 Elimina Branch"; color: "#EF4444"; font.bold: true; font.pixelSize: 12
+            }
         }
         contentItem: Text {
             text: "Sei sicuro di voler eliminare definitivamente il branch '" + deleteBranchConfirmDialog.targetBranch + "'?"
@@ -3337,11 +3418,17 @@ Rectangle {
             color: "#1E293B"; height: 44; radius: 8
             RowLayout {
                 anchors.fill: parent; anchors.rightMargin: 12; spacing: 8
-                Item { Layout.fillWidth: true }
-                Button { text: "Annulla"; onClicked: deleteBranchConfirmDialog.close() }
+                Item {
+                    Layout.fillWidth: true
+                }
+                Button {
+                    text: "Annulla"; onClicked: deleteBranchConfirmDialog.close()
+                }
                 Button {
                     text: "Elimina"
-                    contentItem: Text { text: "Elimina"; color: "#EF4444"; font.bold: true; horizontalAlignment: Text.AlignHCenter }
+                    contentItem: Text {
+                        text: "Elimina"; color: "#EF4444"; font.bold: true; horizontalAlignment: Text.AlignHCenter
+                    }
                     onClicked: {
                         if (root.branchManager) root.branchManager.deleteBranch(deleteBranchConfirmDialog.targetBranch, false);
                         deleteBranchConfirmDialog.close();
@@ -3369,10 +3456,14 @@ Rectangle {
             open();
         }
 
-        background: Rectangle { color: "#0F172A"; radius: 8; border.color: "#334155"; border.width: 1 }
+        background: Rectangle {
+            color: "#0F172A"; radius: 8; border.color: "#334155"; border.width: 1
+        }
         header: Rectangle {
             color: "#1E293B"; height: 38; radius: 8
-            Text { anchors.centerIn: parent; text: "🗑 Elimina Tag"; color: "#EF4444"; font.bold: true; font.pixelSize: 12 }
+            Text {
+                anchors.centerIn: parent; text: "🗑 Elimina Tag"; color: "#EF4444"; font.bold: true; font.pixelSize: 12
+            }
         }
         contentItem: Text {
             text: "Sei sicuro di voler eliminare il tag '" + deleteTagConfirmDialog.targetTag + "'?"
@@ -3382,11 +3473,17 @@ Rectangle {
             color: "#1E293B"; height: 44; radius: 8
             RowLayout {
                 anchors.fill: parent; anchors.rightMargin: 12; spacing: 8
-                Item { Layout.fillWidth: true }
-                Button { text: "Annulla"; onClicked: deleteTagConfirmDialog.close() }
+                Item {
+                    Layout.fillWidth: true
+                }
+                Button {
+                    text: "Annulla"; onClicked: deleteTagConfirmDialog.close()
+                }
                 Button {
                     text: "Elimina"
-                    contentItem: Text { text: "Elimina"; color: "#EF4444"; font.bold: true; horizontalAlignment: Text.AlignHCenter }
+                    contentItem: Text {
+                        text: "Elimina"; color: "#EF4444"; font.bold: true; horizontalAlignment: Text.AlignHCenter
+                    }
                     onClicked: {
                         if (root.branchManager) root.branchManager.deleteTag(deleteTagConfirmDialog.targetTag);
                         deleteTagConfirmDialog.close();
@@ -3521,7 +3618,9 @@ Rectangle {
                     }
                 }
 
-                Item { Layout.fillWidth: true }
+                Item {
+                    Layout.fillWidth: true
+                }
 
                 Text {
                     text: (fileHistoryModal.allRepoFiles.length) + " file tracciati"
@@ -3566,13 +3665,14 @@ Rectangle {
                         Layout.fillHeight: true
                         color: "#F8FAFC"
                         font.pixelSize: 12
-                        background: Item {}
+                        background: Item {
+                        }
                         placeholderText: "Cerca percorso o nome file (es. main.cpp, src/core/...)..."
                         selectByMouse: true
 
                         onTextChanged: fileHistoryModal.applyFilter(text)
 
-                        Keys.onDownPressed: function(event) {
+                        Keys.onDownPressed: function (event) {
                             if (fileHistoryResultsList.currentIndex < fileHistoryModal.filteredRepoFiles.length - 1) {
                                 fileHistoryResultsList.currentIndex++;
                                 fileHistoryResultsList.positionViewAtIndex(fileHistoryResultsList.currentIndex, ListView.Contain);
@@ -3580,7 +3680,7 @@ Rectangle {
                             event.accepted = true;
                         }
 
-                        Keys.onUpPressed: function(event) {
+                        Keys.onUpPressed: function (event) {
                             if (fileHistoryResultsList.currentIndex > 0) {
                                 fileHistoryResultsList.currentIndex--;
                                 fileHistoryResultsList.positionViewAtIndex(fileHistoryResultsList.currentIndex, ListView.Contain);
@@ -3588,15 +3688,15 @@ Rectangle {
                             event.accepted = true;
                         }
 
-                        Keys.onReturnPressed: function(event) {
+                        Keys.onReturnPressed: function (event) {
                             fileHistoryModal.confirmSelection();
                             event.accepted = true;
                         }
-                        Keys.onEnterPressed: function(event) {
+                        Keys.onEnterPressed: function (event) {
                             fileHistoryModal.confirmSelection();
                             event.accepted = true;
                         }
-                        Keys.onEscapePressed: function(event) {
+                        Keys.onEscapePressed: function (event) {
                             fileHistoryModal.close();
                             event.accepted = true;
                         }
@@ -3614,7 +3714,8 @@ Rectangle {
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                         }
-                        background: Item {}
+                        background: Item {
+                        }
                     }
                 }
             }
@@ -3636,7 +3737,8 @@ Rectangle {
                     model: fileHistoryModal.filteredRepoFiles
                     spacing: 2
                     boundsBehavior: Flickable.StopAtBounds
-                    ScrollBar.vertical: FluxScrollBar {}
+                    ScrollBar.vertical: FluxScrollBar {
+                    }
 
                     delegate: Rectangle {
                         id: fileItemRect
@@ -3720,7 +3822,9 @@ Rectangle {
                     font.pixelSize: 10
                 }
 
-                Item { Layout.fillWidth: true }
+                Item {
+                    Layout.fillWidth: true
+                }
 
                 Button {
                     text: "Annulla"

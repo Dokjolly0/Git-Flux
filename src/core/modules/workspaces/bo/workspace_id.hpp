@@ -2,9 +2,11 @@
 
 #include "core/shared/strong_id.hpp"
 
-namespace gf::workspaces::bo {
+namespace gf::workspaces::bo
+{
+    struct WorkspaceIdTag
+    {
+    };
 
-struct WorkspaceIdTag {};
-using WorkspaceId = gf::core::StrongId<WorkspaceIdTag>;
-
+    using WorkspaceId = gf::core::StrongId<WorkspaceIdTag>;
 } // namespace gf::workspaces::bo

@@ -72,13 +72,15 @@ Dialog {
             RowLayout {
                 Layout.fillWidth: true
                 Text {
-                    text: batchOperationsVm && batchOperationsVm.isRunning 
-                          ? "Avanzamento (" + batchOperationsVm.completedRepos + " di " + batchOperationsVm.totalRepos + " repository)"
-                          : "Completato: " + (batchOperationsVm ? batchOperationsVm.succeededCount : 0) + " riusciti, " + (batchOperationsVm ? batchOperationsVm.failedCount : 0) + " falliti"
+                    text: batchOperationsVm && batchOperationsVm.isRunning
+                        ? "Avanzamento (" + batchOperationsVm.completedRepos + " di " + batchOperationsVm.totalRepos + " repository)"
+                        : "Completato: " + (batchOperationsVm ? batchOperationsVm.succeededCount : 0) + " riusciti, " + (batchOperationsVm ? batchOperationsVm.failedCount : 0) + " falliti"
                     color: "#CBD5E1"
                     font.pixelSize: 12
                 }
-                Item { Layout.fillWidth: true }
+                Item {
+                    Layout.fillWidth: true
+                }
                 Text {
                     text: (batchOperationsVm ? batchOperationsVm.progressPercentage : 0) + "%"
                     color: "#38BDF8"
@@ -107,8 +109,12 @@ Dialog {
                         radius: 4
                         gradient: Gradient {
                             orientation: Gradient.Horizontal
-                            GradientStop { position: 0.0; color: "#00E5FF" }
-                            GradientStop { position: 1.0; color: "#3B82F6" }
+                            GradientStop {
+                                position: 0.0; color: "#00E5FF"
+                            }
+                            GradientStop {
+                                position: 1.0; color: "#3B82F6"
+                            }
                         }
                     }
                 }
@@ -135,7 +141,8 @@ Dialog {
                 boundsBehavior: Flickable.StopAtBounds
                 maximumFlickVelocity: 6000
                 flickDeceleration: 1000
-                ScrollBar.vertical: FluxScrollBar {}
+                ScrollBar.vertical: FluxScrollBar {
+                }
                 model: batchOperationsVm ? batchOperationsVm.lastReportItems : []
 
                 delegate: Rectangle {
@@ -199,7 +206,9 @@ Dialog {
             Layout.fillWidth: true
             spacing: 10
 
-            Item { Layout.fillWidth: true }
+            Item {
+                Layout.fillWidth: true
+            }
 
             Button {
                 visible: batchOperationsVm && batchOperationsVm.isRunning

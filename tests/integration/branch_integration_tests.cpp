@@ -8,40 +8,49 @@
 #include <filesystem>
 #include <fstream>
 
-namespace {
+namespace
+{
+    struct BranchTestSandbox
+    {
+        std::filesystem::path root;
 
-struct BranchTestSandbox {
-    std::filesystem::path root;
+        BranchTestSandbox()
+        {
+            const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+            root = std::filesystem::temp_directory_path() / ("gf_branch_integ_" + std::to_string(nonce));
+            std::filesystem::create_directories(root);
+        }
 
-    BranchTestSandbox() {
-        const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-        root = std::filesystem::temp_directory_path() / ("gf_branch_integ_" + std::to_string(nonce));
-        std::filesystem::create_directories(root);
-    }
+        ~BranchTestSandbox()
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(root, ec);
+        }
 
-    ~BranchTestSandbox() {
-        std::error_code ec;
-        std::filesystem::remove_all(root, ec);
-    }
+        void writeFile(const std::string& relativePath, const std::string& content)
+        {
+            auto filePath = root / relativePath;
+            std::filesystem::create_directories(filePath.parent_path());
+            std::ofstream ofs(filePath, std::ios::trunc);
+            ofs << content;
+        }
 
-    void writeFile(const std::string& relativePath, const std::string& content) {
-        auto filePath = root / relativePath;
-        std::filesystem::create_directories(filePath.parent_path());
-        std::ofstream ofs(filePath, std::ios::trunc);
-        ofs << content;
-    }
-
-    std::string readFile(const std::string& relativePath) {
-        auto filePath = root / relativePath;
-        std::ifstream ifs(filePath);
-        return std::string((std::istreambuf_iterator<char>(ifs)),
-                            std::istreambuf_iterator<char>());
-    }
-};
-
+        std::string readFile(const std::string& relativePath)
+        {
+            auto filePath = root / relativePath;
+            std::ifstream ifs(filePath);
+            return std::string((std::istreambuf_iterator<char>(ifs)),
+                               std::istreambuf_iterator<char>());
+        }
+    };
 } // namespace
 
-TEST_CASE("NativeRepositoryGitOps and GitBranchService real Git integration", "[git][branch][integration]") {
+TEST_CASE (
+"NativeRepositoryGitOps and GitBranchService real Git integration"
+,
+"[git][branch][integration]"
+)
+ {
     auto gitDiscovery = gf::infra::git::GitDiscovery::discover();
     REQUIRE(gitDiscovery.has_value());
     const auto gitExe = gitDiscovery->directBinaryPath.empty()

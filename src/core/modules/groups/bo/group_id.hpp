@@ -2,9 +2,11 @@
 
 #include "core/shared/strong_id.hpp"
 
-namespace gf::groups::bo {
+namespace gf::groups::bo
+{
+    struct GroupIdTag
+    {
+    };
 
-struct GroupIdTag {};
-using GroupId = gf::core::StrongId<GroupIdTag>;
-
+    using GroupId = gf::core::StrongId<GroupIdTag>;
 } // namespace gf::groups::bo

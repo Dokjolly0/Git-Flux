@@ -99,7 +99,8 @@ Dialog {
                 boundsBehavior: Flickable.StopAtBounds
                 maximumFlickVelocity: 6000
                 flickDeceleration: 1000
-                ScrollBar.vertical: FluxScrollBar {}
+                ScrollBar.vertical: FluxScrollBar {
+                }
 
                 delegate: Rectangle {
                     id: hunkCard
@@ -146,7 +147,9 @@ Dialog {
                                 }
                             }
 
-                            Item { Layout.fillWidth: true }
+                            Item {
+                                Layout.fillWidth: true
+                            }
 
                             Text {
                                 text: {
@@ -188,7 +191,9 @@ Dialog {
                                             font.bold: true
                                             font.pixelSize: 11
                                         }
-                                        Item { Layout.fillWidth: true }
+                                        Item {
+                                            Layout.fillWidth: true
+                                        }
                                         Button {
                                             text: "Scegli Ours"
                                             Layout.preferredHeight: 22
@@ -238,7 +243,9 @@ Dialog {
                                             font.bold: true
                                             font.pixelSize: 11
                                         }
-                                        Item { Layout.fillWidth: true }
+                                        Item {
+                                            Layout.fillWidth: true
+                                        }
                                         Button {
                                             text: "Scegli Theirs"
                                             Layout.preferredHeight: 22
@@ -296,7 +303,9 @@ Dialog {
                                         }
                                     }
 
-                                    Item { Layout.fillWidth: true }
+                                    Item {
+                                        Layout.fillWidth: true
+                                    }
 
                                     Button {
                                         visible: customExpandCheck.checked

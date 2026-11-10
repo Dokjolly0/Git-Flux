@@ -5,51 +5,54 @@
 #include <optional>
 #include <vector>
 
-namespace gf::repositories::bo {
-struct Repository;
+namespace gf::repositories::bo
+{
+    struct Repository;
 }
 
-namespace gf::desktop {
-
-struct RepositoryItem {
-    QString id;
-    QString displayName;
-    QString localPath;
-    QString status;
-    bool isMissing{false};
-    QString lastAccessedAt;
-    QString branch;
-};
-
-class RepositoryListModel : public QAbstractListModel {
-    Q_OBJECT
-
-public:
-    enum RepositoryRoles {
-        IdRole = Qt::UserRole + 1,
-        DisplayNameRole,
-        LocalPathRole,
-        StatusRole,
-        IsMissingRole,
-        LastAccessedAtRole,
-        BranchRole
+namespace gf::desktop
+{
+    struct RepositoryItem
+    {
+        QString id;
+        QString displayName;
+        QString localPath;
+        QString status;
+        bool isMissing{false};
+        QString lastAccessedAt;
+        QString branch;
     };
 
-    explicit RepositoryListModel(QObject* parent = nullptr);
-    ~RepositoryListModel() override = default;
+    class RepositoryListModel : public QAbstractListModel
+    {
+        Q_OBJECT
 
-    [[nodiscard]] int rowCount(const QModelIndex& parent = QModelIndex()) const override;
-    [[nodiscard]] QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
-    [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
+    public:
+        enum RepositoryRoles
+        {
+            IdRole = Qt::UserRole + 1,
+            DisplayNameRole,
+            LocalPathRole,
+            StatusRole,
+            IsMissingRole,
+            LastAccessedAtRole,
+            BranchRole
+        };
 
-    void setRepositories(const std::vector<gf::repositories::bo::Repository>& repositories);
-    [[nodiscard]] const std::vector<RepositoryItem>& items() const noexcept;
-    [[nodiscard]] std::optional<RepositoryItem> findById(const QString& id) const;
+        explicit RepositoryListModel(QObject* parent = nullptr);
+        ~RepositoryListModel() override = default;
 
-    void updateStatus(const QString& id, const QString& status, bool isMissing);
+        [[nodiscard]] int rowCount(const QModelIndex& parent = QModelIndex()) const override;
+        [[nodiscard]] QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
+        [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
 
-private:
-    std::vector<RepositoryItem> m_items;
-};
+        void setRepositories(const std::vector<gf::repositories::bo::Repository>& repositories);
+        [[nodiscard]] const std::vector<RepositoryItem>& items() const noexcept;
+        [[nodiscard]] std::optional<RepositoryItem> findById(const QString& id) const;
 
+        void updateStatus(const QString& id, const QString& status, bool isMissing);
+
+    private:
+        std::vector<RepositoryItem> m_items;
+    };
 } // namespace gf::desktop

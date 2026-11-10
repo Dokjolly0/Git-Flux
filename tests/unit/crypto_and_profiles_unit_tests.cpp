@@ -7,7 +7,12 @@
 
 #include <filesystem>
 
-TEST_CASE("CryptoVault: Argon2id KDF + AES-256-GCM encryption and decryption", "[crypto][security]") {
+TEST_CASE (
+"CryptoVault: Argon2id KDF + AES-256-GCM encryption and decryption"
+,
+"[crypto][security]"
+)
+ {
     const std::string masterSecret = "super-secret-machine-key-123456789";
     const std::string plaintext = "ghp_PersonalAccessTokenWithHighEntropySecret999";
 
@@ -36,7 +41,12 @@ TEST_CASE("CryptoVault: Argon2id KDF + AES-256-GCM encryption and decryption", "
     CHECK(!tamperedRes.has_value());
 }
 
-TEST_CASE("CryptoVault: Empty string handling and Hex conversion", "[crypto][security]") {
+TEST_CASE (
+"CryptoVault: Empty string handling and Hex conversion"
+,
+"[crypto][security]"
+)
+ {
     const std::string masterSecret = "vault-key-abc";
     auto encRes = gf::infra::security::CryptoVault::encryptWithMasterSecret("", masterSecret);
     REQUIRE(encRes.has_value());
@@ -54,7 +64,12 @@ TEST_CASE("CryptoVault: Empty string handling and Hex conversion", "[crypto][sec
     CHECK(roundtrip == data);
 }
 
-TEST_CASE("SqliteProfileStore: Schema Migration V2 and Profile CRUD", "[persistence][profiles]") {
+TEST_CASE (
+"SqliteProfileStore: Schema Migration V2 and Profile CRUD"
+,
+"[persistence][profiles]"
+)
+ {
     auto connRes = gf::infra::persistence::sqlite::SqliteConnection::openInMemory();
     REQUIRE(connRes.has_value());
     auto& conn = *connRes;
@@ -123,7 +138,12 @@ TEST_CASE("SqliteProfileStore: Schema Migration V2 and Profile CRUD", "[persiste
     CHECK(!getDeleted->has_value());
 }
 
-TEST_CASE("SystemCredentialDetector: Default Profiles and SSH config", "[git][credentials]") {
+TEST_CASE (
+"SystemCredentialDetector: Default Profiles and SSH config"
+,
+"[git][credentials]"
+)
+ {
     gf::infra::git::credentials::SystemCredentialDetector detector;
     auto profiles = detector.detectProfiles();
 

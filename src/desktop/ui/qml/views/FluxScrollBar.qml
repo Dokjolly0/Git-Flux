@@ -17,15 +17,19 @@ ScrollBar {
         radius: control.orientation === Qt.Vertical ? width / 2 : height / 2
 
         color: control.pressed
-               ? "#00E5FF"
-               : (control.hovered ? "#38BDF8" : "#475569")
+            ? "#00E5FF"
+            : (control.hovered ? "#38BDF8" : "#475569")
         opacity: control.active ? 0.85 : 0.35
 
         Behavior on opacity {
-            NumberAnimation { duration: 150 }
+            NumberAnimation {
+                duration: 150
+            }
         }
         Behavior on color {
-            ColorAnimation { duration: 150 }
+            ColorAnimation {
+                duration: 150
+            }
         }
     }
 

@@ -12,7 +12,9 @@ Rectangle {
     property var diffViewer: sessionVm ? sessionVm.diffViewer : null
 
     signal fileSelected(string filePath, string scope)
+
     signal conflictResolveRequested(string filePath)
+
     signal viewHistoryRequested()
 
     ColumnLayout {
@@ -39,7 +41,9 @@ Rectangle {
                     font.letterSpacing: 1
                 }
 
-                Item { Layout.fillWidth: true }
+                Item {
+                    Layout.fillWidth: true
+                }
 
                 // Branch Badge
                 Rectangle {
@@ -88,7 +92,8 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            ScrollBar.vertical: FluxScrollBar {}
+            ScrollBar.vertical: FluxScrollBar {
+            }
 
             ColumnLayout {
                 width: root.width
@@ -132,7 +137,9 @@ Rectangle {
                             }
                         }
 
-                        Item { Layout.fillWidth: true }
+                        Item {
+                            Layout.fillWidth: true
+                        }
                     }
                 }
 
@@ -246,7 +253,9 @@ Rectangle {
                             }
                         }
 
-                        Item { Layout.fillWidth: true }
+                        Item {
+                            Layout.fillWidth: true
+                        }
 
                         Button {
                             text: "Unstage All"
@@ -373,7 +382,9 @@ Rectangle {
                             }
                         }
 
-                        Item { Layout.fillWidth: true }
+                        Item {
+                            Layout.fillWidth: true
+                        }
 
                         Button {
                             text: "Stage All"
@@ -524,7 +535,9 @@ Rectangle {
                             }
                         }
 
-                        Item { Layout.fillWidth: true }
+                        Item {
+                            Layout.fillWidth: true
+                        }
                     }
                 }
 

@@ -10,54 +10,54 @@
 #include <functional>
 #include <string>
 
-namespace gf::git::bl {
+namespace gf::git::bl
+{
+    using AsyncProgressCallback = std::function<void(const tasks::bo::TaskProgress &)>;
 
-using AsyncProgressCallback = std::function<void(const tasks::bo::TaskProgress&)>;
+    using AsyncFetchCallback = std::function<void(std::expected<bo::RemoteOperationResult, ports::GitOpsError>)>;
+    using AsyncPullCallback = std::function<void(std::expected<bo::RemoteOperationResult, ports::GitOpsError>)>;
+    using AsyncPushCallback = std::function<void(std::expected<bo::RemoteOperationResult, ports::GitOpsError>)>;
+    using AsyncWorkingTreeCallback = std::function<void(std::expected<bo::RepoWorkingTreeStatus, ports::GitOpsError>)>;
 
-using AsyncFetchCallback = std::function<void(std::expected<bo::RemoteOperationResult, ports::GitOpsError>)>;
-using AsyncPullCallback = std::function<void(std::expected<bo::RemoteOperationResult, ports::GitOpsError>)>;
-using AsyncPushCallback = std::function<void(std::expected<bo::RemoteOperationResult, ports::GitOpsError>)>;
-using AsyncWorkingTreeCallback = std::function<void(std::expected<bo::RepoWorkingTreeStatus, ports::GitOpsError>)>;
+    class AsyncGitService
+    {
+    public:
+        explicit AsyncGitService(tasks::bl::BackgroundTaskRunner& taskRunner,
+                                 GitRemoteMergeService& remoteMergeService,
+                                 GitWorkingTreeService& workingTreeService);
+        ~AsyncGitService() = default;
 
-class AsyncGitService {
-public:
-    explicit AsyncGitService(tasks::bl::BackgroundTaskRunner& taskRunner,
-                             GitRemoteMergeService& remoteMergeService,
-                             GitWorkingTreeService& workingTreeService);
-    ~AsyncGitService() = default;
+        AsyncGitService(const AsyncGitService&) = delete;
+        AsyncGitService& operator=(const AsyncGitService&) = delete;
+        AsyncGitService(AsyncGitService&&) = delete;
+        AsyncGitService& operator=(AsyncGitService&&) = delete;
 
-    AsyncGitService(const AsyncGitService&) = delete;
-    AsyncGitService& operator=(const AsyncGitService&) = delete;
-    AsyncGitService(AsyncGitService&&) = delete;
-    AsyncGitService& operator=(AsyncGitService&&) = delete;
+        std::string fetchRemoteAsync(const std::filesystem::path& repoPath,
+                                     const bo::RemoteOperationOptions& options,
+                                     AsyncFetchCallback onCompleted = nullptr,
+                                     AsyncProgressCallback onProgress = nullptr);
 
-    std::string fetchRemoteAsync(const std::filesystem::path& repoPath,
-                                 const bo::RemoteOperationOptions& options,
-                                 AsyncFetchCallback onCompleted = nullptr,
-                                 AsyncProgressCallback onProgress = nullptr);
+        std::string pullRemoteAsync(const std::filesystem::path& repoPath,
+                                    const bo::RemoteOperationOptions& options,
+                                    AsyncPullCallback onCompleted = nullptr,
+                                    AsyncProgressCallback onProgress = nullptr);
 
-    std::string pullRemoteAsync(const std::filesystem::path& repoPath,
-                                const bo::RemoteOperationOptions& options,
-                                AsyncPullCallback onCompleted = nullptr,
-                                AsyncProgressCallback onProgress = nullptr);
+        std::string pushRemoteAsync(const std::filesystem::path& repoPath,
+                                    const bo::RemoteOperationOptions& options,
+                                    AsyncPushCallback onCompleted = nullptr,
+                                    AsyncProgressCallback onProgress = nullptr);
 
-    std::string pushRemoteAsync(const std::filesystem::path& repoPath,
-                                const bo::RemoteOperationOptions& options,
-                                AsyncPushCallback onCompleted = nullptr,
-                                AsyncProgressCallback onProgress = nullptr);
+        std::string refreshWorkingTreeAsync(const std::filesystem::path& repoPath,
+                                            AsyncWorkingTreeCallback onCompleted = nullptr,
+                                            AsyncProgressCallback onProgress = nullptr);
 
-    std::string refreshWorkingTreeAsync(const std::filesystem::path& repoPath,
-                                        AsyncWorkingTreeCallback onCompleted = nullptr,
-                                        AsyncProgressCallback onProgress = nullptr);
+        bool cancelOperation(const std::string& taskId);
 
-    bool cancelOperation(const std::string& taskId);
+        [[nodiscard]] tasks::bl::BackgroundTaskRunner& taskRunner() noexcept { return m_taskRunner; }
 
-    [[nodiscard]] tasks::bl::BackgroundTaskRunner& taskRunner() noexcept { return m_taskRunner; }
-
-private:
-    tasks::bl::BackgroundTaskRunner& m_taskRunner;
-    GitRemoteMergeService& m_remoteMergeService;
-    GitWorkingTreeService& m_workingTreeService;
-};
-
+    private:
+        tasks::bl::BackgroundTaskRunner& m_taskRunner;
+        GitRemoteMergeService& m_remoteMergeService;
+        GitWorkingTreeService& m_workingTreeService;
+    };
 } // namespace gf::git::bl

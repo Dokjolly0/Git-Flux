@@ -3,282 +3,334 @@
 
 #include <algorithm>
 
-namespace gf::git::bl {
-
-GitBranchService::GitBranchService(ports::IRepositoryGitOps& gitOps) noexcept
-    : m_gitOps(gitOps) {}
-
-bool GitBranchService::isValidBranchName(std::string_view name) noexcept {
-    if (name.empty() || name == "@") {
-        return false;
-    }
-    if (name.front() == '.' || name.front() == '-' || name.front() == '/') {
-        return false;
-    }
-    if (name.back() == '.' || name.back() == '/') {
-        return false;
-    }
-    if (name.ends_with(".lock")) {
-        return false;
+namespace gf::git::bl
+{
+    GitBranchService::GitBranchService(ports::IRepositoryGitOps& gitOps) noexcept
+        : m_gitOps(gitOps)
+    {
     }
 
-    for (char ch : name) {
-        unsigned char c = static_cast<unsigned char>(ch);
-        if (c < 0x20 || c == 0x7f) {
+    bool GitBranchService::isValidBranchName(std::string_view name) noexcept
+    {
+        if (name.empty() || name == "@")
+        {
             return false;
         }
-        if (c == ' ' || c == '~' || c == '^' || c == ':' || c == '?' || c == '*' || c == '[' || c == '\\') {
+        if (name.front() == '.' || name.front() == '-' || name.front() == '/')
+        {
             return false;
         }
-    }
-
-    if (name.find("..") != std::string_view::npos) {
-        return false;
-    }
-    if (name.find("//") != std::string_view::npos) {
-        return false;
-    }
-    if (name.find("@{") != std::string_view::npos) {
-        return false;
-    }
-
-    return true;
-}
-
-std::expected<void, ports::GitOpsError>
-GitBranchService::validateRepoPath(const std::filesystem::path& repoPath) const {
-    if (repoPath.empty()) {
-        return std::unexpected(ports::GitOpsError{
-            .kind = ports::GitOpsError::Kind::InvalidRepositoryPath,
-            .exitCode = -1,
-            .message = "Il percorso del repository non può essere vuoto",
-            .command = "branch"
-        });
-    }
-
-    std::error_code ec;
-    if (!std::filesystem::exists(repoPath, ec) || !std::filesystem::is_directory(repoPath, ec)) {
-        return std::unexpected(ports::GitOpsError{
-            .kind = ports::GitOpsError::Kind::PathNotFound,
-            .exitCode = -1,
-            .message = "La directory del repository non esiste: " + repoPath.string(),
-            .command = "branch"
-        });
-    }
-
-    return {};
-}
-
-std::expected<std::vector<bo::GitBranch>, ports::GitOpsError>
-GitBranchService::listBranches(const std::filesystem::path& repoPath) {
-    if (auto valid = validateRepoPath(repoPath); !valid) {
-        return std::unexpected(valid.error());
-    }
-
-    return m_gitOps.listBranches(repoPath);
-}
-
-std::expected<std::vector<bo::GitBranch>, ports::GitOpsError>
-GitBranchService::getLocalBranches(const std::filesystem::path& repoPath) {
-    auto all = listBranches(repoPath);
-    if (!all) {
-        return all;
-    }
-
-    std::vector<bo::GitBranch> localBranches;
-    for (auto& b : *all) {
-        if (b.type == bo::BranchType::Local) {
-            localBranches.push_back(std::move(b));
+        if (name.back() == '.' || name.back() == '/')
+        {
+            return false;
         }
-    }
-    return localBranches;
-}
-
-std::expected<std::vector<bo::GitBranch>, ports::GitOpsError>
-GitBranchService::getRemoteBranches(const std::filesystem::path& repoPath) {
-    auto all = listBranches(repoPath);
-    if (!all) {
-        return all;
-    }
-
-    std::vector<bo::GitBranch> remoteBranches;
-    for (auto& b : *all) {
-        if (b.type == bo::BranchType::Remote) {
-            remoteBranches.push_back(std::move(b));
+        if (name.ends_with(".lock"))
+        {
+            return false;
         }
-    }
-    return remoteBranches;
-}
 
-std::expected<std::optional<bo::GitBranch>, ports::GitOpsError>
-GitBranchService::getCurrentBranch(const std::filesystem::path& repoPath) {
-    auto all = listBranches(repoPath);
-    if (!all) {
-        return std::unexpected(all.error());
-    }
-
-    for (const auto& b : *all) {
-        if (b.isCurrent) {
-            return b;
+        for (char ch : name)
+        {
+            unsigned char c = static_cast<unsigned char>(ch);
+            if (c < 0x20 || c == 0x7f)
+            {
+                return false;
+            }
+            if (c == ' ' || c == '~' || c == '^' || c == ':' || c == '?' || c == '*' || c == '[' || c == '\\')
+            {
+                return false;
+            }
         }
-    }
-    return std::nullopt;
-}
 
-std::expected<void, ports::GitOpsError>
-GitBranchService::createBranch(const std::filesystem::path& repoPath,
-                               const bo::CreateBranchOptions& options) {
-    if (auto valid = validateRepoPath(repoPath); !valid) {
-        return valid;
-    }
+        if (name.find("..") != std::string_view::npos)
+        {
+            return false;
+        }
+        if (name.find("//") != std::string_view::npos)
+        {
+            return false;
+        }
+        if (name.find("@{") != std::string_view::npos)
+        {
+            return false;
+        }
 
-    if (!isValidBranchName(options.name)) {
-        return std::unexpected(ports::GitOpsError{
-            .kind = ports::GitOpsError::Kind::InvalidBranchName,
-            .exitCode = -1,
-            .message = "Nome del branch non valido: " + options.name,
-            .command = "branch"
-        });
+        return true;
     }
 
-    auto lock = RepositoryLockCoordinator::instance().acquire(repoPath);
-    return m_gitOps.createBranch(repoPath, options);
-}
+    std::expected<void, ports::GitOpsError>
+    GitBranchService::validateRepoPath(const std::filesystem::path& repoPath) const
+    {
+        if (repoPath.empty())
+        {
+            return std::unexpected(ports::GitOpsError{
+                .kind = ports::GitOpsError::Kind::InvalidRepositoryPath,
+                .exitCode = -1,
+                .message = "Il percorso del repository non può essere vuoto",
+                .command = "branch"
+            });
+        }
 
-std::expected<void, ports::GitOpsError>
-GitBranchService::checkoutBranch(const std::filesystem::path& repoPath,
-                                 const bo::CheckoutOptions& options) {
-    if (auto valid = validateRepoPath(repoPath); !valid) {
-        return valid;
+        std::error_code ec;
+        if (!std::filesystem::exists(repoPath, ec) || !std::filesystem::is_directory(repoPath, ec))
+        {
+            return std::unexpected(ports::GitOpsError{
+                .kind = ports::GitOpsError::Kind::PathNotFound,
+                .exitCode = -1,
+                .message = "La directory del repository non esiste: " + repoPath.string(),
+                .command = "branch"
+            });
+        }
+
+        return {};
     }
 
-    if (options.branchOrCommit.empty()) {
-        return std::unexpected(ports::GitOpsError{
-            .kind = ports::GitOpsError::Kind::InvalidBranchName,
-            .exitCode = -1,
-            .message = "Specificatore di checkout non può essere vuoto",
-            .command = "checkout"
-        });
+    std::expected<std::vector<bo::GitBranch>, ports::GitOpsError>
+    GitBranchService::listBranches(const std::filesystem::path& repoPath)
+    {
+        if (auto valid = validateRepoPath(repoPath); !valid)
+        {
+            return std::unexpected(valid.error());
+        }
+
+        return m_gitOps.listBranches(repoPath);
     }
 
-    if (options.createNewBranch && !isValidBranchName(options.branchOrCommit)) {
-        return std::unexpected(ports::GitOpsError{
-            .kind = ports::GitOpsError::Kind::InvalidBranchName,
-            .exitCode = -1,
-            .message = "Nome del nuovo branch non valido: " + options.branchOrCommit,
-            .command = "checkout"
-        });
+    std::expected<std::vector<bo::GitBranch>, ports::GitOpsError>
+    GitBranchService::getLocalBranches(const std::filesystem::path& repoPath)
+    {
+        auto all = listBranches(repoPath);
+        if (!all)
+        {
+            return all;
+        }
+
+        std::vector<bo::GitBranch> localBranches;
+        for (auto& b : *all)
+        {
+            if (b.type == bo::BranchType::Local)
+            {
+                localBranches.push_back(std::move(b));
+            }
+        }
+        return localBranches;
     }
 
-    auto lock = RepositoryLockCoordinator::instance().acquire(repoPath);
-    return m_gitOps.checkoutBranch(repoPath, options);
-}
+    std::expected<std::vector<bo::GitBranch>, ports::GitOpsError>
+    GitBranchService::getRemoteBranches(const std::filesystem::path& repoPath)
+    {
+        auto all = listBranches(repoPath);
+        if (!all)
+        {
+            return all;
+        }
 
-std::expected<void, ports::GitOpsError>
-GitBranchService::deleteBranch(const std::filesystem::path& repoPath,
-                               const std::string& branchName,
-                               bool force) {
-    if (auto valid = validateRepoPath(repoPath); !valid) {
-        return valid;
+        std::vector<bo::GitBranch> remoteBranches;
+        for (auto& b : *all)
+        {
+            if (b.type == bo::BranchType::Remote)
+            {
+                remoteBranches.push_back(std::move(b));
+            }
+        }
+        return remoteBranches;
     }
 
-    if (branchName.empty()) {
-        return std::unexpected(ports::GitOpsError{
-            .kind = ports::GitOpsError::Kind::InvalidBranchName,
-            .exitCode = -1,
-            .message = "Nome del branch da eliminare non può essere vuoto",
-            .command = "branch -d"
-        });
+    std::expected<std::optional<bo::GitBranch>, ports::GitOpsError>
+    GitBranchService::getCurrentBranch(const std::filesystem::path& repoPath)
+    {
+        auto all = listBranches(repoPath);
+        if (!all)
+        {
+            return std::unexpected(all.error());
+        }
+
+        for (const auto& b : *all)
+        {
+            if (b.isCurrent)
+            {
+                return b;
+            }
+        }
+        return std::nullopt;
     }
 
-    auto lock = RepositoryLockCoordinator::instance().acquire(repoPath);
-    return m_gitOps.deleteBranch(repoPath, branchName, force);
-}
+    std::expected<void, ports::GitOpsError>
+    GitBranchService::createBranch(const std::filesystem::path& repoPath,
+                                   const bo::CreateBranchOptions& options)
+    {
+        if (auto valid = validateRepoPath(repoPath); !valid)
+        {
+            return valid;
+        }
 
-std::expected<void, ports::GitOpsError>
-GitBranchService::renameBranch(const std::filesystem::path& repoPath,
-                               const std::string& oldName,
-                               const std::string& newName) {
-    if (auto valid = validateRepoPath(repoPath); !valid) {
-        return valid;
-    }
+        if (!isValidBranchName(options.name))
+        {
+            return std::unexpected(ports::GitOpsError{
+                .kind = ports::GitOpsError::Kind::InvalidBranchName,
+                .exitCode = -1,
+                .message = "Nome del branch non valido: " + options.name,
+                .command = "branch"
+            });
+        }
 
-    if (oldName.empty()) {
-        return std::unexpected(ports::GitOpsError{
-            .kind = ports::GitOpsError::Kind::InvalidBranchName,
-            .exitCode = -1,
-            .message = "Nome del branch originario non può essere vuoto",
-            .command = "branch -m"
-        });
-    }
-
-    if (!isValidBranchName(newName)) {
-        return std::unexpected(ports::GitOpsError{
-            .kind = ports::GitOpsError::Kind::InvalidBranchName,
-            .exitCode = -1,
-            .message = "Nuovo nome del branch non valido: " + newName,
-            .command = "branch -m"
-        });
+        auto lock = RepositoryLockCoordinator::instance().acquire(repoPath);
+        return m_gitOps.createBranch(repoPath, options);
     }
 
-    auto lock = RepositoryLockCoordinator::instance().acquire(repoPath);
-    return m_gitOps.renameBranch(repoPath, oldName, newName);
-}
+    std::expected<void, ports::GitOpsError>
+    GitBranchService::checkoutBranch(const std::filesystem::path& repoPath,
+                                     const bo::CheckoutOptions& options)
+    {
+        if (auto valid = validateRepoPath(repoPath); !valid)
+        {
+            return valid;
+        }
 
-std::expected<void, ports::GitOpsError>
-GitBranchService::resetCommit(const std::filesystem::path& repoPath,
-                              const std::string& commitSha,
-                              const std::string& mode) {
-    if (auto valid = validateRepoPath(repoPath); !valid) {
-        return valid;
-    }
-    if (commitSha.empty()) {
-        return std::unexpected(ports::GitOpsError{
-            .kind = ports::GitOpsError::Kind::InvalidOperation,
-            .exitCode = -1,
-            .message = "SHA del commit non può essere vuoto",
-            .command = "reset"
-        });
-    }
-    auto lock = RepositoryLockCoordinator::instance().acquire(repoPath);
-    return m_gitOps.resetCommit(repoPath, commitSha, mode);
-}
+        if (options.branchOrCommit.empty())
+        {
+            return std::unexpected(ports::GitOpsError{
+                .kind = ports::GitOpsError::Kind::InvalidBranchName,
+                .exitCode = -1,
+                .message = "Specificatore di checkout non può essere vuoto",
+                .command = "checkout"
+            });
+        }
 
-std::expected<void, ports::GitOpsError>
-GitBranchService::revertCommit(const std::filesystem::path& repoPath,
-                               const std::string& commitSha) {
-    if (auto valid = validateRepoPath(repoPath); !valid) {
-        return valid;
-    }
-    if (commitSha.empty()) {
-        return std::unexpected(ports::GitOpsError{
-            .kind = ports::GitOpsError::Kind::InvalidOperation,
-            .exitCode = -1,
-            .message = "SHA del commit non può essere vuoto",
-            .command = "revert"
-        });
-    }
-    auto lock = RepositoryLockCoordinator::instance().acquire(repoPath);
-    return m_gitOps.revertCommit(repoPath, commitSha);
-}
+        if (options.createNewBranch && !isValidBranchName(options.branchOrCommit))
+        {
+            return std::unexpected(ports::GitOpsError{
+                .kind = ports::GitOpsError::Kind::InvalidBranchName,
+                .exitCode = -1,
+                .message = "Nome del nuovo branch non valido: " + options.branchOrCommit,
+                .command = "checkout"
+            });
+        }
 
-std::expected<void, ports::GitOpsError>
-GitBranchService::createWorktree(const std::filesystem::path& repoPath,
-                                 const std::filesystem::path& worktreePath,
-                                 const std::string& commitOrBranch) {
-    if (auto valid = validateRepoPath(repoPath); !valid) {
-        return valid;
+        auto lock = RepositoryLockCoordinator::instance().acquire(repoPath);
+        return m_gitOps.checkoutBranch(repoPath, options);
     }
-    if (worktreePath.empty()) {
-        return std::unexpected(ports::GitOpsError{
-            .kind = ports::GitOpsError::Kind::InvalidOperation,
-            .exitCode = -1,
-            .message = "Percorso della directory del worktree non specificato",
-            .command = "worktree"
-        });
-    }
-    auto lock = RepositoryLockCoordinator::instance().acquire(repoPath);
-    return m_gitOps.createWorktree(repoPath, worktreePath, commitOrBranch);
-}
 
+    std::expected<void, ports::GitOpsError>
+    GitBranchService::deleteBranch(const std::filesystem::path& repoPath,
+                                   const std::string& branchName,
+                                   bool force)
+    {
+        if (auto valid = validateRepoPath(repoPath); !valid)
+        {
+            return valid;
+        }
+
+        if (branchName.empty())
+        {
+            return std::unexpected(ports::GitOpsError{
+                .kind = ports::GitOpsError::Kind::InvalidBranchName,
+                .exitCode = -1,
+                .message = "Nome del branch da eliminare non può essere vuoto",
+                .command = "branch -d"
+            });
+        }
+
+        auto lock = RepositoryLockCoordinator::instance().acquire(repoPath);
+        return m_gitOps.deleteBranch(repoPath, branchName, force);
+    }
+
+    std::expected<void, ports::GitOpsError>
+    GitBranchService::renameBranch(const std::filesystem::path& repoPath,
+                                   const std::string& oldName,
+                                   const std::string& newName)
+    {
+        if (auto valid = validateRepoPath(repoPath); !valid)
+        {
+            return valid;
+        }
+
+        if (oldName.empty())
+        {
+            return std::unexpected(ports::GitOpsError{
+                .kind = ports::GitOpsError::Kind::InvalidBranchName,
+                .exitCode = -1,
+                .message = "Nome del branch originario non può essere vuoto",
+                .command = "branch -m"
+            });
+        }
+
+        if (!isValidBranchName(newName))
+        {
+            return std::unexpected(ports::GitOpsError{
+                .kind = ports::GitOpsError::Kind::InvalidBranchName,
+                .exitCode = -1,
+                .message = "Nuovo nome del branch non valido: " + newName,
+                .command = "branch -m"
+            });
+        }
+
+        auto lock = RepositoryLockCoordinator::instance().acquire(repoPath);
+        return m_gitOps.renameBranch(repoPath, oldName, newName);
+    }
+
+    std::expected<void, ports::GitOpsError>
+    GitBranchService::resetCommit(const std::filesystem::path& repoPath,
+                                  const std::string& commitSha,
+                                  const std::string& mode)
+    {
+        if (auto valid = validateRepoPath(repoPath); !valid)
+        {
+            return valid;
+        }
+        if (commitSha.empty())
+        {
+            return std::unexpected(ports::GitOpsError{
+                .kind = ports::GitOpsError::Kind::InvalidOperation,
+                .exitCode = -1,
+                .message = "SHA del commit non può essere vuoto",
+                .command = "reset"
+            });
+        }
+        auto lock = RepositoryLockCoordinator::instance().acquire(repoPath);
+        return m_gitOps.resetCommit(repoPath, commitSha, mode);
+    }
+
+    std::expected<void, ports::GitOpsError>
+    GitBranchService::revertCommit(const std::filesystem::path& repoPath,
+                                   const std::string& commitSha)
+    {
+        if (auto valid = validateRepoPath(repoPath); !valid)
+        {
+            return valid;
+        }
+        if (commitSha.empty())
+        {
+            return std::unexpected(ports::GitOpsError{
+                .kind = ports::GitOpsError::Kind::InvalidOperation,
+                .exitCode = -1,
+                .message = "SHA del commit non può essere vuoto",
+                .command = "revert"
+            });
+        }
+        auto lock = RepositoryLockCoordinator::instance().acquire(repoPath);
+        return m_gitOps.revertCommit(repoPath, commitSha);
+    }
+
+    std::expected<void, ports::GitOpsError>
+    GitBranchService::createWorktree(const std::filesystem::path& repoPath,
+                                     const std::filesystem::path& worktreePath,
+                                     const std::string& commitOrBranch)
+    {
+        if (auto valid = validateRepoPath(repoPath); !valid)
+        {
+            return valid;
+        }
+        if (worktreePath.empty())
+        {
+            return std::unexpected(ports::GitOpsError{
+                .kind = ports::GitOpsError::Kind::InvalidOperation,
+                .exitCode = -1,
+                .message = "Percorso della directory del worktree non specificato",
+                .command = "worktree"
+            });
+        }
+        auto lock = RepositoryLockCoordinator::instance().acquire(repoPath);
+        return m_gitOps.createWorktree(repoPath, worktreePath, commitOrBranch);
+    }
 } // namespace gf::git::bl

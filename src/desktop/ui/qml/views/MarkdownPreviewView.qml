@@ -86,6 +86,7 @@ Rectangle {
 
     Connections {
         target: root.diffViewer
+
         function onMarkdownDocumentChanged() {
             root.lastChangeSearchIdx = -1;
             root.highlightedBlockIndex = -1;
@@ -126,7 +127,9 @@ Rectangle {
                     }
                     contentItem: RowLayout {
                         spacing: 5
-                        Text { text: "📑"; font.pixelSize: 10 }
+                        Text {
+                            text: "📑"; font.pixelSize: 10
+                        }
                         Text {
                             text: {
                                 var tocCount = (root.diffViewer && root.diffViewer.markdownToc) ? root.diffViewer.markdownToc.length : 0;
@@ -197,7 +200,9 @@ Rectangle {
                     }
                 }
 
-                Item { Layout.fillWidth: true }
+                Item {
+                    Layout.fillWidth: true
+                }
 
                 // Width Toggle (GitHub Centered vs Full Width)
                 Button {
@@ -324,7 +329,9 @@ Rectangle {
                 anchors.rightMargin: 14
                 spacing: 8
 
-                Text { text: "ℹ"; color: "#D29922"; font.bold: true; font.pixelSize: 12 }
+                Text {
+                    text: "ℹ"; color: "#D29922"; font.bold: true; font.pixelSize: 12
+                }
                 Text {
                     text: root.diffViewer ? root.diffViewer.markdownNotice : ""
                     color: "#E3B341"
@@ -380,7 +387,8 @@ Rectangle {
                         clip: true
                         model: root.diffViewer ? root.diffViewer.markdownToc : null
                         boundsBehavior: Flickable.StopAtBounds
-                        ScrollBar.vertical: FluxScrollBar {}
+                        ScrollBar.vertical: FluxScrollBar {
+                        }
 
                         delegate: Rectangle {
                             width: ListView.view.width
@@ -437,7 +445,8 @@ Rectangle {
                     boundsBehavior: Flickable.StopAtBounds
                     maximumFlickVelocity: 6000
                     flickDeceleration: 1000
-                    ScrollBar.vertical: FluxScrollBar {}
+                    ScrollBar.vertical: FluxScrollBar {
+                    }
 
                     delegate: Item {
                         id: blockDelegate
@@ -689,8 +698,8 @@ Rectangle {
 
                                                 Text {
                                                     text: (modelData.languageTag && modelData.languageTag.length > 0)
-                                                              ? modelData.languageTag.toUpperCase()
-                                                              : "TEXT"
+                                                        ? modelData.languageTag.toUpperCase()
+                                                        : "TEXT"
                                                     color: modelData.isDiagram ? "#79C0FF" : "#8B949E"
                                                     font.family: root.monoFont
                                                     font.pixelSize: 10
@@ -704,7 +713,9 @@ Rectangle {
                                                     font.pixelSize: 10
                                                 }
 
-                                                Item { Layout.fillWidth: true }
+                                                Item {
+                                                    Layout.fillWidth: true
+                                                }
 
                                                 Button {
                                                     id: copyCodeBtn
@@ -742,7 +753,8 @@ Rectangle {
                                             flickableDirection: Flickable.HorizontalFlick
                                             interactive: contentWidth > width
                                             boundsBehavior: Flickable.StopAtBounds
-                                            ScrollBar.horizontal: FluxScrollBar {}
+                                            ScrollBar.horizontal: FluxScrollBar {
+                                            }
 
                                             Text {
                                                 id: codePreText
@@ -937,7 +949,8 @@ Rectangle {
                                         flickableDirection: Flickable.HorizontalFlick
                                         interactive: contentWidth > width
                                         boundsBehavior: Flickable.StopAtBounds
-                                        ScrollBar.horizontal: FluxScrollBar {}
+                                        ScrollBar.horizontal: FluxScrollBar {
+                                        }
 
                                         GridLayout {
                                             id: tableGrid
@@ -954,8 +967,8 @@ Rectangle {
                                                     Layout.fillHeight: true
                                                     Layout.preferredHeight: Math.max(32, cellText.implicitHeight + 14)
                                                     color: modelData.isHeader
-                                                               ? "#161B22"
-                                                               : (modelData.rowIdx % 2 === 0 ? "#0D1117" : "#12171F")
+                                                        ? "#161B22"
+                                                        : (modelData.rowIdx % 2 === 0 ? "#0D1117" : "#12171F")
                                                     border.color: "#30363D"
                                                     border.width: 0.5
 

@@ -66,85 +66,100 @@ using namespace gf::groups::bl;
 using namespace gf::workspaces::bo;
 using namespace gf::workspaces::bl;
 
-namespace {
+namespace
+{
+    static int s_argc = 1;
+    static char s_appName[] = "gf_viewmodels_tests";
+    static char* s_argv[] = {s_appName, nullptr};
 
-static int s_argc = 1;
-static char s_appName[] = "gf_viewmodels_tests";
-static char* s_argv[] = {s_appName, nullptr};
-
-void ensureQtApp() {
-    if (!QCoreApplication::instance()) {
-        if (qEnvironmentVariableIsEmpty("QT_PLUGIN_PATH") && std::filesystem::exists("C:/Qt/6.6.2/msvc2019_64/plugins")) {
-            qputenv("QT_PLUGIN_PATH", "C:/Qt/6.6.2/msvc2019_64/plugins");
+    void ensureQtApp()
+    {
+        if (!QCoreApplication::instance())
+        {
+            if (qEnvironmentVariableIsEmpty("QT_PLUGIN_PATH") && std::filesystem::exists(
+                "C:/Qt/6.6.2/msvc2019_64/plugins"))
+            {
+                qputenv("QT_PLUGIN_PATH", "C:/Qt/6.6.2/msvc2019_64/plugins");
+            }
+            qputenv("QT_QPA_PLATFORM", "offscreen");
+            new QGuiApplication(s_argc, s_argv);
         }
-        qputenv("QT_QPA_PLATFORM", "offscreen");
-        new QGuiApplication(s_argc, s_argv);
-    }
-}
-
-struct QtAppCleanupListener : Catch::EventListenerBase {
-    using Catch::EventListenerBase::EventListenerBase;
-    void testRunEnded(Catch::TestRunStats const&) override {
-        delete QCoreApplication::instance();
-    }
-};
-CATCH_REGISTER_LISTENER(QtAppCleanupListener)
-
-struct TestContext {
-    std::filesystem::path tempDir;
-    std::filesystem::path repoAPath;
-    std::filesystem::path repoBPath;
-    std::filesystem::path repoCPath;
-
-    SqliteConnection connection;
-    std::unique_ptr<SqliteRepositoryStore> repoStore;
-    std::unique_ptr<SqliteGroupStore> groupStore;
-    std::unique_ptr<SqliteWorkspaceStore> workspaceStore;
-
-    std::unique_ptr<RepositoryService> repoService;
-    std::unique_ptr<GroupService> groupService;
-    std::unique_ptr<WorkspaceService> workspaceService;
-
-    TestContext() {
-        ensureQtApp();
-
-        auto connResult = SqliteConnection::openInMemory();
-        REQUIRE(connResult.has_value());
-        connection = std::move(*connResult);
-
-        auto migResult = SchemaMigrator::migrateToLatest(connection);
-        REQUIRE(migResult.has_value());
-
-        repoStore = std::make_unique<SqliteRepositoryStore>(connection);
-        groupStore = std::make_unique<SqliteGroupStore>(connection);
-        workspaceStore = std::make_unique<SqliteWorkspaceStore>(connection);
-
-        repoService = std::make_unique<RepositoryService>(*repoStore);
-        groupService = std::make_unique<GroupService>(*groupStore, *repoStore);
-        workspaceService = std::make_unique<WorkspaceService>(*workspaceStore, *groupStore, *repoStore);
-
-        tempDir = std::filesystem::temp_directory_path() / "gf_vm_test_env";
-        std::filesystem::remove_all(tempDir);
-        std::filesystem::create_directories(tempDir);
-
-        repoAPath = tempDir / "repo_alpha";
-        repoBPath = tempDir / "repo_beta";
-        repoCPath = tempDir / "repo_gamma";
-
-        std::filesystem::create_directories(repoAPath / ".git");
-        std::filesystem::create_directories(repoBPath / ".git");
-        std::filesystem::create_directories(repoCPath / ".git");
     }
 
-    ~TestContext() {
-        std::error_code ec;
-        std::filesystem::remove_all(tempDir, ec);
-    }
-};
+    struct QtAppCleanupListener : Catch::EventListenerBase
+    {
+        using Catch::EventListenerBase::EventListenerBase;
 
+        void testRunEnded(Catch::TestRunStats const&) override
+        {
+            delete QCoreApplication::instance();
+        }
+    };
+
+    CATCH_REGISTER_LISTENER(QtAppCleanupListener)
+
+    struct TestContext
+    {
+        std::filesystem::path tempDir;
+        std::filesystem::path repoAPath;
+        std::filesystem::path repoBPath;
+        std::filesystem::path repoCPath;
+
+        SqliteConnection connection;
+        std::unique_ptr<SqliteRepositoryStore> repoStore;
+        std::unique_ptr<SqliteGroupStore> groupStore;
+        std::unique_ptr<SqliteWorkspaceStore> workspaceStore;
+
+        std::unique_ptr<RepositoryService> repoService;
+        std::unique_ptr<GroupService> groupService;
+        std::unique_ptr<WorkspaceService> workspaceService;
+
+        TestContext()
+        {
+            ensureQtApp();
+
+            auto connResult = SqliteConnection::openInMemory();
+            REQUIRE(connResult.has_value());
+            connection = std::move(*connResult);
+
+            auto migResult = SchemaMigrator::migrateToLatest(connection);
+            REQUIRE(migResult.has_value());
+
+            repoStore = std::make_unique<SqliteRepositoryStore>(connection);
+            groupStore = std::make_unique<SqliteGroupStore>(connection);
+            workspaceStore = std::make_unique<SqliteWorkspaceStore>(connection);
+
+            repoService = std::make_unique<RepositoryService>(*repoStore);
+            groupService = std::make_unique<GroupService>(*groupStore, *repoStore);
+            workspaceService = std::make_unique<WorkspaceService>(*workspaceStore, *groupStore, *repoStore);
+
+            tempDir = std::filesystem::temp_directory_path() / "gf_vm_test_env";
+            std::filesystem::remove_all(tempDir);
+            std::filesystem::create_directories(tempDir);
+
+            repoAPath = tempDir / "repo_alpha";
+            repoBPath = tempDir / "repo_beta";
+            repoCPath = tempDir / "repo_gamma";
+
+            std::filesystem::create_directories(repoAPath / ".git");
+            std::filesystem::create_directories(repoBPath / ".git");
+            std::filesystem::create_directories(repoCPath / ".git");
+        }
+
+        ~TestContext()
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(tempDir, ec);
+        }
+    };
 } // namespace
 
-TEST_CASE("RepositoryListModel exposes and updates repository data", "[desktop][mvvm]") {
+TEST_CASE (
+"RepositoryListModel exposes and updates repository data"
+,
+"[desktop][mvvm]"
+)
+ {
     ensureQtApp();
     RepositoryListModel model;
     REQUIRE(model.rowCount() == 0);
@@ -190,7 +205,12 @@ TEST_CASE("RepositoryListModel exposes and updates repository data", "[desktop][
     CHECK(model.data(idx1, RepositoryListModel::StatusRole).toString() == "valid");
 }
 
-TEST_CASE("GroupListModel exposes group items and repository associations", "[desktop][mvvm]") {
+TEST_CASE (
+"GroupListModel exposes group items and repository associations"
+,
+"[desktop][mvvm]"
+)
+ {
     ensureQtApp();
     GroupListModel model;
     REQUIRE(model.rowCount() == 0);
@@ -215,7 +235,12 @@ TEST_CASE("GroupListModel exposes group items and repository associations", "[de
     CHECK(item->name == "Backend Services");
 }
 
-TEST_CASE("WorkspaceListModel exposes composition summaries and metadata", "[desktop][mvvm]") {
+TEST_CASE (
+"WorkspaceListModel exposes composition summaries and metadata"
+,
+"[desktop][mvvm]"
+)
+ {
     TestContext ctx;
     auto repoA = *ctx.repoService->registerRepository(RegisterRepositoryRequest{.localPath = ctx.repoAPath, .displayName = std::nullopt});
     auto repoB = *ctx.repoService->registerRepository(RegisterRepositoryRequest{.localPath = ctx.repoBPath, .displayName = std::nullopt});
@@ -236,7 +261,12 @@ TEST_CASE("WorkspaceListModel exposes composition summaries and metadata", "[des
     CHECK(model.data(idx, WorkspaceListModel::SummaryRole).toString().contains("1 repo"));
 }
 
-TEST_CASE("HomeHubViewModel orchestrates catalog operations and search filtering", "[desktop][mvvm]") {
+TEST_CASE (
+"HomeHubViewModel orchestrates catalog operations and search filtering"
+,
+"[desktop][mvvm]"
+)
+ {
     TestContext ctx;
     HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService);
 
@@ -317,7 +347,12 @@ TEST_CASE("HomeHubViewModel orchestrates catalog operations and search filtering
     CHECK(vm.repositoriesCount() == 0);
 }
 
-TEST_CASE("HomeHubViewModel handles explorer paths, .git suffix, and comprehensive error feedback", "[desktop][mvvm]") {
+TEST_CASE (
+"HomeHubViewModel handles explorer paths, .git suffix, and comprehensive error feedback"
+,
+"[desktop][mvvm]"
+)
+ {
     TestContext ctx;
     HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService);
 
@@ -378,7 +413,12 @@ TEST_CASE("HomeHubViewModel handles explorer paths, .git suffix, and comprehensi
     CHECK(vm.extractRepoNameFromUrl("") == "repository");
 }
 
-TEST_CASE("HomeHubViewModel interactive operations: renaming, group repo association, and group opening", "[desktop][mvvm]") {
+TEST_CASE (
+"HomeHubViewModel interactive operations: renaming, group repo association, and group opening"
+,
+"[desktop][mvvm]"
+)
+ {
     TestContext ctx;
     HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService);
 
@@ -453,7 +493,12 @@ TEST_CASE("HomeHubViewModel interactive operations: renaming, group repo associa
     CHECK(vm.lastSuccessMessage().contains("Copiato negli appunti"));
 }
 
-TEST_CASE("QuickOpenViewModel provides multi-group selection and deterministic deduplication", "[desktop][mvvm]") {
+TEST_CASE (
+"QuickOpenViewModel provides multi-group selection and deterministic deduplication"
+,
+"[desktop][mvvm]"
+)
+ {
     TestContext ctx;
     auto repoA = *ctx.repoService->registerRepository(RegisterRepositoryRequest{.localPath = ctx.repoAPath, .displayName = "Repo A"});
     auto repoB = *ctx.repoService->registerRepository(RegisterRepositoryRequest{.localPath = ctx.repoBPath, .displayName = "Repo B"});
@@ -514,7 +559,8 @@ TEST_CASE("QuickOpenViewModel provides multi-group selection and deterministic d
     CHECK(errorSpy.count() == 1);
 }
 
-class MockFullGitOps final : public gf::git::ports::IRepositoryGitOps {
+class MockFullGitOps final : public gf::git::ports::IRepositoryGitOps
+{
 public:
     gf::git::bo::RepoWorkingTreeStatus statusToReturn;
     gf::git::bo::FileDiff diffToReturn;
@@ -528,43 +574,50 @@ public:
     bool commitCalled = false;
 
     std::expected<gf::git::bo::RepoWorkingTreeStatus, gf::git::ports::GitOpsError>
-    getWorkingTreeStatus(const std::filesystem::path&) override {
+    getWorkingTreeStatus(const std::filesystem::path&) override
+    {
         getStatusCalled = true;
         return statusToReturn;
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    stageFiles(const std::filesystem::path&, const std::vector<std::string>&) override {
+    stageFiles(const std::filesystem::path&, const std::vector<std::string>&) override
+    {
         stageCalled = true;
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    stageAll(const std::filesystem::path&) override {
+    stageAll(const std::filesystem::path&) override
+    {
         stageCalled = true;
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    unstageFiles(const std::filesystem::path&, const std::vector<std::string>&) override {
+    unstageFiles(const std::filesystem::path&, const std::vector<std::string>&) override
+    {
         unstageCalled = true;
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    unstageAll(const std::filesystem::path&) override {
+    unstageAll(const std::filesystem::path&) override
+    {
         unstageCalled = true;
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    discardFiles(const std::filesystem::path&, const std::vector<std::string>&) override {
+    discardFiles(const std::filesystem::path&, const std::vector<std::string>&) override
+    {
         discardCalled = true;
         return {};
     }
 
     std::expected<gf::git::bo::CommitResult, gf::git::ports::GitOpsError>
-    createCommit(const std::filesystem::path&, const gf::git::bo::CommitOptions&) override {
+    createCommit(const std::filesystem::path&, const gf::git::bo::CommitOptions&) override
+    {
         commitCalled = true;
         return gf::git::bo::CommitResult{
             .commitSha = "1234567890123456789012345678901234567890",
@@ -575,115 +628,139 @@ public:
     }
 
     std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
-    getFileDiff(const std::filesystem::path&, const std::string&, gf::git::bo::DiffScope) override {
+    getFileDiff(const std::filesystem::path&, const std::string&, gf::git::bo::DiffScope) override
+    {
         return diffToReturn;
     }
 
     std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
-    getFileDiffWithContext(const std::filesystem::path& p, const std::string& f, gf::git::bo::DiffScope s, int contextLines) override {
+    getFileDiffWithContext(const std::filesystem::path& p, const std::string& f, gf::git::bo::DiffScope s,
+                           int contextLines) override
+    {
         lastContextLinesRequested = contextLines;
         return getFileDiff(p, f, s);
     }
 
     std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
-    getCommitFileDiffWithContext(const std::filesystem::path&, const std::string&, const std::string&, int contextLines) override {
+    getCommitFileDiffWithContext(const std::filesystem::path&, const std::string&, const std::string&,
+                                 int contextLines) override
+    {
         lastContextLinesRequested = contextLines;
         return diffToReturn;
     }
 
     std::expected<std::string, gf::git::ports::GitOpsError>
-    getFileContent(const std::filesystem::path&, const std::string& rev, const std::string&) override {
+    getFileContent(const std::filesystem::path&, const std::string& rev, const std::string&) override
+    {
         lastFileContentRevision = rev;
         return fileContentToReturn;
     }
 
     std::expected<std::vector<gf::git::bo::FileDiff>, gf::git::ports::GitOpsError>
-    getAllDiffs(const std::filesystem::path&, gf::git::bo::DiffScope) override {
+    getAllDiffs(const std::filesystem::path&, gf::git::bo::DiffScope) override
+    {
         return std::vector<gf::git::bo::FileDiff>{diffToReturn};
     }
 
     std::expected<std::vector<gf::git::bo::GitBranch>, gf::git::ports::GitOpsError>
-    listBranches(const std::filesystem::path&) override {
+    listBranches(const std::filesystem::path&) override
+    {
         return std::vector<gf::git::bo::GitBranch>{};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    createBranch(const std::filesystem::path&, const gf::git::bo::CreateBranchOptions&) override {
+    createBranch(const std::filesystem::path&, const gf::git::bo::CreateBranchOptions&) override
+    {
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    checkoutBranch(const std::filesystem::path&, const gf::git::bo::CheckoutOptions&) override {
+    checkoutBranch(const std::filesystem::path&, const gf::git::bo::CheckoutOptions&) override
+    {
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    deleteBranch(const std::filesystem::path&, const std::string&, bool) override {
+    deleteBranch(const std::filesystem::path&, const std::string&, bool) override
+    {
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    renameBranch(const std::filesystem::path&, const std::string&, const std::string&) override {
+    renameBranch(const std::filesystem::path&, const std::string&, const std::string&) override
+    {
         return {};
     }
 
     std::expected<std::vector<gf::git::bo::GitCommitLogItem>, gf::git::ports::GitOpsError>
-    getCommitLog(const std::filesystem::path&, const gf::git::bo::CommitLogOptions&) override {
+    getCommitLog(const std::filesystem::path&, const gf::git::bo::CommitLogOptions&) override
+    {
         return std::vector<gf::git::bo::GitCommitLogItem>{};
     }
 
     std::expected<std::vector<gf::git::bo::GitTag>, gf::git::ports::GitOpsError>
-    listTags(const std::filesystem::path&) override {
+    listTags(const std::filesystem::path&) override
+    {
         return std::vector<gf::git::bo::GitTag>{};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    createTag(const std::filesystem::path&, const gf::git::bo::CreateTagOptions&) override {
+    createTag(const std::filesystem::path&, const gf::git::bo::CreateTagOptions&) override
+    {
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    deleteTag(const std::filesystem::path&, const std::string&) override {
+    deleteTag(const std::filesystem::path&, const std::string&) override
+    {
         return {};
     }
 
     std::expected<std::vector<gf::git::bo::GitRemote>, gf::git::ports::GitOpsError>
-    listRemotes(const std::filesystem::path&) override {
+    listRemotes(const std::filesystem::path&) override
+    {
         return std::vector<gf::git::bo::GitRemote>{};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    addRemote(const std::filesystem::path&, const std::string&, const std::string&) override {
+    addRemote(const std::filesystem::path&, const std::string&, const std::string&) override
+    {
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    removeRemote(const std::filesystem::path&, const std::string&) override {
+    removeRemote(const std::filesystem::path&, const std::string&) override
+    {
         return {};
     }
 
     std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
-    fetchRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions&) override {
+    fetchRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions&) override
+    {
         return gf::git::bo::RemoteOperationResult{.success = true};
     }
 
     std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
-    pullRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions&) override {
+    pullRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions&) override
+    {
         return gf::git::bo::RemoteOperationResult{.success = true};
     }
 
     std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
-    pushRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions&) override {
+    pushRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions&) override
+    {
         return gf::git::bo::RemoteOperationResult{.success = true};
     }
 
     std::expected<gf::git::bo::MergeResult, gf::git::ports::GitOpsError>
-    mergeBranch(const std::filesystem::path&, const gf::git::bo::MergeOptions&) override {
+    mergeBranch(const std::filesystem::path&, const gf::git::bo::MergeOptions&) override
+    {
         return gf::git::bo::MergeResult{.status = gf::git::bo::MergeStatus::Merged};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    abortMerge(const std::filesystem::path&) override {
+    abortMerge(const std::filesystem::path&) override
+    {
         return {};
     }
 
@@ -704,97 +781,118 @@ public:
     bool applyConflictResolutionCalled = false;
 
     std::expected<std::vector<gf::git::bo::GitStashItem>, gf::git::ports::GitOpsError>
-    listStashes(const std::filesystem::path&) override {
+    listStashes(const std::filesystem::path&) override
+    {
         return stashesToReturn;
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    stashPush(const std::filesystem::path&, const gf::git::bo::StashPushOptions&) override {
+    stashPush(const std::filesystem::path&, const gf::git::bo::StashPushOptions&) override
+    {
         stashPushCalled = true;
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    stashPop(const std::filesystem::path&, const gf::git::bo::StashApplyOptions&) override {
+    stashPop(const std::filesystem::path&, const gf::git::bo::StashApplyOptions&) override
+    {
         stashPopCalled = true;
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    stashApply(const std::filesystem::path&, const gf::git::bo::StashApplyOptions&) override {
+    stashApply(const std::filesystem::path&, const gf::git::bo::StashApplyOptions&) override
+    {
         stashApplyCalled = true;
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    stashDrop(const std::filesystem::path&, std::size_t) override {
+    stashDrop(const std::filesystem::path&, std::size_t) override
+    {
         stashDropCalled = true;
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    stashClear(const std::filesystem::path&) override {
+    stashClear(const std::filesystem::path&) override
+    {
         stashClearCalled = true;
         return {};
     }
 
     std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
-    startRebase(const std::filesystem::path&, const gf::git::bo::RebaseOptions&) override {
+    startRebase(const std::filesystem::path&, const gf::git::bo::RebaseOptions&) override
+    {
         startRebaseCalled = true;
         return gf::git::bo::RebaseResult{.status = gf::git::bo::RebaseStatus::Applied, .message = "Rebase started"};
     }
 
     std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
-    continueRebase(const std::filesystem::path&) override {
+    continueRebase(const std::filesystem::path&) override
+    {
         continueRebaseCalled = true;
         return gf::git::bo::RebaseResult{.status = gf::git::bo::RebaseStatus::Finished, .message = "Rebase finished"};
     }
 
     std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
-    skipRebase(const std::filesystem::path&) override {
+    skipRebase(const std::filesystem::path&) override
+    {
         skipRebaseCalled = true;
         return gf::git::bo::RebaseResult{.status = gf::git::bo::RebaseStatus::Skipped, .message = "Rebase skipped"};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    abortRebase(const std::filesystem::path&) override {
+    abortRebase(const std::filesystem::path&) override
+    {
         abortRebaseCalled = true;
         return {};
     }
 
     std::expected<bool, gf::git::ports::GitOpsError>
-    isRebaseInProgress(const std::filesystem::path&) override {
+    isRebaseInProgress(const std::filesystem::path&) override
+    {
         return rebaseInProgressToReturn;
     }
 
     std::expected<gf::git::bo::CherryPickResult, gf::git::ports::GitOpsError>
-    cherryPick(const std::filesystem::path&, const gf::git::bo::CherryPickOptions&) override {
+    cherryPick(const std::filesystem::path&, const gf::git::bo::CherryPickOptions&) override
+    {
         return gf::git::bo::CherryPickResult{.success = true};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    abortCherryPick(const std::filesystem::path&) override {
+    abortCherryPick(const std::filesystem::path&) override
+    {
         return {};
     }
 
     std::expected<gf::git::bo::ConflictFile, gf::git::ports::GitOpsError>
-    getConflictFile(const std::filesystem::path&, const std::string&) override {
+    getConflictFile(const std::filesystem::path&, const std::string&) override
+    {
         return conflictFileToReturn;
     }
 
     std::expected<std::string, gf::git::ports::GitOpsError>
-    getFileStageContent(const std::filesystem::path&, const std::string&, int) override {
+    getFileStageContent(const std::filesystem::path&, const std::string&, int) override
+    {
         return std::string{};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    applyConflictResolution(const std::filesystem::path&, const gf::git::bo::ApplyConflictResolutionOptions&) override {
+    applyConflictResolution(const std::filesystem::path&, const gf::git::bo::ApplyConflictResolutionOptions&) override
+    {
         applyConflictResolutionCalled = true;
         return {};
     }
 };
 
-TEST_CASE("WorkingTreeFileListModel and DiffLineListModel MVVM models", "[viewmodel][models]") {
+TEST_CASE (
+"WorkingTreeFileListModel and DiffLineListModel MVVM models"
+,
+"[viewmodel][models]"
+)
+ {
     ensureQtApp();
 
     SECTION("WorkingTreeFileListModel handles items and roles correctly") {
@@ -872,7 +970,12 @@ TEST_CASE("WorkingTreeFileListModel and DiffLineListModel MVVM models", "[viewmo
     }
 }
 
-TEST_CASE("WorkingTreeViewModel and CommitBoxViewModel reactive behavior", "[viewmodel][session]") {
+TEST_CASE (
+"WorkingTreeViewModel and CommitBoxViewModel reactive behavior"
+,
+"[viewmodel][session]"
+)
+ {
     ensureQtApp();
 
     MockFullGitOps mockOps;
@@ -939,7 +1042,12 @@ TEST_CASE("WorkingTreeViewModel and CommitBoxViewModel reactive behavior", "[vie
     }
 }
 
-TEST_CASE("WorkspaceSessionViewModel multi-tab orchestration", "[viewmodel][session][tabs]") {
+TEST_CASE (
+"WorkspaceSessionViewModel multi-tab orchestration"
+,
+"[viewmodel][session][tabs]"
+)
+ {
     ensureQtApp();
 
     TestContext ctx;
@@ -1048,7 +1156,12 @@ TEST_CASE("WorkspaceSessionViewModel multi-tab orchestration", "[viewmodel][sess
     CHECK_FALSE(sessionVm.hasOpenTabs());
 }
 
-TEST_CASE("BranchListModel and CommitHistoryListModel MVVM representations", "[viewmodel][models][branch][history]") {
+TEST_CASE (
+"BranchListModel and CommitHistoryListModel MVVM representations"
+,
+"[viewmodel][models][branch][history]"
+)
+ {
     ensureQtApp();
 
     SECTION("BranchListModel handles branch roles and reset") {
@@ -1353,7 +1466,12 @@ TEST_CASE("BranchListModel and CommitHistoryListModel MVVM representations", "[v
     }
 }
 
-TEST_CASE("BranchManagerViewModel operations and signal propagation", "[viewmodel][branch][manager]") {
+TEST_CASE (
+"BranchManagerViewModel operations and signal propagation"
+,
+"[viewmodel][branch][manager]"
+)
+ {
     ensureQtApp();
 
     MockFullGitOps mockOps;
@@ -1471,7 +1589,12 @@ TEST_CASE("BranchManagerViewModel operations and signal propagation", "[viewmode
     (void)repoFiles;
 }
 
-TEST_CASE("StashListModel and StashManagerViewModel operations", "[viewmodel][stash]") {
+TEST_CASE (
+"StashListModel and StashManagerViewModel operations"
+,
+"[viewmodel][stash]"
+)
+ {
     ensureQtApp();
 
     SECTION("StashListModel manages items and exposes correct roles") {
@@ -1579,7 +1702,12 @@ TEST_CASE("StashListModel and StashManagerViewModel operations", "[viewmodel][st
     }
 }
 
-TEST_CASE("ConflictHunkListModel and ConflictResolverViewModel 3-way conflict resolution", "[viewmodel][conflict]") {
+TEST_CASE (
+"ConflictHunkListModel and ConflictResolverViewModel 3-way conflict resolution"
+,
+"[viewmodel][conflict]"
+)
+ {
     ensureQtApp();
 
     SECTION("ConflictHunkListModel tracks resolution state") {
@@ -1690,7 +1818,12 @@ TEST_CASE("ConflictHunkListModel and ConflictResolverViewModel 3-way conflict re
     }
 }
 
-TEST_CASE("WorkspaceSessionViewModel Rebase operations and state tracking", "[viewmodel][session][rebase]") {
+TEST_CASE (
+"WorkspaceSessionViewModel Rebase operations and state tracking"
+,
+"[viewmodel][session][rebase]"
+)
+ {
     ensureQtApp();
 
     TestContext ctx;
@@ -1758,31 +1891,42 @@ TEST_CASE("WorkspaceSessionViewModel Rebase operations and state tracking", "[vi
     CHECK(sessionVm.workingTree()->conflictedModel() != nullptr);
 }
 
-class MockFsWatcherPort final : public gf::git::ports::IFsWatcherPort {
+class MockFsWatcherPort final : public gf::git::ports::IFsWatcherPort
+{
 public:
     std::set<std::filesystem::path> watchedPaths;
     gf::git::ports::FsRawEventCallback eventCb;
 
-    std::expected<void, gf::git::ports::FsWatcherError> watchRepository(const std::filesystem::path& repoPath) override {
+    std::expected<void, gf::git::ports::FsWatcherError> watchRepository(const std::filesystem::path& repoPath) override
+    {
         watchedPaths.insert(repoPath);
         return {};
     }
 
-    std::expected<void, gf::git::ports::FsWatcherError> unwatchRepository(const std::filesystem::path& repoPath) override {
+    std::expected<void, gf::git::ports::FsWatcherError>
+    unwatchRepository(const std::filesystem::path& repoPath) override
+    {
         watchedPaths.erase(repoPath);
         return {};
     }
 
-    bool isWatching(const std::filesystem::path& repoPath) const override {
+    bool isWatching(const std::filesystem::path& repoPath) const override
+    {
         return watchedPaths.contains(repoPath);
     }
 
-    void setEventCallback(gf::git::ports::FsRawEventCallback cb) override {
+    void setEventCallback(gf::git::ports::FsRawEventCallback cb) override
+    {
         eventCb = std::move(cb);
     }
 };
 
-TEST_CASE("WorkspaceSessionViewModel - Watcher Integration & Auto-Refresh", "[desktop][viewmodels][watcher]") {
+TEST_CASE (
+"WorkspaceSessionViewModel - Watcher Integration & Auto-Refresh"
+,
+"[desktop][viewmodels][watcher]"
+)
+ {
     TestContext ctx;
     auto r1Res = ctx.repoService->registerRepository({
         .localPath = ctx.repoAPath,
@@ -1848,7 +1992,12 @@ TEST_CASE("WorkspaceSessionViewModel - Watcher Integration & Auto-Refresh", "[de
     CHECK_FALSE(watcherPort.isWatching(ctx.repoAPath));
 }
 
-TEST_CASE("BatchOperationsViewModel - Batch Execution & Status Reporting", "[desktop][viewmodels][batch]") {
+TEST_CASE (
+"BatchOperationsViewModel - Batch Execution & Status Reporting"
+,
+"[desktop][viewmodels][batch]"
+)
+ {
     TestContext ctx;
     auto r1Res = ctx.repoService->registerRepository({
         .localPath = ctx.repoAPath,
@@ -1940,7 +2089,12 @@ TEST_CASE("BatchOperationsViewModel - Batch Execution & Status Reporting", "[des
     }
 }
 
-TEST_CASE("DiffViewModel - View mode switching and property invariants", "[desktop][viewmodels]") {
+TEST_CASE (
+"DiffViewModel - View mode switching and property invariants"
+,
+"[desktop][viewmodels]"
+)
+ {
     MockFullGitOps mockOps;
     gf::git::bl::GitDiffService diffService(mockOps);
 
@@ -2000,7 +2154,12 @@ TEST_CASE("DiffViewModel - View mode switching and property invariants", "[deskt
 
 #include "desktop/viewmodels/remote_repo_list_model.hpp"
 
-TEST_CASE("RemoteRepoListModel: Real-Time Filtering and Protocol Switching", "[desktop][viewmodels][remote_repo]") {
+TEST_CASE (
+"RemoteRepoListModel: Real-Time Filtering and Protocol Switching"
+,
+"[desktop][viewmodels][remote_repo]"
+)
+ {
     using namespace gf::desktop::viewmodels;
 
     RemoteRepoListModel model;
@@ -2094,7 +2253,12 @@ TEST_CASE("RemoteRepoListModel: Real-Time Filtering and Protocol Switching", "[d
     CHECK(model.searchFilter().isEmpty());
 }
 
-TEST_CASE("HomeHubViewModel: resetCloneState Resets All Progress and Cache", "[desktop][viewmodels][clone_reset]") {
+TEST_CASE (
+"HomeHubViewModel: resetCloneState Resets All Progress and Cache"
+,
+"[desktop][viewmodels][clone_reset]"
+)
+ {
     TestContext ctx;
 
     HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService, nullptr);
@@ -2115,7 +2279,12 @@ TEST_CASE("HomeHubViewModel: resetCloneState Resets All Progress and Cache", "[d
     CHECK(vm.lastError().isEmpty());
 }
 
-TEST_CASE("HomeHubViewModel: lastCloneDestinationPath persistence and signals", "[desktop][viewmodels][clone_dest]") {
+TEST_CASE (
+"HomeHubViewModel: lastCloneDestinationPath persistence and signals"
+,
+"[desktop][viewmodels][clone_dest]"
+)
+ {
     TestContext ctx;
 
     HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService, nullptr);
@@ -2145,7 +2314,12 @@ TEST_CASE("HomeHubViewModel: lastCloneDestinationPath persistence and signals", 
     CHECK(destSpy.count() == 0);
 }
 
-TEST_CASE("HomeHubViewModel: section visibility customization and persistence rules", "[desktop][viewmodels][sections]") {
+TEST_CASE (
+"HomeHubViewModel: section visibility customization and persistence rules"
+,
+"[desktop][viewmodels][sections]"
+)
+ {
     TestContext ctx;
     HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService, nullptr);
 
@@ -2181,7 +2355,12 @@ TEST_CASE("HomeHubViewModel: section visibility customization and persistence ru
     CHECK(grpSpy.count() == 2);
 }
 
-TEST_CASE("HomeHubViewModel: workspace repo composition and available repos filtering", "[desktop][viewmodels][workspace_composition]") {
+TEST_CASE (
+"HomeHubViewModel: workspace repo composition and available repos filtering"
+,
+"[desktop][viewmodels][workspace_composition]"
+)
+ {
     TestContext ctx;
     HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService, nullptr);
 
@@ -2275,7 +2454,12 @@ TEST_CASE("HomeHubViewModel: workspace repo composition and available repos filt
 
 
 
-TEST_CASE("DiffViewModel - Context lines, Markdown preview, Rich Diff e evidenziazione multi-riga", "[desktop][viewmodels][diff][markdown]") {
+TEST_CASE (
+"DiffViewModel - Context lines, Markdown preview, Rich Diff e evidenziazione multi-riga"
+,
+"[desktop][viewmodels][diff][markdown]"
+)
+ {
     ensureQtApp();
 
     MockFullGitOps mockOps;

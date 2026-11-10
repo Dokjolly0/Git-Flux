@@ -31,21 +31,21 @@ ApplicationWindow {
             quickOpenModal.open();
         }
 
-        onRepositoryOpened: function(repoId, name, path) {
+        onRepositoryOpened: function (repoId, name, path) {
             if (typeof workspaceSessionVm !== "undefined") {
                 workspaceSessionVm.openRepository(repoId, name, path);
                 appWindow.currentView = "session";
             }
         }
 
-        onGroupOpened: function(groupId, groupName, repoIds) {
+        onGroupOpened: function (groupId, groupName, repoIds) {
             if (typeof workspaceSessionVm !== "undefined") {
                 workspaceSessionVm.openGroup(groupName, repoIds);
                 appWindow.currentView = "session";
             }
         }
 
-        onWorkspaceOpened: function(workspaceId) {
+        onWorkspaceOpened: function (workspaceId) {
             if (typeof workspaceSessionVm !== "undefined") {
                 workspaceSessionVm.openWorkspace(workspaceId);
                 appWindow.currentView = "session";
@@ -74,7 +74,7 @@ ApplicationWindow {
         id: quickOpenModal
         anchors.fill: parent
 
-        onSessionStarted: function(repoIds) {
+        onSessionStarted: function (repoIds) {
             if (typeof workspaceSessionVm !== "undefined") {
                 workspaceSessionVm.openRepositories(repoIds);
                 appWindow.currentView = "session";

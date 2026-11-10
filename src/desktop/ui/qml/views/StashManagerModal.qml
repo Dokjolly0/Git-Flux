@@ -151,7 +151,9 @@ Dialog {
                             font.letterSpacing: 1
                         }
 
-                        Item { Layout.fillWidth: true }
+                        Item {
+                            Layout.fillWidth: true
+                        }
 
                         Button {
                             text: "Svuota Tutto (Clear)"
@@ -187,7 +189,8 @@ Dialog {
                     boundsBehavior: Flickable.StopAtBounds
                     maximumFlickVelocity: 6000
                     flickDeceleration: 1000
-                    ScrollBar.vertical: FluxScrollBar {}
+                    ScrollBar.vertical: FluxScrollBar {
+                    }
 
                     delegate: Rectangle {
                         width: stashListView.width

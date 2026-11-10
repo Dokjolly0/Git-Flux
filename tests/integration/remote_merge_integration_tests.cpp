@@ -8,49 +8,59 @@
 #include <filesystem>
 #include <fstream>
 
-namespace {
+namespace
+{
+    struct RemoteMergeSandbox
+    {
+        std::filesystem::path root;
+        std::filesystem::path bareRemote;
+        std::filesystem::path localRepoA;
+        std::filesystem::path localRepoB;
 
-struct RemoteMergeSandbox {
-    std::filesystem::path root;
-    std::filesystem::path bareRemote;
-    std::filesystem::path localRepoA;
-    std::filesystem::path localRepoB;
+        RemoteMergeSandbox()
+        {
+            const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+            root = std::filesystem::temp_directory_path() / ("gf_remote_integ_" + std::to_string(nonce));
+            bareRemote = root / "upstream.git";
+            localRepoA = root / "repo_a";
+            localRepoB = root / "repo_b";
 
-    RemoteMergeSandbox() {
-        const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-        root = std::filesystem::temp_directory_path() / ("gf_remote_integ_" + std::to_string(nonce));
-        bareRemote = root / "upstream.git";
-        localRepoA = root / "repo_a";
-        localRepoB = root / "repo_b";
+            std::filesystem::create_directories(bareRemote);
+            std::filesystem::create_directories(localRepoA);
+            std::filesystem::create_directories(localRepoB);
+        }
 
-        std::filesystem::create_directories(bareRemote);
-        std::filesystem::create_directories(localRepoA);
-        std::filesystem::create_directories(localRepoB);
-    }
+        ~RemoteMergeSandbox()
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(root, ec);
+        }
 
-    ~RemoteMergeSandbox() {
-        std::error_code ec;
-        std::filesystem::remove_all(root, ec);
-    }
+        void writeFile(const std::filesystem::path& repoRoot, const std::string& relativePath,
+                       const std::string& content)
+        {
+            auto filePath = repoRoot / relativePath;
+            std::filesystem::create_directories(filePath.parent_path());
+            std::ofstream ofs(filePath, std::ios::trunc);
+            ofs << content;
+        }
 
-    void writeFile(const std::filesystem::path& repoRoot, const std::string& relativePath, const std::string& content) {
-        auto filePath = repoRoot / relativePath;
-        std::filesystem::create_directories(filePath.parent_path());
-        std::ofstream ofs(filePath, std::ios::trunc);
-        ofs << content;
-    }
-
-    std::string readFile(const std::filesystem::path& repoRoot, const std::string& relativePath) {
-        auto filePath = repoRoot / relativePath;
-        std::ifstream ifs(filePath);
-        return std::string((std::istreambuf_iterator<char>(ifs)),
-                            std::istreambuf_iterator<char>());
-    }
-};
-
+        std::string readFile(const std::filesystem::path& repoRoot, const std::string& relativePath)
+        {
+            auto filePath = repoRoot / relativePath;
+            std::ifstream ifs(filePath);
+            return std::string((std::istreambuf_iterator<char>(ifs)),
+                               std::istreambuf_iterator<char>());
+        }
+    };
 } // namespace
 
-TEST_CASE("NativeRepositoryGitOps and GitRemoteMergeService real Git integration", "[git][remote][merge][integration]") {
+TEST_CASE (
+"NativeRepositoryGitOps and GitRemoteMergeService real Git integration"
+,
+"[git][remote][merge][integration]"
+)
+ {
     auto gitDiscovery = gf::infra::git::GitDiscovery::discover();
     REQUIRE(gitDiscovery.has_value());
     const auto gitExe = gitDiscovery->directBinaryPath.empty()

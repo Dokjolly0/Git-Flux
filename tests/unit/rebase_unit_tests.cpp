@@ -6,169 +6,314 @@
 #include <string>
 #include <vector>
 
-namespace {
+namespace
+{
+    class MockRebaseGitOps final : public gf::git::ports::IRepositoryGitOps
+    {
+    public:
+        bool startRebaseCalled = false;
+        bool continueRebaseCalled = false;
+        bool skipRebaseCalled = false;
+        bool abortRebaseCalled = false;
+        bool isRebaseInProgressCalled = false;
+        bool cherryPickCalled = false;
+        bool abortCherryPickCalled = false;
 
-class MockRebaseGitOps final : public gf::git::ports::IRepositoryGitOps {
-public:
-    bool startRebaseCalled = false;
-    bool continueRebaseCalled = false;
-    bool skipRebaseCalled = false;
-    bool abortRebaseCalled = false;
-    bool isRebaseInProgressCalled = false;
-    bool cherryPickCalled = false;
-    bool abortCherryPickCalled = false;
+        gf::git::bo::RebaseOptions lastRebaseOptions;
+        gf::git::bo::CherryPickOptions lastCherryPickOptions;
 
-    gf::git::bo::RebaseOptions lastRebaseOptions;
-    gf::git::bo::CherryPickOptions lastCherryPickOptions;
+        gf::git::bo::RebaseResult rebaseResultToReturn;
+        gf::git::bo::CherryPickResult cherryPickResultToReturn;
+        bool rebaseInProgressToReturn = false;
+        bool failOperations = false;
+        gf::git::ports::GitOpsError::Kind failureKind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
 
-    gf::git::bo::RebaseResult rebaseResultToReturn;
-    gf::git::bo::CherryPickResult cherryPickResultToReturn;
-    bool rebaseInProgressToReturn = false;
-    bool failOperations = false;
-    gf::git::ports::GitOpsError::Kind failureKind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-
-    std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
-    startRebase(const std::filesystem::path&, const gf::git::bo::RebaseOptions& options) override {
-        startRebaseCalled = true;
-        lastRebaseOptions = options;
-        if (failOperations) {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = failureKind,
-                .exitCode = 1,
-                .message = "Failed start rebase",
-                .command = "git rebase"
-            });
+        std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
+        startRebase(const std::filesystem::path&, const gf::git::bo::RebaseOptions& options) override
+        {
+            startRebaseCalled = true;
+            lastRebaseOptions = options;
+            if (failOperations)
+            {
+                return std::unexpected(gf::git::ports::GitOpsError{
+                    .kind = failureKind,
+                    .exitCode = 1,
+                    .message = "Failed start rebase",
+                    .command = "git rebase"
+                });
+            }
+            return rebaseResultToReturn;
         }
-        return rebaseResultToReturn;
-    }
 
-    std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
-    continueRebase(const std::filesystem::path&) override {
-        continueRebaseCalled = true;
-        if (failOperations) {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = failureKind,
-                .exitCode = 1,
-                .message = "Failed continue rebase",
-                .command = "git rebase --continue"
-            });
+        std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
+        continueRebase(const std::filesystem::path&) override
+        {
+            continueRebaseCalled = true;
+            if (failOperations)
+            {
+                return std::unexpected(gf::git::ports::GitOpsError{
+                    .kind = failureKind,
+                    .exitCode = 1,
+                    .message = "Failed continue rebase",
+                    .command = "git rebase --continue"
+                });
+            }
+            return rebaseResultToReturn;
         }
-        return rebaseResultToReturn;
-    }
 
-    std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
-    skipRebase(const std::filesystem::path&) override {
-        skipRebaseCalled = true;
-        if (failOperations) {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = failureKind,
-                .exitCode = 1,
-                .message = "Failed skip rebase",
-                .command = "git rebase --skip"
-            });
+        std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
+        skipRebase(const std::filesystem::path&) override
+        {
+            skipRebaseCalled = true;
+            if (failOperations)
+            {
+                return std::unexpected(gf::git::ports::GitOpsError{
+                    .kind = failureKind,
+                    .exitCode = 1,
+                    .message = "Failed skip rebase",
+                    .command = "git rebase --skip"
+                });
+            }
+            return rebaseResultToReturn;
         }
-        return rebaseResultToReturn;
-    }
 
-    std::expected<void, gf::git::ports::GitOpsError>
-    abortRebase(const std::filesystem::path&) override {
-        abortRebaseCalled = true;
-        if (failOperations) {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = failureKind,
-                .exitCode = 1,
-                .message = "Failed abort rebase",
-                .command = "git rebase --abort"
-            });
+        std::expected<void, gf::git::ports::GitOpsError>
+        abortRebase(const std::filesystem::path&) override
+        {
+            abortRebaseCalled = true;
+            if (failOperations)
+            {
+                return std::unexpected(gf::git::ports::GitOpsError{
+                    .kind = failureKind,
+                    .exitCode = 1,
+                    .message = "Failed abort rebase",
+                    .command = "git rebase --abort"
+                });
+            }
+            return {};
         }
-        return {};
-    }
 
-    std::expected<bool, gf::git::ports::GitOpsError>
-    isRebaseInProgress(const std::filesystem::path&) override {
-        isRebaseInProgressCalled = true;
-        if (failOperations) {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = failureKind,
-                .exitCode = 1,
-                .message = "Failed checking rebase status",
-                .command = "check"
-            });
+        std::expected<bool, gf::git::ports::GitOpsError>
+        isRebaseInProgress(const std::filesystem::path&) override
+        {
+            isRebaseInProgressCalled = true;
+            if (failOperations)
+            {
+                return std::unexpected(gf::git::ports::GitOpsError{
+                    .kind = failureKind,
+                    .exitCode = 1,
+                    .message = "Failed checking rebase status",
+                    .command = "check"
+                });
+            }
+            return rebaseInProgressToReturn;
         }
-        return rebaseInProgressToReturn;
-    }
 
-    std::expected<gf::git::bo::CherryPickResult, gf::git::ports::GitOpsError>
-    cherryPick(const std::filesystem::path&, const gf::git::bo::CherryPickOptions& options) override {
-        cherryPickCalled = true;
-        lastCherryPickOptions = options;
-        if (failOperations) {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = failureKind,
-                .exitCode = 1,
-                .message = "Failed cherry-pick",
-                .command = "git cherry-pick"
-            });
+        std::expected<gf::git::bo::CherryPickResult, gf::git::ports::GitOpsError>
+        cherryPick(const std::filesystem::path&, const gf::git::bo::CherryPickOptions& options) override
+        {
+            cherryPickCalled = true;
+            lastCherryPickOptions = options;
+            if (failOperations)
+            {
+                return std::unexpected(gf::git::ports::GitOpsError{
+                    .kind = failureKind,
+                    .exitCode = 1,
+                    .message = "Failed cherry-pick",
+                    .command = "git cherry-pick"
+                });
+            }
+            return cherryPickResultToReturn;
         }
-        return cherryPickResultToReturn;
-    }
 
-    std::expected<void, gf::git::ports::GitOpsError>
-    abortCherryPick(const std::filesystem::path&) override {
-        abortCherryPickCalled = true;
-        if (failOperations) {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = failureKind,
-                .exitCode = 1,
-                .message = "Failed abort cherry-pick",
-                .command = "git cherry-pick --abort"
-            });
+        std::expected<void, gf::git::ports::GitOpsError>
+        abortCherryPick(const std::filesystem::path&) override
+        {
+            abortCherryPickCalled = true;
+            if (failOperations)
+            {
+                return std::unexpected(gf::git::ports::GitOpsError{
+                    .kind = failureKind,
+                    .exitCode = 1,
+                    .message = "Failed abort cherry-pick",
+                    .command = "git cherry-pick --abort"
+                });
+            }
+            return {};
         }
-        return {};
-    }
 
-    // Methods not relevant for this mock
-    std::expected<gf::git::bo::RepoWorkingTreeStatus, gf::git::ports::GitOpsError>
-    getWorkingTreeStatus(const std::filesystem::path&) override { return gf::git::bo::RepoWorkingTreeStatus{}; }
-    std::expected<void, gf::git::ports::GitOpsError> stageFiles(const std::filesystem::path&, const std::vector<std::string>&) override { return {}; }
-    std::expected<void, gf::git::ports::GitOpsError> stageAll(const std::filesystem::path&) override { return {}; }
-    std::expected<void, gf::git::ports::GitOpsError> unstageFiles(const std::filesystem::path&, const std::vector<std::string>&) override { return {}; }
-    std::expected<void, gf::git::ports::GitOpsError> unstageAll(const std::filesystem::path&) override { return {}; }
-    std::expected<void, gf::git::ports::GitOpsError> discardFiles(const std::filesystem::path&, const std::vector<std::string>&) override { return {}; }
-    std::expected<gf::git::bo::CommitResult, gf::git::ports::GitOpsError> createCommit(const std::filesystem::path&, const gf::git::bo::CommitOptions&) override { return gf::git::bo::CommitResult{}; }
-    std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError> getFileDiff(const std::filesystem::path&, const std::string&, gf::git::bo::DiffScope) override { return gf::git::bo::FileDiff{}; }
-    std::expected<std::vector<gf::git::bo::FileDiff>, gf::git::ports::GitOpsError> getAllDiffs(const std::filesystem::path&, gf::git::bo::DiffScope) override { return std::vector<gf::git::bo::FileDiff>{}; }
-    std::expected<std::vector<gf::git::bo::GitBranch>, gf::git::ports::GitOpsError> listBranches(const std::filesystem::path&) override { return std::vector<gf::git::bo::GitBranch>{}; }
-    std::expected<void, gf::git::ports::GitOpsError> createBranch(const std::filesystem::path&, const gf::git::bo::CreateBranchOptions&) override { return {}; }
-    std::expected<void, gf::git::ports::GitOpsError> checkoutBranch(const std::filesystem::path&, const gf::git::bo::CheckoutOptions&) override { return {}; }
-    std::expected<void, gf::git::ports::GitOpsError> deleteBranch(const std::filesystem::path&, const std::string&, bool) override { return {}; }
-    std::expected<void, gf::git::ports::GitOpsError> renameBranch(const std::filesystem::path&, const std::string&, const std::string&) override { return {}; }
-    std::expected<std::vector<gf::git::bo::GitCommitLogItem>, gf::git::ports::GitOpsError> getCommitLog(const std::filesystem::path&, const gf::git::bo::CommitLogOptions&) override { return std::vector<gf::git::bo::GitCommitLogItem>{}; }
-    std::expected<std::vector<gf::git::bo::GitTag>, gf::git::ports::GitOpsError> listTags(const std::filesystem::path&) override { return std::vector<gf::git::bo::GitTag>{}; }
-    std::expected<void, gf::git::ports::GitOpsError> createTag(const std::filesystem::path&, const gf::git::bo::CreateTagOptions&) override { return {}; }
-    std::expected<void, gf::git::ports::GitOpsError> deleteTag(const std::filesystem::path&, const std::string&) override { return {}; }
-    std::expected<std::vector<gf::git::bo::GitRemote>, gf::git::ports::GitOpsError> listRemotes(const std::filesystem::path&) override { return std::vector<gf::git::bo::GitRemote>{}; }
-    std::expected<void, gf::git::ports::GitOpsError> addRemote(const std::filesystem::path&, const std::string&, const std::string&) override { return {}; }
-    std::expected<void, gf::git::ports::GitOpsError> removeRemote(const std::filesystem::path&, const std::string&) override { return {}; }
-    std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError> fetchRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions&) override { return gf::git::bo::RemoteOperationResult{.success = true}; }
-    std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError> pullRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions&) override { return gf::git::bo::RemoteOperationResult{.success = true}; }
-    std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError> pushRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions&) override { return gf::git::bo::RemoteOperationResult{.success = true}; }
-    std::expected<gf::git::bo::MergeResult, gf::git::ports::GitOpsError> mergeBranch(const std::filesystem::path&, const gf::git::bo::MergeOptions&) override { return gf::git::bo::MergeResult{.status = gf::git::bo::MergeStatus::Merged}; }
-    std::expected<void, gf::git::ports::GitOpsError> abortMerge(const std::filesystem::path&) override { return {}; }
-    std::expected<std::vector<gf::git::bo::GitStashItem>, gf::git::ports::GitOpsError> listStashes(const std::filesystem::path&) override { return std::vector<gf::git::bo::GitStashItem>{}; }
-    std::expected<void, gf::git::ports::GitOpsError> stashPush(const std::filesystem::path&, const gf::git::bo::StashPushOptions&) override { return {}; }
-    std::expected<void, gf::git::ports::GitOpsError> stashPop(const std::filesystem::path&, const gf::git::bo::StashApplyOptions&) override { return {}; }
-    std::expected<void, gf::git::ports::GitOpsError> stashApply(const std::filesystem::path&, const gf::git::bo::StashApplyOptions&) override { return {}; }
-    std::expected<void, gf::git::ports::GitOpsError> stashDrop(const std::filesystem::path&, std::size_t) override { return {}; }
-    std::expected<void, gf::git::ports::GitOpsError> stashClear(const std::filesystem::path&) override { return {}; }
-    std::expected<gf::git::bo::ConflictFile, gf::git::ports::GitOpsError> getConflictFile(const std::filesystem::path&, const std::string&) override { return gf::git::bo::ConflictFile{}; }
-    std::expected<std::string, gf::git::ports::GitOpsError> getFileStageContent(const std::filesystem::path&, const std::string&, int) override { return std::string{}; }
-    std::expected<void, gf::git::ports::GitOpsError> applyConflictResolution(const std::filesystem::path&, const gf::git::bo::ApplyConflictResolutionOptions&) override { return {}; }
-};
+        // Methods not relevant for this mock
+        std::expected<gf::git::bo::RepoWorkingTreeStatus, gf::git::ports::GitOpsError>
+        getWorkingTreeStatus(const std::filesystem::path&) override { return gf::git::bo::RepoWorkingTreeStatus{}; }
 
+        std::expected<void, gf::git::ports::GitOpsError> stageFiles(const std::filesystem::path&,
+                                                                    const std::vector<std::string>&) override
+        {
+            return {};
+        }
+
+        std::expected<void, gf::git::ports::GitOpsError> stageAll(const std::filesystem::path&) override { return {}; }
+
+        std::expected<void, gf::git::ports::GitOpsError> unstageFiles(const std::filesystem::path&,
+                                                                      const std::vector<std::string>&) override
+        {
+            return {};
+        }
+
+        std::expected<void, gf::git::ports::GitOpsError> unstageAll(const std::filesystem::path&) override
+        {
+            return {};
+        }
+
+        std::expected<void, gf::git::ports::GitOpsError> discardFiles(const std::filesystem::path&,
+                                                                      const std::vector<std::string>&) override
+        {
+            return {};
+        }
+
+        std::expected<gf::git::bo::CommitResult, gf::git::ports::GitOpsError> createCommit(
+            const std::filesystem::path&, const gf::git::bo::CommitOptions&) override
+        {
+            return gf::git::bo::CommitResult{};
+        }
+
+        std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError> getFileDiff(
+            const std::filesystem::path&, const std::string&, gf::git::bo::DiffScope) override
+        {
+            return gf::git::bo::FileDiff{};
+        }
+
+        std::expected<std::vector<gf::git::bo::FileDiff>, gf::git::ports::GitOpsError> getAllDiffs(
+            const std::filesystem::path&, gf::git::bo::DiffScope) override
+        {
+            return std::vector<gf::git::bo::FileDiff>{};
+        }
+
+        std::expected<std::vector<gf::git::bo::GitBranch>, gf::git::ports::GitOpsError>
+        listBranches(const std::filesystem::path&) override { return std::vector<gf::git::bo::GitBranch>{}; }
+
+        std::expected<void, gf::git::ports::GitOpsError> createBranch(const std::filesystem::path&,
+                                                                      const gf::git::bo::CreateBranchOptions&) override
+        {
+            return {};
+        }
+
+        std::expected<void, gf::git::ports::GitOpsError> checkoutBranch(const std::filesystem::path&,
+                                                                        const gf::git::bo::CheckoutOptions&) override
+        {
+            return {};
+        }
+
+        std::expected<void, gf::git::ports::GitOpsError> deleteBranch(const std::filesystem::path&, const std::string&,
+                                                                      bool) override { return {}; }
+
+        std::expected<void, gf::git::ports::GitOpsError> renameBranch(const std::filesystem::path&, const std::string&,
+                                                                      const std::string&) override { return {}; }
+
+        std::expected<std::vector<gf::git::bo::GitCommitLogItem>, gf::git::ports::GitOpsError> getCommitLog(
+            const std::filesystem::path&, const gf::git::bo::CommitLogOptions&) override
+        {
+            return std::vector<gf::git::bo::GitCommitLogItem>{};
+        }
+
+        std::expected<std::vector<gf::git::bo::GitTag>, gf::git::ports::GitOpsError>
+        listTags(const std::filesystem::path&) override { return std::vector<gf::git::bo::GitTag>{}; }
+
+        std::expected<void, gf::git::ports::GitOpsError> createTag(const std::filesystem::path&,
+                                                                   const gf::git::bo::CreateTagOptions&) override
+        {
+            return {};
+        }
+
+        std::expected<void, gf::git::ports::GitOpsError>
+        deleteTag(const std::filesystem::path&, const std::string&) override { return {}; }
+
+        std::expected<std::vector<gf::git::bo::GitRemote>, gf::git::ports::GitOpsError>
+        listRemotes(const std::filesystem::path&) override { return std::vector<gf::git::bo::GitRemote>{}; }
+
+        std::expected<void, gf::git::ports::GitOpsError> addRemote(const std::filesystem::path&, const std::string&,
+                                                                   const std::string&) override { return {}; }
+
+        std::expected<void, gf::git::ports::GitOpsError>
+        removeRemote(const std::filesystem::path&, const std::string&) override { return {}; }
+
+        std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError> fetchRemote(
+            const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions&) override
+        {
+            return gf::git::bo::RemoteOperationResult{.success = true};
+        }
+
+        std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError> pullRemote(
+            const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions&) override
+        {
+            return gf::git::bo::RemoteOperationResult{.success = true};
+        }
+
+        std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError> pushRemote(
+            const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions&) override
+        {
+            return gf::git::bo::RemoteOperationResult{.success = true};
+        }
+
+        std::expected<gf::git::bo::MergeResult, gf::git::ports::GitOpsError>
+        mergeBranch(const std::filesystem::path&, const gf::git::bo::MergeOptions&) override
+        {
+            return gf::git::bo::MergeResult{.status = gf::git::bo::MergeStatus::Merged};
+        }
+
+        std::expected<void, gf::git::ports::GitOpsError> abortMerge(const std::filesystem::path&) override
+        {
+            return {};
+        }
+
+        std::expected<std::vector<gf::git::bo::GitStashItem>, gf::git::ports::GitOpsError>
+        listStashes(const std::filesystem::path&) override { return std::vector<gf::git::bo::GitStashItem>{}; }
+
+        std::expected<void, gf::git::ports::GitOpsError> stashPush(const std::filesystem::path&,
+                                                                   const gf::git::bo::StashPushOptions&) override
+        {
+            return {};
+        }
+
+        std::expected<void, gf::git::ports::GitOpsError> stashPop(const std::filesystem::path&,
+                                                                  const gf::git::bo::StashApplyOptions&) override
+        {
+            return {};
+        }
+
+        std::expected<void, gf::git::ports::GitOpsError> stashApply(const std::filesystem::path&,
+                                                                    const gf::git::bo::StashApplyOptions&) override
+        {
+            return {};
+        }
+
+        std::expected<void, gf::git::ports::GitOpsError> stashDrop(const std::filesystem::path&, std::size_t) override
+        {
+            return {};
+        }
+
+        std::expected<void, gf::git::ports::GitOpsError> stashClear(const std::filesystem::path&) override
+        {
+            return {};
+        }
+
+        std::expected<gf::git::bo::ConflictFile, gf::git::ports::GitOpsError> getConflictFile(
+            const std::filesystem::path&, const std::string&) override { return gf::git::bo::ConflictFile{}; }
+
+        std::expected<std::string, gf::git::ports::GitOpsError> getFileStageContent(
+            const std::filesystem::path&, const std::string&, int) override { return std::string{}; }
+
+        std::expected<void, gf::git::ports::GitOpsError> applyConflictResolution(
+            const std::filesystem::path&, const gf::git::bo::ApplyConflictResolutionOptions&) override { return {}; }
+    };
 } // namespace
 
-TEST_CASE("GitRebaseService validates parameters and paths", "[git][rebase][service]") {
+TEST_CASE (
+"GitRebaseService validates parameters and paths"
+,
+"[git][rebase][service]"
+)
+ {
     MockRebaseGitOps mockOps;
     gf::git::bl::GitRebaseService service(mockOps);
 
@@ -224,7 +369,12 @@ TEST_CASE("GitRebaseService validates parameters and paths", "[git][rebase][serv
     }
 }
 
-TEST_CASE("GitRebaseService delegates operations to IRepositoryGitOps", "[git][rebase][service]") {
+TEST_CASE (
+"GitRebaseService delegates operations to IRepositoryGitOps"
+,
+"[git][rebase][service]"
+)
+ {
     MockRebaseGitOps mockOps;
     gf::git::bl::GitRebaseService service(mockOps);
     auto validPath = std::filesystem::temp_directory_path();

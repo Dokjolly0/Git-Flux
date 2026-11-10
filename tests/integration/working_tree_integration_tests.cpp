@@ -14,56 +14,67 @@ using namespace gf::git::ports;
 using namespace gf::git::bl;
 using namespace gf::infra::git;
 
-namespace {
-
-void writeTestFile(const std::filesystem::path& path, std::string_view content) {
-    std::ofstream out(path, std::ios::binary);
-    out << content;
-}
-
-struct GitTestRepoFixture {
-    std::filesystem::path repoDir;
-    std::filesystem::path gitExe;
-    std::unique_ptr<NativeGitCommandExecutor> executor;
-    std::unique_ptr<NativeRepositoryGitOps> gitOps;
-    std::unique_ptr<GitWorkingTreeService> service;
-
-    GitTestRepoFixture() {
-        auto gitDiscovery = GitDiscovery::discover();
-        REQUIRE(gitDiscovery.has_value());
-        gitExe = gitDiscovery->directBinaryPath.empty() ? gitDiscovery->discoveredInPath : gitDiscovery->directBinaryPath;
-
-        repoDir = std::filesystem::temp_directory_path() / "gf_working_tree_integ_repo";
-        std::error_code ec;
-        std::filesystem::remove_all(repoDir, ec);
-        std::filesystem::create_directories(repoDir);
-
-        executor = std::make_unique<NativeGitCommandExecutor>(gitExe);
-        gitOps = std::make_unique<NativeRepositoryGitOps>(*executor);
-        service = std::make_unique<GitWorkingTreeService>(*gitOps);
+namespace
+{
+    void writeTestFile(const std::filesystem::path& path, std::string_view content)
+    {
+        std::ofstream out(path, std::ios::binary);
+        out << content;
     }
 
-    ~GitTestRepoFixture() {
-        std::error_code ec;
-        std::filesystem::remove_all(repoDir, ec);
-    }
+    struct GitTestRepoFixture
+    {
+        std::filesystem::path repoDir;
+        std::filesystem::path gitExe;
+        std::unique_ptr<NativeGitCommandExecutor> executor;
+        std::unique_ptr<NativeRepositoryGitOps> gitOps;
+        std::unique_ptr<GitWorkingTreeService> service;
 
-    void runGit(std::vector<std::string> args) {
-        GitCommand cmd{
-            .args = std::move(args),
-            .workingDirectory = repoDir,
-            .lockPolicy = GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{10'000}
-        };
-        auto res = executor->execute(cmd);
-        REQUIRE(res.has_value());
-        REQUIRE(res->exitCode == 0);
-    }
-};
+        GitTestRepoFixture()
+        {
+            auto gitDiscovery = GitDiscovery::discover();
+            REQUIRE(gitDiscovery.has_value());
+            gitExe = gitDiscovery->directBinaryPath.empty()
+                         ? gitDiscovery->discoveredInPath
+                         : gitDiscovery->directBinaryPath;
 
+            repoDir = std::filesystem::temp_directory_path() / "gf_working_tree_integ_repo";
+            std::error_code ec;
+            std::filesystem::remove_all(repoDir, ec);
+            std::filesystem::create_directories(repoDir);
+
+            executor = std::make_unique<NativeGitCommandExecutor>(gitExe);
+            gitOps = std::make_unique<NativeRepositoryGitOps>(*executor);
+            service = std::make_unique<GitWorkingTreeService>(*gitOps);
+        }
+
+        ~GitTestRepoFixture()
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(repoDir, ec);
+        }
+
+        void runGit(std::vector<std::string> args)
+        {
+            GitCommand cmd{
+                .args = std::move(args),
+                .workingDirectory = repoDir,
+                .lockPolicy = GitLockPolicy::Standard,
+                .timeout = std::chrono::milliseconds{10'000}
+            };
+            auto res = executor->execute(cmd);
+            REQUIRE(res.has_value());
+            REQUIRE(res->exitCode == 0);
+        }
+    };
 } // namespace
 
-TEST_CASE("GitWorkingTreeService accurately reports working tree state on real git repos", "[git][integration]") {
+TEST_CASE (
+"GitWorkingTreeService accurately reports working tree state on real git repos"
+,
+"[git][integration]"
+)
+ {
     GitTestRepoFixture fix;
 
     SECTION("Newly initialized git repository has unborn HEAD and clean working tree") {

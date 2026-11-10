@@ -1,20 +1,22 @@
 # Git Flux — Windows Developer Utility Scripts
 
-This directory contains PowerShell utility scripts for building, testing, launching, maintaining, and verifying **Git Flux** on Windows operating systems.
+This directory contains PowerShell utility scripts for building, testing, launching, maintaining, and verifying **Git
+Flux** on Windows operating systems.
 
-All scripts are self-contained, support standard PowerShell parameters and short aliases (`-h`, `-Help`), and adhere strictly to the project architecture (Zero-Qt Core and Desktop Qt Quick 6).
+All scripts are self-contained, support standard PowerShell parameters and short aliases (`-h`, `-Help`), and adhere
+strictly to the project architecture (Zero-Qt Core and Desktop Qt Quick 6).
 
 ---
 
 ## 📑 Script Index
 
-| Script | Description | Quick Usage |
-| :--- | :--- | :--- |
-| [`build.ps1`](build.ps1) | Builds CMake presets (`qt-release` or `core-release`), with support for specific targets, clean builds, and parallel threads. | `.\scripts\windows\build.ps1` |
-| [`test.ps1`](test.ps1) | Executes CTest test suites (unit, MVVM, integration) and headless smoke test. | `.\scripts\windows\test.ps1` |
-| [`run.ps1`](run.ps1) | Launches the Git Flux desktop application, optionally with auto-rebuild, debug console logging, or Visual Studio / WinDbg debugger. | `.\scripts\windows\run.ps1` |
-| [`clean.ps1`](clean.ps1) | Selectively or globally cleans build artifact directories (`build/qt-msvc`, `build/core-msvc`, `build/packages`). | `.\scripts\windows\clean.ps1` |
-| [`check.ps1`](check.ps1) | Complete local health check / pre-commit verification pipeline (build and test both Core and Desktop + smoke test). | `.\scripts\windows\check.ps1` |
+| Script                   | Description                                                                                                                         | Quick Usage                   |
+|:-------------------------|:------------------------------------------------------------------------------------------------------------------------------------|:------------------------------|
+| [`build.ps1`](build.ps1) | Builds CMake presets (`qt-release` or `core-release`), with support for specific targets, clean builds, and parallel threads.       | `.\scripts\windows\build.ps1` |
+| [`test.ps1`](test.ps1)   | Executes CTest test suites (unit, MVVM, integration) and headless smoke test.                                                       | `.\scripts\windows\test.ps1`  |
+| [`run.ps1`](run.ps1)     | Launches the Git Flux desktop application, optionally with auto-rebuild, debug console logging, or Visual Studio / WinDbg debugger. | `.\scripts\windows\run.ps1`   |
+| [`clean.ps1`](clean.ps1) | Selectively or globally cleans build artifact directories (`build/qt-msvc`, `build/core-msvc`, `build/packages`).                   | `.\scripts\windows\clean.ps1` |
+| [`check.ps1`](check.ps1) | Complete local health check / pre-commit verification pipeline (build and test both Core and Desktop + smoke test).                 | `.\scripts\windows\check.ps1` |
 
 ---
 
@@ -45,6 +47,7 @@ Builds the project using Windows CMake Presets (`build/qt-msvc` and `build/core-
 ```
 
 ### Supported Options:
+
 * `-q, -Qt`: `qt-release` preset [default].
 * `-c, -Core`: `core-release` preset (Zero-Qt).
 * `-a, -All`: builds both Core and Desktop in sequence.
@@ -81,6 +84,7 @@ Runs CTest test suites and integration tests on Windows.
 ```
 
 ### Supported Options:
+
 * `-q, -Qt`: run desktop tests (`qt-release`) [default].
 * `-c, -Core`: run Zero-Qt core tests (`core-release`).
 * `-a, -All`: run tests across both presets.
@@ -118,6 +122,7 @@ Launches the `git_flux.exe` desktop executable. If the binary is missing, it is 
 ```
 
 ### Supported Options:
+
 * `-b, -Build`: automatically build `git_flux` target before launching.
 * `-s, -Smoke`: run headless startup smoke test (`--test-startup`).
 * `-d, -Debug`: enable live console logging window or terminal output (`--debug`).
@@ -150,6 +155,7 @@ Cleans compiled artifact directories.
 ```
 
 ### Supported Options:
+
 * `-a, -All`: remove all generated build directories [default].
 * `-q, -Qt`: remove only `build/qt-msvc`.
 * `-c, -Core`: remove only `build/core-msvc`.
@@ -162,6 +168,7 @@ Cleans compiled artifact directories.
 ## ✅ 5. `check.ps1` — Full Health Check (Pre-Commit / CI Local Verification)
 
 Performs a full repository health verification in sequence:
+
 1. Build `core-release` (Zero-Qt)
 2. Run CTest on `core-release`
 3. Build `qt-release` (Qt Quick 6 Desktop)

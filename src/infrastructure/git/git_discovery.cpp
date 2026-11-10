@@ -19,95 +19,105 @@
 #include <filesystem>
 #include <string>
 
-namespace gf::infra::git {
-
+namespace gf::infra::git
+{
 #ifdef _WIN32
-namespace {
-
-[[nodiscard]] std::string toLowerAscii(std::string s) {
-    std::ranges::transform(s, s.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
-    });
-    return s;
-}
-
-} // namespace
+    namespace
+    {
+        [[nodiscard]] std::string toLowerAscii(std::string s)
+        {
+            std::ranges::transform(s, s.begin(), [](unsigned char c)
+            {
+                return static_cast<char>(std::tolower(c));
+            });
+            return s;
+        }
+    } // namespace
 #endif
 
-std::expected<gf::git::bo::GitExecutableInfo, gf::git::bo::GitExecutionError>
-GitDiscovery::discover() {
-    namespace fs = std::filesystem;
-    using gf::git::bo::GitErrorKind;
-    using gf::git::bo::GitExecutableInfo;
-    using gf::git::bo::GitExecutionError;
+    std::expected<gf::git::bo::GitExecutableInfo, gf::git::bo::GitExecutionError>
+    GitDiscovery::discover()
+    {
+        namespace fs = std::filesystem;
+        using gf::git::bo::GitErrorKind;
+        using gf::git::bo::GitExecutableInfo;
+        using gf::git::bo::GitExecutionError;
 
-    GitExecutableInfo info;
+        GitExecutableInfo info;
 
 #ifdef _WIN32
-    wchar_t buffer[MAX_PATH * 4]{};
-    wchar_t* filePart = nullptr;
-    const DWORD len = ::SearchPathW(nullptr, L"git.exe", nullptr,
-                                    static_cast<DWORD>(std::size(buffer)), buffer, &filePart);
-    if (len == 0 || len >= std::size(buffer)) {
-        return std::unexpected(GitExecutionError{
-            .kind = GitErrorKind::ExecutableNotFound,
-            .message = "Impossibile trovare git.exe nel PATH di sistema",
-            .osErrorCode = static_cast<int>(::GetLastError())
-        });
-    }
+        wchar_t buffer[MAX_PATH * 4]{};
+        wchar_t* filePart = nullptr;
+        const DWORD len = ::SearchPathW(nullptr, L"git.exe", nullptr,
+                                        static_cast<DWORD>(std::size(buffer)), buffer, &filePart);
+        if (len == 0 || len >= std::size(buffer))
+        {
+            return std::unexpected(GitExecutionError{
+                .kind = GitErrorKind::ExecutableNotFound,
+                .message = "Impossibile trovare git.exe nel PATH di sistema",
+                .osErrorCode = static_cast<int>(::GetLastError())
+            });
+        }
 
-    info.discoveredInPath = fs::path(std::wstring_view(buffer, len)).lexically_normal();
-    info.directBinaryPath = info.discoveredInPath;
+        info.discoveredInPath = fs::path(std::wstring_view(buffer, len)).lexically_normal();
+        info.directBinaryPath = info.discoveredInPath;
 
-    // Check if path points to "...\Git\cmd\git.exe" (Git for Windows wrapper shim)
-    const fs::path parentDir = info.discoveredInPath.parent_path();
-    if (toLowerAscii(parentDir.filename().string()) == "cmd") {
-        const fs::path gitRoot = parentDir.parent_path();
-        const fs::path candidates[] = {
-            gitRoot / "ucrt64" / "bin" / "git.exe",
-            gitRoot / "mingw64" / "bin" / "git.exe",
-            gitRoot / "clangarm64" / "bin" / "git.exe",
-            gitRoot / "mingw32" / "bin" / "git.exe"
-        };
-        for (const auto& candidate : candidates) {
-            std::error_code ec;
-            if (fs::exists(candidate, ec) && !ec) {
-                info.directBinaryPath = candidate.lexically_normal();
-                info.isWindowsCmdShim = true;
+        // Check if path points to "...\Git\cmd\git.exe" (Git for Windows wrapper shim)
+        const fs::path parentDir = info.discoveredInPath.parent_path();
+        if (toLowerAscii(parentDir.filename().string()) == "cmd")
+        {
+            const fs::path gitRoot = parentDir.parent_path();
+            const fs::path candidates[] = {
+                gitRoot / "ucrt64" / "bin" / "git.exe",
+                gitRoot / "mingw64" / "bin" / "git.exe",
+                gitRoot / "clangarm64" / "bin" / "git.exe",
+                gitRoot / "mingw32" / "bin" / "git.exe"
+            };
+            for (const auto& candidate : candidates)
+            {
+                std::error_code ec;
+                if (fs::exists(candidate, ec) && !ec)
+                {
+                    info.directBinaryPath = candidate.lexically_normal();
+                    info.isWindowsCmdShim = true;
+                    break;
+                }
+            }
+        }
+#else
+        const char* pathEnv = std::getenv("PATH");
+        if (!pathEnv)
+        {
+            return std::unexpected(GitExecutionError{
+                .kind = GitErrorKind::ExecutableNotFound,
+                .message = "Variabile PATH non definita"
+            });
+        }
+        std::stringstream ss(pathEnv);
+        std::string dir;
+        while (std::getline(ss, dir, ':'))
+        {
+            if (dir.empty())
+            {
+                continue;
+            }
+            fs::path candidate = fs::path(dir) / "git";
+            if (::access(candidate.c_str(), X_OK) == 0)
+            {
+                info.discoveredInPath = candidate;
+                info.directBinaryPath = candidate;
                 break;
             }
         }
-    }
-#else
-    const char* pathEnv = std::getenv("PATH");
-    if (!pathEnv) {
-        return std::unexpected(GitExecutionError{
-            .kind = GitErrorKind::ExecutableNotFound,
-            .message = "Variabile PATH non definita"
-        });
-    }
-    std::stringstream ss(pathEnv);
-    std::string dir;
-    while (std::getline(ss, dir, ':')) {
-        if (dir.empty()) {
-            continue;
+        if (info.discoveredInPath.empty())
+        {
+            return std::unexpected(GitExecutionError{
+                .kind = GitErrorKind::ExecutableNotFound,
+                .message = "Impossibile trovare l'eseguibile git nel PATH"
+            });
         }
-        fs::path candidate = fs::path(dir) / "git";
-        if (::access(candidate.c_str(), X_OK) == 0) {
-            info.discoveredInPath = candidate;
-            info.directBinaryPath = candidate;
-            break;
-        }
-    }
-    if (info.discoveredInPath.empty()) {
-        return std::unexpected(GitExecutionError{
-            .kind = GitErrorKind::ExecutableNotFound,
-            .message = "Impossibile trovare l'eseguibile git nel PATH"
-        });
-    }
 #endif
 
-    return info;
-}
-
+        return info;
+    }
 } // namespace gf::infra::git

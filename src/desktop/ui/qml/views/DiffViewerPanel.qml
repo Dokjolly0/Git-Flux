@@ -9,6 +9,7 @@ Rectangle {
     property var sessionVm: null
     property var diffViewer: (sessionVm && sessionVm.diffViewer) ? sessionVm.diffViewer : null
     property bool showBackButton: false
+
     signal backRequested()
 
     readonly property string monoFont: (typeof gfMonoFont !== "undefined" && gfMonoFont) ? gfMonoFont : "Consolas"
@@ -81,6 +82,7 @@ Rectangle {
 
     Connections {
         target: root.diffViewer
+
         function onContextLinesChanged() {
             var lv = root.activeVerticalListView();
             if (lv && lv.contentHeight > lv.height) {
@@ -89,6 +91,7 @@ Rectangle {
                 root.pendingScrollRestore = true;
             }
         }
+
         function onDiffLoaded() {
             var key = root.currentFileKey();
             if (key !== root.lastLoadedFileKey) {
@@ -103,7 +106,7 @@ Rectangle {
                 if (root.pendingScrollRestore && key === root.savedScrollFileKey) {
                     var ratio = root.savedScrollRatio;
                     root.pendingScrollRestore = false;
-                    Qt.callLater(function() {
+                    Qt.callLater(function () {
                         var lv = root.activeVerticalListView();
                         if (lv && lv.contentHeight > lv.height) {
                             lv.contentY = Math.max(0, Math.min(lv.contentHeight - lv.height, ratio * (lv.contentHeight - lv.height)));
@@ -112,6 +115,7 @@ Rectangle {
                 }
             }
         }
+
         function onViewModeChanged() {
             root.horizontalScrollX = 0;
         }
@@ -123,6 +127,7 @@ Rectangle {
         property real viewWidth: 0
         property real scrollValue: 0
         property real maxScroll: Math.max(0, contentWidth - viewWidth)
+
         signal scrollRequested(real newValue)
 
         height: 10
@@ -153,8 +158,8 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             radius: 3
             color: hThumbArea.isDragging
-                   ? "#00E5FF"
-                   : (hThumbArea.containsMouse || trackMouseArea.containsMouse ? "#38BDF8" : "#475569")
+                ? "#00E5FF"
+                : (hThumbArea.containsMouse || trackMouseArea.containsMouse ? "#38BDF8" : "#475569")
             opacity: (hThumbArea.isDragging || hThumbArea.containsMouse || trackMouseArea.containsMouse) ? 0.95 : 0.65
 
             readonly property real trackWidth: hbar.width
@@ -445,7 +450,7 @@ Rectangle {
                 Button {
                     id: contextBtn
                     visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary &&
-                             !root.showingMarkdownPreview && root.diffViewer.viewMode !== "blame"
+                        !root.showingMarkdownPreview && root.diffViewer.viewMode !== "blame"
                     Layout.preferredHeight: 26
                     background: Rectangle {
                         color: (root.diffViewer && root.diffViewer.isFullContext) ? "#172536" : (contextBtn.hovered ? "#1E293B" : "transparent")
@@ -534,7 +539,7 @@ Rectangle {
                 Button {
                     id: wrapBtn
                     visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary &&
-                             !root.showingMarkdownPreview && root.diffViewer.viewMode !== "blame"
+                        !root.showingMarkdownPreview && root.diffViewer.viewMode !== "blame"
                     Layout.preferredHeight: 26
                     background: Rectangle {
                         color: root.effectiveWrap ? "#1E293B" : (wrapBtn.hovered ? "#161B22" : "transparent")
@@ -575,7 +580,9 @@ Rectangle {
                         }
                         contentItem: RowLayout {
                             spacing: 4
-                            Text { text: "📄"; font.pixelSize: 10 }
+                            Text {
+                                text: "📄"; font.pixelSize: 10
+                            }
                             Text {
                                 text: "Inline"
                                 color: inlineBtn.isCurrent ? "#38BDF8" : "#94A3B8"
@@ -601,7 +608,9 @@ Rectangle {
                         }
                         contentItem: RowLayout {
                             spacing: 4
-                            Text { text: "📑"; font.pixelSize: 10 }
+                            Text {
+                                text: "📑"; font.pixelSize: 10
+                            }
                             Text {
                                 text: "Split"
                                 color: splitBtn.isCurrent ? "#38BDF8" : "#94A3B8"
@@ -627,7 +636,9 @@ Rectangle {
                         }
                         contentItem: RowLayout {
                             spacing: 4
-                            Text { text: "🔍"; font.pixelSize: 10 }
+                            Text {
+                                text: "🔍"; font.pixelSize: 10
+                            }
                             Text {
                                 text: "Hunk"
                                 color: hunkBtn.isCurrent ? "#38BDF8" : "#94A3B8"
@@ -653,7 +664,9 @@ Rectangle {
                         }
                         contentItem: RowLayout {
                             spacing: 4
-                            Text { text: "👤"; font.pixelSize: 10 }
+                            Text {
+                                text: "👤"; font.pixelSize: 10
+                            }
                             Text {
                                 text: "Blame"
                                 color: blameBtn.isCurrent ? "#38BDF8" : "#94A3B8"
@@ -741,7 +754,8 @@ Rectangle {
                     boundsBehavior: Flickable.StopAtBounds
                     maximumFlickVelocity: 6000
                     flickDeceleration: 1000
-                    ScrollBar.vertical: FluxScrollBar {}
+                    ScrollBar.vertical: FluxScrollBar {
+                    }
 
                     Keys.onLeftPressed: (event) => {
                         if (root.inlineMaxScroll > 0) {
@@ -761,8 +775,8 @@ Rectangle {
                         width: inlineListView.width
                         readonly property bool isHeaderRow: model.lineKind === "header"
                         height: isHeaderRow
-                                    ? 28
-                                    : (root.effectiveWrap ? Math.max(20, inlineCodeText.implicitHeight + 6) : 20)
+                            ? 28
+                            : (root.effectiveWrap ? Math.max(20, inlineCodeText.implicitHeight + 6) : 20)
                         color: model.bgColor
 
                         Item {
@@ -848,8 +862,8 @@ Rectangle {
                                     x: root.effectiveWrap ? 6 : (6 - root.horizontalScrollX)
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: (root.effectiveWrap && !inlineRowDelegate.isHeaderRow)
-                                               ? Math.max(60, parent.width - 14)
-                                               : Math.max(parent.width - 6, root.maxCodeWidth)
+                                        ? Math.max(60, parent.width - 14)
+                                        : Math.max(parent.width - 6, root.maxCodeWidth)
                                     text: model.richContent || model.content || ""
                                     textFormat: Text.RichText
                                     color: model.fgColor
@@ -923,7 +937,9 @@ Rectangle {
                     contentWidth: root.effectiveWrap ? 0 : root.maxCodeWidth
                     viewWidth: root.inlineAvailWidth
                     scrollValue: root.horizontalScrollX
-                    onScrollRequested: (val) => { root.horizontalScrollX = val; }
+                    onScrollRequested: (val) => {
+                        root.horizontalScrollX = val;
+                    }
                 }
             }
 
@@ -995,7 +1011,8 @@ Rectangle {
                         boundsBehavior: Flickable.StopAtBounds
                         maximumFlickVelocity: 6000
                         flickDeceleration: 1000
-                        ScrollBar.vertical: FluxScrollBar {}
+                        ScrollBar.vertical: FluxScrollBar {
+                        }
 
                         Keys.onLeftPressed: (event) => {
                             if (root.splitMaxScroll > 0) {
@@ -1014,10 +1031,10 @@ Rectangle {
                             id: splitRow
                             width: splitListView.width
                             height: modelData.isHunkHeader
-                                        ? 28
-                                        : (root.effectiveWrap
-                                               ? Math.max(20, leftCodeText.implicitHeight + 6, rightCodeText.implicitHeight + 6)
-                                               : 20)
+                                ? 28
+                                : (root.effectiveWrap
+                                    ? Math.max(20, leftCodeText.implicitHeight + 6, rightCodeText.implicitHeight + 6)
+                                    : 20)
                             color: "#0D1117"
 
                             // Hunk banner across entire row
@@ -1093,8 +1110,8 @@ Rectangle {
                                                 x: root.effectiveWrap ? 6 : (6 - root.horizontalScrollX)
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 width: root.effectiveWrap
-                                                           ? Math.max(40, parent.width - 12)
-                                                           : Math.max(parent.width - 6, root.maxCodeWidth)
+                                                    ? Math.max(40, parent.width - 12)
+                                                    : Math.max(parent.width - 6, root.maxCodeWidth)
                                                 text: modelData.leftRichContent || modelData.leftContent || ""
                                                 textFormat: Text.RichText
                                                 color: modelData.leftFgColor || "#CBD5E1"
@@ -1151,8 +1168,8 @@ Rectangle {
                                                 x: root.effectiveWrap ? 6 : (6 - root.horizontalScrollX)
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 width: root.effectiveWrap
-                                                           ? Math.max(40, parent.width - 12)
-                                                           : Math.max(parent.width - 6, root.maxCodeWidth)
+                                                    ? Math.max(40, parent.width - 12)
+                                                    : Math.max(parent.width - 6, root.maxCodeWidth)
                                                 text: modelData.rightRichContent || modelData.rightContent || ""
                                                 textFormat: Text.RichText
                                                 color: modelData.rightFgColor || "#CBD5E1"
@@ -1220,7 +1237,9 @@ Rectangle {
                         contentWidth: root.effectiveWrap ? 0 : root.maxCodeWidth
                         viewWidth: root.splitAvailWidth
                         scrollValue: root.horizontalScrollX
-                        onScrollRequested: (val) => { root.horizontalScrollX = val; }
+                        onScrollRequested: (val) => {
+                            root.horizontalScrollX = val;
+                        }
                     }
                 }
             }
@@ -1233,8 +1252,11 @@ Rectangle {
                 anchors.fill: parent
                 visible: !root.showingMarkdownPreview && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "hunk"
                 clip: true
-                ScrollBar.vertical: FluxScrollBar {}
-                ScrollBar.horizontal: FluxScrollBar { visible: !root.effectiveWrap }
+                ScrollBar.vertical: FluxScrollBar {
+                }
+                ScrollBar.horizontal: FluxScrollBar {
+                    visible: !root.effectiveWrap
+                }
 
                 ListView {
                     id: hunkListView
@@ -1286,7 +1308,8 @@ Rectangle {
                                         elide: Text.ElideRight
                                         Layout.fillWidth: true
                                     }
-                                    HunkExpandActions {}
+                                    HunkExpandActions {
+                                    }
                                 }
                             }
 
@@ -1376,7 +1399,8 @@ Rectangle {
                     boundsBehavior: Flickable.StopAtBounds
                     maximumFlickVelocity: 6000
                     flickDeceleration: 1000
-                    ScrollBar.vertical: FluxScrollBar {}
+                    ScrollBar.vertical: FluxScrollBar {
+                    }
 
                     Keys.onLeftPressed: (event) => {
                         if (root.blameMaxScroll > 0) {
@@ -1578,7 +1602,9 @@ Rectangle {
                     contentWidth: root.maxCodeWidth
                     viewWidth: root.blameAvailWidth
                     scrollValue: root.horizontalScrollX
-                    onScrollRequested: (val) => { root.horizontalScrollX = val; }
+                    onScrollRequested: (val) => {
+                        root.horizontalScrollX = val;
+                    }
                 }
             }
         }

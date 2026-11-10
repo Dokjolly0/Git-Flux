@@ -28,39 +28,50 @@ using gf::workspaces::bl::WorkspaceService;
 using gf::workspaces::bl::WorkspaceServiceError;
 using gf::workspaces::bo::WorkspaceId;
 
-namespace {
+namespace
+{
+    struct ScopedSandbox
+    {
+        std::filesystem::path dir;
 
-struct ScopedSandbox {
-    std::filesystem::path dir;
-    ScopedSandbox(std::string_view name) {
-        dir = std::filesystem::temp_directory_path() / name;
-        std::error_code ec;
-        std::filesystem::remove_all(dir, ec);
-        std::filesystem::create_directories(dir, ec);
+        ScopedSandbox(std::string_view name)
+        {
+            dir = std::filesystem::temp_directory_path() / name;
+            std::error_code ec;
+            std::filesystem::remove_all(dir, ec);
+            std::filesystem::create_directories(dir, ec);
+        }
+
+        ~ScopedSandbox()
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(dir, ec);
+        }
+    };
+
+    SqliteConnection createMemoryDb()
+    {
+        auto connRes = SqliteConnection::openInMemory();
+        REQUIRE(connRes.has_value());
+        REQUIRE(SchemaMigrator::migrateToLatest(*connRes).has_value());
+        return std::move(*connRes);
     }
-    ~ScopedSandbox() {
+
+    void makeFakeGitRepo(const std::filesystem::path& path)
+    {
         std::error_code ec;
-        std::filesystem::remove_all(dir, ec);
+        std::filesystem::create_directories(path / ".git", ec);
+        std::ofstream f(path / ".git/config");
+        f << "[core]\n";
     }
-};
-
-SqliteConnection createMemoryDb() {
-    auto connRes = SqliteConnection::openInMemory();
-    REQUIRE(connRes.has_value());
-    REQUIRE(SchemaMigrator::migrateToLatest(*connRes).has_value());
-    return std::move(*connRes);
-}
-
-void makeFakeGitRepo(const std::filesystem::path& path) {
-    std::error_code ec;
-    std::filesystem::create_directories(path / ".git", ec);
-    std::ofstream f(path / ".git/config");
-    f << "[core]\n";
-}
-
 } // namespace
 
-TEST_CASE("RepositoryService gestisce validazione, registrazione e riconnessione path", "[unit][services][repository]") {
+TEST_CASE (
+"RepositoryService gestisce validazione, registrazione e riconnessione path"
+,
+"[unit][services][repository]"
+)
+ {
     auto conn = createMemoryDb();
     SqliteRepositoryStore store(conn);
     RepositoryService service(store);
@@ -126,7 +137,12 @@ TEST_CASE("RepositoryService gestisce validazione, registrazione e riconnessione
     REQUIRE(service.getAllRepositories()->empty());
 }
 
-TEST_CASE("RepositoryService resolves .git suffix and handles folder or .git selection seamlessly", "[unit][services][repository]") {
+TEST_CASE (
+"RepositoryService resolves .git suffix and handles folder or .git selection seamlessly"
+,
+"[unit][services][repository]"
+)
+ {
     auto conn = createMemoryDb();
     SqliteRepositoryStore store(conn);
     RepositoryService service(store);
@@ -177,7 +193,12 @@ TEST_CASE("RepositoryService resolves .git suffix and handles folder or .git sel
     CHECK(reconnectRes->pathStatus == RepositoryPathStatus::Valid);
 }
 
-TEST_CASE("GroupService gestisce membership e deduplicazione deterministica per Quick Open", "[unit][services][group]") {
+TEST_CASE (
+"GroupService gestisce membership e deduplicazione deterministica per Quick Open"
+,
+"[unit][services][group]"
+)
+ {
     auto conn = createMemoryDb();
     SqliteRepositoryStore repoStore(conn);
     SqliteGroupStore groupStore(conn);
@@ -234,7 +255,12 @@ TEST_CASE("GroupService gestisce membership e deduplicazione deterministica per 
     REQUIRE(quickOpenCtx->repositories[2].id == r3.id);
 }
 
-TEST_CASE("WorkspaceService gestisce composizione gruppi/repo, deduplicazione e sessioni", "[unit][services][workspace]") {
+TEST_CASE (
+"WorkspaceService gestisce composizione gruppi/repo, deduplicazione e sessioni"
+,
+"[unit][services][workspace]"
+)
+ {
     auto conn = createMemoryDb();
     SqliteRepositoryStore repoStore(conn);
     SqliteGroupStore groupStore(conn);

@@ -19,22 +19,28 @@
 #include <thread>
 #include <vector>
 
-namespace {
-
+namespace
+{
 #ifdef GF_HAS_QT_ADAPTER
-void ensureQtCoreApp() {
-    if (!QCoreApplication::instance()) {
-        static int argc = 1;
-        static char appName[] = "gf_integration_tests";
-        static char* argv[] = {appName, nullptr};
-        static QCoreApplication app(argc, argv);
+    void ensureQtCoreApp()
+    {
+        if (!QCoreApplication::instance())
+        {
+            static int argc = 1;
+            static char appName[] = "gf_integration_tests";
+            static char* argv[] = {appName, nullptr};
+            static QCoreApplication app(argc, argv);
+        }
     }
-}
 #endif
-
 } // namespace
 
-TEST_CASE("Suite A.0 - GitDiscovery rileva eseguibile Git e risolve lo shim su Windows", "[integration][suite-a]") {
+TEST_CASE (
+"Suite A.0 - GitDiscovery rileva eseguibile Git e risolve lo shim su Windows"
+,
+"[integration][suite-a]"
+)
+ {
     const auto discovered = gf::infra::git::GitDiscovery::discover();
     REQUIRE(discovered.has_value());
     REQUIRE(std::filesystem::exists(discovered->discoveredInPath));
@@ -51,7 +57,12 @@ TEST_CASE("Suite A.0 - GitDiscovery rileva eseguibile Git e risolve lo shim su W
     REQUIRE(ver->stdoutBytes.starts_with("git version"));
 }
 
-TEST_CASE("Suite A.1 - NoOptionalLocks evita conflitti su .git/index.lock sia statici sia sotto stress concorrente", "[integration][suite-a][locks]") {
+TEST_CASE (
+"Suite A.1 - NoOptionalLocks evita conflitti su .git/index.lock sia statici sia sotto stress concorrente"
+,
+"[integration][suite-a][locks]"
+)
+ {
     const auto gitInfo = gf::infra::git::GitDiscovery::discover();
     REQUIRE(gitInfo.has_value());
     gf::infra::git::NativeGitCommandExecutor executor(gitInfo->directBinaryPath);
@@ -174,7 +185,12 @@ TEST_CASE("Suite A.1 - NoOptionalLocks evita conflitti su .git/index.lock sia st
     }
 }
 
-TEST_CASE("Suite A.2 - Parita' funzionale Native vs Qt QProcess e sessione persistente cat-file --batch", "[integration][suite-a][batch]") {
+TEST_CASE (
+"Suite A.2 - Parita' funzionale Native vs Qt QProcess e sessione persistente cat-file --batch"
+,
+"[integration][suite-a][batch]"
+)
+ {
     const auto gitInfo = gf::infra::git::GitDiscovery::discover();
     REQUIRE(gitInfo.has_value());
 
@@ -262,14 +278,14 @@ TEST_CASE("Suite A.2 - Parita' funzionale Native vs Qt QProcess e sessione persi
     ensureQtCoreApp();
     gf::infra::git::QtGitCommandExecutor qtExec(gitInfo->directBinaryPath);
     const auto qtStatus = qtExec.execute(statusCmd);
-    REQUIRE(qtStatus.has_value());
-    REQUIRE(qtStatus->succeeded());
-    REQUIRE(qtStatus->stdoutBytes == nativeStatus->stdoutBytes);
+    REQUIRE (qtStatus.has_value());
+    REQUIRE (qtStatus->succeeded());
+    REQUIRE (qtStatus->stdoutBytes== nativeStatus->stdoutBytes);
 
     gf::infra::git::QtGitBatchSessionFactory qtBatchFactory(gitInfo->directBinaryPath);
     auto qtSession = qtBatchFactory.openSession(repoPath);
-    REQUIRE(qtSession.has_value());
-    for (std::size_t i = 0; i < oids.size(); ++i) {
+    REQUIRE (qtSession.has_value());
+    for (std::size_t i =0; i<oids.size();++i) {
         auto qtObj = (*qtSession)->readObject(oids[i]);
         REQUIRE(qtObj.has_value());
         REQUIRE(qtObj->content == nativeContents[i]);

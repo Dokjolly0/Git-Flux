@@ -6,7 +6,12 @@
 
 using namespace gf::core::syntax;
 
-TEST_CASE("LanguageDetector rileva correttamente il linguaggio in base all'estensione e al nome file", "[unit][syntax][detector]") {
+TEST_CASE (
+"LanguageDetector rileva correttamente il linguaggio in base all'estensione e al nome file"
+,
+"[unit][syntax][detector]"
+)
+ {
     SECTION("Rilevamento da estensione") {
         REQUIRE(LanguageDetector::detect("main.cpp").language == Language::Cpp);
         REQUIRE(LanguageDetector::detect("header.hpp").language == Language::Cpp);
@@ -77,7 +82,12 @@ TEST_CASE("LanguageDetector rileva correttamente il linguaggio in base all'esten
     }
 }
 
-TEST_CASE("SyntaxHighlighter tokenizza correttamente i vari costrutti di codice", "[unit][syntax][tokenizer]") {
+TEST_CASE (
+"SyntaxHighlighter tokenizza correttamente i vari costrutti di codice"
+,
+"[unit][syntax][tokenizer]"
+)
+ {
     SECTION("C++ Keywords, Tipi, Funzioni, Variabili e Commenti") {
         std::string line = "    return calculateTotal(int count); // helper";
         auto tokens = SyntaxHighlighter::tokenize(line, Language::Cpp);
@@ -267,7 +277,12 @@ TEST_CASE("SyntaxHighlighter tokenizza correttamente i vari costrutti di codice"
     }
 }
 
-TEST_CASE("SyntaxHighlighter genera HTML formattato con colori e preserva l'indentazione", "[unit][syntax][html]") {
+TEST_CASE (
+"SyntaxHighlighter genera HTML formattato con colori e preserva l'indentazione"
+,
+"[unit][syntax][html]"
+)
+ {
     SECTION("Escape HTML di caratteri speciali e spazi") {
         REQUIRE(SyntaxHighlighter::escapeHtml("<foo & bar>") == "&lt;foo&nbsp;&amp;&nbsp;bar&gt;");
         REQUIRE(SyntaxHighlighter::escapeHtml("    text") == "&nbsp;&nbsp;&nbsp;&nbsp;text");
@@ -307,7 +322,12 @@ TEST_CASE("SyntaxHighlighter genera HTML formattato con colori e preserva l'inde
 }
 
 
-TEST_CASE("LanguageDetector rileva estensioni Markdown extra e code fence info strings", "[unit][syntax][detector][markdown]") {
+TEST_CASE (
+"LanguageDetector rileva estensioni Markdown extra e code fence info strings"
+,
+"[unit][syntax][detector][markdown]"
+)
+ {
     SECTION("Estensioni Markdown aggiuntive") {
         REQUIRE(LanguageDetector::detect("CHANGELOG.mdown").language == Language::Markdown);
         REQUIRE(LanguageDetector::detect("docs/guide.mkd").language == Language::Markdown);
@@ -345,7 +365,12 @@ TEST_CASE("LanguageDetector rileva estensioni Markdown extra e code fence info s
     }
 }
 
-TEST_CASE("SyntaxHighlighter protegge UTF-8 box-drawing e Plain Text da evidenziazione errata", "[unit][syntax][utf8]") {
+TEST_CASE (
+"SyntaxHighlighter protegge UTF-8 box-drawing e Plain Text da evidenziazione errata"
+,
+"[unit][syntax][utf8]"
+)
+ {
     SECTION("Albero file con box-drawing UTF-8 e commento # in Plain Text non viene frammentato ne evidenziato come codice") {
         const std::string line = "│   ├── tree/            # folders, risoluzione path, move, cestino";
         auto tokens = SyntaxHighlighter::tokenize(line, Language::Unknown);
@@ -395,7 +420,12 @@ TEST_CASE("SyntaxHighlighter protegge UTF-8 box-drawing e Plain Text da evidenzi
     }
 }
 
-TEST_CASE("SyntaxHighlighter tokenizza Markdown con stato multi-riga senza rompere la prosa", "[unit][syntax][markdown]") {
+TEST_CASE (
+"SyntaxHighlighter tokenizza Markdown con stato multi-riga senza rompere la prosa"
+,
+"[unit][syntax][markdown]"
+)
+ {
     SECTION("Apostrofi e URL in Markdown restano testo leggibile senza falsi token codice") {
         MarkdownLineState state{};
         const std::string line = "L'utente visita https://example.com/v1 e don't break \"quotes\" o `if`";
@@ -448,7 +478,12 @@ TEST_CASE("SyntaxHighlighter tokenizza Markdown con stato multi-riga senza rompe
     }
 }
 
-TEST_CASE("MarkdownParser estrae blocchi GitHub-style, TOC, badge, tabelle e Rich Diff", "[unit][syntax][markdown][parser]") {
+TEST_CASE (
+"MarkdownParser estrae blocchi GitHub-style, TOC, badge, tabelle e Rich Diff"
+,
+"[unit][syntax][markdown][parser]"
+)
+ {
     SECTION("toGithubSlug replica il comportamento GitHub con emoji, punteggiatura ed entita") {
         REQUIRE(MarkdownParser::toGithubSlug("Hello World") == "hello-world");
         REQUIRE(MarkdownParser::toGithubSlug("Architecture & Clean Design") == "architecture--clean-design");

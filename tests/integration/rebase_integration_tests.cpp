@@ -8,44 +8,54 @@
 #include <filesystem>
 #include <fstream>
 
-namespace {
+namespace
+{
+    struct RebaseTestSandbox
+    {
+        std::filesystem::path root;
 
-struct RebaseTestSandbox {
-    std::filesystem::path root;
+        RebaseTestSandbox()
+        {
+            const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+            root = std::filesystem::temp_directory_path() / ("gf_rebase_integ_" + std::to_string(nonce));
+            std::filesystem::create_directories(root);
+        }
 
-    RebaseTestSandbox() {
-        const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-        root = std::filesystem::temp_directory_path() / ("gf_rebase_integ_" + std::to_string(nonce));
-        std::filesystem::create_directories(root);
-    }
+        ~RebaseTestSandbox()
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(root, ec);
+        }
 
-    ~RebaseTestSandbox() {
-        std::error_code ec;
-        std::filesystem::remove_all(root, ec);
-    }
+        void writeFile(const std::string& relativePath, const std::string& content)
+        {
+            auto filePath = root / relativePath;
+            std::filesystem::create_directories(filePath.parent_path());
+            std::ofstream ofs(filePath, std::ios::trunc);
+            ofs << content;
+        }
 
-    void writeFile(const std::string& relativePath, const std::string& content) {
-        auto filePath = root / relativePath;
-        std::filesystem::create_directories(filePath.parent_path());
-        std::ofstream ofs(filePath, std::ios::trunc);
-        ofs << content;
-    }
+        [[nodiscard]] std::string readFile(const std::string& relativePath)
+        {
+            auto filePath = root / relativePath;
+            std::ifstream ifs(filePath);
+            return std::string((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+        }
 
-    [[nodiscard]] std::string readFile(const std::string& relativePath) {
-        auto filePath = root / relativePath;
-        std::ifstream ifs(filePath);
-        return std::string((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
-    }
-
-    [[nodiscard]] bool fileExists(const std::string& relativePath) {
-        std::error_code ec;
-        return std::filesystem::exists(root / relativePath, ec);
-    }
-};
-
+        [[nodiscard]] bool fileExists(const std::string& relativePath)
+        {
+            std::error_code ec;
+            return std::filesystem::exists(root / relativePath, ec);
+        }
+    };
 } // namespace
 
-TEST_CASE("NativeRepositoryGitOps and GitRebaseService real Git rebase & cherry-pick", "[git][rebase][integration]") {
+TEST_CASE (
+"NativeRepositoryGitOps and GitRebaseService real Git rebase & cherry-pick"
+,
+"[git][rebase][integration]"
+)
+ {
     auto gitDiscovery = gf::infra::git::GitDiscovery::discover();
     REQUIRE(gitDiscovery.has_value());
     const auto gitExe = gitDiscovery->directBinaryPath.empty()

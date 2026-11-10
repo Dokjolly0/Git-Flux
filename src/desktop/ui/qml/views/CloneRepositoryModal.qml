@@ -100,6 +100,7 @@ Dialog {
 
     Connections {
         target: root.effectiveHubVm
+
         function onCloneCompleted(success, message) {
             if (success) {
                 root.resetFormAndCache();
@@ -112,10 +113,10 @@ Dialog {
         id: cloneParentFolderDialog
         title: "Seleziona cartella di destinazione locale"
         currentFolder: destFolderField.text.length > 0
-                       ? ("file://" + destFolderField.text)
-                       : (root.effectiveHubVm && root.effectiveHubVm.lastCloneDestinationPath && root.effectiveHubVm.lastCloneDestinationPath.length > 0
-                          ? ("file://" + root.effectiveHubVm.lastCloneDestinationPath)
-                          : "")
+            ? ("file://" + destFolderField.text)
+            : (root.effectiveHubVm && root.effectiveHubVm.lastCloneDestinationPath && root.effectiveHubVm.lastCloneDestinationPath.length > 0
+                ? ("file://" + root.effectiveHubVm.lastCloneDestinationPath)
+                : "")
         onAccepted: {
             var selected = cloneParentFolderDialog.selectedFolder.toString();
             if (selected.startsWith("file://")) {
@@ -187,7 +188,8 @@ Dialog {
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
-                    background: Item {}
+                    background: Item {
+                    }
                 }
             }
         }
@@ -342,8 +344,8 @@ Dialog {
                             // Profile Title & Account Name
                             Text {
                                 text: (root.profilesVm ? root.profilesVm.activeProfileDisplayName : "") +
-                                      (root.profilesVm && root.profilesVm.activeProfileUsername.length > 0
-                                       ? " • @" + root.profilesVm.activeProfileUsername : "")
+                                    (root.profilesVm && root.profilesVm.activeProfileUsername.length > 0
+                                        ? " • @" + root.profilesVm.activeProfileUsername : "")
                                 color: "#F8FAFC"
                                 font.bold: true
                                 font.pixelSize: 12
@@ -387,7 +389,9 @@ Dialog {
                                 }
                             }
 
-                            Item { Layout.fillWidth: true }
+                            Item {
+                                Layout.fillWidth: true
+                            }
 
                             // Protocol Switcher (SSH vs HTTPS)
                             RowLayout {
@@ -536,8 +540,8 @@ Dialog {
 
                             Text {
                                 text: root.profilesVm && root.profilesVm.activeProfileId === "bitbucket"
-                                      ? "Bitbucket ha deprecato le App Password a Luglio 2026. Crea un 'API token with scopes' su id.atlassian.com selezionando l'app Bitbucket e lo scope 'read:repository:bitbucket'."
-                                      : "Il token viene crittografato sul database locale con Argon2id (KDF) e AES-256-GCM. Sblocca tutti i repository privati e delle organizzazioni."
+                                    ? "Bitbucket ha deprecato le App Password a Luglio 2026. Crea un 'API token with scopes' su id.atlassian.com selezionando l'app Bitbucket e lo scope 'read:repository:bitbucket'."
+                                    : "Il token viene crittografato sul database locale con Argon2id (KDF) e AES-256-GCM. Sblocca tutti i repository privati e delle organizzazioni."
                                 color: "#94A3B8"
                                 font.pixelSize: 11
                                 wrapMode: Text.Wrap
@@ -553,8 +557,8 @@ Dialog {
                                     Layout.preferredWidth: 160
                                     Layout.preferredHeight: 32
                                     placeholderText: root.profilesVm && root.profilesVm.activeProfileId === "bitbucket"
-                                                     ? "Email Atlassian"
-                                                     : "Username (es. Dokjolly0)"
+                                        ? "Email Atlassian"
+                                        : "Username (es. Dokjolly0)"
                                     placeholderTextColor: "#475569"
                                     selectByMouse: true
                                     text: root.profilesVm ? root.profilesVm.activeProfileUsername : ""
@@ -574,8 +578,8 @@ Dialog {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: 32
                                     placeholderText: root.profilesVm && root.profilesVm.activeProfileId === "bitbucket"
-                                                     ? "Atlassian Scoped API Token (ATATT...)"
-                                                     : "Personal Access Token (ghp_... o API token)"
+                                        ? "Atlassian Scoped API Token (ATATT...)"
+                                        : "Personal Access Token (ghp_... o API token)"
                                     placeholderTextColor: "#475569"
                                     selectByMouse: true
                                     echoMode: root.showTokenText ? TextInput.Normal : TextInput.Password
@@ -595,7 +599,9 @@ Dialog {
                                     Layout.preferredWidth: 32
                                     Layout.preferredHeight: 32
                                     onClicked: root.showTokenText = !root.showTokenText
-                                    background: Rectangle { color: "#1E293B"; radius: 4 }
+                                    background: Rectangle {
+                                        color: "#1E293B"; radius: 4
+                                    }
                                 }
 
                                 Button {
@@ -697,8 +703,12 @@ Dialog {
                                 text: "🔑 Inserisci Token"
                                 Layout.preferredHeight: 28
                                 onClicked: root.showTokenConfig = true
-                                background: Rectangle { color: parent.hovered ? "#0284C7" : "#0369A1"; radius: 4 }
-                                contentItem: Text { text: "🔑 Inserisci Token"; color: "#FFFFFF"; font.pixelSize: 11; font.bold: true }
+                                background: Rectangle {
+                                    color: parent.hovered ? "#0284C7" : "#0369A1"; radius: 4
+                                }
+                                contentItem: Text {
+                                    text: "🔑 Inserisci Token"; color: "#FFFFFF"; font.pixelSize: 11; font.bold: true
+                                }
                             }
                         }
                     }
@@ -733,8 +743,12 @@ Dialog {
                                 text: "Modifica"
                                 Layout.preferredHeight: 24
                                 onClicked: root.showTokenConfig = true
-                                background: Rectangle { color: parent.hovered ? "#047857" : "#065F46"; radius: 4 }
-                                contentItem: Text { text: "Modifica"; color: "#ECFDF5"; font.pixelSize: 10; font.bold: true }
+                                background: Rectangle {
+                                    color: parent.hovered ? "#047857" : "#065F46"; radius: 4
+                                }
+                                contentItem: Text {
+                                    text: "Modifica"; color: "#ECFDF5"; font.pixelSize: 10; font.bold: true
+                                }
                             }
                         }
                     }
@@ -762,8 +776,8 @@ Dialog {
                             radius: 6
                             color: repoSelectorMouse.containsMouse ? "#1E293B" : "#0B1120"
                             border.color: (root.repoTouched && !root.showRepoPicker && root.selectedRepoFullName.length === 0)
-                                          ? "#F59E0B"
-                                          : (root.showRepoPicker ? "#38BDF8" : (root.selectedRepoFullName.length > 0 ? "#0284C7" : "#334155"))
+                                ? "#F59E0B"
+                                : (root.showRepoPicker ? "#38BDF8" : (root.selectedRepoFullName.length > 0 ? "#0284C7" : "#334155"))
                             border.width: (root.showRepoPicker || (root.repoTouched && !root.showRepoPicker && root.selectedRepoFullName.length === 0)) ? 2 : 1
 
                             RowLayout {
@@ -783,8 +797,8 @@ Dialog {
 
                                     Text {
                                         text: root.selectedRepoFullName.length > 0
-                                              ? root.selectedRepoFullName
-                                              : "Clicca per selezionare un repository da " + (root.profilesVm ? root.profilesVm.activeProfileDisplayName : "server") + "..."
+                                            ? root.selectedRepoFullName
+                                            : "Clicca per selezionare un repository da " + (root.profilesVm ? root.profilesVm.activeProfileDisplayName : "server") + "..."
                                         color: root.selectedRepoFullName.length > 0 ? "#F8FAFC" : "#64748B"
                                         font.pixelSize: 12
                                         font.bold: root.selectedRepoFullName.length > 0
@@ -812,8 +826,8 @@ Dialog {
                                         id: actionBtnText
                                         anchors.centerIn: parent
                                         text: root.showRepoPicker
-                                              ? "Chiudi ▲"
-                                              : (root.selectedRepoFullName.length > 0 ? "Cambia ▼" : "Scegli ▼")
+                                            ? "Chiudi ▲"
+                                            : (root.selectedRepoFullName.length > 0 ? "Cambia ▼" : "Scegli ▼")
                                         color: root.showRepoPicker ? "#FFFFFF" : "#94A3B8"
                                         font.pixelSize: 11
                                         font.bold: true
@@ -867,8 +881,12 @@ Dialog {
                                         root.showRepoPicker = true;
                                         if (typeof searchField !== "undefined") searchField.forceActiveFocus();
                                     }
-                                    contentItem: Text { text: "Scegli ▼"; color: "#FDE68A"; font.pixelSize: 10; font.bold: true }
-                                    background: Rectangle { color: "#78350F"; radius: 4 }
+                                    contentItem: Text {
+                                        text: "Scegli ▼"; color: "#FDE68A"; font.pixelSize: 10; font.bold: true
+                                    }
+                                    background: Rectangle {
+                                        color: "#78350F"; radius: 4
+                                    }
                                 }
                             }
                         }
@@ -929,7 +947,9 @@ Dialog {
                                         Layout.preferredWidth: 32
                                         Layout.preferredHeight: 32
                                         onClicked: searchField.text = ""
-                                        background: Rectangle { color: "#1E293B"; radius: 4 }
+                                        background: Rectangle {
+                                            color: "#1E293B"; radius: 4
+                                        }
                                         contentItem: Text {
                                             text: "✕"
                                             color: "#94A3B8"
@@ -972,7 +992,9 @@ Dialog {
                                     RowLayout {
                                         anchors.centerIn: parent
                                         spacing: 8
-                                        ProgressBar { indeterminate: true; Layout.preferredWidth: 100 }
+                                        ProgressBar {
+                                            indeterminate: true; Layout.preferredWidth: 100
+                                        }
                                         Text {
                                             text: "Caricamento repository in corso..."
                                             color: "#38BDF8"
@@ -1006,8 +1028,12 @@ Dialog {
                                             text: "Inserisci Token"
                                             Layout.preferredHeight: 24
                                             onClicked: root.showTokenConfig = true
-                                            background: Rectangle { color: "#7F1D1D"; radius: 4 }
-                                            contentItem: Text { text: "Inserisci Token"; color: "#FFFFFF"; font.pixelSize: 10; font.bold: true }
+                                            background: Rectangle {
+                                                color: "#7F1D1D"; radius: 4
+                                            }
+                                            contentItem: Text {
+                                                text: "Inserisci Token"; color: "#FFFFFF"; font.pixelSize: 10; font.bold: true
+                                            }
                                         }
                                     }
                                 }
@@ -1031,7 +1057,8 @@ Dialog {
                                         boundsBehavior: Flickable.StopAtBounds
                                         maximumFlickVelocity: 6000
                                         flickDeceleration: 1000
-                                        ScrollBar.vertical: FluxScrollBar {}
+                                        ScrollBar.vertical: FluxScrollBar {
+                                        }
 
                                         delegate: Rectangle {
                                             id: repoCard
@@ -1128,8 +1155,8 @@ Dialog {
                                             anchors.centerIn: parent
                                             visible: repoListView.count === 0 && (!root.profilesVm || !root.profilesVm.isFetching)
                                             text: searchField.text.length > 0
-                                                  ? "Nessun repository trovato per '" + searchField.text + "'"
-                                                  : "Nessun repository disponibile per questo account."
+                                                ? "Nessun repository trovato per '" + searchField.text + "'"
+                                                : "Nessun repository disponibile per questo account."
                                             color: "#64748B"
                                             font.pixelSize: 12
                                         }
@@ -1168,8 +1195,8 @@ Dialog {
                                 color: (root.urlMissing && urlField.text.trim().length === 0) ? "#2A0808" : "#0B1120"
                                 radius: 6
                                 border.color: (root.urlMissing && urlField.text.trim().length === 0)
-                                              ? "#DC2626"
-                                              : (urlField.activeFocus ? "#38BDF8" : "#334155")
+                                    ? "#DC2626"
+                                    : (urlField.activeFocus ? "#38BDF8" : "#334155")
                                 border.width: (root.urlMissing && urlField.text.trim().length === 0) ? 2 : 1
                             }
                             onTextChanged: {
@@ -1245,8 +1272,8 @@ Dialog {
                                     color: (root.destFolderMissing && destFolderField.text.trim().length === 0) ? "#2A0808" : "#0B1120"
                                     radius: 6
                                     border.color: (root.destFolderMissing && destFolderField.text.trim().length === 0)
-                                                  ? "#DC2626"
-                                                  : (destFolderField.activeFocus ? "#38BDF8" : "#334155")
+                                        ? "#DC2626"
+                                        : (destFolderField.activeFocus ? "#38BDF8" : "#334155")
                                     border.width: (root.destFolderMissing && destFolderField.text.trim().length === 0) ? 2 : 1
                                 }
                                 onTextChanged: {
@@ -1311,8 +1338,12 @@ Dialog {
                                         root.destFolderMissing = false;
                                         cloneParentFolderDialog.open();
                                     }
-                                    contentItem: Text { text: "📁 Sfoglia..."; color: "#FFFFFF"; font.pixelSize: 11; font.bold: true }
-                                    background: Rectangle { color: "#7F1D1D"; radius: 4 }
+                                    contentItem: Text {
+                                        text: "📁 Sfoglia..."; color: "#FFFFFF"; font.pixelSize: 11; font.bold: true
+                                    }
+                                    background: Rectangle {
+                                        color: "#7F1D1D"; radius: 4
+                                    }
                                 }
                             }
                         }
@@ -1478,8 +1509,8 @@ Dialog {
                                 from: 0
                                 to: 100
                                 value: (root.effectiveHubVm && root.effectiveHubVm.cloneProgressPercent > 0)
-                                       ? root.effectiveHubVm.cloneProgressPercent
-                                       : 0
+                                    ? root.effectiveHubVm.cloneProgressPercent
+                                    : 0
                                 indeterminate: Boolean(root.effectiveHubVm && root.effectiveHubVm.cloneProgressPercent <= 0)
                                 background: Rectangle {
                                     implicitHeight: 8
@@ -1492,15 +1523,19 @@ Dialog {
                                     Rectangle {
                                         id: barFill
                                         width: cloneProgressBar.indeterminate
-                                               ? parent.width * 0.35
-                                               : Math.max(8, parent.width * cloneProgressBar.visualPosition)
+                                            ? parent.width * 0.35
+                                            : Math.max(8, parent.width * cloneProgressBar.visualPosition)
                                         height: parent.height
                                         radius: 4
                                         x: cloneProgressBar.indeterminate ? indetAnim.animX : 0
                                         gradient: Gradient {
                                             orientation: Gradient.Horizontal
-                                            GradientStop { position: 0.0; color: "#0284C7" }
-                                            GradientStop { position: 1.0; color: "#38BDF8" }
+                                            GradientStop {
+                                                position: 0.0; color: "#0284C7"
+                                            }
+                                            GradientStop {
+                                                position: 1.0; color: "#38BDF8"
+                                            }
                                         }
                                     }
 
@@ -1575,7 +1610,9 @@ Dialog {
                 anchors.rightMargin: 16
                 spacing: 10
 
-                Item { Layout.fillWidth: true }
+                Item {
+                    Layout.fillWidth: true
+                }
 
                 Button {
                     text: "Annulla"
@@ -1641,15 +1678,15 @@ Dialog {
                     }
                     contentItem: Text {
                         text: (root.effectiveHubVm && root.effectiveHubVm.isCloning)
-                              ? (root.effectiveHubVm.cloneProgressPercent > 0
-                                 ? ("⏳ " + root.effectiveHubVm.cloneProgressPercent + "% In corso...")
-                                 : "⏳ Clonazione in corso...")
-                              : (root.selectedRepoFullName.length > 0
-                                 ? "⬇ Avvia Clonazione (" + (dirNameField.text.length > 0 ? dirNameField.text : root.selectedRepoFullName) + ")"
-                                 : "⬇ Avvia Clonazione")
+                            ? (root.effectiveHubVm.cloneProgressPercent > 0
+                                ? ("⏳ " + root.effectiveHubVm.cloneProgressPercent + "% In corso...")
+                                : "⏳ Clonazione in corso...")
+                            : (root.selectedRepoFullName.length > 0
+                                ? "⬇ Avvia Clonazione (" + (dirNameField.text.length > 0 ? dirNameField.text : root.selectedRepoFullName) + ")"
+                                : "⬇ Avvia Clonazione")
                         color: (root.effectiveHubVm && root.effectiveHubVm.isCloning)
-                               ? "#38BDF8"
-                               : (urlField.text.trim().length > 0 ? "#FFFFFF" : "#94A3B8")
+                            ? "#38BDF8"
+                            : (urlField.text.trim().length > 0 ? "#FFFFFF" : "#94A3B8")
                         font.pixelSize: 13
                         font.bold: true
                         horizontalAlignment: Text.AlignHCenter
@@ -1657,14 +1694,14 @@ Dialog {
                     }
                     background: Rectangle {
                         color: (root.effectiveHubVm && root.effectiveHubVm.isCloning)
-                               ? "#0C4A6E"
-                               : (urlField.text.trim().length > 0
-                                  ? (cloneButton.hovered ? "#0284C7" : "#0369A1")
-                                  : (cloneButton.hovered ? "#1E293B" : "#0F172A"))
+                            ? "#0C4A6E"
+                            : (urlField.text.trim().length > 0
+                                ? (cloneButton.hovered ? "#0284C7" : "#0369A1")
+                                : (cloneButton.hovered ? "#1E293B" : "#0F172A"))
                         radius: 6
                         border.color: (root.effectiveHubVm && root.effectiveHubVm.isCloning)
-                                      ? "#38BDF8"
-                                      : (urlField.text.trim().length > 0 ? "#38BDF8" : "#334155")
+                            ? "#38BDF8"
+                            : (urlField.text.trim().length > 0 ? "#38BDF8" : "#334155")
                         border.width: 1
                     }
                 }

@@ -20,8 +20,8 @@ Item {
     property string hoveredWorkspaceName: ""
 
     readonly property int visibleColumnCount: Math.max(1, (homeHubVmRef ? ((homeHubVmRef.showRepositories ? 1 : 0) +
-                                                                           (homeHubVmRef.showGroups ? 1 : 0) +
-                                                                           (homeHubVmRef.showWorkspaces ? 1 : 0)) : 3))
+        (homeHubVmRef.showGroups ? 1 : 0) +
+        (homeHubVmRef.showWorkspaces ? 1 : 0)) : 3))
 
     function startDraggingRepo(repoId, repoName) {
         isDraggingRepo = true;
@@ -54,7 +54,7 @@ Item {
         if (listPt.x < -30 || listPt.x > groupListView.width + 30 || listPt.y < 0 || listPt.y > groupListView.height) return null;
         var sampleX = Math.max(10, Math.min(groupListView.width - 10, listPt.x + groupListView.contentX));
         var item = groupListView.itemAt(sampleX, listPt.y + groupListView.contentY);
-        if (item && item.grpCardId) return { id: item.grpCardId, name: item.grpCardName };
+        if (item && item.grpCardId) return {id: item.grpCardId, name: item.grpCardName};
         return null;
     }
 
@@ -64,7 +64,7 @@ Item {
         if (listPt.x < -30 || listPt.x > wsListView.width + 30 || listPt.y < 0 || listPt.y > wsListView.height) return null;
         var sampleX = Math.max(10, Math.min(wsListView.width - 10, listPt.x + wsListView.contentX));
         var item = wsListView.itemAt(sampleX, listPt.y + wsListView.contentY);
-        if (item && item.wsCardId) return { id: item.wsCardId, name: item.wsCardName };
+        if (item && item.wsCardId) return {id: item.wsCardId, name: item.wsCardName};
         return null;
     }
 
@@ -102,8 +102,11 @@ Item {
     }
 
     signal quickOpenRequested()
+
     signal repositoryOpened(string repoId, string name, string path)
+
     signal groupOpened(string groupId, string groupName, var repoIds)
+
     signal workspaceOpened(string workspaceId)
 
     function openAddRepoDialog() {
@@ -116,25 +119,31 @@ Item {
 
     Connections {
         target: (typeof homeHubVm !== "undefined") ? homeHubVm : null
+
         function onErrorOccurred(message) {
             errorFeedbackDialog.errorMessage = message;
             errorFeedbackDialog.open();
             feedbackBanner.showError(message);
         }
+
         function onRepositoryAdded(repoName, path) {
             feedbackBanner.showSuccess("Repository '" + repoName + "' aggiunto con successo!");
         }
+
         function onLastSuccessMessageChanged(message) {
             if (message && message.length > 0) {
                 feedbackBanner.showSuccess(message);
             }
         }
+
         function onRepositoryOpened(repoId, name, path) {
             root.repositoryOpened(repoId, name, path);
         }
+
         function onGroupOpened(groupId, groupName, repoIds) {
             root.groupOpened(groupId, groupName, repoIds);
         }
+
         function onWorkspaceOpened(workspaceId) {
             root.workspaceOpened(workspaceId);
         }
@@ -183,7 +192,9 @@ Item {
                     }
                 }
 
-                Item { Layout.preferredWidth: 20 }
+                Item {
+                    Layout.preferredWidth: 20
+                }
 
                 // Reactive Quick Search Field
                 Rectangle {
@@ -233,12 +244,16 @@ Item {
                                 color: "#8B949E"
                                 font.pixelSize: 11
                             }
-                            background: Rectangle { color: "transparent" }
+                            background: Rectangle {
+                                color: "transparent"
+                            }
                         }
                     }
                 }
 
-                Item { Layout.fillWidth: true }
+                Item {
+                    Layout.fillWidth: true
+                }
 
                 // Section Visibility Controls & Quick Open / Clone Actions
                 RowLayout {
@@ -444,7 +459,11 @@ Item {
             border.color: isError ? "#F85149" : "#3FB950"
             border.width: 1
 
-            Behavior on opacity { NumberAnimation { duration: 200 } }
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: 200
+                }
+            }
 
             function showError(msg) {
                 isError = true;
@@ -497,8 +516,12 @@ Item {
                     text: "✕"
                     flat: true
                     onClicked: feedbackBanner.dismiss()
-                    contentItem: Text { text: "✕"; color: "#8B949E"; font.pixelSize: 13 }
-                    background: Rectangle { color: "transparent" }
+                    contentItem: Text {
+                        text: "✕"; color: "#8B949E"; font.pixelSize: 13
+                    }
+                    background: Rectangle {
+                        color: "transparent"
+                    }
                 }
             }
         }
@@ -558,13 +581,19 @@ Item {
                                     font.bold: true
                                 }
                             }
-                            Item { Layout.fillWidth: true }
+                            Item {
+                                Layout.fillWidth: true
+                            }
                             Button {
                                 text: "+"
                                 flat: true
                                 onClicked: repoFolderDialog.open()
-                                contentItem: Text { text: "+"; color: "#8B949E"; font.pixelSize: 15 }
-                                background: Rectangle { color: "transparent" }
+                                contentItem: Text {
+                                    text: "+"; color: "#8B949E"; font.pixelSize: 15
+                                }
+                                background: Rectangle {
+                                    color: "transparent"
+                                }
                             }
                         }
 
@@ -578,7 +607,8 @@ Item {
                             boundsBehavior: Flickable.StopAtBounds
                             maximumFlickVelocity: 6000
                             flickDeceleration: 1000
-                            ScrollBar.vertical: FluxScrollBar {}
+                            ScrollBar.vertical: FluxScrollBar {
+                            }
                             model: homeHubVm.repositories
                             spacing: 8
 
@@ -676,7 +706,9 @@ Item {
                                             }
                                         }
 
-                                        Item { Layout.fillWidth: true }
+                                        Item {
+                                            Layout.fillWidth: true
+                                        }
 
                                         // Reconnect button if missing
                                         Button {
@@ -748,8 +780,12 @@ Item {
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Apri nel gestore file"
                                             onClicked: homeHubVm.openInFileManager(repoCardRect.localPath)
-                                            contentItem: Text { text: "📂"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "📂"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                            }
                                         }
 
                                         // Terminal Button
@@ -760,8 +796,12 @@ Item {
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Apri nel terminale"
                                             onClicked: homeHubVm.openInTerminal(repoCardRect.localPath)
-                                            contentItem: Text { text: "💻"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "💻"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                            }
                                         }
 
                                         // Copy Path Button
@@ -771,8 +811,12 @@ Item {
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Copia percorso negli appunti"
                                             onClicked: homeHubVm.copyToClipboard(repoCardRect.localPath)
-                                            contentItem: Text { text: "📋"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "📋"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                            }
                                         }
 
                                         // Rename Button
@@ -786,8 +830,12 @@ Item {
                                                 renameRepoDialog.initialName = repoCardRect.displayName;
                                                 renameRepoDialog.open();
                                             }
-                                            contentItem: Text { text: "✏️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "✏️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                            }
                                         }
 
                                         // Add to Group Button
@@ -803,8 +851,12 @@ Item {
                                                 addToGroupDialog.selectedGroupId = "";
                                                 addToGroupDialog.open();
                                             }
-                                            contentItem: Text { text: "🗂️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "🗂️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                            }
                                         }
 
                                         // Remove Button
@@ -814,8 +866,12 @@ Item {
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Rimuovi dal catalogo"
                                             onClicked: homeHubVm.removeRepository(repoCardRect.id)
-                                            contentItem: Text { text: "✕"; color: parent.hovered ? "#EF4444" : "#8B949E"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "✕"; color: parent.hovered ? "#EF4444" : "#8B949E"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                            }
                                         }
                                     }
                                 }
@@ -830,10 +886,10 @@ Item {
                                     onDoubleClicked: homeHubVm.openRepository(repoCardRect.id)
 
                                     property point pressPoint: Qt.point(0, 0)
-                                    onPressed: function(mouse) {
+                                    onPressed: function (mouse) {
                                         pressPoint = Qt.point(mouse.x, mouse.y);
                                     }
-                                    onPositionChanged: function(mouse) {
+                                    onPositionChanged: function (mouse) {
                                         if (pressed && !repoCardRect.isMissing) {
                                             var dx = mouse.x - pressPoint.x;
                                             var dy = mouse.y - pressPoint.y;
@@ -868,7 +924,7 @@ Item {
                                             }
                                         }
                                     }
-                                    onReleased: function(mouse) {
+                                    onReleased: function (mouse) {
                                         if (root.isDraggingRepo) {
                                             var rId = root.draggedRepoId;
                                             var rName = root.draggedRepoName;
@@ -886,7 +942,7 @@ Item {
                                             }
                                         }
                                     }
-                                    onCanceled: function() {
+                                    onCanceled: function () {
                                         if (root.isDraggingRepo) {
                                             root.clearDragState();
                                         }
@@ -977,13 +1033,19 @@ Item {
                                     font.bold: true
                                 }
                             }
-                            Item { Layout.fillWidth: true }
+                            Item {
+                                Layout.fillWidth: true
+                            }
                             Button {
                                 text: "+"
                                 flat: true
                                 onClicked: addGroupDialog.open()
-                                contentItem: Text { text: "+"; color: "#8B949E"; font.pixelSize: 15 }
-                                background: Rectangle { color: "transparent" }
+                                contentItem: Text {
+                                    text: "+"; color: "#8B949E"; font.pixelSize: 15
+                                }
+                                background: Rectangle {
+                                    color: "transparent"
+                                }
                             }
                         }
 
@@ -997,7 +1059,8 @@ Item {
                             boundsBehavior: Flickable.StopAtBounds
                             maximumFlickVelocity: 6000
                             flickDeceleration: 1000
-                            ScrollBar.vertical: FluxScrollBar {}
+                            ScrollBar.vertical: FluxScrollBar {
+                            }
                             model: homeHubVm.groups
                             spacing: 8
 
@@ -1020,7 +1083,11 @@ Item {
                                 border.color: isDropTarget ? "#C084FC" : (grpHover.containsMouse ? "#7C4DFF" : "#30363D")
                                 border.width: isDropTarget ? 2 : 1
                                 scale: isDropTarget ? 1.02 : 1.0
-                                Behavior on scale { NumberAnimation { duration: 100 } }
+                                Behavior on scale {
+                                    NumberAnimation {
+                                        duration: 100
+                                    }
+                                }
 
                                 ColumnLayout {
                                     id: grpColLayout
@@ -1072,7 +1139,9 @@ Item {
                                             }
                                         }
 
-                                        Item { Layout.fillWidth: true }
+                                        Item {
+                                            Layout.fillWidth: true
+                                        }
 
                                         // Open Group button (Batch opens all repos in group into tabs!)
                                         Button {
@@ -1113,8 +1182,12 @@ Item {
                                                 addRepoToGroupDialog.refreshAvailable();
                                                 addRepoToGroupDialog.open();
                                             }
-                                            contentItem: Text { text: "➕"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "➕"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                            }
                                         }
 
                                         // Rename Group Button
@@ -1128,8 +1201,12 @@ Item {
                                                 renameGroupDialog.initialName = grpCardRect.name;
                                                 renameGroupDialog.open();
                                             }
-                                            contentItem: Text { text: "✏️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "✏️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                            }
                                         }
 
                                         // Fetch Group Button
@@ -1143,8 +1220,12 @@ Item {
                                                 batchOperationsVm.fetchGroup(grpCardRect.id);
                                                 batchProgressModal.open();
                                             }
-                                            contentItem: Text { text: "⬇"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; color: "#58A6FF" }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "⬇"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; color: "#58A6FF"
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                            }
                                         }
 
                                         // Remove Group Button
@@ -1154,8 +1235,12 @@ Item {
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Elimina gruppo"
                                             onClicked: homeHubVm.removeGroup(grpCardRect.id)
-                                            contentItem: Text { text: "✕"; color: parent.hovered ? "#EF4444" : "#8B949E"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "✕"; color: parent.hovered ? "#EF4444" : "#8B949E"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                            }
                                         }
                                     }
 
@@ -1250,10 +1335,10 @@ Item {
                                     onDoubleClicked: homeHubVm.openGroup(grpCardRect.id)
 
                                     property point pressPoint: Qt.point(0, 0)
-                                    onPressed: function(mouse) {
+                                    onPressed: function (mouse) {
                                         pressPoint = Qt.point(mouse.x, mouse.y);
                                     }
-                                    onPositionChanged: function(mouse) {
+                                    onPositionChanged: function (mouse) {
                                         if (pressed) {
                                             var dx = mouse.x - pressPoint.x;
                                             var dy = mouse.y - pressPoint.y;
@@ -1276,7 +1361,7 @@ Item {
                                             }
                                         }
                                     }
-                                    onReleased: function(mouse) {
+                                    onReleased: function (mouse) {
                                         if (root.isDraggingGroup) {
                                             var gId = root.draggedGroupId;
                                             var gName = root.draggedGroupName;
@@ -1290,7 +1375,7 @@ Item {
                                             }
                                         }
                                     }
-                                    onCanceled: function() {
+                                    onCanceled: function () {
                                         if (root.isDraggingGroup) {
                                             root.clearDragState();
                                         }
@@ -1353,13 +1438,19 @@ Item {
                                     font.bold: true
                                 }
                             }
-                            Item { Layout.fillWidth: true }
+                            Item {
+                                Layout.fillWidth: true
+                            }
                             Button {
                                 text: "+"
                                 flat: true
                                 onClicked: addWorkspaceDialog.open()
-                                contentItem: Text { text: "+"; color: "#8B949E"; font.pixelSize: 15 }
-                                background: Rectangle { color: "transparent" }
+                                contentItem: Text {
+                                    text: "+"; color: "#8B949E"; font.pixelSize: 15
+                                }
+                                background: Rectangle {
+                                    color: "transparent"
+                                }
                             }
                         }
 
@@ -1373,7 +1464,8 @@ Item {
                             boundsBehavior: Flickable.StopAtBounds
                             maximumFlickVelocity: 6000
                             flickDeceleration: 1000
-                            ScrollBar.vertical: FluxScrollBar {}
+                            ScrollBar.vertical: FluxScrollBar {
+                            }
                             model: homeHubVm.workspaces
                             spacing: 8
 
@@ -1402,7 +1494,11 @@ Item {
                                 border.color: isDropTarget ? (root.isDraggingGroup ? "#C084FC" : "#4ADE80") : (wsHover.containsMouse ? "#3FB950" : "#30363D")
                                 border.width: isDropTarget ? 2 : 1
                                 scale: isDropTarget ? 1.02 : 1.0
-                                Behavior on scale { NumberAnimation { duration: 100 } }
+                                Behavior on scale {
+                                    NumberAnimation {
+                                        duration: 100
+                                    }
+                                }
 
                                 ColumnLayout {
                                     id: wsColLayout
@@ -1442,7 +1538,9 @@ Item {
                                             }
                                         }
 
-                                        Item { Layout.fillWidth: true }
+                                        Item {
+                                            Layout.fillWidth: true
+                                        }
 
                                         // Open Workspace Button
                                         Button {
@@ -1483,8 +1581,12 @@ Item {
                                                 addRepoToWsDialog.refreshAvailable();
                                                 addRepoToWsDialog.open();
                                             }
-                                            contentItem: Text { text: "➕"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "➕"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                            }
                                         }
 
                                         // Add Group to Workspace Button
@@ -1500,8 +1602,12 @@ Item {
                                                 addGrpToWsDialog.refreshAvailable();
                                                 addGrpToWsDialog.open();
                                             }
-                                            contentItem: Text { text: "🗂️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "🗂️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                            }
                                         }
 
                                         Button {
@@ -1513,8 +1619,12 @@ Item {
                                                 batchOperationsVm.fetchWorkspace(wsCardRect.id);
                                                 batchProgressModal.open();
                                             }
-                                            contentItem: Text { text: "⬇"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; color: "#3FB950" }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "⬇"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; color: "#3FB950"
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                            }
                                         }
 
                                         Button {
@@ -1523,8 +1633,12 @@ Item {
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Elimina workspace"
                                             onClicked: homeHubVm.removeWorkspace(wsCardRect.id)
-                                            contentItem: Text { text: "✕"; color: parent.hovered ? "#EF4444" : "#8B949E"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "✕"; color: parent.hovered ? "#EF4444" : "#8B949E"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                            }
                                         }
                                     }
 
@@ -1539,8 +1653,8 @@ Item {
                                         Text {
                                             anchors.centerIn: parent
                                             text: root.isDraggingGroup
-                                                  ? ("📥 Rilascia per aggiungere il gruppo '" + root.draggedGroupName + "' al workspace")
-                                                  : ("📥 Rilascia per aggiungere il repository '" + root.draggedRepoName + "' al workspace")
+                                                ? ("📥 Rilascia per aggiungere il gruppo '" + root.draggedGroupName + "' al workspace")
+                                                : ("📥 Rilascia per aggiungere il repository '" + root.draggedRepoName + "' al workspace")
                                             color: root.isDraggingGroup ? "#E9D5FF" : "#86EFAC"
                                             font.pixelSize: 10
                                             font.bold: true
@@ -2069,8 +2183,8 @@ Item {
             Text {
                 visible: addToGroupDialog.availableGroups.length === 0
                 text: (homeHubVm && homeHubVm.groupsCount === 0)
-                      ? "Nessun gruppo disponibile. Crea prima un gruppo."
-                      : "Questo repository fa già parte di tutti i gruppi esistenti."
+                    ? "Nessun gruppo disponibile. Crea prima un gruppo."
+                    : "Questo repository fa già parte di tutti i gruppi esistenti."
                 color: "#8B949E"
                 font.pixelSize: 12
             }
@@ -2183,8 +2297,8 @@ Item {
             Text {
                 visible: addRepoToGroupDialog.availableRepos.length === 0
                 text: (homeHubVm && homeHubVm.repositoriesCount === 0)
-                      ? "Nessun repository registrato."
-                      : "Tutti i repository registrati fanno già parte di questo gruppo."
+                    ? "Nessun repository registrato."
+                    : "Tutti i repository registrati fanno già parte di questo gruppo."
                 color: "#8B949E"
                 font.pixelSize: 12
             }
@@ -2297,8 +2411,8 @@ Item {
             Text {
                 visible: addRepoToWsDialog.availableRepos.length === 0
                 text: (homeHubVm && homeHubVm.repositoriesCount === 0)
-                      ? "Nessun repository registrato."
-                      : "Tutti i repository registrati fanno già parte di questo workspace."
+                    ? "Nessun repository registrato."
+                    : "Tutti i repository registrati fanno già parte di questo workspace."
                 color: "#8B949E"
                 font.pixelSize: 12
             }
@@ -2411,8 +2525,8 @@ Item {
             Text {
                 visible: addGrpToWsDialog.availableGroups.length === 0
                 text: (homeHubVm && homeHubVm.groupsCount === 0)
-                      ? "Nessun gruppo disponibile. Crea prima un gruppo."
-                      : "Tutti i gruppi esistenti fanno già parte di questo workspace."
+                    ? "Nessun gruppo disponibile. Crea prima un gruppo."
+                    : "Tutti i gruppi esistenti fanno già parte di questo workspace."
                 color: "#8B949E"
                 font.pixelSize: 12
             }
@@ -2557,7 +2671,9 @@ Item {
             anchors.fill: parent
             anchors.margins: 8
             spacing: 8
-            Text { text: "📁"; font.pixelSize: 15 }
+            Text {
+                text: "📁"; font.pixelSize: 15
+            }
             Text {
                 text: root.draggedRepoName
                 color: "#F0F6FC"
@@ -2586,7 +2702,9 @@ Item {
             anchors.fill: parent
             anchors.margins: 8
             spacing: 8
-            Text { text: "🗂️"; font.pixelSize: 15 }
+            Text {
+                text: "🗂️"; font.pixelSize: 15
+            }
             Text {
                 text: root.draggedGroupName
                 color: "#F0F6FC"

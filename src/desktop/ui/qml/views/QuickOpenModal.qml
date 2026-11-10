@@ -7,6 +7,7 @@ Item {
     visible: false
 
     signal closed()
+
     signal sessionStarted(var repoIds)
 
     function open() {
@@ -143,7 +144,9 @@ Item {
                                     color: "#00E5FF"
                                     font.pixelSize: 11
                                 }
-                                background: Rectangle { color: "transparent" }
+                                background: Rectangle {
+                                    color: "transparent"
+                                }
                             }
 
                             Button {
@@ -155,7 +158,9 @@ Item {
                                     color: "#8B949E"
                                     font.pixelSize: 11
                                 }
-                                background: Rectangle { color: "transparent" }
+                                background: Rectangle {
+                                    color: "transparent"
+                                }
                             }
                         }
 
@@ -167,7 +172,8 @@ Item {
                             boundsBehavior: Flickable.StopAtBounds
                             maximumFlickVelocity: 6000
                             flickDeceleration: 1000
-                            ScrollBar.vertical: FluxScrollBar {}
+                            ScrollBar.vertical: FluxScrollBar {
+                            }
                             model: homeHubVm.groups
                             spacing: 6
 
@@ -302,7 +308,9 @@ Item {
                                 }
                             }
 
-                            Item { Layout.fillWidth: true }
+                            Item {
+                                Layout.fillWidth: true
+                            }
                         }
 
                         // Resulting repositories list
@@ -314,7 +322,8 @@ Item {
                             boundsBehavior: Flickable.StopAtBounds
                             maximumFlickVelocity: 6000
                             flickDeceleration: 1000
-                            ScrollBar.vertical: FluxScrollBar {}
+                            ScrollBar.vertical: FluxScrollBar {
+                            }
                             model: quickOpenVm.resolvedRepositories
                             spacing: 6
 

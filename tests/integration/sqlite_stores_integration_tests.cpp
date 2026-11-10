@@ -26,19 +26,24 @@ using gf::workspaces::bo::Workspace;
 using gf::workspaces::bo::WorkspaceId;
 using gf::workspaces::bo::WorkspaceSession;
 
-namespace {
-
-SqliteConnection createMigratedInMemoryDb() {
-    auto connRes = SqliteConnection::openInMemory();
-    REQUIRE(connRes.has_value());
-    auto migRes = SchemaMigrator::migrateToLatest(*connRes);
-    REQUIRE(migRes.has_value());
-    return std::move(*connRes);
-}
-
+namespace
+{
+    SqliteConnection createMigratedInMemoryDb()
+    {
+        auto connRes = SqliteConnection::openInMemory();
+        REQUIRE(connRes.has_value());
+        auto migRes = SchemaMigrator::migrateToLatest(*connRes);
+        REQUIRE(migRes.has_value());
+        return std::move(*connRes);
+    }
 } // namespace
 
-TEST_CASE("SqliteConnection & SchemaMigrator inizializzano correttamente il DB e sono idempotenti", "[integration][sqlite][migrator]") {
+TEST_CASE (
+"SqliteConnection & SchemaMigrator inizializzano correttamente il DB e sono idempotenti"
+,
+"[integration][sqlite][migrator]"
+)
+ {
     auto connRes = SqliteConnection::openInMemory();
     REQUIRE(connRes.has_value());
     auto& conn = *connRes;
@@ -62,7 +67,12 @@ TEST_CASE("SqliteConnection & SchemaMigrator inizializzano correttamente il DB e
     REQUIRE(*vStill1 == *v1);
 }
 
-TEST_CASE("SqliteTransaction garantisce commit e rollback automatico in caso di errore", "[integration][sqlite][tx]") {
+TEST_CASE (
+"SqliteTransaction garantisce commit e rollback automatico in caso di errore"
+,
+"[integration][sqlite][tx]"
+)
+ {
     auto conn = createMigratedInMemoryDb();
 
     // 1. Explicit commit
@@ -100,7 +110,12 @@ TEST_CASE("SqliteTransaction garantisce commit e rollback automatico in caso di 
     }
 }
 
-TEST_CASE("SqliteRepositoryStore gestisce CRUD, percorsi Unicode e unicita' percorso", "[integration][sqlite][repo_store]") {
+TEST_CASE (
+"SqliteRepositoryStore gestisce CRUD, percorsi Unicode e unicita' percorso"
+,
+"[integration][sqlite][repo_store]"
+)
+ {
     auto conn = createMigratedInMemoryDb();
     SqliteRepositoryStore repoStore(conn);
 
@@ -157,7 +172,12 @@ TEST_CASE("SqliteRepositoryStore gestisce CRUD, percorsi Unicode e unicita' perc
     REQUIRE_FALSE(notFound->has_value());
 }
 
-TEST_CASE("SqliteGroupStore gestisce ordinamento, membership e cascade delete", "[integration][sqlite][group_store]") {
+TEST_CASE (
+"SqliteGroupStore gestisce ordinamento, membership e cascade delete"
+,
+"[integration][sqlite][group_store]"
+)
+ {
     auto conn = createMigratedInMemoryDb();
     SqliteRepositoryStore repoStore(conn);
     SqliteGroupStore groupStore(conn);
@@ -204,7 +224,12 @@ TEST_CASE("SqliteGroupStore gestisce ordinamento, membership e cascade delete", 
     REQUIRE((*loadedAfterRepoDel)->repositoryIds[0] == RepositoryId("r1"));
 }
 
-TEST_CASE("SqliteWorkspaceStore gestisce gruppi, repo diretti, sessioni e cascade", "[integration][sqlite][ws_store]") {
+TEST_CASE (
+"SqliteWorkspaceStore gestisce gruppi, repo diretti, sessioni e cascade"
+,
+"[integration][sqlite][ws_store]"
+)
+ {
     auto conn = createMigratedInMemoryDb();
     SqliteRepositoryStore repoStore(conn);
     SqliteGroupStore groupStore(conn);

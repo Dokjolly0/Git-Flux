@@ -1,21 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.gitflux.GitFlux</id>
-  <metadata_license>MIT</metadata_license>
-  <project_license>MIT</project_license>
-  <name>Git Flux</name>
-  <summary>Modern local-first desktop Git client</summary>
-  <description>
-    <p>
-      Git Flux is a high-performance, modern local-first Git client engineered in C++23 and Qt Quick 6.
-      It features blazing fast branch management, visual commit tree navigation, side-by-side diff viewers
-      with rich syntax highlighting, integrated conflict resolution, stash management, and multi-repository workspaces.
-    </p>
-  </description>
-  <launchable type="desktop-id">git-flux.desktop</launchable>
-  <url type="homepage">https://github.com/dokjolly/GitFlux</url>
-  <provides>
-    <binary>git_flux</binary>
-  </provides>
-  <content_rating type="oars-1.1" />
+    <id>com.gitflux.GitFlux</id>
+    <metadata_license>MIT</metadata_license>
+    <project_license>MIT</project_license>
+    <name>Git Flux</name>
+    <summary>Modern local-first desktop Git client</summary>
+    <description>
+        <p>
+            Git Flux is a high-performance, modern local-first Git client engineered in C++23 and Qt Quick 6.
+            It features blazing fast branch management, visual commit tree navigation, side-by-side diff viewers
+            with rich syntax highlighting, integrated conflict resolution, stash management, and multi-repository
+            workspaces.
+        </p>
+    </description>
+    <launchable type="desktop-id">git-flux.desktop</launchable>
+    <url type="homepage">https://github.com/dokjolly/GitFlux</url>
+    <provides>
+        <binary>git_flux</binary>
+    </provides>
+    <content_rating type="oars-1.1"/>
 </component>

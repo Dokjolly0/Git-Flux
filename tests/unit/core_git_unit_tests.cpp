@@ -15,7 +15,12 @@
 
 using namespace std::chrono_literals;
 
-TEST_CASE("StrongId garantisce type-safety, confronto e hashing", "[unit][core]") {
+TEST_CASE (
+"StrongId garantisce type-safety, confronto e hashing"
+,
+"[unit][core]"
+)
+ {
     using gf::repositories::bo::RepositoryId;
     RepositoryId a("repo-alpha");
     RepositoryId b("repo-alpha");
@@ -32,7 +37,12 @@ TEST_CASE("StrongId garantisce type-safety, confronto e hashing", "[unit][core]"
     REQUIRE(set.size() == 2);
 }
 
-TEST_CASE("Conversione UTF-8 <-> std::filesystem::path preserva caratteri Unicode", "[unit][core]") {
+TEST_CASE (
+"Conversione UTF-8 <-> std::filesystem::path preserva caratteri Unicode"
+,
+"[unit][core]"
+)
+ {
     const std::string original = "progetti/città/specifica_🚀_test.md";
     const auto path = gf::core::utf8ToPath(original);
     const std::string roundtrip = gf::core::pathToUtf8(path);
@@ -40,7 +50,12 @@ TEST_CASE("Conversione UTF-8 <-> std::filesystem::path preserva caratteri Unicod
     REQUIRE(roundtrip == original);
 }
 
-TEST_CASE("PorcelainStatusParser interpreta header branch e tutti i tipi di record NUL-terminati", "[unit][git]") {
+TEST_CASE (
+"PorcelainStatusParser interpreta header branch e tutti i tipi di record NUL-terminati"
+,
+"[unit][git]"
+)
+ {
     std::string payload;
     auto addRec = [&](std::string_view s) {
         payload.append(s);
@@ -86,7 +101,12 @@ TEST_CASE("PorcelainStatusParser interpreta header branch e tutti i tipi di reco
     REQUIRE(parsed->entries[4].path == "scratch_note.txt");
 }
 
-TEST_CASE("OperationCoordinator serializza mutazioni sullo stesso repo ma parallelizza repo distinti", "[unit][coordinator]") {
+TEST_CASE (
+"OperationCoordinator serializza mutazioni sullo stesso repo ma parallelizza repo distinti"
+,
+"[unit][coordinator]"
+)
+ {
     using gf::git::bl::OperationCoordinator;
     using gf::git::bl::OperationKind;
     using gf::git::bl::TaskPriority;
@@ -133,7 +153,12 @@ TEST_CASE("OperationCoordinator serializza mutazioni sullo stesso repo ma parall
     REQUIRE(coordinator.maxObservedActiveWorkers() >= 2);
 }
 
-TEST_CASE("OperationCoordinator serve HighActiveRepo prima della coda NormalBackground", "[unit][coordinator]") {
+TEST_CASE (
+"OperationCoordinator serve HighActiveRepo prima della coda NormalBackground"
+,
+"[unit][coordinator]"
+)
+ {
     using gf::git::bl::OperationCoordinator;
     using gf::git::bl::OperationKind;
     using gf::git::bl::TaskPriority;
@@ -188,7 +213,7 @@ TEST_CASE("OperationCoordinator serve HighActiveRepo prima della coda NormalBack
 }
 
 #ifdef _WIN32
-TEST_CASE("Quoting command-line Windows gestisce spazi, virgolette e backslash finali", "[unit][win32]") {
+TEST_CASE ("Quoting command-line Windows gestisce spazi, virgolette e backslash finali", "[unit][win32]") {
     const auto cmd = gf::infra::git::NativeGitCommandExecutor::buildWindowsCommandLine(
         R"(C:\Program Files\Git\mingw64\bin\git.exe)",
         {"commit", "-m", R"(Fix "quoted" path C:\dir with space\)"});

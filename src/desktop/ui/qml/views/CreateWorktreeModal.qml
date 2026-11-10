@@ -65,14 +65,20 @@ Dialog {
                 font.pixelSize: 13
             }
 
-            Item { Layout.fillWidth: true }
+            Item {
+                Layout.fillWidth: true
+            }
 
             Button {
                 text: "✕"
                 Layout.preferredWidth: 24
                 Layout.preferredHeight: 24
-                background: Rectangle { color: "transparent" }
-                contentItem: Text { text: "✕"; color: "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter }
+                background: Rectangle {
+                    color: "transparent"
+                }
+                contentItem: Text {
+                    text: "✕"; color: "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter
+                }
                 onClicked: root.close()
             }
         }
@@ -206,7 +212,9 @@ Dialog {
             anchors.rightMargin: 16
             spacing: 10
 
-            Item { Layout.fillWidth: true }
+            Item {
+                Layout.fillWidth: true
+            }
 
             Button {
                 text: "Annulla"

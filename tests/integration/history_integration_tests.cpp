@@ -8,33 +8,41 @@
 #include <filesystem>
 #include <fstream>
 
-namespace {
+namespace
+{
+    struct HistoryTestSandbox
+    {
+        std::filesystem::path root;
 
-struct HistoryTestSandbox {
-    std::filesystem::path root;
+        HistoryTestSandbox()
+        {
+            const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+            root = std::filesystem::temp_directory_path() / ("gf_history_integ_" + std::to_string(nonce));
+            std::filesystem::create_directories(root);
+        }
 
-    HistoryTestSandbox() {
-        const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-        root = std::filesystem::temp_directory_path() / ("gf_history_integ_" + std::to_string(nonce));
-        std::filesystem::create_directories(root);
-    }
+        ~HistoryTestSandbox()
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(root, ec);
+        }
 
-    ~HistoryTestSandbox() {
-        std::error_code ec;
-        std::filesystem::remove_all(root, ec);
-    }
-
-    void writeFile(const std::string& relativePath, const std::string& content) {
-        auto filePath = root / relativePath;
-        std::filesystem::create_directories(filePath.parent_path());
-        std::ofstream ofs(filePath, std::ios::trunc);
-        ofs << content;
-    }
-};
-
+        void writeFile(const std::string& relativePath, const std::string& content)
+        {
+            auto filePath = root / relativePath;
+            std::filesystem::create_directories(filePath.parent_path());
+            std::ofstream ofs(filePath, std::ios::trunc);
+            ofs << content;
+        }
+    };
 } // namespace
 
-TEST_CASE("NativeRepositoryGitOps and GitHistoryService real Git integration", "[git][history][integration]") {
+TEST_CASE (
+"NativeRepositoryGitOps and GitHistoryService real Git integration"
+,
+"[git][history][integration]"
+)
+ {
     auto gitDiscovery = gf::infra::git::GitDiscovery::discover();
     REQUIRE(gitDiscovery.has_value());
     const auto gitExe = gitDiscovery->directBinaryPath.empty()

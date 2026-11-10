@@ -101,7 +101,8 @@ Rectangle {
                 boundsBehavior: Flickable.StopAtBounds
                 maximumFlickVelocity: 6000
                 flickDeceleration: 1000
-                ScrollBar.vertical: FluxScrollBar {}
+                ScrollBar.vertical: FluxScrollBar {
+                }
                 model: root.branchManager ? root.branchManager.branchList : null
 
                 delegate: Rectangle {

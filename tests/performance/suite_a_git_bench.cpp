@@ -24,85 +24,101 @@
 #include <string>
 #include <vector>
 
-namespace {
-
-using Clock = std::chrono::steady_clock;
+namespace
+{
+    using Clock = std::chrono::steady_clock;
 
 #ifdef GF_HAS_QT_ADAPTER
-void ensureQtApp() {
-    if (!QCoreApplication::instance()) {
-        static int argc = 1;
-        static char appName[] = "gf_bench_suite_a";
-        static char* argv[] = {appName, nullptr};
-        static QCoreApplication app(argc, argv);
+    void ensureQtApp()
+    {
+        if (!QCoreApplication::instance())
+        {
+            static int argc = 1;
+            static char appName[] = "gf_bench_suite_a";
+            static char* argv[] = {appName, nullptr};
+            static QCoreApplication app(argc, argv);
+        }
     }
-}
 #endif
 
-struct SampleStats {
-    double meanMs = 0.0;
-    double p50Ms = 0.0;
-    double p95Ms = 0.0;
-    double minMs = 0.0;
-    double maxMs = 0.0;
-};
+    struct SampleStats
+    {
+        double meanMs = 0.0;
+        double p50Ms = 0.0;
+        double p95Ms = 0.0;
+        double minMs = 0.0;
+        double maxMs = 0.0;
+    };
 
-[[nodiscard]] SampleStats computeStats(std::vector<double> samplesMs) {
-    if (samplesMs.empty()) {
-        return {};
+    [[nodiscard]] SampleStats computeStats(std::vector<double> samplesMs)
+    {
+        if (samplesMs.empty())
+        {
+            return {};
+        }
+        std::ranges::sort(samplesMs);
+        const double sum = std::accumulate(samplesMs.begin(), samplesMs.end(), 0.0);
+        const auto pct = [&](double p) -> double
+        {
+            const double idx = p * static_cast<double>(samplesMs.size() - 1);
+            const auto lo = static_cast<std::size_t>(std::floor(idx));
+            const auto hi = static_cast<std::size_t>(std::ceil(idx));
+            const double frac = idx - static_cast<double>(lo);
+            return samplesMs[lo] * (1.0 - frac) + samplesMs[hi] * frac;
+        };
+        return SampleStats{
+            .meanMs = sum / static_cast<double>(samplesMs.size()),
+            .p50Ms = pct(0.50),
+            .p95Ms = pct(0.95),
+            .minMs = samplesMs.front(),
+            .maxMs = samplesMs.back()
+        };
     }
-    std::ranges::sort(samplesMs);
-    const double sum = std::accumulate(samplesMs.begin(), samplesMs.end(), 0.0);
-    const auto pct = [&](double p) -> double {
-        const double idx = p * static_cast<double>(samplesMs.size() - 1);
-        const auto lo = static_cast<std::size_t>(std::floor(idx));
-        const auto hi = static_cast<std::size_t>(std::ceil(idx));
-        const double frac = idx - static_cast<double>(lo);
-        return samplesMs[lo] * (1.0 - frac) + samplesMs[hi] * frac;
-    };
-    return SampleStats{
-        .meanMs = sum / static_cast<double>(samplesMs.size()),
-        .p50Ms = pct(0.50),
-        .p95Ms = pct(0.95),
-        .minMs = samplesMs.front(),
-        .maxMs = samplesMs.back()
-    };
-}
 
-[[nodiscard]] std::vector<std::string> loadCommitOids(
-    gf::git::ports::IGitCommandExecutor& exec,
-    const std::filesystem::path& repoPath,
-    std::size_t count) {
-    auto res = exec.execute({
-        .args = {"rev-list", std::format("--max-count={}", count), "HEAD"},
-        .workingDirectory = repoPath,
-        .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks
-    });
-    std::vector<std::string> oids;
-    if (!res || !res->succeeded()) {
+    [[nodiscard]] std::vector<std::string> loadCommitOids(
+        gf::git::ports::IGitCommandExecutor& exec,
+        const std::filesystem::path& repoPath,
+        std::size_t count)
+    {
+        auto res = exec.execute({
+            .args = {"rev-list", std::format("--max-count={}", count), "HEAD"},
+            .workingDirectory = repoPath,
+            .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks
+        });
+        std::vector<std::string> oids;
+        if (!res || !res->succeeded())
+        {
+            return oids;
+        }
+        std::size_t pos = 0;
+        while (pos < res->stdoutBytes.size())
+        {
+            const auto nl = res->stdoutBytes.find('\n', pos);
+            if (nl == std::string::npos)
+            {
+                break;
+            }
+            std::string s = res->stdoutBytes.substr(pos, nl - pos);
+            if (!s.empty() && s.back() == '\r')
+            {
+                s.pop_back();
+            }
+            if (!s.empty())
+            {
+                oids.push_back(std::move(s));
+            }
+            pos = nl + 1;
+        }
         return oids;
     }
-    std::size_t pos = 0;
-    while (pos < res->stdoutBytes.size()) {
-        const auto nl = res->stdoutBytes.find('\n', pos);
-        if (nl == std::string::npos) {
-            break;
-        }
-        std::string s = res->stdoutBytes.substr(pos, nl - pos);
-        if (!s.empty() && s.back() == '\r') {
-            s.pop_back();
-        }
-        if (!s.empty()) {
-            oids.push_back(std::move(s));
-        }
-        pos = nl + 1;
-    }
-    return oids;
-}
-
 } // namespace
 
-TEST_CASE("Suite A - Report Comparativo Completo (Win32 vs Qt, Shim vs Direct, Concurrency Sweep, Batch Pipe)", "[report][suite-a]") {
+TEST_CASE (
+"Suite A - Report Comparativo Completo (Win32 vs Qt, Shim vs Direct, Concurrency Sweep, Batch Pipe)"
+,
+"[report][suite-a]"
+)
+ {
 #ifdef GF_HAS_QT_ADAPTER
     ensureQtApp();
 #endif
@@ -167,10 +183,11 @@ constexpr const char* kGitBinaryName = "git";
             std::make_unique<gf::infra::git::QtGitCommandExecutor>(gitInfo->discoveredInPath)
         });
     }
-    variants.push_back({
-        std::format("Qt 6 (QProcess)         + direct {}", kGitBinaryName),
-        std::make_unique<gf::infra::git::QtGitCommandExecutor>(gitInfo->directBinaryPath)
-    });
+    variants.push_back (
+ {
+     std::format("Qt 6 (QProcess)         + direct {}", kGitBinaryName),
+         std::make_unique<gf::infra::git::QtGitCommandExecutor>(gitInfo->directBinaryPath)
+ });
 #endif
 
     const gf::git::bo::GitCommand statusCmd{
@@ -302,9 +319,10 @@ constexpr const char* kGitBinaryName = "git";
     });
 
 #ifdef GF_HAS_QT_ADAPTER
-    runFleetSweep("Qt 6 (QProcess)", [&]() {
-        return std::make_unique<gf::infra::git::QtGitCommandExecutor>(gitInfo->directBinaryPath);
-    });
+    runFleetSweep ("Qt 6 (QProcess)", [&]()
+ {
+     return std::make_unique<gf::infra::git::QtGitCommandExecutor>(gitInfo->directBinaryPath);
+ });
 #endif
     std::cout << "\n";
 
@@ -341,7 +359,8 @@ constexpr const char* kGitBinaryName = "git";
     {
         gf::infra::git::QtGitCommandExecutor qtExec(gitInfo->directBinaryPath);
         const auto t0 = Clock::now();
-        for (const auto& oid : oids) {
+        for (const auto& oid : oids)
+        {
             auto r = qtExec.execute({
                 .args = {"cat-file", "commit", oid},
                 .workingDirectory = singleRepoPath,
@@ -426,7 +445,12 @@ constexpr const char* kGitBinaryName = "git";
     std::cout << "======================================================================\n\n";
 }
 
-TEST_CASE("Catch2 Microbenchmarks - Parsing e Batch Read", "[!benchmark][micro]") {
+TEST_CASE (
+"Catch2 Microbenchmarks - Parsing e Batch Read"
+,
+"[!benchmark][micro]"
+)
+ {
     const auto gitInfo = gf::infra::git::GitDiscovery::discover();
     REQUIRE(gitInfo.has_value());
 

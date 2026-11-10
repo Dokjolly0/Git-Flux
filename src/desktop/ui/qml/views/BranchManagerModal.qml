@@ -78,7 +78,9 @@ Dialog {
                     }
                 }
 
-                Item { Layout.fillWidth: true }
+                Item {
+                    Layout.fillWidth: true
+                }
 
                 // If merge conflicts are present, show Abort button
                 Button {
@@ -121,7 +123,8 @@ Dialog {
                 boundsBehavior: Flickable.StopAtBounds
                 maximumFlickVelocity: 6000
                 flickDeceleration: 1000
-                ScrollBar.vertical: FluxScrollBar {}
+                ScrollBar.vertical: FluxScrollBar {
+                }
 
                 delegate: Rectangle {
                     width: branchList.width
@@ -156,8 +159,8 @@ Dialog {
 
                             Text {
                                 text: (model.upstream.length > 0 ? "upstream: " + model.upstream : "locale") +
-                                      (model.ahead > 0 ? " ↑" + model.ahead : "") +
-                                      (model.behind > 0 ? " ↓" + model.behind : "")
+                                    (model.ahead > 0 ? " ↑" + model.ahead : "") +
+                                    (model.behind > 0 ? " ↓" + model.behind : "")
                                 color: "#64748B"
                                 font.pixelSize: 10
                             }

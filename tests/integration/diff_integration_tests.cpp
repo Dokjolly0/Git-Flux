@@ -10,37 +10,46 @@
 #include <filesystem>
 #include <fstream>
 
-namespace {
+namespace
+{
+    struct DiffTestSandbox
+    {
+        std::filesystem::path root;
 
-struct DiffTestSandbox {
-    std::filesystem::path root;
+        DiffTestSandbox()
+        {
+            const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+            root = std::filesystem::temp_directory_path() / ("gf_diff_integ_" + std::to_string(nonce));
+            std::filesystem::create_directories(root);
+        }
 
-    DiffTestSandbox() {
-        const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-        root = std::filesystem::temp_directory_path() / ("gf_diff_integ_" + std::to_string(nonce));
-        std::filesystem::create_directories(root);
-    }
+        ~DiffTestSandbox()
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(root, ec);
+        }
 
-    ~DiffTestSandbox() {
-        std::error_code ec;
-        std::filesystem::remove_all(root, ec);
-    }
+        void writeFile(const std::string& relativePath, const std::string& content)
+        {
+            auto filePath = root / relativePath;
+            std::filesystem::create_directories(filePath.parent_path());
+            std::ofstream ofs(filePath, std::ios::trunc);
+            ofs << content;
+        }
 
-    void writeFile(const std::string& relativePath, const std::string& content) {
-        auto filePath = root / relativePath;
-        std::filesystem::create_directories(filePath.parent_path());
-        std::ofstream ofs(filePath, std::ios::trunc);
-        ofs << content;
-    }
-
-    void removeFile(const std::string& relativePath) {
-        std::filesystem::remove(root / relativePath);
-    }
-};
-
+        void removeFile(const std::string& relativePath)
+        {
+            std::filesystem::remove(root / relativePath);
+        }
+    };
 } // namespace
 
-TEST_CASE("NativeRepositoryGitOps and GitDiffService real Git diff extraction", "[git][diff][integration]") {
+TEST_CASE (
+"NativeRepositoryGitOps and GitDiffService real Git diff extraction"
+,
+"[git][diff][integration]"
+)
+ {
     auto gitDiscovery = gf::infra::git::GitDiscovery::discover();
     REQUIRE(gitDiscovery.has_value());
     const auto gitExe = gitDiscovery->directBinaryPath.empty()
@@ -170,7 +179,12 @@ TEST_CASE("NativeRepositoryGitOps and GitDiffService real Git diff extraction", 
 }
 
 
-TEST_CASE("NativeRepositoryGitOps context lines (-U<n>, full file) and getFileContent", "[git][diff][integration][context]") {
+TEST_CASE (
+"NativeRepositoryGitOps context lines (-U<n>, full file) and getFileContent"
+,
+"[git][diff][integration][context]"
+)
+ {
     auto gitDiscovery = gf::infra::git::GitDiscovery::discover();
     REQUIRE(gitDiscovery.has_value());
     const auto gitExe = gitDiscovery->directBinaryPath.empty()

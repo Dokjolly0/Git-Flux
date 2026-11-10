@@ -11,7 +11,12 @@ using namespace gf::tasks::bo;
 using namespace gf::tasks::bl;
 using namespace gf::tasks::ports;
 
-TEST_CASE("BackgroundTaskRunner basic lifecycle and task execution", "[tasks][runner]") {
+TEST_CASE (
+"BackgroundTaskRunner basic lifecycle and task execution"
+,
+"[tasks][runner]"
+)
+ {
     using namespace std::chrono_literals;
 
     BackgroundTaskRunner runner(2);
@@ -103,7 +108,12 @@ TEST_CASE("BackgroundTaskRunner basic lifecycle and task execution", "[tasks][ru
     }
 }
 
-TEST_CASE("BackgroundTaskRunner cancellation and priorities", "[tasks][cancellation]") {
+TEST_CASE (
+"BackgroundTaskRunner cancellation and priorities"
+,
+"[tasks][cancellation]"
+)
+ {
     using namespace std::chrono_literals;
 
     BackgroundTaskRunner runner(2);

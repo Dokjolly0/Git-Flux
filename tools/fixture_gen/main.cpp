@@ -6,17 +6,20 @@
 #include <iostream>
 #include <string_view>
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[])
+{
     auto gitInfo = gf::infra::git::GitDiscovery::discover();
-    if (!gitInfo) {
+    if (!gitInfo)
+    {
         std::cerr << "Error: " << gitInfo.error().message << "\n";
         return 1;
     }
 
-    if (argc < 3) {
+    if (argc < 3)
+    {
         std::cout << "Usage:\n"
-                  << "  gf_fixture_gen monorepo <output_dir> [commit_count=50000]\n"
-                  << "  gf_fixture_gen fleet    <output_dir> [repo_count=100] [commits_per_repo=40]\n";
+            << "  gf_fixture_gen monorepo <output_dir> [commit_count=50000]\n"
+            << "  gf_fixture_gen fleet    <output_dir> [repo_count=100] [commits_per_repo=40]\n";
         return 0;
     }
 
@@ -24,9 +27,11 @@ int main(int argc, char* argv[]) {
     const std::filesystem::path targetDir = gf::core::utf8ToPath(argv[2]);
     gf::tools::FixtureGenerator generator(gitInfo->directBinaryPath);
 
-    if (mode == "monorepo") {
+    if (mode == "monorepo")
+    {
         std::size_t commits = 50'000;
-        if (argc >= 4) {
+        if (argc >= 4)
+        {
             std::string_view argCount = argv[3];
             std::from_chars(argCount.data(), argCount.data() + argCount.size(), commits);
         }
@@ -37,24 +42,28 @@ int main(int argc, char* argv[]) {
             .seed = 42,
             .checkoutWorkingTree = true
         });
-        if (!res) {
+        if (!res)
+        {
             std::cerr << "Failed: " << res.error() << "\n";
             return 1;
         }
         std::cout << "Completed in " << res->elapsed.count() << " ms ("
-                  << res->commitsCreated << " commits, "
-                  << res->mergesCreated << " merges).\n";
+            << res->commitsCreated << " commits, "
+            << res->mergesCreated << " merges).\n";
         return 0;
     }
 
-    if (mode == "fleet") {
+    if (mode == "fleet")
+    {
         std::size_t repos = 100;
         std::size_t commitsPerRepo = 40;
-        if (argc >= 4) {
+        if (argc >= 4)
+        {
             std::string_view s = argv[3];
             std::from_chars(s.data(), s.data() + s.size(), repos);
         }
-        if (argc >= 5) {
+        if (argc >= 5)
+        {
             std::string_view s = argv[4];
             std::from_chars(s.data(), s.data() + s.size(), commitsPerRepo);
         }
@@ -65,13 +74,14 @@ int main(int argc, char* argv[]) {
             .commitsPerRepo = commitsPerRepo,
             .seed = 42
         });
-        if (!res) {
+        if (!res)
+        {
             std::cerr << "Failed: " << res.error() << "\n";
             return 1;
         }
         std::cout << "Completed in " << res->elapsed.count() << " ms (clean: "
-                  << res->cleanCount << ", dirty: " << res->dirtyUnstagedCount
-                  << ", staged: " << res->stagedCount << ").\n";
+            << res->cleanCount << ", dirty: " << res->dirtyUnstagedCount
+            << ", staged: " << res->stagedCount << ").\n";
         return 0;
     }
 
