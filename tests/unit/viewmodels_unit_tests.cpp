@@ -1159,6 +1159,28 @@ TEST_CASE("BranchListModel and CommitHistoryListModel MVVM representations", "[v
         // Avatar should resolve to Dokjolly0's GitHub avatar because authorName has spaces while committerName is a GitHub handle
         CHECK(model.data(idx, CommitHistoryListModel::AuthorAvatarUrlRole).toString() == "https://github.com/Dokjolly0.png?size=64");
         CHECK(model.data(idx, CommitHistoryListModel::CommitterAvatarUrlRole).toString() == "https://github.com/Dokjolly0.png?size=64");
+
+        std::vector<gf::git::bo::GitCommitLogItem> fullNameCommits = {
+            gf::git::bo::GitCommitLogItem{
+                .sha = "1e4ae7a000000000000000000000000000000000",
+                .shortSha = "1e4ae7a",
+                .parents = {"parent1"},
+                .authorName = "Alex Violatto",
+                .authorEmail = "alexviolattolibero.it@gmail.com",
+                .authorDateIso = "2026-11-10T09:56:48+01:00",
+                .committerName = "Alex Violatto",
+                .committerEmail = "alexviolattolibero.it@gmail.com",
+                .committerDateIso = "2026-11-10T09:56:48+01:00",
+                .subject = "fix(desktop,git): prevent main-thread UI freeze",
+                .body = "",
+                .refDecorations = {}
+            }
+        };
+        model.setCommits(fullNameCommits);
+        REQUIRE(model.rowCount() == 1);
+        auto idxFull = model.index(0);
+        CHECK(model.data(idxFull, CommitHistoryListModel::AuthorAvatarUrlRole).toString() == "https://github.com/Dokjolly0.png?size=64");
+        CHECK(model.data(idxFull, CommitHistoryListModel::CommitterAvatarUrlRole).toString() == "https://github.com/Dokjolly0.png?size=64");
         CHECK(model.data(idx, CommitHistoryListModel::IsMergeRole).toBool() == false);
     }
 

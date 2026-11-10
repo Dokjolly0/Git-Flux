@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QAbstractListModel>
+#include <QNetworkAccessManager>
+#include <QSet>
 #include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
@@ -71,6 +73,9 @@ public:
     [[nodiscard]] int totalCommitsCount() const noexcept { return static_cast<int>(m_rawCommits.size()); }
     Q_INVOKABLE [[nodiscard]] QVariantMap getCommit(int index) const;
 
+    [[nodiscard]] static QString cachedAvatarForEmail(const QString& rawEmail);
+    static void cacheAvatarForEmail(const QString& rawEmail, const QString& avatarUrl);
+
 signals:
     void maxLanesChanged();
     void searchFilterChanged(const QString& filter);
@@ -84,6 +89,8 @@ private:
         bool isOrphan = false;
     };
 
+    void indexAvatarsFromCommits();
+    void resolveMissingAvatarsFromGitHub();
     void applyWipAndRebuild();
     void rebuildGraph();
 
@@ -91,6 +98,8 @@ private:
     std::vector<git::bo::GitCommitLogItem> m_rawCommits;
     std::vector<git::bo::GitCommitLogItem> m_commits;
     std::vector<GraphItem> m_graphItems;
+    QNetworkAccessManager m_networkManager;
+    QSet<QString> m_queriedEmails;
     bool m_hasWip = false;
     int m_wipCount = 0;
     int m_maxLanes = 1;

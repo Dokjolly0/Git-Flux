@@ -1,4 +1,5 @@
 #include "desktop/viewmodels/diff_viewmodel.hpp"
+#include "desktop/viewmodels/commit_history_list_model.hpp"
 
 #include "core/shared/utf8_path.hpp"
 #include "core/modules/git/bl/git_diff_service.hpp"
@@ -31,8 +32,13 @@ const QStringList kBlameColors = {
     QStringLiteral("#84CC16")
 };
 
-QString computeBlameAvatar(const QString& rawEmail) {
+QString computeBlameAvatar(const QString& rawName, const QString& rawEmail) {
     QString email = rawEmail.trimmed().toLower();
+    QString cleanName = rawName.trimmed();
+    if (!cleanName.isEmpty() && !cleanName.contains(QLatin1Char(' ')) &&
+        cleanName.compare(QLatin1String("GitHub"), Qt::CaseInsensitive) != 0) {
+        return QStringLiteral("https://github.com/%1.png?size=64").arg(cleanName);
+    }
     if (email.isEmpty()) {
         return QStringLiteral("https://www.gravatar.com/avatar/?d=mp");
     }
@@ -46,6 +52,10 @@ QString computeBlameAvatar(const QString& rawEmail) {
                 return QStringLiteral("https://github.com/%1.png?size=64").arg(userPart);
             }
         }
+    }
+    QString cached = CommitHistoryListModel::cachedAvatarForEmail(email);
+    if (!cached.isEmpty()) {
+        return cached;
     }
     QByteArray hash = QCryptographicHash::hash(email.toUtf8(), QCryptographicHash::Md5).toHex();
     return QStringLiteral("https://www.gravatar.com/avatar/%1?s=64&d=identicon").arg(QString::fromLatin1(hash));
@@ -439,7 +449,7 @@ bool DiffViewModel::loadBlame(const QString& repoPath, const QString& revision, 
         map[QStringLiteral("lineNumber")] = bl.lineNumber;
         map[QStringLiteral("content")] = QString::fromStdString(bl.content);
         map[QStringLiteral("richContent")] = QString::fromStdString(gf::core::syntax::SyntaxHighlighter::highlightLine(bl.content, langInfo.language));
-        map[QStringLiteral("avatarUrl")] = computeBlameAvatar(QString::fromStdString(bl.authorEmail));
+        map[QStringLiteral("avatarUrl")] = computeBlameAvatar(QString::fromStdString(bl.author), QString::fromStdString(bl.authorEmail));
         map[QStringLiteral("initials")] = computeBlameInitials(QString::fromStdString(bl.author));
         map[QStringLiteral("color")] = computeBlameColor(QString::fromStdString(bl.author));
         m_blameLines.append(map);

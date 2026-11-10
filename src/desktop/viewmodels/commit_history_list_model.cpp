@@ -1,5 +1,15 @@
 #include "desktop/viewmodels/commit_history_list_model.hpp"
 
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QMutex>
+#include <QMutexLocker>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QSettings>
+#include <QUrl>
+
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QHash>
@@ -59,6 +69,14 @@ QString computeAvatarUrl(const QString& name, const QString& rawEmail) {
         return QStringLiteral("https://github.com/%1.png?size=64").arg(cleanName);
     }
 
+    // 2.5 Check email-to-GitHub-avatar cache
+    if (!email.isEmpty()) {
+        QString cached = CommitHistoryListModel::cachedAvatarForEmail(email);
+        if (!cached.isEmpty()) {
+            return cached;
+        }
+    }
+
     // 3. Fallback to Gravatar MD5
     if (!email.isEmpty()) {
         QByteArray hash = QCryptographicHash::hash(email.toUtf8(), QCryptographicHash::Md5).toHex();
@@ -93,7 +111,14 @@ QString computeCommitAvatarUrl(const git::bo::GitCommitLogItem& c) {
     }
 
     // 3. Check if committerName is a single-word GitHub username (e.g. Dokjolly0 when author has full real name)
-    if (!committerName.isEmpty() && !committerName.contains(QLatin1Char(' '))) {
+    if (!authorEmail.isEmpty()) {
+        QString cached = CommitHistoryListModel::cachedAvatarForEmail(authorEmail);
+        if (!cached.isEmpty()) {
+            return cached;
+        }
+    }
+    if (!committerName.isEmpty() && !committerName.contains(QLatin1Char(' ')) &&
+        committerName.compare(QLatin1String("GitHub"), Qt::CaseInsensitive) != 0) {
         return QStringLiteral("https://github.com/%1.png?size=64").arg(committerName);
     }
 
@@ -107,6 +132,14 @@ QString computeCommitAvatarUrl(const git::bo::GitCommitLogItem& c) {
             if (!userPart.isEmpty()) {
                 return QStringLiteral("https://github.com/%1.png?size=64").arg(userPart);
             }
+        }
+    }
+
+    // 4.5 Check email-to-GitHub-avatar cache for committerEmail
+    if (!committerEmail.isEmpty()) {
+        QString cached = CommitHistoryListModel::cachedAvatarForEmail(committerEmail);
+        if (!cached.isEmpty()) {
+            return cached;
         }
     }
 
@@ -802,6 +835,7 @@ void CommitHistoryListModel::setSearchFilter(const QString& filter) {
 }
 
 void CommitHistoryListModel::applyWipAndRebuild() {
+    indexAvatarsFromCommits();
     m_commits.clear();
 
     if (m_searchFilter.isEmpty()) {
@@ -854,12 +888,172 @@ void CommitHistoryListModel::applyWipAndRebuild() {
     rebuildGraph();
 }
 
+namespace {
+
+QMutex& avatarCacheMutex() {
+    static QMutex s_mutex;
+    return s_mutex;
+}
+
+QHash<QString, QString>& avatarMemoryCache() {
+    static QHash<QString, QString> s_cache;
+    static bool s_loaded = false;
+    if (!s_loaded) {
+        s_loaded = true;
+        QSettings settings(QStringLiteral("GitFlux"), QStringLiteral("GitFlux"));
+        settings.beginGroup(QStringLiteral("AvatarEmailCache"));
+        const QStringList keys = settings.childKeys();
+        for (const QString& key : keys) {
+            const QString val = settings.value(key).toString();
+            if (!val.isEmpty()) {
+                s_cache.insert(key, val);
+            }
+        }
+        settings.endGroup();
+    }
+    return s_cache;
+}
+
+} // namespace
+
+QString CommitHistoryListModel::cachedAvatarForEmail(const QString& rawEmail) {
+    const QString email = rawEmail.trimmed().toLower();
+    if (email.isEmpty() || email == QLatin1String("noreply@github.com")) {
+        return {};
+    }
+    QMutexLocker locker(&avatarCacheMutex());
+    return avatarMemoryCache().value(email);
+}
+
+void CommitHistoryListModel::cacheAvatarForEmail(const QString& rawEmail, const QString& avatarUrl) {
+    const QString email = rawEmail.trimmed().toLower();
+    if (email.isEmpty() || email == QLatin1String("noreply@github.com") || avatarUrl.isEmpty()) {
+        return;
+    }
+    QMutexLocker locker(&avatarCacheMutex());
+    auto& cache = avatarMemoryCache();
+    if (cache.value(email) == avatarUrl) {
+        return;
+    }
+    cache.insert(email, avatarUrl);
+    QSettings settings(QStringLiteral("GitFlux"), QStringLiteral("GitFlux"));
+    settings.beginGroup(QStringLiteral("AvatarEmailCache"));
+    settings.setValue(email, avatarUrl);
+    settings.endGroup();
+}
+
+void CommitHistoryListModel::indexAvatarsFromCommits() {
+    auto tryExtract = [](const QString& rawName, const QString& rawEmail) -> QString {
+        const QString name = rawName.trimmed();
+        const QString email = rawEmail.trimmed().toLower();
+        if (email.endsWith(QLatin1String("users.noreply.github.com"))) {
+            const int atIdx = email.indexOf(QLatin1Char('@'));
+            if (atIdx > 0) {
+                QString userPart = email.left(atIdx);
+                const int plusIdx = userPart.indexOf(QLatin1Char('+'));
+                if (plusIdx >= 0) userPart = userPart.mid(plusIdx + 1);
+                if (!userPart.isEmpty()) {
+                    return QStringLiteral("https://github.com/%1.png?size=64").arg(userPart);
+                }
+            }
+        }
+        if (!name.isEmpty() && !name.contains(QLatin1Char(' ')) &&
+            name.compare(QLatin1String("WIP"), Qt::CaseInsensitive) != 0 &&
+            name.compare(QLatin1String("GitHub"), Qt::CaseInsensitive) != 0) {
+            return QStringLiteral("https://github.com/%1.png?size=64").arg(name);
+        }
+        return {};
+    };
+
+    for (const auto& c : m_rawCommits) {
+        const QString authorEmail = QString::fromStdString(c.authorEmail).trimmed().toLower();
+        const QString authorName = QString::fromStdString(c.authorName).trimmed();
+        if (!authorEmail.isEmpty()) {
+            const QString url = tryExtract(authorName, authorEmail);
+            if (!url.isEmpty()) {
+                cacheAvatarForEmail(authorEmail, url);
+            }
+        }
+
+        const QString committerEmail = QString::fromStdString(c.committerEmail).trimmed().toLower();
+        const QString committerName = QString::fromStdString(c.committerName).trimmed();
+        if (!committerEmail.isEmpty() && committerEmail != QLatin1String("noreply@github.com")) {
+            const QString url = tryExtract(committerName, committerEmail);
+            if (!url.isEmpty()) {
+                cacheAvatarForEmail(committerEmail, url);
+            }
+        }
+    }
+}
+
+void CommitHistoryListModel::resolveMissingAvatarsFromGitHub() {
+    if (qEnvironmentVariable("QT_QPA_PLATFORM") == QLatin1String("offscreen")) {
+        return;
+    }
+
+    int queuedCount = 0;
+    for (const auto& c : m_rawCommits) {
+        if (queuedCount >= 5) {
+            break;
+        }
+        const QString email = QString::fromStdString(c.authorEmail).trimmed().toLower();
+        if (email.isEmpty() ||
+            email == QLatin1String("noreply@github.com") ||
+            email.endsWith(QLatin1String("users.noreply.github.com")) ||
+            !cachedAvatarForEmail(email).isEmpty() ||
+            m_queriedEmails.contains(email)) {
+            continue;
+        }
+
+        m_queriedEmails.insert(email);
+        ++queuedCount;
+
+        const QString encodedEmail = QString::fromLatin1(QUrl::toPercentEncoding(email));
+        const QUrl url(QStringLiteral("https://api.github.com/search/commits?q=author-email:%1&per_page=1").arg(encodedEmail));
+        QNetworkRequest req(url);
+        req.setRawHeader("Accept", "application/vnd.github+json");
+        req.setRawHeader("User-Agent", "GitFlux-Desktop");
+        req.setTransferTimeout(5000);
+
+        QNetworkReply* reply = m_networkManager.get(req);
+        connect(reply, &QNetworkReply::finished, this, [this, reply, email]() {
+            reply->deleteLater();
+            if (reply->error() != QNetworkReply::NoError) {
+                return;
+            }
+            const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
+            if (!doc.isObject()) {
+                return;
+            }
+            const QJsonArray items = doc.object().value(QStringLiteral("items")).toArray();
+            if (items.isEmpty()) {
+                return;
+            }
+            const QJsonObject firstItem = items.at(0).toObject();
+            const QJsonObject authorObj = firstItem.value(QStringLiteral("author")).toObject();
+            QString login = authorObj.value(QStringLiteral("login")).toString().trimmed();
+            QString avatarUrl = authorObj.value(QStringLiteral("avatar_url")).toString().trimmed();
+            if (!login.isEmpty()) {
+                avatarUrl = QStringLiteral("https://github.com/%1.png?size=64").arg(login);
+            }
+            if (!avatarUrl.isEmpty()) {
+                cacheAvatarForEmail(email, avatarUrl);
+                if (rowCount() > 0) {
+                    emit dataChanged(index(0, 0), index(rowCount() - 1, 0), {AuthorAvatarUrlRole, CommitterAvatarUrlRole});
+                }
+            }
+        });
+    }
+}
+
 void CommitHistoryListModel::setCommits(std::vector<gf::git::bo::GitCommitLogItem> commits) {
     beginResetModel();
     m_rawCommits = std::move(commits);
     applyWipAndRebuild();
     endResetModel();
+    indexAvatarsFromCommits();
     emit totalCommitsCountChanged();
+    resolveMissingAvatarsFromGitHub();
 }
 
 void CommitHistoryListModel::setWip(bool hasWip, int changedFilesCount) {

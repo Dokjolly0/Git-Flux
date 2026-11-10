@@ -199,6 +199,17 @@ Rectangle {
         function onModelReset() {
             root.preserveOrAutoSelect();
         }
+        function onDataChanged() {
+            if (root.selectedCommit && root.selectedCommit.sha !== "WIP" && commitTableListView.currentIndex >= 0) {
+                var model = (root.branchManager && root.branchManager.commitHistory) ? root.branchManager.commitHistory : null;
+                if (model) {
+                    var updated = model.getCommit(commitTableListView.currentIndex);
+                    if (updated && updated.sha === root.selectedCommit.sha) {
+                        root.selectedCommit = updated;
+                    }
+                }
+            }
+        }
         function onRowsInserted() {
             root.preserveOrAutoSelect();
         }
