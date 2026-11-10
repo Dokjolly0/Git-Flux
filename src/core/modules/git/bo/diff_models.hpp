@@ -25,6 +25,8 @@ struct DiffLine {
     std::optional<int> oldLineNumber = std::nullopt;
     std::optional<int> newLineNumber = std::nullopt;
     std::string content;
+
+    bool operator==(const DiffLine&) const = default;
 };
 
 struct DiffHunk {
@@ -34,6 +36,8 @@ struct DiffHunk {
     int newCount = 0;
     std::string header;
     std::vector<DiffLine> lines;
+
+    bool operator==(const DiffHunk&) const = default;
 };
 
 struct FileDiff {
@@ -46,6 +50,8 @@ struct FileDiff {
     int additionsCount = 0;
     int deletionsCount = 0;
     std::vector<DiffHunk> hunks{};
+
+    bool operator==(const FileDiff&) const = default;
 
     [[nodiscard]] bool empty() const noexcept {
         return !isBinary && hunks.empty() && !isNewFile && !isDeletedFile && !isRenamed;

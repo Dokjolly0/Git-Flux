@@ -7,6 +7,10 @@
 
 #include "desktop/viewmodels/working_tree_file_list_model.hpp"
 
+#ifndef Q_MOC_RUN
+#include "core/modules/git/bo/repo_working_tree_status.hpp"
+#endif
+
 namespace gf::git::bl {
 class GitWorkingTreeService;
 class GitStagingService;
@@ -99,6 +103,10 @@ private:
     bool m_isDetached = false;
     bool m_isUnborn = false;
     bool m_isBusy = false;
+
+    QString m_lastRepoPath;
+    gf::git::bo::RepoWorkingTreeStatus m_lastStatus;
+    bool m_hasLastStatus = false;
 };
 
 } // namespace gf::desktop

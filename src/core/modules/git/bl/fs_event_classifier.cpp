@@ -27,8 +27,14 @@ std::string normalizePathString(const std::filesystem::path& path) {
 
 std::filesystem::path FsEventClassifier::toRelativePath(const std::filesystem::path& repoRoot,
                                                         const std::filesystem::path& targetPath) noexcept {
-    if (targetPath.is_relative()) {
+    if (!targetPath.has_root_path()) {
         return targetPath.lexically_normal();
+    }
+    if (!repoRoot.empty()) {
+        auto lexRel = targetPath.lexically_relative(repoRoot);
+        if (!lexRel.empty() && !startsWith(lexRel.generic_string(), "..")) {
+            return lexRel.lexically_normal();
+        }
     }
     std::error_code ec;
     auto rel = std::filesystem::relative(targetPath, repoRoot, ec);

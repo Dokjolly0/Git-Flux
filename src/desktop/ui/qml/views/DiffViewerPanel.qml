@@ -440,7 +440,7 @@ Rectangle {
                     anchors.fill: parent
                     anchors.bottomMargin: inlineHScrollBar.visible ? 12 : 0
                     focus: true
-                    model: root.diffViewer ? root.diffViewer.linesModel : null
+                    model: (root.diffViewer && root.diffViewer.viewMode === "inline") ? root.diffViewer.linesModel : null
                     boundsBehavior: Flickable.StopAtBounds
                     maximumFlickVelocity: 6000
                     flickDeceleration: 1000
@@ -540,7 +540,7 @@ Rectangle {
 
                                 Text {
                                     x: 6 - root.horizontalScrollX
-                                    width: Math.max(implicitWidth, Math.max(parent.width - 6, root.maxCodeWidth))
+                                    width: Math.max(parent.width - 6, root.maxCodeWidth)
                                     height: parent.height
                                     text: model.richContent || model.content || ""
                                     textFormat: Text.RichText
@@ -673,7 +673,7 @@ Rectangle {
                         anchors.fill: parent
                         anchors.bottomMargin: splitHScrollBar.visible ? 12 : 0
                         focus: true
-                        model: root.diffViewer ? root.diffViewer.splitLines : null
+                        model: (root.diffViewer && (root.diffViewer.viewMode === "split" || root.diffViewer.viewMode === "")) ? root.diffViewer.splitLines : null
                         boundsBehavior: Flickable.StopAtBounds
                         maximumFlickVelocity: 6000
                         flickDeceleration: 1000
@@ -757,7 +757,7 @@ Rectangle {
 
                                             Text {
                                                 x: 6 - root.horizontalScrollX
-                                                width: Math.max(implicitWidth, Math.max(parent.width - 6, root.maxCodeWidth))
+                                                width: Math.max(parent.width - 6, root.maxCodeWidth)
                                                 height: parent.height
                                                 text: modelData.leftRichContent || modelData.leftContent || ""
                                                 textFormat: Text.RichText
@@ -811,7 +811,7 @@ Rectangle {
 
                                             Text {
                                                 x: 6 - root.horizontalScrollX
-                                                width: Math.max(implicitWidth, Math.max(parent.width - 6, root.maxCodeWidth))
+                                                width: Math.max(parent.width - 6, root.maxCodeWidth)
                                                 height: parent.height
                                                 text: modelData.rightRichContent || modelData.rightContent || ""
                                                 textFormat: Text.RichText
@@ -896,7 +896,7 @@ Rectangle {
                 ListView {
                     id: hunkListView
                     width: Math.max(parent.width, root.maxCodeWidth + 120)
-                    model: root.diffViewer ? root.diffViewer.hunks : null
+                    model: (root.diffViewer && root.diffViewer.viewMode === "hunk") ? root.diffViewer.hunks : null
                     spacing: 12
                     boundsBehavior: Flickable.StopAtBounds
                     maximumFlickVelocity: 6000
@@ -945,7 +945,7 @@ Rectangle {
 
                             // Hunk Lines
                             Repeater {
-                                model: modelData.lines || []
+                                model: (modelData.lines && modelData.lines.length > 300) ? modelData.lines.slice(0, 300) : (modelData.lines || [])
 
                                 delegate: Rectangle {
                                     Layout.fillWidth: true
@@ -1016,7 +1016,7 @@ Rectangle {
                     anchors.fill: parent
                     anchors.bottomMargin: blameHScrollBar.visible ? 12 : 0
                     focus: true
-                    model: root.diffViewer ? root.diffViewer.blameLines : null
+                    model: (root.diffViewer && root.diffViewer.viewMode === "blame") ? root.diffViewer.blameLines : null
                     boundsBehavior: Flickable.StopAtBounds
                     maximumFlickVelocity: 6000
                     flickDeceleration: 1000
@@ -1155,7 +1155,7 @@ Rectangle {
 
                                 Text {
                                     x: 6 - root.horizontalScrollX
-                                    width: Math.max(implicitWidth, Math.max(parent.width - 6, root.maxCodeWidth))
+                                    width: Math.max(parent.width - 6, root.maxCodeWidth)
                                     height: parent.height
                                     text: modelData.richContent || modelData.content || ""
                                     textFormat: Text.RichText

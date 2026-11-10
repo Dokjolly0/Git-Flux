@@ -384,7 +384,8 @@ Rectangle {
             if (prevSha === "WIP") {
                 var firstCommit = model.getCommit(0);
                 if (firstCommit && firstCommit.sha === "WIP") {
-                    root.selectCommitByIndex(0);
+                    commitTableListView.currentIndex = 0;
+                    root.selectedCommit = firstCommit;
                     return;
                 }
             } else {
@@ -452,7 +453,8 @@ Rectangle {
             }
             if (found && root.sessionVm.commitDiffViewer) {
                 var repoPath = root.sessionVm.activeRepoPath;
-                root.sessionVm.commitDiffViewer.loadDiff(repoPath, root.selectedFile.path, root.selectedFile.isStaged ? "staged" : "unstaged");
+                var wipScope = (root.selectedFile.kind === "untracked" || root.selectedFile.kind === "Untracked") ? "untracked" : (root.selectedFile.isStaged ? "staged" : "unstaged");
+                root.sessionVm.commitDiffViewer.loadDiff(repoPath, root.selectedFile.path, wipScope);
             } else if (!found) {
                 root.closeFileDiff();
             }
@@ -597,7 +599,7 @@ Rectangle {
     }
 
     function openFileDiff(file) {
-        if (root.isDiffOpen && root.selectedFile && file && root.selectedFile.path === file.path) {
+        if (root.isDiffOpen && root.selectedFile && file && root.selectedFile.path === file.path && root.selectedFile.isStaged === file.isStaged) {
             root.closeFileDiff();
             return;
         }
@@ -607,7 +609,8 @@ Rectangle {
         var repoPath = root.sessionVm.activeRepoPath;
         if (root.sessionVm.commitDiffViewer) {
             if (root.selectedCommit.sha === "WIP") {
-                root.sessionVm.commitDiffViewer.loadDiff(repoPath, file.path, file.isStaged ? "staged" : "unstaged");
+                var openScope = (file.kind === "untracked" || file.kind === "Untracked") ? "untracked" : (file.isStaged ? "staged" : "unstaged");
+                root.sessionVm.commitDiffViewer.loadDiff(repoPath, file.path, openScope);
             } else {
                 root.sessionVm.commitDiffViewer.loadCommitFileDiff(repoPath, root.selectedCommit.sha, file.path);
             }

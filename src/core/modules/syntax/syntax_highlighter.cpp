@@ -525,6 +525,14 @@ std::vector<Token> SyntaxHighlighter::tokenize(std::string_view line, Language l
 }
 
 std::string SyntaxHighlighter::highlightLine(std::string_view line, Language lang) noexcept {
+    constexpr std::size_t kMaxHighlightLineChars = 1024;
+    constexpr std::size_t kMaxRenderLineChars = 4096;
+    if (line.size() > kMaxHighlightLineChars) {
+        if (line.size() > kMaxRenderLineChars) {
+            return escapeHtml(line.substr(0, kMaxRenderLineChars)) + " &hellip;";
+        }
+        return escapeHtml(line);
+    }
     if (line.empty()) {
         return "";
     }

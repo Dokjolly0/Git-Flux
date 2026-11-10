@@ -1,4 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/reporters/catch_reporter_event_listener.hpp>
+#include <catch2/reporters/catch_reporter_registrars.hpp>
 
 #include "desktop/viewmodels/repository_list_model.hpp"
 #include "desktop/viewmodels/group_list_model.hpp"
@@ -72,10 +74,21 @@ static char* s_argv[] = {s_appName, nullptr};
 
 void ensureQtApp() {
     if (!QCoreApplication::instance()) {
+        if (qEnvironmentVariableIsEmpty("QT_PLUGIN_PATH") && std::filesystem::exists("C:/Qt/6.6.2/msvc2019_64/plugins")) {
+            qputenv("QT_PLUGIN_PATH", "C:/Qt/6.6.2/msvc2019_64/plugins");
+        }
         qputenv("QT_QPA_PLATFORM", "offscreen");
         new QGuiApplication(s_argc, s_argv);
     }
 }
+
+struct QtAppCleanupListener : Catch::EventListenerBase {
+    using Catch::EventListenerBase::EventListenerBase;
+    void testRunEnded(Catch::TestRunStats const&) override {
+        delete QCoreApplication::instance();
+    }
+};
+CATCH_REGISTER_LISTENER(QtAppCleanupListener)
 
 struct TestContext {
     std::filesystem::path tempDir;

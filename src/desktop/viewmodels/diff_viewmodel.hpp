@@ -84,6 +84,7 @@ private:
     QString m_languageIcon;
     QString m_currentRepoPath;
     QString m_currentRevision;
+    QString m_lastScope;
     QString m_viewMode = QStringLiteral("split");
     int m_additionsCount = 0;
     int m_deletionsCount = 0;
@@ -94,6 +95,8 @@ private:
     bool m_isEmpty = true;
     int m_maxLineLength = 0;
     bool m_isBlameLoading = false;
+    bool m_hasLastDiff = false;
+    gf::git::bo::FileDiff m_lastDiff;
 
     QVariantList m_splitLines;
     QVariantList m_hunks;

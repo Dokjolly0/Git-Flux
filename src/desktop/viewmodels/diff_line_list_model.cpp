@@ -3,6 +3,10 @@
 
 namespace gf::desktop {
 
+namespace {
+constexpr std::size_t kMaxRenderedDiffLines = 5000;
+} // namespace
+
 DiffLineListModel::DiffLineListModel(QObject* parent)
     : QAbstractListModel(parent) {}
 
@@ -104,7 +108,14 @@ void DiffLineListModel::setDiff(const gf::git::bo::FileDiff& diff, gf::core::syn
     m_lines.clear();
     m_richLines.clear();
 
+    std::size_t renderedLines = 0;
+    bool truncated = false;
+
     for (const auto& hunk : diff.hunks) {
+        if (renderedLines >= kMaxRenderedDiffLines) {
+            truncated = true;
+            break;
+        }
         // Add hunk header line
         m_lines.push_back(gf::git::bo::DiffLine{
             .kind = gf::git::bo::DiffLineKind::Header,
@@ -116,9 +127,25 @@ void DiffLineListModel::setDiff(const gf::git::bo::FileDiff& diff, gf::core::syn
 
         // Add all lines of the hunk
         for (const auto& l : hunk.lines) {
+            if (renderedLines >= kMaxRenderedDiffLines) {
+                truncated = true;
+                break;
+            }
             m_lines.push_back(l);
             m_richLines.push_back(gf::core::syntax::SyntaxHighlighter::highlightLine(l.content, lang));
+            ++renderedLines;
         }
+    }
+
+    if (truncated) {
+        const std::string notice = "... Diff troncato a 5000 righe per preservare la reattività dell'interfaccia ...";
+        m_lines.push_back(gf::git::bo::DiffLine{
+            .kind = gf::git::bo::DiffLineKind::Header,
+            .oldLineNumber = std::nullopt,
+            .newLineNumber = std::nullopt,
+            .content = notice
+        });
+        m_richLines.push_back(gf::core::syntax::SyntaxHighlighter::escapeHtml(notice));
     }
 
     endResetModel();

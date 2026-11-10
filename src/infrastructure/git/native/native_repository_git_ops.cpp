@@ -1,4 +1,5 @@
 #include "infrastructure/git/native/native_repository_git_ops.hpp"
+#include "core/shared/utf8_path.hpp"
 #include "core/modules/git/bl/commit_log_parser.hpp"
 #include "core/modules/git/bl/conflict_marker_parser.hpp"
 #include "core/modules/git/bl/porcelain_status_parser.hpp"
@@ -572,9 +573,9 @@ NativeRepositoryGitOps::getFileDiff(const std::filesystem::path& repoPath,
                                     gf::git::bo::DiffScope scope) {
     std::vector<std::string> args;
     if (scope == gf::git::bo::DiffScope::Staged) {
-        args = {"diff", "--cached", "--no-color", "-p", "--", filePath};
+        args = {"diff", "--cached", "--no-ext-diff", "--no-textconv", "--no-color", "-p", "--", filePath};
     } else if (scope == gf::git::bo::DiffScope::Unstaged) {
-        args = {"diff", "--no-color", "-p", "--", filePath};
+        args = {"diff", "--no-ext-diff", "--no-textconv", "--no-color", "-p", "--", filePath};
     } else {
         std::error_code ec;
         if (filePath.ends_with('/') || std::filesystem::is_directory(repoPath / filePath, ec)) {
@@ -584,7 +585,17 @@ NativeRepositoryGitOps::getFileDiff(const std::filesystem::path& repoPath,
             };
         }
         // Untracked: use --no-index against /dev/null
-        args = {"diff", "--no-index", "--no-color", "-p", "--", "/dev/null", filePath};
+        const auto untrackedFullPath = repoPath / gf::core::utf8ToPath(filePath);
+        const auto fileSize = std::filesystem::file_size(untrackedFullPath, ec);
+        if (!ec && fileSize > 2 * 1024 * 1024) {
+            return gf::git::bo::FileDiff{
+                .oldPath = filePath,
+                .newPath = filePath,
+                .isBinary = true,
+                .isNewFile = true
+            };
+        }
+        args = {"diff", "--no-index", "--no-ext-diff", "--no-textconv", "--no-color", "-p", "--", "/dev/null", filePath};
     }
 
     gf::git::bo::GitCommand cmd{
@@ -830,7 +841,7 @@ NativeRepositoryGitOps::getCommitFileDiff(const std::filesystem::path& repoPath,
     }
 
     gf::git::bo::GitCommand cmd{
-        .args = {"show", "-m", "--first-parent", "--format=", "--no-color", "-p", commitSha, "--", filePath},
+        .args = {"show", "-m", "--first-parent", "--format=", "--no-ext-diff", "--no-textconv", "--no-color", "-p", commitSha, "--", filePath},
         .workingDirectory = repoPath,
         .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
         .timeout = std::chrono::milliseconds{30'000}

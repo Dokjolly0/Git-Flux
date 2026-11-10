@@ -56,7 +56,7 @@ GitStagingService::validateRelativeFilePaths(const std::vector<std::string>& fil
         }
 
         std::filesystem::path p(pathStr);
-        if (p.is_absolute()) {
+        if (p.is_absolute() || p.has_root_path()) {
             return std::unexpected(ports::GitOpsError{
                 .kind = ports::GitOpsError::Kind::InvalidRepositoryPath,
                 .exitCode = -1,

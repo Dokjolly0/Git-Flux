@@ -2,6 +2,7 @@
 
 #include "core/modules/git/bl/git_working_tree_service.hpp"
 #include "core/modules/git/bl/git_staging_service.hpp"
+#include "core/shared/utf8_path.hpp"
 
 #include <filesystem>
 
@@ -35,11 +36,14 @@ bool WorkingTreeViewModel::refresh(const QString& repoPath) {
         m_behindCount = 0;
         m_isDetached = false;
         m_isUnborn = false;
+        m_lastRepoPath.clear();
+        m_lastStatus = {};
+        m_hasLastStatus = false;
         emit statusChanged();
         return false;
     }
 
-    std::filesystem::path rPath(repoPath.toStdString());
+    std::filesystem::path rPath = gf::core::utf8ToPath(repoPath.toStdString());
     auto result = m_statusService.getWorkingTreeStatus(rPath);
     if (!result) {
         emit operationFailed(QString::fromStdString(result.error().message));
@@ -47,10 +51,23 @@ bool WorkingTreeViewModel::refresh(const QString& repoPath) {
     }
 
     const auto& status = *result;
-    m_stagedModel.setItems(status.stagedFiles);
-    m_unstagedModel.setItems(status.unstagedFiles);
-    m_untrackedModel.setItems(status.untrackedFiles);
-    m_conflictedModel.setItems(status.conflictedFiles);
+    if (m_hasLastStatus && m_lastRepoPath == repoPath && m_lastStatus == status) {
+        return true;
+    }
+
+    const bool sameRepo = m_hasLastStatus && (m_lastRepoPath == repoPath);
+    if (!sameRepo || m_lastStatus.stagedFiles != status.stagedFiles) {
+        m_stagedModel.setItems(status.stagedFiles);
+    }
+    if (!sameRepo || m_lastStatus.unstagedFiles != status.unstagedFiles) {
+        m_unstagedModel.setItems(status.unstagedFiles);
+    }
+    if (!sameRepo || m_lastStatus.untrackedFiles != status.untrackedFiles) {
+        m_untrackedModel.setItems(status.untrackedFiles);
+    }
+    if (!sameRepo || m_lastStatus.conflictedFiles != status.conflictedFiles) {
+        m_conflictedModel.setItems(status.conflictedFiles);
+    }
 
     m_stagedCount = static_cast<int>(status.stagedCount());
     m_unstagedCount = static_cast<int>(status.unstagedCount());
@@ -65,52 +82,60 @@ bool WorkingTreeViewModel::refresh(const QString& repoPath) {
     m_isDetached = status.branch.detached;
     m_isUnborn = status.branch.unborn;
 
+    m_lastRepoPath = repoPath;
+    m_lastStatus = status;
+    m_hasLastStatus = true;
+
     emit statusChanged();
     return true;
 }
 
 bool WorkingTreeViewModel::stageFile(const QString& repoPath, const QString& filePath) {
-    std::filesystem::path rPath(repoPath.toStdString());
+    std::filesystem::path rPath = gf::core::utf8ToPath(repoPath.toStdString());
     auto res = m_stagingService.stageFiles(rPath, {filePath.toStdString()});
     if (!res) {
         emit operationFailed(QString::fromStdString(res.error().message));
         return false;
     }
+    m_hasLastStatus = false;
     return refresh(repoPath);
 }
 
 bool WorkingTreeViewModel::stageAll(const QString& repoPath) {
-    std::filesystem::path rPath(repoPath.toStdString());
+    std::filesystem::path rPath = gf::core::utf8ToPath(repoPath.toStdString());
     auto res = m_stagingService.stageAll(rPath);
     if (!res) {
         emit operationFailed(QString::fromStdString(res.error().message));
         return false;
     }
+    m_hasLastStatus = false;
     return refresh(repoPath);
 }
 
 bool WorkingTreeViewModel::unstageFile(const QString& repoPath, const QString& filePath) {
-    std::filesystem::path rPath(repoPath.toStdString());
+    std::filesystem::path rPath = gf::core::utf8ToPath(repoPath.toStdString());
     auto res = m_stagingService.unstageFiles(rPath, {filePath.toStdString()});
     if (!res) {
         emit operationFailed(QString::fromStdString(res.error().message));
         return false;
     }
+    m_hasLastStatus = false;
     return refresh(repoPath);
 }
 
 bool WorkingTreeViewModel::unstageAll(const QString& repoPath) {
-    std::filesystem::path rPath(repoPath.toStdString());
+    std::filesystem::path rPath = gf::core::utf8ToPath(repoPath.toStdString());
     auto res = m_stagingService.unstageAll(rPath);
     if (!res) {
         emit operationFailed(QString::fromStdString(res.error().message));
         return false;
     }
+    m_hasLastStatus = false;
     return refresh(repoPath);
 }
 
 bool WorkingTreeViewModel::discardFile(const QString& repoPath, const QString& filePath) {
-    std::filesystem::path rPath(repoPath.toStdString());
+    std::filesystem::path rPath = gf::core::utf8ToPath(repoPath.toStdString());
     std::string pathStr = filePath.toStdString();
     // 1. Unstage if staged
     (void)m_stagingService.unstageFiles(rPath, {pathStr});
@@ -120,11 +145,12 @@ bool WorkingTreeViewModel::discardFile(const QString& repoPath, const QString& f
         emit operationFailed(QString::fromStdString(res.error().message));
         return false;
     }
+    m_hasLastStatus = false;
     return refresh(repoPath);
 }
 
 bool WorkingTreeViewModel::discardAll(const QString& repoPath) {
-    std::filesystem::path rPath(repoPath.toStdString());
+    std::filesystem::path rPath = gf::core::utf8ToPath(repoPath.toStdString());
     // 1. Unstage all staged files
     (void)m_stagingService.unstageAll(rPath);
 
@@ -147,6 +173,7 @@ bool WorkingTreeViewModel::discardAll(const QString& repoPath) {
             return false;
         }
     }
+    m_hasLastStatus = false;
     return refresh(repoPath);
 }
 

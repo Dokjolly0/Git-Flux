@@ -866,6 +866,18 @@ void CommitHistoryListModel::setWip(bool hasWip, int changedFilesCount) {
     if (m_hasWip == hasWip && m_wipCount == changedFilesCount) {
         return;
     }
+    if (m_hasWip && hasWip && !m_commits.empty() && m_commits[0].sha == "WIP") {
+        m_wipCount = changedFilesCount;
+        m_commits[0].subject = QString("// WIP - %1 %2")
+            .arg(m_wipCount)
+            .arg(m_wipCount == 1 ? QStringLiteral("file modificato") : QStringLiteral("file modificati"))
+            .toStdString();
+        emit dataChanged(index(0, 0), index(0, 0), {SubjectRole});
+        return;
+    }
+    if (m_hasWip == hasWip && m_wipCount == changedFilesCount) {
+        return;
+    }
     beginResetModel();
     m_hasWip = hasWip;
     m_wipCount = changedFilesCount;

@@ -5,6 +5,7 @@
 #include <chrono>
 #include <format>
 #include <thread>
+#include <vector>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -216,6 +217,25 @@ struct AsyncPipeChannel {
         }
         pumpReads();
     }
+
+    void drainAfterProcessExit() {
+        while (pending && ::WaitForSingleObject(event.h, 0) == WAIT_OBJECT_0) {
+            completePending();
+        }
+        if (pending) {
+            ::CancelIoEx(pipe, &ov);
+            DWORD bytesTransferred = 0;
+            ::GetOverlappedResult(pipe, &ov, &bytesTransferred, TRUE);
+            if (bytesTransferred > 0) {
+                destination->append(buffer, bytesTransferred);
+                if (onChunk) {
+                    onChunk(std::string_view(buffer, bytesTransferred));
+                }
+            }
+            pending = false;
+            eof = true;
+        }
+    }
 };
 
 [[nodiscard]] std::wstring buildGitEnvironmentBlock(bool noOptionalLocks) {
@@ -364,12 +384,39 @@ NativeGitCommandExecutor::execute(const gf::git::bo::GitCommand& command,
                                         FILE_SHARE_READ | FILE_SHARE_WRITE,
                                         &saInherit, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
 
-    STARTUPINFOW si{};
-    si.cb = sizeof(si);
-    si.dwFlags = STARTF_USESTDHANDLES;
-    si.hStdInput = (nulInput.h != INVALID_HANDLE_VALUE) ? nulInput.h : ::GetStdHandle(STD_INPUT_HANDLE);
-    si.hStdOutput = stdoutPipe.childWrite.h;
-    si.hStdError = stderrPipe.childWrite.h;
+    STARTUPINFOEXW siEx{};
+    siEx.StartupInfo.cb = sizeof(STARTUPINFOEXW);
+    siEx.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+    siEx.StartupInfo.hStdInput = (nulInput.h != INVALID_HANDLE_VALUE) ? nulInput.h : ::GetStdHandle(STD_INPUT_HANDLE);
+    siEx.StartupInfo.hStdOutput = stdoutPipe.childWrite.h;
+    siEx.StartupInfo.hStdError = stderrPipe.childWrite.h;
+
+    HANDLE inheritableHandles[3]{};
+    DWORD inheritCount = 0;
+    if (nulInput.h != INVALID_HANDLE_VALUE && nulInput.h != nullptr) {
+        inheritableHandles[inheritCount++] = nulInput.h;
+    }
+    inheritableHandles[inheritCount++] = stdoutPipe.childWrite.h;
+    inheritableHandles[inheritCount++] = stderrPipe.childWrite.h;
+
+    SIZE_T attrListSize = 0;
+    ::InitializeProcThreadAttributeList(nullptr, 1, 0, &attrListSize);
+    std::vector<std::byte> attrListStorage(attrListSize);
+    auto* attrList = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attrListStorage.data());
+    bool hasAttrList = false;
+    if (attrListSize > 0 && ::InitializeProcThreadAttributeList(attrList, 1, 0, &attrListSize)) {
+        if (::UpdateProcThreadAttribute(attrList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                                        inheritableHandles, inheritCount * sizeof(HANDLE),
+                                        nullptr, nullptr)) {
+            siEx.lpAttributeList = attrList;
+            hasAttrList = true;
+        } else {
+            ::DeleteProcThreadAttributeList(attrList);
+        }
+    }
+    if (!hasAttrList) {
+        siEx.StartupInfo.cb = sizeof(STARTUPINFOW);
+    }
 
     std::wstring cmdLine = buildWindowsCommandLine(gitExecutablePath_, fullArgs);
     const std::wstring exeWide = gitExecutablePath_.wstring();
@@ -379,18 +426,23 @@ NativeGitCommandExecutor::execute(const gf::git::bo::GitCommand& command,
     std::wstring envBlock = noOptLocks ? envBlockNoLocks_ : envBlockStandard_;
 
     PROCESS_INFORMATION pi{};
+    const DWORD creationFlags = CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT |
+                                (hasAttrList ? EXTENDED_STARTUPINFO_PRESENT : 0);
     const BOOL spawned = ::CreateProcessW(
         exeWide.c_str(),
         cmdLine.data(),
         nullptr,
         nullptr,
         TRUE,
-        CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT,
+        creationFlags,
         envBlock.data(),
         workDirWide.empty() ? nullptr : workDirWide.c_str(),
-        &si,
+        &siEx.StartupInfo,
         &pi);
 
+    if (hasAttrList) {
+        ::DeleteProcThreadAttributeList(attrList);
+    }
     stdoutPipe.childWrite.reset();
     stderrPipe.childWrite.reset();
     nulInput.reset();
@@ -428,9 +480,10 @@ NativeGitCommandExecutor::execute(const gf::git::bo::GitCommand& command,
     errCh.pumpReads();
 
     const auto deadline = startClock + command.timeout;
+    bool procExited = false;
     while (!outCh.eof || !errCh.eof) {
-        HANDLE waitHandles[2]{};
-        AsyncPipeChannel* waitChannels[2]{};
+        HANDLE waitHandles[3]{};
+        AsyncPipeChannel* waitChannels[3]{};
         DWORD handleCount = 0;
 
         if (outCh.pending) {
@@ -445,6 +498,14 @@ NativeGitCommandExecutor::execute(const gf::git::bo::GitCommand& command,
         }
         if (handleCount == 0) {
             break;
+        }
+
+        DWORD procHandleIndex = 0xFFFFFFFFu;
+        if (!procExited) {
+            procHandleIndex = handleCount;
+            waitHandles[handleCount] = procHandle.h;
+            waitChannels[handleCount] = nullptr;
+            ++handleCount;
         }
 
         const auto now = std::chrono::steady_clock::now();
@@ -467,7 +528,16 @@ NativeGitCommandExecutor::execute(const gf::git::bo::GitCommand& command,
             break;
         }
         if (waitRc >= WAIT_OBJECT_0 && waitRc < WAIT_OBJECT_0 + handleCount) {
-            waitChannels[waitRc - WAIT_OBJECT_0]->completePending();
+            const DWORD signaledIdx = waitRc - WAIT_OBJECT_0;
+            if (signaledIdx == procHandleIndex) {
+                procExited = true;
+                outCh.drainAfterProcessExit();
+                errCh.drainAfterProcessExit();
+                break;
+            }
+            if (waitChannels[signaledIdx]) {
+                waitChannels[signaledIdx]->completePending();
+            }
         } else {
             break;
         }

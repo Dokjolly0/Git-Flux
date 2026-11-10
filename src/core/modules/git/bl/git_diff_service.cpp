@@ -41,7 +41,7 @@ GitDiffService::validateRelativeFilePath(const std::string& filePath) const {
     }
 
     std::filesystem::path p(filePath);
-    if (p.is_absolute()) {
+    if (p.is_absolute() || p.has_root_path()) {
         return std::unexpected(ports::GitOpsError{
             .kind = ports::GitOpsError::Kind::InvalidRepositoryPath,
             .exitCode = -1,
