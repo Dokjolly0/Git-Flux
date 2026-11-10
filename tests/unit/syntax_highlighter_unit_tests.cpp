@@ -2,6 +2,7 @@
 
 #include "core/modules/syntax/language_detector.hpp"
 #include "core/modules/syntax/syntax_highlighter.hpp"
+#include "core/modules/syntax/markdown_parser.hpp"
 
 using namespace gf::core::syntax;
 
@@ -302,5 +303,310 @@ TEST_CASE("SyntaxHighlighter genera HTML formattato con colori e preserva l'inde
 
     SECTION("highlightLine per riga vuota") {
         REQUIRE(SyntaxHighlighter::highlightLine("", Language::Cpp).empty());
+    }
+}
+
+
+TEST_CASE("LanguageDetector rileva estensioni Markdown extra e code fence info strings", "[unit][syntax][detector][markdown]") {
+    SECTION("Estensioni Markdown aggiuntive") {
+        REQUIRE(LanguageDetector::detect("CHANGELOG.mdown").language == Language::Markdown);
+        REQUIRE(LanguageDetector::detect("docs/guide.mkd").language == Language::Markdown);
+        REQUIRE(LanguageDetector::detect("pages/intro.mdx").language == Language::Markdown);
+        REQUIRE(LanguageDetector::detect("SPEC.markdown").language == Language::Markdown);
+    }
+
+    SECTION("Code fence info string verso Language") {
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("") == Language::Unknown);
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("text") == Language::Unknown);
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("TEXT") == Language::Unknown);
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("txt") == Language::Unknown);
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("plain") == Language::Unknown);
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("plaintext") == Language::Unknown);
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("ascii") == Language::Unknown);
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("tree") == Language::Unknown);
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("console") == Language::Unknown);
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("output") == Language::Unknown);
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("log") == Language::Unknown);
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("diff") == Language::Unknown);
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("mermaid") == Language::Unknown);
+
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("cpp") == Language::Cpp);
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("c++") == Language::Cpp);
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("go") == Language::Go);
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("python") == Language::Python);
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("yaml") == Language::Yaml);
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("json") == Language::Json);
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("bash") == Language::Shell);
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("bash title=\"setup\"") == Language::Shell);
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("ts") == Language::TypeScript);
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("rust") == Language::Rust);
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("sql") == Language::Sql);
+        REQUIRE(LanguageDetector::fromCodeFenceInfo("qml") == Language::Qml);
+    }
+}
+
+TEST_CASE("SyntaxHighlighter protegge UTF-8 box-drawing e Plain Text da evidenziazione errata", "[unit][syntax][utf8]") {
+    SECTION("Albero file con box-drawing UTF-8 e commento # in Plain Text non viene frammentato ne evidenziato come codice") {
+        const std::string line = "│   ├── tree/            # folders, risoluzione path, move, cestino";
+        auto tokens = SyntaxHighlighter::tokenize(line, Language::Unknown);
+        REQUIRE_FALSE(tokens.empty());
+
+        std::string reconstructed;
+        bool foundBoxDrawingGroup = false;
+        for (const auto& t : tokens) {
+            reconstructed.append(t.text);
+            REQUIRE(t.type != TokenType::Comment);
+            REQUIRE(t.type != TokenType::Keyword);
+            REQUIRE(t.type != TokenType::Type);
+            REQUIRE(t.type != TokenType::String);
+            REQUIRE(t.type != TokenType::Function);
+            REQUIRE(t.type != TokenType::Preprocessor);
+            if (t.text.find("├──") != std::string::npos) {
+                foundBoxDrawingGroup = true;
+            }
+        }
+        REQUIRE(reconstructed == line);
+        REQUIRE(foundBoxDrawingGroup);
+    }
+
+    SECTION("highlightCodeBlockHtml per blocco tree produce <pre> pulito e senza riga vuota finale") {
+        const std::string tree =
+            "file-service/\n"
+            "├── cmd/\n"
+            "│   └── main.go\n"
+            "├── tree/   # folders\n"
+            "└── README.md\n";
+        std::string html = SyntaxHighlighter::highlightCodeBlockHtml(tree, Language::Unknown);
+
+        REQUIRE(html.starts_with("<pre style=\"margin:0;white-space:pre;\">"));
+        REQUIRE(html.ends_with("</pre>"));
+        REQUIRE(html.find("├──") != std::string::npos);
+        REQUIRE(html.find("└──") != std::string::npos);
+        REQUIRE(html.find("#7F848E") == std::string::npos);
+        REQUIRE(html.find("\n</pre>") == std::string::npos);
+    }
+
+    SECTION("Commento C++ con caratteri UTF-8 multi-byte preserva le sequenze UTF-8") {
+        const std::string line = "// Albero dir: ├── già verificato (èòà)";
+        auto tokens = SyntaxHighlighter::tokenize(line, Language::Cpp);
+        REQUIRE(tokens.size() == 1);
+        REQUIRE(tokens[0].type == TokenType::Comment);
+        REQUIRE(tokens[0].text == line);
+    }
+}
+
+TEST_CASE("SyntaxHighlighter tokenizza Markdown con stato multi-riga senza rompere la prosa", "[unit][syntax][markdown]") {
+    SECTION("Apostrofi e URL in Markdown restano testo leggibile senza falsi token codice") {
+        MarkdownLineState state{};
+        const std::string line = "L'utente visita https://example.com/v1 e don't break \"quotes\" o `if`";
+        auto tokens = SyntaxHighlighter::tokenizeMarkdownLine(line, state);
+
+        std::string reconstructed;
+        bool foundCode = false;
+        bool foundLink = false;
+        for (const auto& t : tokens) {
+            reconstructed.append(t.text);
+            REQUIRE(t.type != TokenType::Keyword);
+            REQUIRE(t.type != TokenType::String);
+            REQUIRE(t.type != TokenType::Comment);
+            if (t.type == TokenType::MarkdownCode) foundCode = true;
+            if (t.type == TokenType::MarkdownLink) foundLink = true;
+        }
+        REQUIRE(reconstructed == line);
+        REQUIRE(foundCode);
+        REQUIRE(foundLink);
+        REQUIRE_FALSE(state.inCodeFence);
+    }
+
+    SECTION("computeMarkdownLineStates propaga fence Go multi-riga e si chiude sul fence finale") {
+        const std::string doc =
+            "# Titolo\n"
+            "```go\n"
+            "func main() {}\n"
+            "```\n"
+            "Prosa con import class return\n";
+
+        auto states = SyntaxHighlighter::computeMarkdownLineStates(doc);
+        REQUIRE(states.size() >= 5);
+        REQUIRE_FALSE(states[0].inCodeFence);
+        REQUIRE_FALSE(states[1].inCodeFence);
+        REQUIRE(states[2].inCodeFence);
+        REQUIRE(states[2].fenceLanguage == Language::Go);
+        REQUIRE(states[3].inCodeFence);
+        REQUIRE_FALSE(states[4].inCodeFence);
+
+        MarkdownLineState insideState = states[2];
+        std::string goLineHtml = SyntaxHighlighter::highlightLine("func main() {}", Language::Markdown, insideState);
+        REQUIRE(goLineHtml.find("func") != std::string::npos);
+        REQUIRE(goLineHtml.find("#C678DD") != std::string::npos);
+
+        MarkdownLineState outsideState = states[4];
+        auto proseTokens = SyntaxHighlighter::tokenizeMarkdownLine("Prosa con import class return", outsideState);
+        for (const auto& t : proseTokens) {
+            REQUIRE(t.type != TokenType::Keyword);
+        }
+    }
+}
+
+TEST_CASE("MarkdownParser estrae blocchi GitHub-style, TOC, badge, tabelle e Rich Diff", "[unit][syntax][markdown][parser]") {
+    SECTION("toGithubSlug replica il comportamento GitHub con emoji, punteggiatura ed entita") {
+        REQUIRE(MarkdownParser::toGithubSlug("Hello World") == "hello-world");
+        REQUIRE(MarkdownParser::toGithubSlug("Architecture & Clean Design") == "architecture--clean-design");
+        REQUIRE(MarkdownParser::toGithubSlug("Step 1: Setup & Run!") == "step-1-setup--run");
+    }
+
+    SECTION("Parsing completo con badge row, alert GitHub, code fence tree, lista e tabella") {
+        const std::string md =
+            "<div align=\"center\">\n"
+            "\n"
+            "[![Build](https://img.shields.io/badge/build-passing-brightgreen)](https://ci.example.com) [![Go](https://img.shields.io/badge/Go-1.22-00ADD8)](https://go.dev)\n"
+            "\n"
+            "</div>\n"
+            "\n"
+            "# Panoramica del Servizio\n"
+            "\n"
+            "> [!NOTE]\n"
+            "> Nota importante sulla configurazione.\n"
+            "\n"
+            "## Panoramica del Servizio\n"
+            "\n"
+            "- [x] Completato `tree`\n"
+            "- [ ] Da fare\n"
+            "\n"
+            "```text\n"
+            "file-service/\n"
+            "├── cmd/\n"
+            "└── README.md\n"
+            "```\n"
+            "\n"
+            "| Servizio | Stato | Porta |\n"
+            "| :--- | :---: | ---: |\n"
+            "| API | **Attivo** | `8080` |\n";
+
+        auto parsed = MarkdownParser::parse(md);
+        REQUIRE(parsed.toc.size() == 2);
+        CHECK(parsed.toc[0].title == "Panoramica del Servizio");
+        CHECK(parsed.toc[0].anchor == "panoramica-del-servizio");
+        CHECK(parsed.toc[1].anchor == "panoramica-del-servizio-1");
+
+        bool hasBadgeRow = false;
+        bool hasAlert = false;
+        bool hasTreeCode = false;
+        bool hasTable = false;
+        int taskCount = 0;
+
+        for (const auto& blk : parsed.blocks) {
+            if (blk.kind == MarkdownBlockKind::BadgeRow) {
+                hasBadgeRow = true;
+                CHECK(blk.centered);
+                REQUIRE(blk.badges.size() == 2);
+                CHECK(blk.badges[0].label == "Build");
+                CHECK(blk.badges[0].color == "#238636");
+                CHECK(blk.badges[0].href == "https://ci.example.com");
+                CHECK(blk.badges[1].label == "Go");
+            } else if (blk.kind == MarkdownBlockKind::Blockquote && blk.alertType == MarkdownAlertType::Note) {
+                hasAlert = true;
+                CHECK(blk.html.find("Nota importante") != std::string::npos);
+            } else if (blk.kind == MarkdownBlockKind::ListItem && blk.isTask) {
+                ++taskCount;
+            } else if (blk.kind == MarkdownBlockKind::CodeBlock) {
+                hasTreeCode = true;
+                CHECK(blk.detectedLanguage == Language::Unknown);
+                CHECK(blk.rawText.find("├── cmd/") != std::string::npos);
+                CHECK(blk.html.find("├──") != std::string::npos);
+                CHECK(blk.html.find("\n</pre>") == std::string::npos);
+            } else if (blk.kind == MarkdownBlockKind::Table) {
+                hasTable = true;
+                REQUIRE(blk.tableHeaders.size() == 3);
+                REQUIRE(blk.tableAlignments == std::vector<std::string>{"left", "center", "right"});
+                REQUIRE(blk.tableRows.size() == 1);
+            }
+        }
+
+        CHECK(hasBadgeRow);
+        CHECK(hasAlert);
+        CHECK(taskCount == 2);
+        CHECK(hasTreeCode);
+        CHECK(hasTable);
+    }
+
+    SECTION("parseWithDiff associa blocchi aggiunti, modificati e snippet eliminati") {
+        const std::string newMd =
+            "# Titolo\n"
+            "\n"
+            "Paragrafo modificato\n"
+            "\n"
+            "Nuova sezione finale\n";
+
+        gf::git::bo::FileDiff diff;
+        diff.oldPath = "README.md";
+        diff.newPath = "README.md";
+        gf::git::bo::DiffHunk hunk;
+        hunk.header = "@@ -1,5 +1,5 @@";
+        hunk.oldStartLine = 1;
+        hunk.newStartLine = 1;
+        hunk.lines = {
+            {.kind = gf::git::bo::DiffLineKind::Context,  .oldLineNumber = 1, .newLineNumber = 1, .content = "# Titolo"},
+            {.kind = gf::git::bo::DiffLineKind::Context,  .oldLineNumber = 2, .newLineNumber = 2, .content = ""},
+            {.kind = gf::git::bo::DiffLineKind::Deletion, .oldLineNumber = 3, .newLineNumber = std::nullopt, .content = "Paragrafo originale"},
+            {.kind = gf::git::bo::DiffLineKind::Addition, .oldLineNumber = std::nullopt, .newLineNumber = 3, .content = "Paragrafo modificato"},
+            {.kind = gf::git::bo::DiffLineKind::Context,  .oldLineNumber = 4, .newLineNumber = 4, .content = ""},
+            {.kind = gf::git::bo::DiffLineKind::Addition, .oldLineNumber = std::nullopt, .newLineNumber = 5, .content = "Nuova sezione finale"},
+            {.kind = gf::git::bo::DiffLineKind::Deletion, .oldLineNumber = 5, .newLineNumber = std::nullopt, .content = "Riga rimossa in coda"}
+        };
+        diff.hunks.push_back(std::move(hunk));
+
+        auto doc = MarkdownParser::parseWithDiff(newMd, &diff);
+        REQUIRE(doc.blocks.size() >= 3);
+
+        CHECK(doc.blocks[0].changeStatus == MarkdownChangeStatus::Unchanged);
+        CHECK(doc.blocks[1].changeStatus == MarkdownChangeStatus::Modified);
+        CHECK(doc.blocks[1].addedLineCount == 1);
+        CHECK(doc.blocks[1].deletedLineCount == 1);
+        REQUIRE(doc.blocks[1].deletedLines.size() == 1);
+        CHECK(doc.blocks[1].deletedLines[0] == "Paragrafo originale");
+
+        CHECK(doc.blocks[2].changeStatus == MarkdownChangeStatus::Added);
+
+        bool foundEofDeletedSnippet = false;
+        for (const auto& blk : doc.blocks) {
+            if (blk.kind == MarkdownBlockKind::DeletedSnippet) {
+                foundEofDeletedSnippet = true;
+                REQUIRE(blk.deletedLines.size() == 1);
+                CHECK(blk.deletedLines[0] == "Riga rimossa in coda");
+            }
+        }
+        CHECK(foundEofDeletedSnippet);
+    }
+
+    SECTION("Blocco codice indentato a 4 spazi (file tree senza backtick)") {
+        const std::string md =
+            "# Struttura\n"
+            "\n"
+            "    file-service/\n"
+            "    ├── cmd/\n"
+            "    │   └── main.go\n"
+            "    # commento file\n"
+            "\n"
+            "    - sottoelemento lista\n";
+
+        auto doc = MarkdownParser::parse(md);
+        REQUIRE(doc.toc.size() == 1);
+        CHECK(doc.toc[0].title == "Struttura");
+
+        bool foundIndentedTree = false;
+        bool foundListItem = false;
+        for (const auto& blk : doc.blocks) {
+            if (blk.kind == MarkdownBlockKind::CodeBlock) {
+                foundIndentedTree = true;
+                CHECK(blk.detectedLanguage == Language::Unknown);
+                CHECK(blk.rawText.find("├── cmd/") != std::string::npos);
+                CHECK(blk.rawText.find("# commento file") != std::string::npos);
+            } else if (blk.kind == MarkdownBlockKind::ListItem) {
+                foundListItem = true;
+            }
+        }
+        CHECK(foundIndentedTree);
+        CHECK(foundListItem);
     }
 }

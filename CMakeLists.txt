@@ -81,6 +81,7 @@ add_library(gf_application STATIC
     src/core/modules/workspaces/bl/workspace_service.cpp
     src/core/modules/syntax/language_detector.cpp
     src/core/modules/syntax/syntax_highlighter.cpp
+    src/core/modules/syntax/markdown_parser.cpp
 )
 target_include_directories(gf_application PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
@@ -314,6 +315,7 @@ if(GF_BUILD_DESKTOP)
             src/desktop/ui/qml/views/WorkingTreePanel.qml
             src/desktop/ui/qml/views/CommitBox.qml
             src/desktop/ui/qml/views/DiffViewerPanel.qml
+            src/desktop/ui/qml/views/MarkdownPreviewView.qml
             src/desktop/ui/qml/views/BranchSwitcherDropdown.qml
             src/desktop/ui/qml/views/BranchManagerModal.qml
             src/desktop/ui/qml/views/CreateBranchModal.qml

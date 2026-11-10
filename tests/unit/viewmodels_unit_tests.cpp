@@ -518,6 +518,9 @@ class MockFullGitOps final : public gf::git::ports::IRepositoryGitOps {
 public:
     gf::git::bo::RepoWorkingTreeStatus statusToReturn;
     gf::git::bo::FileDiff diffToReturn;
+    std::string fileContentToReturn;
+    int lastContextLinesRequested = -999;
+    std::string lastFileContentRevision;
     bool getStatusCalled = false;
     bool stageCalled = false;
     bool unstageCalled = false;
@@ -574,6 +577,24 @@ public:
     std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
     getFileDiff(const std::filesystem::path&, const std::string&, gf::git::bo::DiffScope) override {
         return diffToReturn;
+    }
+
+    std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
+    getFileDiffWithContext(const std::filesystem::path& p, const std::string& f, gf::git::bo::DiffScope s, int contextLines) override {
+        lastContextLinesRequested = contextLines;
+        return getFileDiff(p, f, s);
+    }
+
+    std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
+    getCommitFileDiffWithContext(const std::filesystem::path&, const std::string&, const std::string&, int contextLines) override {
+        lastContextLinesRequested = contextLines;
+        return diffToReturn;
+    }
+
+    std::expected<std::string, gf::git::ports::GitOpsError>
+    getFileContent(const std::filesystem::path&, const std::string& rev, const std::string&) override {
+        lastFileContentRevision = rev;
+        return fileContentToReturn;
     }
 
     std::expected<std::vector<gf::git::bo::FileDiff>, gf::git::ports::GitOpsError>
@@ -2252,3 +2273,194 @@ TEST_CASE("HomeHubViewModel: workspace repo composition and available repos filt
 
 
 
+
+
+TEST_CASE("DiffViewModel - Context lines, Markdown preview, Rich Diff e evidenziazione multi-riga", "[desktop][viewmodels][diff][markdown]") {
+    ensureQtApp();
+
+    MockFullGitOps mockOps;
+    gf::git::bl::GitDiffService diffService(mockOps);
+    DiffViewModel diffVm(diffService);
+
+    const QString repoPath = QString::fromStdString(std::filesystem::temp_directory_path().string());
+
+    CHECK(diffVm.contextLines() == 10);
+    CHECK_FALSE(diffVm.isFullContext());
+    CHECK_FALSE(diffVm.isMarkdown());
+    CHECK_FALSE(diffVm.isMarkdownRendered());
+    CHECK(diffVm.showMarkdownRichDiff());
+
+    SECTION("Controllo dinamico delle righe di contesto e full-context toggle") {
+        QSignalSpy ctxSpy(&diffVm, &DiffViewModel::contextLinesChanged);
+        QSignalSpy loadedSpy(&diffVm, &DiffViewModel::diffLoaded);
+
+        gf::git::bo::DiffHunk hunk;
+        hunk.header = "@@ -1,2 +1,2 @@";
+        hunk.oldStartLine = 1;
+        hunk.newStartLine = 1;
+        hunk.lines = {
+            {.kind = gf::git::bo::DiffLineKind::Context, .oldLineNumber = 1, .newLineNumber = 1, .content = "int a = 1;"},
+            {.kind = gf::git::bo::DiffLineKind::Addition, .oldLineNumber = std::nullopt, .newLineNumber = 2, .content = "int b = 2;"}
+        };
+        mockOps.diffToReturn.oldPath = "src/main.cpp";
+        mockOps.diffToReturn.newPath = "src/main.cpp";
+        mockOps.diffToReturn.additionsCount = 1;
+        mockOps.diffToReturn.hunks = {hunk};
+
+        REQUIRE(diffVm.loadDiff(repoPath, "src/main.cpp", "unstaged"));
+        CHECK(mockOps.lastContextLinesRequested == 10);
+        CHECK(loadedSpy.count() == 1);
+
+        diffVm.setContextLines(25);
+        CHECK(diffVm.contextLines() == 25);
+        CHECK(mockOps.lastContextLinesRequested == 25);
+        CHECK(ctxSpy.count() == 1);
+        CHECK(loadedSpy.count() == 2);
+
+        diffVm.expandContext(15);
+        CHECK(diffVm.contextLines() == 40);
+        CHECK(mockOps.lastContextLinesRequested == 40);
+        CHECK(ctxSpy.count() == 2);
+
+        diffVm.toggleFullContext();
+        CHECK(diffVm.contextLines() == -1);
+        CHECK(diffVm.isFullContext());
+        CHECK(mockOps.lastContextLinesRequested == -1);
+
+        diffVm.toggleFullContext();
+        CHECK(diffVm.contextLines() == 40);
+        CHECK_FALSE(diffVm.isFullContext());
+        CHECK(mockOps.lastContextLinesRequested == 40);
+    }
+
+    SECTION("Markdown preview, TOC, blocchi box-drawing, Rich Diff e stato multi-riga negli hunk") {
+        const std::string mdContent =
+            "# Architettura\n"
+            "\n"
+            "Testo con class e https://example.com\n"
+            "\n"
+            "```text\n"
+            "file-service/\n"
+            "├── cmd/\n"
+            "├── tree/   # folders\n"
+            "└── README.md\n"
+            "```\n"
+            "\n"
+            "```go\n"
+            "func main() {}\n"
+            "```\n"
+            "\n"
+            "| Modulo | Stato |\n"
+            "| --- | --- |\n"
+            "| Core | OK |\n";
+
+        mockOps.fileContentToReturn = mdContent;
+
+        gf::git::bo::DiffHunk mdHunk;
+        mdHunk.header = "@@ -1,18 +1,18 @@";
+        mdHunk.oldStartLine = 1;
+        mdHunk.newStartLine = 1;
+        mdHunk.lines = {
+            {.kind = gf::git::bo::DiffLineKind::Context,  .oldLineNumber = 1,  .newLineNumber = 1,  .content = "# Architettura"},
+            {.kind = gf::git::bo::DiffLineKind::Context,  .oldLineNumber = 3,  .newLineNumber = 3,  .content = "Testo con class e https://example.com"},
+            {.kind = gf::git::bo::DiffLineKind::Context,  .oldLineNumber = 5,  .newLineNumber = 5,  .content = "```text"},
+            {.kind = gf::git::bo::DiffLineKind::Context,  .oldLineNumber = 6,  .newLineNumber = 6,  .content = "file-service/"},
+            {.kind = gf::git::bo::DiffLineKind::Context,  .oldLineNumber = 7,  .newLineNumber = 7,  .content = "├── cmd/"},
+            {.kind = gf::git::bo::DiffLineKind::Context,  .oldLineNumber = 8,  .newLineNumber = 8,  .content = "├── tree/   # folders"},
+            {.kind = gf::git::bo::DiffLineKind::Context,  .oldLineNumber = 10, .newLineNumber = 10, .content = "```"},
+            {.kind = gf::git::bo::DiffLineKind::Context,  .oldLineNumber = 12, .newLineNumber = 12, .content = "```go"},
+            {.kind = gf::git::bo::DiffLineKind::Addition, .oldLineNumber = std::nullopt, .newLineNumber = 13, .content = "func main() {}"},
+            {.kind = gf::git::bo::DiffLineKind::Context,  .oldLineNumber = 14, .newLineNumber = 14, .content = "```"}
+        };
+        mockOps.diffToReturn.oldPath = "README.md";
+        mockOps.diffToReturn.newPath = "README.md";
+        mockOps.diffToReturn.additionsCount = 1;
+        mockOps.diffToReturn.deletionsCount = 0;
+        mockOps.diffToReturn.hunks = {mdHunk};
+
+        REQUIRE(diffVm.loadDiff(repoPath, "README.md", "unstaged"));
+        CHECK(diffVm.isMarkdown());
+        CHECK(diffVm.markdownSource() == QString::fromStdString(mdContent));
+        REQUIRE(diffVm.markdownToc().size() == 1);
+        CHECK(diffVm.markdownToc()[0].toMap()[QStringLiteral("anchor")].toString() == QStringLiteral("architettura"));
+
+        bool foundTreeCard = false;
+        bool foundGoCard = false;
+        bool foundTable = false;
+        for (const QVariant& item : diffVm.markdownBlocks()) {
+            const QVariantMap blk = item.toMap();
+            const QString kind = blk[QStringLiteral("kind")].toString();
+            if (kind == QStringLiteral("code")) {
+                const QString lang = blk[QStringLiteral("languageTag")].toString();
+                if (lang == QStringLiteral("text")) {
+                    foundTreeCard = true;
+                    CHECK(blk[QStringLiteral("rawText")].toString().contains(QStringLiteral("├── cmd/")));
+                    CHECK(blk[QStringLiteral("html")].toString().contains(QStringLiteral("├──")));
+                    CHECK_FALSE(blk[QStringLiteral("html")].toString().contains(QStringLiteral("#7F848E")));
+                } else if (lang == QStringLiteral("go")) {
+                    foundGoCard = true;
+                    CHECK(blk[QStringLiteral("changeStatus")].toString() == QStringLiteral("added"));
+                }
+            } else if (kind == QStringLiteral("table")) {
+                foundTable = true;
+            }
+        }
+        CHECK(foundTreeCard);
+        CHECK(foundGoCard);
+        CHECK(foundTable);
+
+        // Verify hunk line highlighting respects multi-line Markdown fence state
+        bool proseWithoutKeywordColor = false;
+        bool goLineWithKeywordColor = false;
+        for (int row = 0; row < diffVm.linesModel()->rowCount(); ++row) {
+            QModelIndex idx = diffVm.linesModel()->index(row, 0);
+            QString raw = diffVm.linesModel()->data(idx, DiffLineListModel::ContentRole).toString();
+            QString rich = diffVm.linesModel()->data(idx, DiffLineListModel::RichContentRole).toString();
+            if (raw.contains(QStringLiteral("Testo con class"))) {
+                proseWithoutKeywordColor = !rich.contains(QStringLiteral("#C678DD"));
+            } else if (raw == QStringLiteral("func main() {}")) {
+                goLineWithKeywordColor = rich.contains(QStringLiteral("#C678DD"));
+            }
+        }
+        CHECK(proseWithoutKeywordColor);
+        CHECK(goLineWithKeywordColor);
+
+        // Sticky rendered mode across non-md -> md transitions
+        QSignalSpy renderedSpy(&diffVm, &DiffViewModel::markdownRenderedChanged);
+        diffVm.toggleMarkdownRendered();
+        CHECK(diffVm.isMarkdownRendered());
+        CHECK(renderedSpy.count() == 1);
+
+        QSignalSpy richDiffSpy(&diffVm, &DiffViewModel::showMarkdownRichDiffChanged);
+        diffVm.setShowMarkdownRichDiff(false);
+        CHECK_FALSE(diffVm.showMarkdownRichDiff());
+        CHECK(richDiffSpy.count() == 1);
+
+        // Load a C++ file -> isMarkdownRendered becomes false automatically
+        mockOps.fileContentToReturn.clear();
+        gf::git::bo::DiffHunk cppHunk;
+        cppHunk.header = "@@ -1,1 +1,1 @@";
+        cppHunk.lines = {{.kind = gf::git::bo::DiffLineKind::Addition, .newLineNumber = 1, .content = "int x = 0;"}};
+        mockOps.diffToReturn.oldPath = "src/app.cpp";
+        mockOps.diffToReturn.newPath = "src/app.cpp";
+        mockOps.diffToReturn.hunks = {cppHunk};
+
+        REQUIRE(diffVm.loadDiff(repoPath, "src/app.cpp", "unstaged"));
+        CHECK_FALSE(diffVm.isMarkdown());
+        CHECK_FALSE(diffVm.isMarkdownRendered());
+        CHECK(diffVm.markdownBlocks().isEmpty());
+
+        // Switching back to .md remembers sticky rendered preference
+        mockOps.fileContentToReturn = "# Docs\n";
+        gf::git::bo::DiffHunk docsHunk;
+        docsHunk.header = "@@ -1,1 +1,1 @@";
+        docsHunk.lines = {{.kind = gf::git::bo::DiffLineKind::Addition, .newLineNumber = 1, .content = "# Docs"}};
+        mockOps.diffToReturn.oldPath = "DOCS.md";
+        mockOps.diffToReturn.newPath = "DOCS.md";
+        mockOps.diffToReturn.hunks = {docsHunk};
+
+        REQUIRE(diffVm.loadDiff(repoPath, "DOCS.md", "unstaged"));
+        CHECK(diffVm.isMarkdown());
+        CHECK(diffVm.isMarkdownRendered());
+    }
+}

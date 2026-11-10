@@ -208,7 +208,7 @@ Dialog {
                                             text: model.oursContent
                                             readOnly: true
                                             color: "#E2E8F0"
-                                            font.family: "monospace"
+                                            font.family: (typeof gfMonoFont !== "undefined" && gfMonoFont) ? gfMonoFont : "Consolas"
                                             font.pixelSize: 11
                                             background: null
                                         }
@@ -258,7 +258,7 @@ Dialog {
                                             text: model.theirsContent
                                             readOnly: true
                                             color: "#E2E8F0"
-                                            font.family: "monospace"
+                                            font.family: (typeof gfMonoFont !== "undefined" && gfMonoFont) ? gfMonoFont : "Consolas"
                                             font.pixelSize: 11
                                             background: null
                                         }
@@ -320,7 +320,7 @@ Dialog {
                                         id: customInput
                                         text: model.customContent.length > 0 ? model.customContent : (model.chosenSide === 1 ? model.oursContent : model.theirsContent)
                                         color: "#F1F5F9"
-                                        font.family: "monospace"
+                                        font.family: (typeof gfMonoFont !== "undefined" && gfMonoFont) ? gfMonoFont : "Consolas"
                                         font.pixelSize: 11
                                         background: Rectangle {
                                             color: "#0F172A"

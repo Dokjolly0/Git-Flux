@@ -103,13 +103,16 @@ QHash<int, QByteArray> DiffLineListModel::roleNames() const {
     };
 }
 
-void DiffLineListModel::setDiff(const gf::git::bo::FileDiff& diff, gf::core::syntax::Language lang) {
+void DiffLineListModel::setDiff(const gf::git::bo::FileDiff& diff,
+                              gf::core::syntax::Language lang,
+                              const std::vector<gf::core::syntax::MarkdownLineState>* newFileSeedStates) {
     beginResetModel();
     m_lines.clear();
     m_richLines.clear();
 
     std::size_t renderedLines = 0;
     bool truncated = false;
+    const bool isMarkdown = (lang == gf::core::syntax::Language::Markdown);
 
     for (const auto& hunk : diff.hunks) {
         if (renderedLines >= kMaxRenderedDiffLines) {
@@ -125,6 +128,16 @@ void DiffLineListModel::setDiff(const gf::git::bo::FileDiff& diff, gf::core::syn
         });
         m_richLines.push_back(gf::core::syntax::SyntaxHighlighter::escapeHtml(hunk.header));
 
+        gf::core::syntax::MarkdownLineState oldMdState{};
+        gf::core::syntax::MarkdownLineState newMdState{};
+        if (isMarkdown && newFileSeedStates != nullptr && hunk.newStartLine > 0) {
+            const std::size_t seedIdx = static_cast<std::size_t>(hunk.newStartLine - 1);
+            if (seedIdx < newFileSeedStates->size()) {
+                newMdState = (*newFileSeedStates)[seedIdx];
+                oldMdState = (*newFileSeedStates)[seedIdx];
+            }
+        }
+
         // Add all lines of the hunk
         for (const auto& l : hunk.lines) {
             if (renderedLines >= kMaxRenderedDiffLines) {
@@ -132,7 +145,22 @@ void DiffLineListModel::setDiff(const gf::git::bo::FileDiff& diff, gf::core::syn
                 break;
             }
             m_lines.push_back(l);
-            m_richLines.push_back(gf::core::syntax::SyntaxHighlighter::highlightLine(l.content, lang));
+            if (!isMarkdown) {
+                m_richLines.push_back(gf::core::syntax::SyntaxHighlighter::highlightLine(l.content, lang));
+            } else if (l.kind == gf::git::bo::DiffLineKind::Deletion) {
+                m_richLines.push_back(gf::core::syntax::SyntaxHighlighter::highlightLine(l.content, lang, oldMdState));
+            } else {
+                if (newFileSeedStates != nullptr && l.newLineNumber.has_value() && *l.newLineNumber > 0) {
+                    const std::size_t idx = static_cast<std::size_t>(*l.newLineNumber - 1);
+                    if (idx < newFileSeedStates->size()) {
+                        newMdState = (*newFileSeedStates)[idx];
+                    }
+                }
+                m_richLines.push_back(gf::core::syntax::SyntaxHighlighter::highlightLine(l.content, lang, newMdState));
+                if (l.kind == gf::git::bo::DiffLineKind::Context) {
+                    oldMdState = newMdState;
+                }
+            }
             ++renderedLines;
         }
     }

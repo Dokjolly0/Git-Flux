@@ -103,10 +103,73 @@ Language LanguageDetector::fromExtension(std::string_view ext) noexcept {
     if (lower == ".qml" || lower == ".qmltypes") return Language::Qml;
 
     // Markdown / Docs
-    if (lower == ".md" || lower == ".markdown") return Language::Markdown;
+    if (lower == ".md" || lower == ".markdown" || lower == ".mdown" ||
+        lower == ".mkd" || lower == ".mdx") {
+        return Language::Markdown;
+    }
 
     // Build tools
     if (lower == ".cmake") return Language::CMake;
+
+    return Language::Unknown;
+}
+
+Language LanguageDetector::fromCodeFenceInfo(std::string_view infoString) noexcept {
+    while (!infoString.empty() &&
+           (infoString.front() == ' ' || infoString.front() == '\t')) {
+        infoString.remove_prefix(1);
+    }
+    if (infoString.empty()) {
+        return Language::Unknown;
+    }
+
+    std::size_t endPos = 0;
+    while (endPos < infoString.size()) {
+        char c = infoString[endPos];
+        if (c == ' ' || c == '\t' || c == '{' || c == ',' || c == ';' || c == ':') {
+            break;
+        }
+        ++endPos;
+    }
+
+    std::string tag = toLower(infoString.substr(0, endPos));
+    if (tag.starts_with('.')) {
+        tag.erase(0, 1);
+    }
+
+    if (tag.empty() || tag == "text" || tag == "txt" || tag == "plain" ||
+        tag == "plaintext" || tag == "ascii" || tag == "tree" ||
+        tag == "console" || tag == "output" || tag == "log" || tag == "diff") {
+        return Language::Unknown;
+    }
+
+    if (tag == "cpp" || tag == "c++" || tag == "cc" || tag == "cxx" || tag == "hpp" || tag == "hxx") return Language::Cpp;
+    if (tag == "c" || tag == "h") return Language::C;
+    if (tag == "cs" || tag == "csharp" || tag == "c#") return Language::CSharp;
+    if (tag == "java") return Language::Java;
+    if (tag == "kt" || tag == "kts" || tag == "kotlin") return Language::Kotlin;
+    if (tag == "swift") return Language::Swift;
+    if (tag == "py" || tag == "python" || tag == "python3") return Language::Python;
+    if (tag == "js" || tag == "javascript" || tag == "jsx" || tag == "mjs" || tag == "cjs") return Language::JavaScript;
+    if (tag == "ts" || tag == "typescript" || tag == "tsx" || tag == "mts") return Language::TypeScript;
+    if (tag == "rs" || tag == "rust") return Language::Rust;
+    if (tag == "go" || tag == "golang") return Language::Go;
+    if (tag == "rb" || tag == "ruby") return Language::Ruby;
+    if (tag == "php") return Language::Php;
+    if (tag == "html" || tag == "htm") return Language::Html;
+    if (tag == "css" || tag == "scss" || tag == "sass" || tag == "less") return Language::Css;
+    if (tag == "json" || tag == "jsonc") return Language::Json;
+    if (tag == "yaml" || tag == "yml") return Language::Yaml;
+    if (tag == "xml" || tag == "svg" || tag == "plist") return Language::Xml;
+    if (tag == "xaml" || tag == "axaml") return Language::Xaml;
+    if (tag == "sql" || tag == "postgres" || tag == "postgresql" || tag == "mysql" || tag == "sqlite") return Language::Sql;
+    if (tag == "sh" || tag == "bash" || tag == "zsh" || tag == "shell" || tag == "shellsession") return Language::Shell;
+    if (tag == "ps1" || tag == "pwsh" || tag == "powershell") return Language::PowerShell;
+    if (tag == "qml") return Language::Qml;
+    if (tag == "md" || tag == "markdown") return Language::Markdown;
+    if (tag == "cmake") return Language::CMake;
+    if (tag == "make" || tag == "makefile") return Language::Makefile;
+    if (tag == "docker" || tag == "dockerfile") return Language::Docker;
 
     return Language::Unknown;
 }

@@ -95,6 +95,16 @@ public:
                 const std::string& filePath,
                 bo::DiffScope scope) = 0;
 
+    /// Retrieves the diff for a specific file with a configurable number of unified context lines (`-U<n>`, or full file if `contextLines < 0`).
+    [[nodiscard]] virtual std::expected<bo::FileDiff, GitOpsError>
+    getFileDiffWithContext(const std::filesystem::path& repoPath,
+                           const std::string& filePath,
+                           bo::DiffScope scope,
+                           int contextLines) {
+        (void)contextLines;
+        return getFileDiff(repoPath, filePath, scope);
+    }
+
     /// Retrieves all diffs for the specified scope (staged or unstaged).
     [[nodiscard]] virtual std::expected<std::vector<bo::FileDiff>, GitOpsError>
     getAllDiffs(const std::filesystem::path& repoPath,
@@ -118,6 +128,27 @@ public:
         (void)commitSha;
         (void)filePath;
         return bo::FileDiff{};
+    }
+
+    /// Retrieves the unified diff for a single file in a commit with configurable context lines (`-U<n>`, or full file if `contextLines < 0`).
+    [[nodiscard]] virtual std::expected<bo::FileDiff, GitOpsError>
+    getCommitFileDiffWithContext(const std::filesystem::path& repoPath,
+                                 const std::string& commitSha,
+                                 const std::string& filePath,
+                                 int contextLines) {
+        (void)contextLines;
+        return getCommitFileDiff(repoPath, commitSha, filePath);
+    }
+
+    /// Retrieves UTF-8 text content of a file from working tree (empty / "WORKTREE"), index (":0" / "INDEX"), or a commit/revision.
+    [[nodiscard]] virtual std::expected<std::string, GitOpsError>
+    getFileContent(const std::filesystem::path& repoPath,
+                   const std::string& revision,
+                   const std::string& filePath) {
+        (void)repoPath;
+        (void)revision;
+        (void)filePath;
+        return std::string{};
     }
 
     /// Retrieves the line-by-line blame annotation for a file at a specific revision (or HEAD if empty).

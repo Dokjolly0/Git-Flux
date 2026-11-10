@@ -571,11 +571,21 @@ std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
 NativeRepositoryGitOps::getFileDiff(const std::filesystem::path& repoPath,
                                     const std::string& filePath,
                                     gf::git::bo::DiffScope scope) {
+    return getFileDiffWithContext(repoPath, filePath, scope, 3);
+}
+
+std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::getFileDiffWithContext(const std::filesystem::path& repoPath,
+                                               const std::string& filePath,
+                                               gf::git::bo::DiffScope scope,
+                                               int contextLines) {
+    const int effectiveContext = (contextLines < 0) ? 999999 : contextLines;
+    const std::string contextArg = "-U" + std::to_string(effectiveContext);
     std::vector<std::string> args;
     if (scope == gf::git::bo::DiffScope::Staged) {
-        args = {"diff", "--cached", "--no-ext-diff", "--no-textconv", "--no-color", "-p", "--", filePath};
+        args = {"diff", "--cached", "--no-ext-diff", "--no-textconv", "--no-color", contextArg, "-p", "--", filePath};
     } else if (scope == gf::git::bo::DiffScope::Unstaged) {
-        args = {"diff", "--no-ext-diff", "--no-textconv", "--no-color", "-p", "--", filePath};
+        args = {"diff", "--no-ext-diff", "--no-textconv", "--no-color", contextArg, "-p", "--", filePath};
     } else {
         std::error_code ec;
         if (filePath.ends_with('/') || std::filesystem::is_directory(repoPath / filePath, ec)) {
@@ -595,7 +605,7 @@ NativeRepositoryGitOps::getFileDiff(const std::filesystem::path& repoPath,
                 .isNewFile = true
             };
         }
-        args = {"diff", "--no-index", "--no-ext-diff", "--no-textconv", "--no-color", "-p", "--", "/dev/null", filePath};
+        args = {"diff", "--no-index", "--no-ext-diff", "--no-textconv", "--no-color", contextArg, "-p", "--", "/dev/null", filePath};
     }
 
     gf::git::bo::GitCommand cmd{
@@ -836,12 +846,22 @@ std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
 NativeRepositoryGitOps::getCommitFileDiff(const std::filesystem::path& repoPath,
                                           const std::string& commitSha,
                                           const std::string& filePath) {
+    return getCommitFileDiffWithContext(repoPath, commitSha, filePath, 3);
+}
+
+std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::getCommitFileDiffWithContext(const std::filesystem::path& repoPath,
+                                                     const std::string& commitSha,
+                                                     const std::string& filePath,
+                                                     int contextLines) {
+    const int effectiveContext = (contextLines < 0) ? 999999 : contextLines;
+    const std::string contextArg = "-U" + std::to_string(effectiveContext);
     if (commitSha.empty() || filePath.empty()) {
         return gf::git::bo::FileDiff{.oldPath = filePath, .newPath = filePath};
     }
 
     gf::git::bo::GitCommand cmd{
-        .args = {"show", "-m", "--first-parent", "--format=", "--no-ext-diff", "--no-textconv", "--no-color", "-p", commitSha, "--", filePath},
+        .args = {"show", "-m", "--first-parent", "--format=", "--no-ext-diff", "--no-textconv", "--no-color", contextArg, "-p", commitSha, "--", filePath},
         .workingDirectory = repoPath,
         .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
         .timeout = std::chrono::milliseconds{30'000}
@@ -3317,6 +3337,139 @@ NativeRepositoryGitOps::cloneRepository(const gf::git::bo::CloneRepositoryOption
         .displayName = std::move(displayName),
         .initialBranch = std::move(branchName)
     };
+}
+
+std::expected<std::string, gf::git::ports::GitOpsError>
+NativeRepositoryGitOps::getFileContent(const std::filesystem::path& repoPath,
+                                       const std::string& revision,
+                                       const std::string& filePath) {
+    if (filePath.empty()) {
+        return std::string{};
+    }
+
+    constexpr std::size_t kMaxContentBytes = 2 * 1024 * 1024;
+    auto stripUtf8Bom = [](std::string& text) {
+        if (text.size() >= 3 &&
+            static_cast<unsigned char>(text[0]) == 0xEF &&
+            static_cast<unsigned char>(text[1]) == 0xBB &&
+            static_cast<unsigned char>(text[2]) == 0xBF) {
+            text.erase(0, 3);
+        }
+    };
+
+    if (revision.empty() || revision == "WORKTREE") {
+        const auto fullPath = repoPath / gf::core::utf8ToPath(filePath);
+        std::error_code ec;
+        if (!std::filesystem::exists(fullPath, ec) || !std::filesystem::is_regular_file(fullPath, ec)) {
+            return std::unexpected(gf::git::ports::GitOpsError{
+                .kind = gf::git::ports::GitOpsError::Kind::PathNotFound,
+                .exitCode = -1,
+                .message = "File non trovato nella working tree: " + filePath,
+                .command = "read file"
+            });
+        }
+
+        const auto fileSize = std::filesystem::file_size(fullPath, ec);
+        if (!ec && fileSize > kMaxContentBytes) {
+            return std::unexpected(gf::git::ports::GitOpsError{
+                .kind = gf::git::ports::GitOpsError::Kind::InvalidOperation,
+                .exitCode = -1,
+                .message = "File troppo grande (> 2 MiB) per l'anteprima testuale",
+                .command = "read file"
+            });
+        }
+
+        std::ifstream ifs(fullPath, std::ios::binary);
+        if (!ifs) {
+            return std::unexpected(gf::git::ports::GitOpsError{
+                .kind = gf::git::ports::GitOpsError::Kind::StorageError,
+                .exitCode = -1,
+                .message = "Impossibile leggere il file: " + filePath,
+                .command = "read file"
+            });
+        }
+
+        std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+        if (content.size() > kMaxContentBytes) {
+            return std::unexpected(gf::git::ports::GitOpsError{
+                .kind = gf::git::ports::GitOpsError::Kind::InvalidOperation,
+                .exitCode = -1,
+                .message = "File troppo grande (> 2 MiB) per l'anteprima testuale",
+                .command = "read file"
+            });
+        }
+        if (content.find('\0') != std::string::npos) {
+            return std::unexpected(gf::git::ports::GitOpsError{
+                .kind = gf::git::ports::GitOpsError::Kind::InvalidOperation,
+                .exitCode = -1,
+                .message = "Il file contiene dati binari",
+                .command = "read file"
+            });
+        }
+
+        stripUtf8Bom(content);
+        return content;
+    }
+
+    std::string normPath = filePath;
+    std::replace(normPath.begin(), normPath.end(), '\\', '/');
+    const std::string targetRev = (revision == "INDEX") ? std::string(":0") : revision;
+
+    gf::git::bo::GitCommand cmd{
+        .args = {"show", targetRev + ":" + normPath},
+        .workingDirectory = repoPath,
+        .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
+        .timeout = std::chrono::milliseconds{15'000}
+    };
+
+    auto execResult = m_executor.execute(cmd);
+    if (!execResult) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+            .exitCode = -1,
+            .message = "Impossibile eseguire git show: " + execResult.error().message,
+            .command = "git show"
+        });
+    }
+
+    if (execResult->exitCode != 0) {
+        const std::string& err = execResult->stderrBytes;
+        auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+        if (err.find("does not exist") != std::string::npos ||
+            err.find("non esiste") != std::string::npos ||
+            err.find("exists on disk") != std::string::npos ||
+            err.find("Invalid object name") != std::string::npos ||
+            err.find("Path '") != std::string::npos) {
+            kind = gf::git::ports::GitOpsError::Kind::PathNotFound;
+        }
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = kind,
+            .exitCode = execResult->exitCode,
+            .message = err.empty() ? execResult->stdoutBytes : err,
+            .command = "git show"
+        });
+    }
+
+    std::string content = std::move(execResult->stdoutBytes);
+    if (content.size() > kMaxContentBytes) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::InvalidOperation,
+            .exitCode = -1,
+            .message = "File troppo grande (> 2 MiB) per l'anteprima testuale",
+            .command = "git show"
+        });
+    }
+    if (content.find('\0') != std::string::npos) {
+        return std::unexpected(gf::git::ports::GitOpsError{
+            .kind = gf::git::ports::GitOpsError::Kind::InvalidOperation,
+            .exitCode = -1,
+            .message = "Il file contiene dati binari",
+            .command = "git show"
+        });
+    }
+
+    stripUtf8Bom(content);
+    return content;
 }
 
 } // namespace gf::infra::git

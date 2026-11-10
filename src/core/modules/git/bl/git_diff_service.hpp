@@ -21,6 +21,13 @@ public:
                 const std::string& filePath,
                 bo::DiffScope scope);
 
+    /// Extracts the diff for a single file within the specified scope using configurable context lines (`-U<n>`, or full file if < 0).
+    [[nodiscard]] std::expected<bo::FileDiff, ports::GitOpsError>
+    getFileDiff(const std::filesystem::path& repoPath,
+                const std::string& filePath,
+                bo::DiffScope scope,
+                int contextLines);
+
     /// Shortcut for diff of a staged file.
     [[nodiscard]] std::expected<bo::FileDiff, ports::GitOpsError>
     getStagedFileDiff(const std::filesystem::path& repoPath, const std::string& filePath) {
@@ -48,6 +55,19 @@ public:
     getCommitFileDiff(const std::filesystem::path& repoPath,
                       const std::string& commitSha,
                       const std::string& filePath);
+
+    /// Extracts the diff for a single file in a specific commit with configurable context lines (`-U<n>`, or full file if < 0).
+    [[nodiscard]] std::expected<bo::FileDiff, ports::GitOpsError>
+    getCommitFileDiff(const std::filesystem::path& repoPath,
+                      const std::string& commitSha,
+                      const std::string& filePath,
+                      int contextLines);
+
+    /// Extracts UTF-8 file content from working tree (empty / "WORKTREE"), index (":0" / "INDEX"), or a Git revision.
+    [[nodiscard]] std::expected<std::string, ports::GitOpsError>
+    getFileContent(const std::filesystem::path& repoPath,
+                   const std::string& revision,
+                   const std::string& filePath);
 
     /// Extracts blame line annotations for a file at a specific revision.
     [[nodiscard]] std::expected<std::vector<bo::BlameLine>, ports::GitOpsError>

@@ -7,6 +7,7 @@
 #ifndef Q_MOC_RUN
 #include "core/modules/git/bo/diff_models.hpp"
 #include "core/modules/syntax/language_detector.hpp"
+#include "core/modules/syntax/syntax_highlighter.hpp"
 #else
 namespace gf::git::bo {
 struct FileDiff;
@@ -14,6 +15,7 @@ struct DiffLine;
 }
 namespace gf::core::syntax {
 enum class Language;
+struct MarkdownLineState;
 }
 #endif
 
@@ -41,7 +43,9 @@ public:
     [[nodiscard]] QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
     [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
 
-    void setDiff(const gf::git::bo::FileDiff& diff, gf::core::syntax::Language lang = gf::core::syntax::Language::Unknown);
+    void setDiff(const gf::git::bo::FileDiff& diff,
+                 gf::core::syntax::Language lang = gf::core::syntax::Language::Unknown,
+                 const std::vector<gf::core::syntax::MarkdownLineState>* newFileSeedStates = nullptr);
     void clear();
 
     [[nodiscard]] const std::vector<gf::git::bo::DiffLine>& flatLines() const noexcept {

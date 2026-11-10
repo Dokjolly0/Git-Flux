@@ -6,10 +6,34 @@
 #include <QQmlContext>
 #include <QStandardPaths>
 #include <QDir>
+#include <QFontDatabase>
 #include <stdexcept>
 
 namespace gf::desktop {
 
+namespace {
+
+QString resolveMonospaceFontFamily() {
+    const QStringList candidates = {
+        QStringLiteral("Cascadia Mono"),
+        QStringLiteral("Cascadia Code"),
+        QStringLiteral("JetBrains Mono"),
+        QStringLiteral("Fira Code"),
+        QStringLiteral("Consolas"),
+        QStringLiteral("SF Mono"),
+        QStringLiteral("Menlo"),
+        QStringLiteral("DejaVu Sans Mono"),
+        QStringLiteral("Liberation Mono")
+    };
+    for (const QString& family : candidates) {
+        if (QFontDatabase::hasFamily(family)) {
+            return family;
+        }
+    }
+    return QFontDatabase::systemFont(QFontDatabase::FixedFont).family();
+}
+
+} // namespace
 AppBootstrap::AppBootstrap(const std::filesystem::path& databasePath)
     : m_dbPath(databasePath) {}
 
@@ -158,6 +182,7 @@ void AppBootstrap::registerWithQml(QQmlApplicationEngine& engine) {
     rootCtx->setContextProperty(QStringLiteral("workspaceSessionVm"), m_workspaceSessionVm.get());
     rootCtx->setContextProperty(QStringLiteral("batchOperationsVm"), m_batchOperationsVm.get());
     rootCtx->setContextProperty(QStringLiteral("gitProfilesVm"), m_gitProfilesVm.get());
+    rootCtx->setContextProperty(QStringLiteral("gfMonoFont"), resolveMonospaceFontFamily());
 }
 
 HomeHubViewModel& AppBootstrap::homeHubViewModel() noexcept {

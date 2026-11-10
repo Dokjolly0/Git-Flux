@@ -79,6 +79,22 @@ GitDiffService::getFileDiff(const std::filesystem::path& repoPath,
     return m_gitOps.getFileDiff(repoPath, filePath, scope);
 }
 
+std::expected<bo::FileDiff, ports::GitOpsError>
+GitDiffService::getFileDiff(const std::filesystem::path& repoPath,
+                            const std::string& filePath,
+                            bo::DiffScope scope,
+                            int contextLines) {
+    if (auto validRepo = validateRepoPath(repoPath); !validRepo) {
+        return std::unexpected(validRepo.error());
+    }
+
+    if (auto validPath = validateRelativeFilePath(filePath); !validPath) {
+        return std::unexpected(validPath.error());
+    }
+
+    return m_gitOps.getFileDiffWithContext(repoPath, filePath, scope, contextLines);
+}
+
 std::expected<std::vector<bo::FileDiff>, ports::GitOpsError>
 GitDiffService::getAllDiffs(const std::filesystem::path& repoPath,
                             bo::DiffScope scope) {
@@ -102,6 +118,37 @@ GitDiffService::getCommitFileDiff(const std::filesystem::path& repoPath,
     }
 
     return m_gitOps.getCommitFileDiff(repoPath, commitSha, filePath);
+}
+
+std::expected<bo::FileDiff, ports::GitOpsError>
+GitDiffService::getCommitFileDiff(const std::filesystem::path& repoPath,
+                                  const std::string& commitSha,
+                                  const std::string& filePath,
+                                  int contextLines) {
+    if (auto validRepo = validateRepoPath(repoPath); !validRepo) {
+        return std::unexpected(validRepo.error());
+    }
+
+    if (auto validPath = validateRelativeFilePath(filePath); !validPath) {
+        return std::unexpected(validPath.error());
+    }
+
+    return m_gitOps.getCommitFileDiffWithContext(repoPath, commitSha, filePath, contextLines);
+}
+
+std::expected<std::string, ports::GitOpsError>
+GitDiffService::getFileContent(const std::filesystem::path& repoPath,
+                               const std::string& revision,
+                               const std::string& filePath) {
+    if (auto validRepo = validateRepoPath(repoPath); !validRepo) {
+        return std::unexpected(validRepo.error());
+    }
+
+    if (auto validPath = validateRelativeFilePath(filePath); !validPath) {
+        return std::unexpected(validPath.error());
+    }
+
+    return m_gitOps.getFileContent(repoPath, revision, filePath);
 }
 
 std::expected<std::vector<bo::BlameLine>, ports::GitOpsError>

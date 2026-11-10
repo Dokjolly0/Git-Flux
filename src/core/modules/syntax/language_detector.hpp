@@ -48,6 +48,7 @@ public:
     [[nodiscard]] static LanguageInfo detect(std::string_view filePath) noexcept;
     [[nodiscard]] static Language fromExtension(std::string_view ext) noexcept;
     [[nodiscard]] static Language fromFileName(std::string_view fileName) noexcept;
+    [[nodiscard]] static Language fromCodeFenceInfo(std::string_view infoString) noexcept;
 };
 
 } // namespace gf::core::syntax

@@ -456,3 +456,39 @@ TEST_CASE("GitDiffService validates paths and delegates queries", "[git][diff][s
         CHECK(res->size() == 1);
     }
 }
+
+
+TEST_CASE("GitDiffService valida e delega getFileDiff con contextLines, getCommitFileDiff e getFileContent", "[git][diff][service][context]") {
+    MockDiffGitOps mockOps;
+    gf::git::bl::GitDiffService service(mockOps);
+    auto validTempDir = std::filesystem::temp_directory_path();
+
+    SECTION("Overload a 4 argomenti di getFileDiff delega tramite IRepositoryGitOps") {
+        auto res = service.getFileDiff(validTempDir, "README.md", gf::git::bo::DiffScope::Unstaged, 25);
+        REQUIRE(res.has_value());
+        CHECK(mockOps.getFileDiffCalled);
+        CHECK(mockOps.lastFilePath == "README.md");
+    }
+
+    SECTION("getFileDiff con contesto personalizzato rifiuta traversal e path assoluti") {
+        auto bad = service.getFileDiff(validTempDir, "../secret.md", gf::git::bo::DiffScope::Unstaged, 10);
+        REQUIRE_FALSE(bad.has_value());
+        CHECK(bad.error().kind == gf::git::ports::GitOpsError::Kind::InvalidRepositoryPath);
+    }
+
+    SECTION("getCommitFileDiff e getFileContent validano i parametri") {
+        auto badRepo = service.getFileContent(std::filesystem::path{}, "HEAD", "README.md");
+        REQUIRE_FALSE(badRepo.has_value());
+        CHECK(badRepo.error().kind == gf::git::ports::GitOpsError::Kind::InvalidRepositoryPath);
+
+        auto badPath = service.getFileContent(validTempDir, "HEAD", "../evil.txt");
+        REQUIRE_FALSE(badPath.has_value());
+        CHECK(badPath.error().kind == gf::git::ports::GitOpsError::Kind::InvalidRepositoryPath);
+
+        auto okContent = service.getFileContent(validTempDir, "HEAD", "README.md");
+        REQUIRE(okContent.has_value());
+
+        auto okCommitDiff = service.getCommitFileDiff(validTempDir, "HEAD", "README.md", 10);
+        REQUIRE(okCommitDiff.has_value());
+    }
+}

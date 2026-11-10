@@ -168,3 +168,98 @@ TEST_CASE("NativeRepositoryGitOps and GitDiffService real Git diff extraction", 
         CHECK(allDiffs->size() == 2);
     }
 }
+
+
+TEST_CASE("NativeRepositoryGitOps context lines (-U<n>, full file) and getFileContent", "[git][diff][integration][context]") {
+    auto gitDiscovery = gf::infra::git::GitDiscovery::discover();
+    REQUIRE(gitDiscovery.has_value());
+    const auto gitExe = gitDiscovery->directBinaryPath.empty()
+                            ? gitDiscovery->discoveredInPath
+                            : gitDiscovery->directBinaryPath;
+
+    gf::infra::git::NativeGitCommandExecutor executor(gitExe);
+    gf::infra::git::NativeRepositoryGitOps gitOps(executor);
+    gf::git::bl::GitStagingService stagingService(gitOps);
+    gf::git::bl::GitDiffService diffService(gitOps);
+
+    DiffTestSandbox sandbox;
+
+    REQUIRE(executor.execute({.args = {"init", "-b", "main"}, .workingDirectory = sandbox.root}).has_value());
+    REQUIRE(executor.execute({.args = {"config", "user.name", "Diff Bot"}, .workingDirectory = sandbox.root}).has_value());
+    REQUIRE(executor.execute({.args = {"config", "user.email", "diffbot@gitflux.local"}, .workingDirectory = sandbox.root}).has_value());
+
+    std::string initial;
+    for (int i = 1; i <= 30; ++i) {
+        initial += "Line " + std::to_string(i) + "\n";
+    }
+    sandbox.writeFile("docs/manual.md", initial);
+    REQUIRE(stagingService.stageAll(sandbox.root).has_value());
+    auto c1Res = stagingService.createCommit(sandbox.root, gf::git::bo::CommitOptions{.message = "initial manual"});
+    REQUIRE(c1Res.has_value());
+
+    // Modify only line 15 in working tree
+    std::string updated;
+    for (int i = 1; i <= 30; ++i) {
+        if (i == 15) {
+            updated += "Line 15 UPDATED ├── tree\n";
+        } else {
+            updated += "Line " + std::to_string(i) + "\n";
+        }
+    }
+    {
+        auto filePath = sandbox.root / "docs/manual.md";
+        std::ofstream ofs(filePath, std::ios::binary | std::ios::trunc);
+        ofs.write(updated.data(), static_cast<std::streamsize>(updated.size()));
+    }
+
+    SECTION("Context lines configurabili: -U3 vs -U10 vs file completo (-1)") {
+        auto diffU3 = diffService.getFileDiff(sandbox.root, "docs/manual.md", gf::git::bo::DiffScope::Unstaged, 3);
+        REQUIRE(diffU3.has_value());
+        REQUIRE(diffU3->hunks.size() == 1);
+        // 3 before + 1 del + 1 add + 3 after = 8 lines
+        CHECK(diffU3->hunks[0].lines.size() == 8);
+
+        auto diffU10 = diffService.getFileDiff(sandbox.root, "docs/manual.md", gf::git::bo::DiffScope::Unstaged, 10);
+        REQUIRE(diffU10.has_value());
+        REQUIRE(diffU10->hunks.size() == 1);
+        // 10 before + 1 del + 1 add + 10 after = 22 lines
+        CHECK(diffU10->hunks[0].lines.size() == 22);
+
+        auto diffFull = diffService.getFileDiff(sandbox.root, "docs/manual.md", gf::git::bo::DiffScope::Unstaged, -1);
+        REQUIRE(diffFull.has_value());
+        REQUIRE(diffFull->hunks.size() == 1);
+        // All 29 unchanged context lines + 1 deletion + 1 addition = 31 lines
+        CHECK(diffFull->hunks[0].lines.size() == 31);
+    }
+
+    SECTION("getFileContent legge UTF-8 box-drawing da worktree, indice (:0) e commit HEAD") {
+        auto wtContent = diffService.getFileContent(sandbox.root, "", "docs/manual.md");
+        REQUIRE(wtContent.has_value());
+        CHECK(wtContent->find("Line 15 UPDATED ├── tree") != std::string::npos);
+
+        auto indexContent = diffService.getFileContent(sandbox.root, ":0", "docs/manual.md");
+        REQUIRE(indexContent.has_value());
+        CHECK(indexContent->find("Line 15\n") != std::string::npos);
+        CHECK(indexContent->find("UPDATED") == std::string::npos);
+
+        auto commitContent = diffService.getFileContent(sandbox.root, c1Res->commitSha, "docs/manual.md");
+        REQUIRE(commitContent.has_value());
+        CHECK(commitContent->find("Line 30") != std::string::npos);
+    }
+
+    SECTION("getCommitFileDiff con contextLines su secondo commit") {
+        REQUIRE(stagingService.stageAll(sandbox.root).has_value());
+        auto c2Res = stagingService.createCommit(sandbox.root, gf::git::bo::CommitOptions{.message = "update line 15"});
+        REQUIRE(c2Res.has_value());
+
+        auto commitDiffU10 = diffService.getCommitFileDiff(sandbox.root, c2Res->commitSha, "docs/manual.md", 10);
+        REQUIRE(commitDiffU10.has_value());
+        REQUIRE(commitDiffU10->hunks.size() == 1);
+        CHECK(commitDiffU10->hunks[0].lines.size() == 22);
+
+        auto commitDiffFull = diffService.getCommitFileDiff(sandbox.root, c2Res->commitSha, "docs/manual.md", -1);
+        REQUIRE(commitDiffFull.has_value());
+        REQUIRE(commitDiffFull->hunks.size() == 1);
+        CHECK(commitDiffFull->hunks[0].lines.size() == 31);
+    }
+}

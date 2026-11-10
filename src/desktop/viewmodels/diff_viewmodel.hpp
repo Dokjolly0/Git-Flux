@@ -3,7 +3,11 @@
 #include <QObject>
 #include <QString>
 #include <QVariantList>
+#include <filesystem>
+#include <string>
+#include <vector>
 
+#include "core/modules/syntax/syntax_highlighter.hpp"
 #include "desktop/viewmodels/diff_line_list_model.hpp"
 
 namespace gf::git::bl {
@@ -35,6 +39,19 @@ class DiffViewModel final : public QObject {
     Q_PROPERTY(QVariantList blameLines READ blameLines NOTIFY blameLoaded)
     Q_PROPERTY(bool isBlameLoading READ isBlameLoading NOTIFY blameLoaded)
 
+    // Diff context control (`-U<n>`, default 10, -1 for full file)
+    Q_PROPERTY(int contextLines READ contextLines WRITE setContextLines NOTIFY contextLinesChanged)
+    Q_PROPERTY(bool isFullContext READ isFullContext NOTIFY contextLinesChanged)
+
+    // Markdown preview & Rich Diff support
+    Q_PROPERTY(bool isMarkdown READ isMarkdown NOTIFY diffLoaded)
+    Q_PROPERTY(bool isMarkdownRendered READ isMarkdownRendered WRITE setMarkdownRendered NOTIFY markdownRenderedChanged)
+    Q_PROPERTY(QVariantList markdownBlocks READ markdownBlocks NOTIFY markdownDocumentChanged)
+    Q_PROPERTY(QVariantList markdownToc READ markdownToc NOTIFY markdownDocumentChanged)
+    Q_PROPERTY(QString markdownSource READ markdownSource NOTIFY markdownDocumentChanged)
+    Q_PROPERTY(QString markdownNotice READ markdownNotice NOTIFY markdownDocumentChanged)
+    Q_PROPERTY(bool showMarkdownRichDiff READ showMarkdownRichDiff WRITE setShowMarkdownRichDiff NOTIFY showMarkdownRichDiffChanged)
+
 public:
     explicit DiffViewModel(gf::git::bl::GitDiffService& diffService, QObject* parent = nullptr);
     ~DiffViewModel() override = default;
@@ -59,7 +76,25 @@ public:
     [[nodiscard]] QVariantList blameLines() const noexcept { return m_blameLines; }
     [[nodiscard]] bool isBlameLoading() const noexcept { return m_isBlameLoading; }
 
+    [[nodiscard]] int contextLines() const noexcept { return m_contextLines; }
+    [[nodiscard]] bool isFullContext() const noexcept { return m_contextLines < 0; }
+    [[nodiscard]] bool isMarkdown() const noexcept { return m_isMarkdown; }
+    [[nodiscard]] bool isMarkdownRendered() const noexcept { return m_isMarkdown && m_preferMarkdownRendered; }
+    [[nodiscard]] QVariantList markdownBlocks() const noexcept { return m_markdownBlocks; }
+    [[nodiscard]] QVariantList markdownToc() const noexcept { return m_markdownToc; }
+    [[nodiscard]] QString markdownSource() const noexcept { return m_markdownSource; }
+    [[nodiscard]] QString markdownNotice() const noexcept { return m_markdownNotice; }
+    [[nodiscard]] bool showMarkdownRichDiff() const noexcept { return m_showMarkdownRichDiff; }
+
     Q_INVOKABLE void setViewMode(const QString& mode);
+    Q_INVOKABLE void setContextLines(int lines);
+    Q_INVOKABLE void expandContext(int delta = 15);
+    Q_INVOKABLE void toggleFullContext();
+    Q_INVOKABLE void setMarkdownRendered(bool rendered);
+    Q_INVOKABLE void toggleMarkdownRendered();
+    Q_INVOKABLE void setShowMarkdownRichDiff(bool show);
+    Q_INVOKABLE bool reloadCurrentDiff();
+    Q_INVOKABLE void copyToClipboard(const QString& text) const;
 
     Q_INVOKABLE bool loadDiff(const QString& repoPath, const QString& filePath, const QString& scope);
     Q_INVOKABLE bool loadCommitFileDiff(const QString& repoPath, const QString& commitSha, const QString& filePath);
@@ -70,10 +105,24 @@ signals:
     void diffLoaded();
     void blameLoaded();
     void viewModeChanged();
+    void contextLinesChanged();
+    void markdownRenderedChanged();
+    void markdownDocumentChanged();
+    void showMarkdownRichDiffChanged();
     void loadFailed(const QString& errorMessage);
 
 private:
-    void processFileDiff(const gf::git::bo::FileDiff& diff);
+    void processFileDiff(const gf::git::bo::FileDiff& diff,
+                         const std::vector<gf::core::syntax::MarkdownLineState>* newFileSeedStates = nullptr);
+    void populateMarkdownDocument(const std::string& content, const gf::git::bo::FileDiff& diff);
+    void updateMarkdownStateForDiff(const std::filesystem::path& repoPath,
+                                    const std::string& filePath,
+                                    const std::string& primaryRevision,
+                                    const std::string& fallbackRevision,
+                                    const std::string& deletedFallbackNotice,
+                                    const gf::git::bo::FileDiff& diff,
+                                    std::vector<gf::core::syntax::MarkdownLineState>& outSeedStates,
+                                    bool& outHasSeedStates);
 
     gf::git::bl::GitDiffService& m_diffService;
     DiffLineListModel m_linesModel;
@@ -86,6 +135,9 @@ private:
     QString m_currentRevision;
     QString m_lastScope;
     QString m_viewMode = QStringLiteral("split");
+    int m_contextLines = 10;
+    int m_lastNonFullContextLines = 10;
+    int m_lastContextLines = 10;
     int m_additionsCount = 0;
     int m_deletionsCount = 0;
     bool m_isBinary = false;
@@ -93,6 +145,9 @@ private:
     bool m_isDeletedFile = false;
     bool m_isRenamed = false;
     bool m_isEmpty = true;
+    bool m_isMarkdown = false;
+    bool m_preferMarkdownRendered = false;
+    bool m_showMarkdownRichDiff = true;
     int m_maxLineLength = 0;
     bool m_isBlameLoading = false;
     bool m_hasLastDiff = false;
@@ -101,6 +156,10 @@ private:
     QVariantList m_splitLines;
     QVariantList m_hunks;
     QVariantList m_blameLines;
+    QVariantList m_markdownBlocks;
+    QVariantList m_markdownToc;
+    QString m_markdownSource;
+    QString m_markdownNotice;
 };
 
 } // namespace gf::desktop

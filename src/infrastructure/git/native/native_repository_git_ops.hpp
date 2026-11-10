@@ -36,6 +36,12 @@ public:
                 const std::string& filePath,
                 gf::git::bo::DiffScope scope) override;
 
+    [[nodiscard]] std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
+    getFileDiffWithContext(const std::filesystem::path& repoPath,
+                           const std::string& filePath,
+                           gf::git::bo::DiffScope scope,
+                           int contextLines) override;
+
     [[nodiscard]] std::expected<std::vector<gf::git::bo::FileDiff>, gf::git::ports::GitOpsError>
     getAllDiffs(const std::filesystem::path& repoPath,
                 gf::git::bo::DiffScope scope) override;
@@ -48,6 +54,17 @@ public:
     getCommitFileDiff(const std::filesystem::path& repoPath,
                       const std::string& commitSha,
                       const std::string& filePath) override;
+
+    [[nodiscard]] std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
+    getCommitFileDiffWithContext(const std::filesystem::path& repoPath,
+                                 const std::string& commitSha,
+                                 const std::string& filePath,
+                                 int contextLines) override;
+
+    [[nodiscard]] std::expected<std::string, gf::git::ports::GitOpsError>
+    getFileContent(const std::filesystem::path& repoPath,
+                   const std::string& revision,
+                   const std::string& filePath) override;
 
     [[nodiscard]] std::expected<std::vector<gf::git::bo::BlameLine>, gf::git::ports::GitOpsError>
     getFileBlame(const std::filesystem::path& repoPath,

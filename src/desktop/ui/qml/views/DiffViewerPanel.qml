@@ -11,11 +11,18 @@ Rectangle {
     property bool showBackButton: false
     signal backRequested()
 
+    readonly property string monoFont: (typeof gfMonoFont !== "undefined" && gfMonoFont) ? gfMonoFont : "Consolas"
+    property bool wrapMarkdown: true
+    property bool wrapCode: false
+    readonly property bool isMarkdown: (root.diffViewer && root.diffViewer.isMarkdown === true)
+    readonly property bool effectiveWrap: isMarkdown ? wrapMarkdown : wrapCode
+    readonly property bool showingMarkdownPreview: (root.diffViewer && root.diffViewer.isMarkdownRendered === true && !root.diffViewer.isBinary && !root.diffViewer.isEmpty)
+
     property real horizontalScrollX: 0
 
     TextMetrics {
         id: monoMetrics
-        font.family: "monospace"
+        font.family: root.monoFont
         font.pixelSize: 12
         text: "M"
     }
@@ -25,10 +32,10 @@ Rectangle {
     readonly property real maxCodeWidth: maxLineLength > 0 ? (maxLineLength * charWidth + 80) : 0
 
     readonly property real inlineAvailWidth: Math.max(100, root.width - 108)
-    readonly property real inlineMaxScroll: Math.max(0, maxCodeWidth - inlineAvailWidth)
+    readonly property real inlineMaxScroll: root.effectiveWrap ? 0 : Math.max(0, maxCodeWidth - inlineAvailWidth)
 
     readonly property real splitAvailWidth: Math.max(100, Math.floor(root.width / 2) - 44)
-    readonly property real splitMaxScroll: Math.max(0, maxCodeWidth - splitAvailWidth)
+    readonly property real splitMaxScroll: root.effectiveWrap ? 0 : Math.max(0, maxCodeWidth - splitAvailWidth)
 
     readonly property real blameAvailWidth: Math.max(100, root.width - 320)
     readonly property real blameMaxScroll: Math.max(0, maxCodeWidth - blameAvailWidth)
@@ -46,22 +53,62 @@ Rectangle {
         }
     }
 
+    onEffectiveWrapChanged: {
+        if (root.effectiveWrap) {
+            root.horizontalScrollX = 0;
+        }
+    }
+
     property string lastLoadedFileKey: ""
+    property bool pendingScrollRestore: false
+    property real savedScrollRatio: 0
+    property string savedScrollFileKey: ""
+
+    function currentFileKey() {
+        var rev = (root.diffViewer && root.diffViewer.currentRevision) ? root.diffViewer.currentRevision : "";
+        var file = (root.diffViewer && root.diffViewer.filePath) ? root.diffViewer.filePath : "";
+        return rev + "::" + file;
+    }
+
+    function activeVerticalListView() {
+        if (!root.diffViewer || root.showingMarkdownPreview) return null;
+        var mode = root.diffViewer.viewMode || "split";
+        if (mode === "inline") return inlineListView;
+        if (mode === "hunk") return hunkListView;
+        if (mode === "blame") return blameListView;
+        return splitListView;
+    }
 
     Connections {
         target: root.diffViewer
+        function onContextLinesChanged() {
+            var lv = root.activeVerticalListView();
+            if (lv && lv.contentHeight > lv.height) {
+                root.savedScrollRatio = Math.max(0, Math.min(1.0, lv.contentY / (lv.contentHeight - lv.height)));
+                root.savedScrollFileKey = root.currentFileKey();
+                root.pendingScrollRestore = true;
+            }
+        }
         function onDiffLoaded() {
-            var rev = (root.diffViewer && root.diffViewer.currentRevision) ? root.diffViewer.currentRevision : "";
-            var file = (root.diffViewer && root.diffViewer.filePath) ? root.diffViewer.filePath : "";
-            var key = rev + "::" + file;
+            var key = root.currentFileKey();
             if (key !== root.lastLoadedFileKey) {
                 root.lastLoadedFileKey = key;
                 root.horizontalScrollX = 0;
+                root.pendingScrollRestore = false;
             } else {
-                // Same file reloaded (e.g. background polling / git status check):
-                // Preserve user scroll position! Clamp to max scroll if file became shorter.
+                // Same file reloaded (e.g. background polling or context expansion):
                 if (root.horizontalScrollX > root.currentMaxScroll) {
                     root.horizontalScrollX = root.currentMaxScroll;
+                }
+                if (root.pendingScrollRestore && key === root.savedScrollFileKey) {
+                    var ratio = root.savedScrollRatio;
+                    root.pendingScrollRestore = false;
+                    Qt.callLater(function() {
+                        var lv = root.activeVerticalListView();
+                        if (lv && lv.contentHeight > lv.height) {
+                            lv.contentY = Math.max(0, Math.min(lv.contentHeight - lv.height, ratio * (lv.contentHeight - lv.height)));
+                        }
+                    });
                 }
             }
         }
@@ -142,13 +189,83 @@ Rectangle {
                         hbar.scrollRequested(targetScroll);
                     }
                 }
-                onReleased: {
-                    isDragging = false;
-                }
-                onCanceled: {
-                    isDragging = false;
-                }
+                onReleased: isDragging = false
+                onCanceled: isDragging = false
             }
+        }
+    }
+
+    // Inline Hunk Action Buttons component (+15 righe / File completo)
+    component HunkExpandActions: Row {
+        spacing: 6
+        visible: root.diffViewer && !root.diffViewer.isFullContext
+
+        Rectangle {
+            height: 18
+            width: plus15Text.implicitWidth + 10
+            radius: 4
+            color: plus15Mouse.containsMouse ? "#1E3A5F" : "#162436"
+            border.color: plus15Mouse.containsMouse ? "#38BDF8" : "#334155"
+            border.width: 1
+
+            Text {
+                id: plus15Text
+                anchors.centerIn: parent
+                text: "+15 righe"
+                color: "#7DD3FC"
+                font.pixelSize: 9
+                font.bold: true
+            }
+            MouseArea {
+                id: plus15Mouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: if (root.diffViewer) root.diffViewer.expandContext(15)
+            }
+        }
+
+        Rectangle {
+            height: 18
+            width: fullCtxText.implicitWidth + 10
+            radius: 4
+            color: fullCtxMouse.containsMouse ? "#1E3A5F" : "#162436"
+            border.color: fullCtxMouse.containsMouse ? "#38BDF8" : "#334155"
+            border.width: 1
+
+            Text {
+                id: fullCtxText
+                anchors.centerIn: parent
+                text: "File completo"
+                color: "#38BDF8"
+                font.pixelSize: 9
+                font.bold: true
+            }
+            MouseArea {
+                id: fullCtxMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: if (root.diffViewer) root.diffViewer.toggleFullContext()
+            }
+        }
+    }
+
+    component ContextOptionItem: MenuItem {
+        id: optItem
+        property bool selected: false
+        implicitHeight: 28
+        background: Rectangle {
+            color: optItem.highlighted ? "#1E293B" : "transparent"
+            radius: 4
+        }
+        contentItem: Text {
+            text: optItem.text
+            color: optItem.enabled ? (optItem.selected ? "#38BDF8" : "#E2E8F0") : "#64748B"
+            font.pixelSize: 11
+            font.bold: optItem.selected
+            verticalAlignment: Text.AlignVCenter
+            leftPadding: 8
         }
     }
 
@@ -170,7 +287,7 @@ Rectangle {
                 anchors.fill: parent
                 anchors.leftMargin: 14
                 anchors.rightMargin: 14
-                spacing: 10
+                spacing: 8
 
                 // Back Button (shown when diff view replaces the graph in GitKraken mode)
                 Button {
@@ -206,7 +323,8 @@ Rectangle {
                     font.bold: true
                     font.pixelSize: 13
                     elide: Text.ElideMiddle
-                    Layout.maximumWidth: root.width * 0.35
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 80
                 }
 
                 // Type Badge (NEW, DELETED, RENAMED, BINARY, MODIFIED)
@@ -241,7 +359,7 @@ Rectangle {
                     }
                 }
 
-                // Language Badge (e.g. ⚡ C++, 🐍 Python, ⚛ React / TSX)
+                // Language Badge
                 Rectangle {
                     visible: root.diffViewer && !root.diffViewer.isEmpty && root.diffViewer.languageName && root.diffViewer.languageName.length > 0
                     Layout.preferredHeight: 20
@@ -268,11 +386,180 @@ Rectangle {
                     }
                 }
 
-                Item { Layout.fillWidth: true }
+                // Markdown Segmented Switch: Diff <> vs Anteprima 👁
+                Rectangle {
+                    visible: root.isMarkdown && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary
+                    Layout.preferredHeight: 26
+                    implicitWidth: mdToggleRow.implicitWidth + 4
+                    color: "#0D1117"
+                    radius: 5
+                    border.color: "#30363D"
+                    border.width: 1
+
+                    RowLayout {
+                        id: mdToggleRow
+                        anchors.centerIn: parent
+                        spacing: 2
+
+                        Button {
+                            id: mdDiffSourceBtn
+                            Layout.preferredHeight: 22
+                            readonly property bool active: !root.showingMarkdownPreview
+                            background: Rectangle {
+                                color: mdDiffSourceBtn.active ? "#1E293B" : (mdDiffSourceBtn.hovered ? "#161B22" : "transparent")
+                                radius: 4
+                                border.color: mdDiffSourceBtn.active ? "#38BDF8" : "transparent"
+                                border.width: 1
+                            }
+                            contentItem: Text {
+                                text: "<> Diff"
+                                color: mdDiffSourceBtn.active ? "#38BDF8" : "#94A3B8"
+                                font.pixelSize: 11
+                                font.bold: mdDiffSourceBtn.active
+                            }
+                            onClicked: if (root.diffViewer) root.diffViewer.setMarkdownRendered(false)
+                        }
+
+                        Button {
+                            id: mdPreviewBtn
+                            Layout.preferredHeight: 22
+                            readonly property bool active: root.showingMarkdownPreview
+                            background: Rectangle {
+                                color: mdPreviewBtn.active ? "#1E293B" : (mdPreviewBtn.hovered ? "#161B22" : "transparent")
+                                radius: 4
+                                border.color: mdPreviewBtn.active ? "#3FB950" : "transparent"
+                                border.width: 1
+                            }
+                            contentItem: Text {
+                                text: "👁 Anteprima"
+                                color: mdPreviewBtn.active ? "#7EE787" : "#94A3B8"
+                                font.pixelSize: 11
+                                font.bold: mdPreviewBtn.active
+                            }
+                            onClicked: if (root.diffViewer) root.diffViewer.setMarkdownRendered(true)
+                        }
+                    }
+                }
+
+                // Context Lines Selector (for ALL files when in source diff view)
+                Button {
+                    id: contextBtn
+                    visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary &&
+                             !root.showingMarkdownPreview && root.diffViewer.viewMode !== "blame"
+                    Layout.preferredHeight: 26
+                    background: Rectangle {
+                        color: (root.diffViewer && root.diffViewer.isFullContext) ? "#172536" : (contextBtn.hovered ? "#1E293B" : "transparent")
+                        radius: 4
+                        border.color: (root.diffViewer && root.diffViewer.isFullContext) ? "#38BDF8" : "#334155"
+                        border.width: 1
+                    }
+                    contentItem: RowLayout {
+                        spacing: 4
+                        Text {
+                            text: "↕"
+                            color: "#38BDF8"
+                            font.pixelSize: 11
+                            font.bold: true
+                        }
+                        Text {
+                            text: {
+                                if (!root.diffViewer) return "Contesto: 10";
+                                if (root.diffViewer.isFullContext) return "File completo";
+                                return "Contesto: " + root.diffViewer.contextLines;
+                            }
+                            color: (root.diffViewer && root.diffViewer.isFullContext) ? "#7DD3FC" : "#CBD5E1"
+                            font.pixelSize: 11
+                            font.bold: root.diffViewer && root.diffViewer.isFullContext
+                        }
+                        Text {
+                            text: "▾"
+                            color: "#64748B"
+                            font.pixelSize: 9
+                        }
+                    }
+                    onClicked: contextMenu.open()
+
+                    Menu {
+                        id: contextMenu
+                        y: contextBtn.height + 4
+
+                        background: Rectangle {
+                            implicitWidth: 205
+                            color: "#161B22"
+                            border.color: "#30363D"
+                            border.width: 1
+                            radius: 6
+                        }
+
+                        ContextOptionItem {
+                            text: "3 righe (compatto)"
+                            selected: root.diffViewer && root.diffViewer.contextLines === 3
+                            onTriggered: if (root.diffViewer) root.diffViewer.setContextLines(3)
+                        }
+                        ContextOptionItem {
+                            text: "10 righe (predefinito)"
+                            selected: root.diffViewer && root.diffViewer.contextLines === 10
+                            onTriggered: if (root.diffViewer) root.diffViewer.setContextLines(10)
+                        }
+                        ContextOptionItem {
+                            text: "25 righe"
+                            selected: root.diffViewer && root.diffViewer.contextLines === 25
+                            onTriggered: if (root.diffViewer) root.diffViewer.setContextLines(25)
+                        }
+                        ContextOptionItem {
+                            text: "50 righe"
+                            selected: root.diffViewer && root.diffViewer.contextLines === 50
+                            onTriggered: if (root.diffViewer) root.diffViewer.setContextLines(50)
+                        }
+                        MenuSeparator {
+                            contentItem: Rectangle {
+                                implicitHeight: 1
+                                color: "#21262D"
+                            }
+                        }
+                        ContextOptionItem {
+                            text: "+15 righe extra"
+                            enabled: root.diffViewer && !root.diffViewer.isFullContext
+                            onTriggered: if (root.diffViewer) root.diffViewer.expandContext(15)
+                        }
+                        ContextOptionItem {
+                            text: (root.diffViewer && root.diffViewer.isFullContext) ? "Torna al contesto ridotto" : "Mostra file completo"
+                            selected: root.diffViewer && root.diffViewer.isFullContext
+                            onTriggered: if (root.diffViewer) root.diffViewer.toggleFullContext()
+                        }
+                    }
+                }
+
+                // Word Wrap Toggle (Inline, Split, Hunk)
+                Button {
+                    id: wrapBtn
+                    visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary &&
+                             !root.showingMarkdownPreview && root.diffViewer.viewMode !== "blame"
+                    Layout.preferredHeight: 26
+                    background: Rectangle {
+                        color: root.effectiveWrap ? "#1E293B" : (wrapBtn.hovered ? "#161B22" : "transparent")
+                        radius: 4
+                        border.color: root.effectiveWrap ? "#38BDF8" : "#334155"
+                        border.width: 1
+                    }
+                    contentItem: Text {
+                        text: "↩ A capo"
+                        color: root.effectiveWrap ? "#38BDF8" : "#94A3B8"
+                        font.pixelSize: 11
+                        font.bold: root.effectiveWrap
+                    }
+                    onClicked: {
+                        if (root.isMarkdown) {
+                            root.wrapMarkdown = !root.wrapMarkdown;
+                        } else {
+                            root.wrapCode = !root.wrapCode;
+                        }
+                    }
+                }
 
                 // View Mode Switcher Buttons (Inline, Split, Hunk, Blame)
                 RowLayout {
-                    visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary
+                    visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && !root.showingMarkdownPreview
                     spacing: 4
 
                     // 1. Inline View
@@ -383,7 +670,7 @@ Rectangle {
                 // Additions / Deletions stats
                 RowLayout {
                     visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary
-                    spacing: 8
+                    spacing: 6
 
                     Text {
                         text: root.diffViewer ? ("+" + root.diffViewer.additionsCount) : "+0"
@@ -428,11 +715,21 @@ Rectangle {
             }
 
             // ------------------------------------------
+            // 0. MARKDOWN RENDERED PREVIEW (GitHub Style)
+            // ------------------------------------------
+            MarkdownPreviewView {
+                anchors.fill: parent
+                visible: root.showingMarkdownPreview
+                diffViewer: root.diffViewer
+                monoFont: root.monoFont
+            }
+
+            // ------------------------------------------
             // 1. INLINE VIEW (Unified Diff)
             // ------------------------------------------
             Item {
                 anchors.fill: parent
-                visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "inline"
+                visible: !root.showingMarkdownPreview && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "inline"
                 clip: true
 
                 ListView {
@@ -440,7 +737,7 @@ Rectangle {
                     anchors.fill: parent
                     anchors.bottomMargin: inlineHScrollBar.visible ? 12 : 0
                     focus: true
-                    model: (root.diffViewer && root.diffViewer.viewMode === "inline") ? root.diffViewer.linesModel : null
+                    model: (!root.showingMarkdownPreview && root.diffViewer && root.diffViewer.viewMode === "inline") ? root.diffViewer.linesModel : null
                     boundsBehavior: Flickable.StopAtBounds
                     maximumFlickVelocity: 6000
                     flickDeceleration: 1000
@@ -460,8 +757,12 @@ Rectangle {
                     }
 
                     delegate: Rectangle {
+                        id: inlineRowDelegate
                         width: inlineListView.width
-                        height: 20
+                        readonly property bool isHeaderRow: model.lineKind === "header"
+                        height: isHeaderRow
+                                    ? 28
+                                    : (root.effectiveWrap ? Math.max(20, inlineCodeText.implicitHeight + 6) : 20)
                         color: model.bgColor
 
                         Item {
@@ -484,12 +785,13 @@ Rectangle {
                                     Text {
                                         anchors.fill: parent
                                         anchors.rightMargin: 6
+                                        anchors.topMargin: 2
                                         text: model.oldLineNumber || ""
                                         color: "#64748B"
-                                        font.family: "monospace"
+                                        font.family: root.monoFont
                                         font.pixelSize: 11
                                         horizontalAlignment: Text.AlignRight
-                                        verticalAlignment: Text.AlignVCenter
+                                        verticalAlignment: root.effectiveWrap ? Text.AlignTop : Text.AlignVCenter
                                     }
                                 }
 
@@ -501,12 +803,13 @@ Rectangle {
                                     Text {
                                         anchors.fill: parent
                                         anchors.rightMargin: 6
+                                        anchors.topMargin: 2
                                         text: model.newLineNumber || ""
                                         color: "#64748B"
-                                        font.family: "monospace"
+                                        font.family: root.monoFont
                                         font.pixelSize: 11
                                         horizontalAlignment: Text.AlignRight
-                                        verticalAlignment: Text.AlignVCenter
+                                        verticalAlignment: root.effectiveWrap ? Text.AlignTop : Text.AlignVCenter
                                     }
                                 }
 
@@ -516,21 +819,23 @@ Rectangle {
                                     height: parent.height
                                     color: "transparent"
                                     Text {
-                                        anchors.centerIn: parent
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        anchors.top: parent.top
+                                        anchors.topMargin: root.effectiveWrap ? 2 : Math.floor((parent.height - implicitHeight) / 2)
                                         text: {
                                             if (model.lineKind === "addition") return "+";
                                             if (model.lineKind === "deletion") return "-";
                                             return " ";
                                         }
                                         color: model.fgColor
-                                        font.family: "monospace"
+                                        font.family: root.monoFont
                                         font.pixelSize: 12
                                         font.bold: true
                                     }
                                 }
                             }
 
-                            // Horizontally Scrollable Content Line
+                            // Content Line
                             Item {
                                 anchors.left: inlineGutter.right
                                 anchors.right: parent.right
@@ -539,16 +844,27 @@ Rectangle {
                                 clip: true
 
                                 Text {
-                                    x: 6 - root.horizontalScrollX
-                                    width: Math.max(parent.width - 6, root.maxCodeWidth)
-                                    height: parent.height
+                                    id: inlineCodeText
+                                    x: root.effectiveWrap ? 6 : (6 - root.horizontalScrollX)
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: (root.effectiveWrap && !inlineRowDelegate.isHeaderRow)
+                                               ? Math.max(60, parent.width - 14)
+                                               : Math.max(parent.width - 6, root.maxCodeWidth)
                                     text: model.richContent || model.content || ""
                                     textFormat: Text.RichText
                                     color: model.fgColor
-                                    font.family: "monospace"
+                                    font.family: root.monoFont
                                     font.pixelSize: 12
-                                    verticalAlignment: Text.AlignVCenter
+                                    wrapMode: (root.effectiveWrap && !inlineRowDelegate.isHeaderRow) ? Text.WrapAtWordBoundaryOrAnywhere : Text.NoWrap
                                     elide: Text.ElideNone
+                                }
+
+                                HunkExpandActions {
+                                    visible: inlineRowDelegate.isHeaderRow && root.diffViewer && !root.diffViewer.isFullContext
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 16
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    z: 5
                                 }
                             }
                         }
@@ -560,6 +876,7 @@ Rectangle {
                         orientation: Qt.Horizontal
                         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
                         onWheel: (event) => {
+                            if (root.inlineMaxScroll <= 0) return;
                             var dx = 0;
                             if (event.pixelDelta && event.pixelDelta.x !== 0) {
                                 dx = event.pixelDelta.x;
@@ -580,6 +897,7 @@ Rectangle {
                         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
                         acceptedModifiers: Qt.ShiftModifier
                         onWheel: (event) => {
+                            if (root.inlineMaxScroll <= 0) return;
                             var dy = 0;
                             if (event.pixelDelta && event.pixelDelta.y !== 0) {
                                 dy = event.pixelDelta.y;
@@ -602,7 +920,7 @@ Rectangle {
                     anchors.right: parent.right
                     anchors.rightMargin: 10
                     anchors.bottom: parent.bottom
-                    contentWidth: root.maxCodeWidth
+                    contentWidth: root.effectiveWrap ? 0 : root.maxCodeWidth
                     viewWidth: root.inlineAvailWidth
                     scrollValue: root.horizontalScrollX
                     onScrollRequested: (val) => { root.horizontalScrollX = val; }
@@ -614,7 +932,7 @@ Rectangle {
             // ------------------------------------------
             ColumnLayout {
                 anchors.fill: parent
-                visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && (root.diffViewer.viewMode === "split" || root.diffViewer.viewMode === "")
+                visible: !root.showingMarkdownPreview && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && (root.diffViewer.viewMode === "split" || root.diffViewer.viewMode === "")
                 spacing: 0
 
                 // Split Header (Original vs Modified)
@@ -673,7 +991,7 @@ Rectangle {
                         anchors.fill: parent
                         anchors.bottomMargin: splitHScrollBar.visible ? 12 : 0
                         focus: true
-                        model: (root.diffViewer && (root.diffViewer.viewMode === "split" || root.diffViewer.viewMode === "")) ? root.diffViewer.splitLines : null
+                        model: (!root.showingMarkdownPreview && root.diffViewer && (root.diffViewer.viewMode === "split" || root.diffViewer.viewMode === "")) ? root.diffViewer.splitLines : null
                         boundsBehavior: Flickable.StopAtBounds
                         maximumFlickVelocity: 6000
                         flickDeceleration: 1000
@@ -695,7 +1013,11 @@ Rectangle {
                         delegate: Rectangle {
                             id: splitRow
                             width: splitListView.width
-                            height: modelData.isHunkHeader ? 22 : 20
+                            height: modelData.isHunkHeader
+                                        ? 28
+                                        : (root.effectiveWrap
+                                               ? Math.max(20, leftCodeText.implicitHeight + 6, rightCodeText.implicitHeight + 6)
+                                               : 20)
                             color: "#0D1117"
 
                             // Hunk banner across entire row
@@ -709,12 +1031,22 @@ Rectangle {
                                 Text {
                                     anchors.left: parent.left
                                     anchors.leftMargin: 12
+                                    anchors.right: splitExpandActions.left
+                                    anchors.rightMargin: 8
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: modelData.hunkHeader || ""
                                     color: "#38BDF8"
-                                    font.family: "monospace"
+                                    font.family: root.monoFont
                                     font.pixelSize: 10
                                     font.bold: true
+                                    elide: Text.ElideRight
+                                }
+
+                                HunkExpandActions {
+                                    id: splitExpandActions
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 16
+                                    anchors.verticalCenter: parent.verticalCenter
                                 }
                             }
 
@@ -741,12 +1073,13 @@ Rectangle {
                                             Text {
                                                 anchors.fill: parent
                                                 anchors.rightMargin: 6
+                                                anchors.topMargin: 2
                                                 text: modelData.leftLine || ""
                                                 color: "#64748B"
-                                                font.family: "monospace"
+                                                font.family: root.monoFont
                                                 font.pixelSize: 10
                                                 horizontalAlignment: Text.AlignRight
-                                                verticalAlignment: Text.AlignVCenter
+                                                verticalAlignment: root.effectiveWrap ? Text.AlignTop : Text.AlignVCenter
                                             }
                                         }
 
@@ -756,15 +1089,18 @@ Rectangle {
                                             clip: true
 
                                             Text {
-                                                x: 6 - root.horizontalScrollX
-                                                width: Math.max(parent.width - 6, root.maxCodeWidth)
-                                                height: parent.height
+                                                id: leftCodeText
+                                                x: root.effectiveWrap ? 6 : (6 - root.horizontalScrollX)
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: root.effectiveWrap
+                                                           ? Math.max(40, parent.width - 12)
+                                                           : Math.max(parent.width - 6, root.maxCodeWidth)
                                                 text: modelData.leftRichContent || modelData.leftContent || ""
                                                 textFormat: Text.RichText
                                                 color: modelData.leftFgColor || "#CBD5E1"
-                                                font.family: "monospace"
+                                                font.family: root.monoFont
                                                 font.pixelSize: 11
-                                                verticalAlignment: Text.AlignVCenter
+                                                wrapMode: root.effectiveWrap ? Text.WrapAtWordBoundaryOrAnywhere : Text.NoWrap
                                                 elide: Text.ElideNone
                                             }
                                         }
@@ -795,12 +1131,13 @@ Rectangle {
                                             Text {
                                                 anchors.fill: parent
                                                 anchors.rightMargin: 6
+                                                anchors.topMargin: 2
                                                 text: modelData.rightLine || ""
                                                 color: "#64748B"
-                                                font.family: "monospace"
+                                                font.family: root.monoFont
                                                 font.pixelSize: 10
                                                 horizontalAlignment: Text.AlignRight
-                                                verticalAlignment: Text.AlignVCenter
+                                                verticalAlignment: root.effectiveWrap ? Text.AlignTop : Text.AlignVCenter
                                             }
                                         }
 
@@ -810,15 +1147,18 @@ Rectangle {
                                             clip: true
 
                                             Text {
-                                                x: 6 - root.horizontalScrollX
-                                                width: Math.max(parent.width - 6, root.maxCodeWidth)
-                                                height: parent.height
+                                                id: rightCodeText
+                                                x: root.effectiveWrap ? 6 : (6 - root.horizontalScrollX)
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: root.effectiveWrap
+                                                           ? Math.max(40, parent.width - 12)
+                                                           : Math.max(parent.width - 6, root.maxCodeWidth)
                                                 text: modelData.rightRichContent || modelData.rightContent || ""
                                                 textFormat: Text.RichText
                                                 color: modelData.rightFgColor || "#CBD5E1"
-                                                font.family: "monospace"
+                                                font.family: root.monoFont
                                                 font.pixelSize: 11
-                                                verticalAlignment: Text.AlignVCenter
+                                                wrapMode: root.effectiveWrap ? Text.WrapAtWordBoundaryOrAnywhere : Text.NoWrap
                                                 elide: Text.ElideNone
                                             }
                                         }
@@ -833,6 +1173,7 @@ Rectangle {
                             orientation: Qt.Horizontal
                             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
                             onWheel: (event) => {
+                                if (root.splitMaxScroll <= 0) return;
                                 var dx = 0;
                                 if (event.pixelDelta && event.pixelDelta.x !== 0) {
                                     dx = event.pixelDelta.x;
@@ -853,6 +1194,7 @@ Rectangle {
                             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
                             acceptedModifiers: Qt.ShiftModifier
                             onWheel: (event) => {
+                                if (root.splitMaxScroll <= 0) return;
                                 var dy = 0;
                                 if (event.pixelDelta && event.pixelDelta.y !== 0) {
                                     dy = event.pixelDelta.y;
@@ -875,7 +1217,7 @@ Rectangle {
                         anchors.right: parent.right
                         anchors.rightMargin: 10
                         anchors.bottom: parent.bottom
-                        contentWidth: root.maxCodeWidth
+                        contentWidth: root.effectiveWrap ? 0 : root.maxCodeWidth
                         viewWidth: root.splitAvailWidth
                         scrollValue: root.horizontalScrollX
                         onScrollRequested: (val) => { root.horizontalScrollX = val; }
@@ -887,16 +1229,17 @@ Rectangle {
             // 3. HUNK VIEW (Cards per Hunk)
             // ------------------------------------------
             ScrollView {
+                id: hunkScrollView
                 anchors.fill: parent
-                visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "hunk"
+                visible: !root.showingMarkdownPreview && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "hunk"
                 clip: true
                 ScrollBar.vertical: FluxScrollBar {}
-                ScrollBar.horizontal: FluxScrollBar {}
+                ScrollBar.horizontal: FluxScrollBar { visible: !root.effectiveWrap }
 
                 ListView {
                     id: hunkListView
-                    width: Math.max(parent.width, root.maxCodeWidth + 120)
-                    model: (root.diffViewer && root.diffViewer.viewMode === "hunk") ? root.diffViewer.hunks : null
+                    width: root.effectiveWrap ? hunkScrollView.width : Math.max(hunkScrollView.width, root.maxCodeWidth + 120)
+                    model: (!root.showingMarkdownPreview && root.diffViewer && root.diffViewer.viewMode === "hunk") ? root.diffViewer.hunks : null
                     spacing: 12
                     boundsBehavior: Flickable.StopAtBounds
                     maximumFlickVelocity: 6000
@@ -920,14 +1263,15 @@ Rectangle {
                             // Hunk Header Banner
                             Rectangle {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 28
+                                Layout.preferredHeight: 30
                                 color: "#0D1117"
                                 radius: 4
                                 border.color: "#21262D"
 
                                 RowLayout {
                                     anchors.fill: parent
-                                    anchors.margins: 6
+                                    anchors.leftMargin: 8
+                                    anchors.rightMargin: 8
                                     spacing: 8
                                     Text {
                                         text: "🔍"
@@ -936,10 +1280,13 @@ Rectangle {
                                     Text {
                                         text: modelData.header || ""
                                         color: "#38BDF8"
-                                        font.family: "monospace"
+                                        font.family: root.monoFont
                                         font.pixelSize: 11
                                         font.bold: true
+                                        elide: Text.ElideRight
+                                        Layout.fillWidth: true
                                     }
+                                    HunkExpandActions {}
                                 }
                             }
 
@@ -949,7 +1296,7 @@ Rectangle {
 
                                 delegate: Rectangle {
                                     Layout.fillWidth: true
-                                    Layout.preferredHeight: 20
+                                    Layout.preferredHeight: root.effectiveWrap ? Math.max(20, hunkLineText.implicitHeight + 6) : 20
                                     color: modelData.bgColor || "transparent"
 
                                     RowLayout {
@@ -958,41 +1305,50 @@ Rectangle {
 
                                         Text {
                                             Layout.preferredWidth: 36
+                                            Layout.alignment: root.effectiveWrap ? Qt.AlignTop : Qt.AlignVCenter
+                                            Layout.topMargin: root.effectiveWrap ? 2 : 0
                                             text: modelData.oldLineNumber || ""
                                             color: "#64748B"
-                                            font.family: "monospace"
+                                            font.family: root.monoFont
                                             font.pixelSize: 10
                                             horizontalAlignment: Text.AlignRight
                                         }
 
                                         Text {
                                             Layout.preferredWidth: 36
+                                            Layout.alignment: root.effectiveWrap ? Qt.AlignTop : Qt.AlignVCenter
+                                            Layout.topMargin: root.effectiveWrap ? 2 : 0
                                             text: modelData.newLineNumber || ""
                                             color: "#64748B"
-                                            font.family: "monospace"
+                                            font.family: root.monoFont
                                             font.pixelSize: 10
                                             horizontalAlignment: Text.AlignRight
                                         }
 
                                         Text {
+                                            Layout.alignment: root.effectiveWrap ? Qt.AlignTop : Qt.AlignVCenter
+                                            Layout.topMargin: root.effectiveWrap ? 2 : 0
                                             text: {
                                                 if (modelData.kind === "addition") return "+";
                                                 if (modelData.kind === "deletion") return "-";
                                                 return " ";
                                             }
                                             color: modelData.fgColor || "#CBD5E1"
-                                            font.family: "monospace"
+                                            font.family: root.monoFont
                                             font.pixelSize: 11
                                             font.bold: true
                                         }
 
                                         Text {
+                                            id: hunkLineText
                                             Layout.fillWidth: true
+                                            Layout.alignment: Qt.AlignVCenter
                                             text: modelData.richContent || modelData.content || ""
                                             textFormat: Text.RichText
                                             color: modelData.fgColor || "#CBD5E1"
-                                            font.family: "monospace"
+                                            font.family: root.monoFont
                                             font.pixelSize: 11
+                                            wrapMode: root.effectiveWrap ? Text.WrapAtWordBoundaryOrAnywhere : Text.NoWrap
                                             elide: Text.ElideNone
                                         }
                                     }
@@ -1008,7 +1364,7 @@ Rectangle {
             // ------------------------------------------
             Item {
                 anchors.fill: parent
-                visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "blame"
+                visible: !root.showingMarkdownPreview && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "blame"
                 clip: true
 
                 ListView {
@@ -1016,7 +1372,7 @@ Rectangle {
                     anchors.fill: parent
                     anchors.bottomMargin: blameHScrollBar.visible ? 12 : 0
                     focus: true
-                    model: (root.diffViewer && root.diffViewer.viewMode === "blame") ? root.diffViewer.blameLines : null
+                    model: (!root.showingMarkdownPreview && root.diffViewer && root.diffViewer.viewMode === "blame") ? root.diffViewer.blameLines : null
                     boundsBehavior: Flickable.StopAtBounds
                     maximumFlickVelocity: 6000
                     flickDeceleration: 1000
@@ -1060,8 +1416,8 @@ Rectangle {
 
                                     // Author Avatar / Circle
                                     Rectangle {
-                                        width: 16
-                                        height: 16
+                                        Layout.preferredWidth: 16
+                                        Layout.preferredHeight: 16
                                         radius: 8
                                         color: modelData.color || "#6366F1"
 
@@ -1114,7 +1470,7 @@ Rectangle {
                                     Text {
                                         text: modelData.shortSha || ""
                                         color: "#38BDF8"
-                                        font.family: "monospace"
+                                        font.family: root.monoFont
                                         font.pixelSize: 10
                                         Layout.preferredWidth: 54
                                     }
@@ -1139,7 +1495,7 @@ Rectangle {
                                     Text {
                                         text: modelData.lineNumber || ""
                                         color: "#94A3B8"
-                                        font.family: "monospace"
+                                        font.family: root.monoFont
                                         font.pixelSize: 10
                                         Layout.preferredWidth: 28
                                         horizontalAlignment: Text.AlignRight
@@ -1160,7 +1516,7 @@ Rectangle {
                                     text: modelData.richContent || modelData.content || ""
                                     textFormat: Text.RichText
                                     color: "#F1F5F9"
-                                    font.family: "monospace"
+                                    font.family: root.monoFont
                                     font.pixelSize: 11
                                     verticalAlignment: Text.AlignVCenter
                                     elide: Text.ElideNone
@@ -1175,6 +1531,7 @@ Rectangle {
                         orientation: Qt.Horizontal
                         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
                         onWheel: (event) => {
+                            if (root.blameMaxScroll <= 0) return;
                             var dx = 0;
                             if (event.pixelDelta && event.pixelDelta.x !== 0) {
                                 dx = event.pixelDelta.x;
@@ -1195,6 +1552,7 @@ Rectangle {
                         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
                         acceptedModifiers: Qt.ShiftModifier
                         onWheel: (event) => {
+                            if (root.blameMaxScroll <= 0) return;
                             var dy = 0;
                             if (event.pixelDelta && event.pixelDelta.y !== 0) {
                                 dy = event.pixelDelta.y;
