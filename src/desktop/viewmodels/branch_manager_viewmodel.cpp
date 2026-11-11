@@ -224,10 +224,16 @@ namespace gf::desktop
             return false;
         }
 
-        setStatusMessage(QStringLiteral("Passato al branch %1").arg(branchName));
         refresh();
-        emit branchSwitched(branchName);
-        emit operationCompleted(true, QStringLiteral("Passato al branch %1").arg(branchName));
+
+        // Report what git actually did: a remote name may have been resolved to (or created as)
+        // a local branch, while tags and SHAs intentionally leave HEAD detached.
+        const QString message = (m_isDetached || m_currentBranch.isEmpty())
+                                    ? QStringLiteral("Checkout di %1 completato (HEAD detached)").arg(branchName)
+                                    : QStringLiteral("Passato al branch %1").arg(m_currentBranch);
+        setStatusMessage(message);
+        emit branchSwitched(m_currentBranch.isEmpty() ? branchName : m_currentBranch);
+        emit operationCompleted(true, message);
         return true;
     }
 

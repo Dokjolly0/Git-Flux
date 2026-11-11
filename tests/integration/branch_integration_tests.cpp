@@ -2,6 +2,7 @@
 #include "infrastructure/git/git_discovery.hpp"
 #include "infrastructure/git/native/native_git_executor.hpp"
 #include "infrastructure/git/native/native_repository_git_ops.hpp"
+#include "core/shared/utf8_path.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
@@ -479,5 +480,93 @@ TEST_CASE (
         REQUIRE_FALSE(res.has_value());
         CHECK(res.error().kind == gf::git::ports::GitOpsError::Kind::InvalidOperation);
         CHECK(git({"rev-parse", "main"}) == mainSha);
+    }
+}
+
+TEST_CASE (
+"GitBranchService checkout of a remote-tracking name never leaves HEAD detached"
+,
+"[git][branch][checkout][integration]"
+)
+ {
+    auto gitDiscovery = gf::infra::git::GitDiscovery::discover();
+    REQUIRE(gitDiscovery.has_value());
+    const auto gitExe = gitDiscovery->directBinaryPath.empty()
+                            ? gitDiscovery->discoveredInPath
+                            : gitDiscovery->directBinaryPath;
+
+    gf::infra::git::NativeGitCommandExecutor executor(gitExe);
+    gf::infra::git::NativeRepositoryGitOps gitOps(executor);
+    gf::git::bl::GitBranchService branchService(gitOps);
+
+    BranchTestSandbox remoteSandbox;
+    BranchTestSandbox sandbox;
+
+    auto gitIn = [&](const std::filesystem::path& dir, std::vector<std::string> args) -> std::string
+    {
+        gf::git::bo::GitCommand cmd{
+            .args = std::move(args),
+            .workingDirectory = dir,
+            .lockPolicy = gf::git::bo::GitLockPolicy::Standard
+        };
+        auto res = executor.execute(cmd);
+        REQUIRE(res.has_value());
+        REQUIRE(res->exitCode == 0);
+        auto out = res->stdoutBytes;
+        while (!out.empty() && (out.back() == '\n' || out.back() == '\r')) out.pop_back();
+        return out;
+    };
+    auto git = [&](std::vector<std::string> args) { return gitIn(sandbox.root, std::move(args)); };
+    auto checkout = [&](const std::string& name)
+    {
+        return branchService.checkoutBranch(sandbox.root, gf::git::bo::CheckoutOptions{.branchOrCommit = name});
+    };
+
+    gitIn(remoteSandbox.root, {"init", "--bare", "-b", "main"});
+
+    git({"init", "-b", "main"});
+    git({"config", "user.name", "GitFlux TestBot"});
+    git({"config", "user.email", "testbot@gitflux.local"});
+    sandbox.writeFile("a.txt", "one\n");
+    git({"add", "."});
+    git({"commit", "-m", "c1"});
+    git({"tag", "v1"});
+    git({"remote", "add", "origin", gf::core::pathToUtf8(remoteSandbox.root)});
+    git({"push", "-q", "-u", "origin", "main"});
+
+    // "feature" exists only on the remote
+    git({"checkout", "-q", "-b", "feature"});
+    sandbox.writeFile("a.txt", "two\n");
+    git({"commit", "-qam", "c2"});
+    git({"push", "-q", "origin", "feature"});
+    git({"checkout", "-q", "main"});
+    git({"branch", "-q", "-D", "feature"});
+    git({"fetch", "-q", "origin"});
+
+    SECTION("Remote-only branch is checked out as a new local tracking branch")
+    {
+        REQUIRE(checkout("origin/feature").has_value());
+        CHECK(git({"symbolic-ref", "--short", "HEAD"}) == "feature");
+        CHECK(git({"rev-parse", "--abbrev-ref", "feature@{upstream}"}) == "origin/feature");
+    }
+
+    SECTION("Remote name aligned with an existing local branch checks out the local branch")
+    {
+        git({"checkout", "-q", "-b", "other"});
+        REQUIRE(checkout("origin/main").has_value());
+        CHECK(git({"symbolic-ref", "--short", "HEAD"}) == "main");
+    }
+
+    SECTION("Tags and SHAs still detach HEAD on purpose")
+    {
+        REQUIRE(checkout("v1").has_value());
+        gf::git::bo::GitCommand cmd{
+            .args = {"symbolic-ref", "-q", "HEAD"},
+            .workingDirectory = sandbox.root,
+            .lockPolicy = gf::git::bo::GitLockPolicy::Standard
+        };
+        auto res = executor.execute(cmd);
+        REQUIRE(res.has_value());
+        CHECK(res->exitCode != 0); // detached
     }
 }

@@ -1470,6 +1470,55 @@ namespace gf::infra::git
     NativeRepositoryGitOps::checkoutBranch(const std::filesystem::path& repoPath,
                                            const gf::git::bo::CheckoutOptions& options)
     {
+        // A remote-tracking name ("origin/foo") passed to `git checkout` would detach HEAD.
+        // Resolve it to the matching local branch, or create a local tracking branch for it.
+        std::string checkoutTarget = options.branchOrCommit;
+        bool trackRemote = false;
+        if (!options.createNewBranch && !checkoutTarget.empty() && checkoutTarget.front() != '-' &&
+            !runGitCapture(m_executor, repoPath,
+                           {"rev-parse", "--verify", "--quiet", "refs/heads/" + checkoutTarget}) &&
+            runGitCapture(m_executor, repoPath,
+                          {"rev-parse", "--verify", "--quiet", "refs/remotes/" + checkoutTarget}))
+        {
+            if (auto remotes = runGitCapture(m_executor, repoPath, {"remote"}))
+            {
+                std::string localName;
+                std::size_t start = 0;
+                const std::string& out = *remotes;
+                while (start < out.size())
+                {
+                    auto end = out.find('\n', start);
+                    if (end == std::string::npos) end = out.size();
+                    const std::string remote = trimString(out.substr(start, end - start));
+                    start = end + 1;
+                    // Longest matching remote prefix wins (remotes may contain '/')
+                    if (!remote.empty() && checkoutTarget.size() > remote.size() + 1 &&
+                        checkoutTarget.compare(0, remote.size() + 1, remote + "/") == 0 &&
+                        checkoutTarget.size() - remote.size() - 1 > 0)
+                    {
+                        std::string candidate = checkoutTarget.substr(remote.size() + 1);
+                        if (localName.empty() || candidate.size() < localName.size())
+                        {
+                            localName = std::move(candidate);
+                        }
+                    }
+                }
+
+                if (!localName.empty() && localName != "HEAD")
+                {
+                    if (runGitCapture(m_executor, repoPath,
+                                      {"rev-parse", "--verify", "--quiet", "refs/heads/" + localName}))
+                    {
+                        checkoutTarget = localName;
+                    }
+                    else
+                    {
+                        trackRemote = true; // `git checkout --track origin/foo` creates local "foo"
+                    }
+                }
+            }
+        }
+
         std::vector<std::string> args{"checkout"};
         if (options.createNewBranch)
         {
@@ -1479,7 +1528,11 @@ namespace gf::infra::git
         {
             args.emplace_back("-f");
         }
-        args.push_back(options.branchOrCommit);
+        if (trackRemote)
+        {
+            args.emplace_back("--track");
+        }
+        args.push_back(checkoutTarget);
 
         gf::git::bo::GitCommand cmd{
             .args = std::move(args),

@@ -3690,7 +3690,10 @@ Rectangle {
         property string targetCommitSha: ""
 
         MenuItem {
-            text: "📌 Checkout branch (" + badgeContextMenu.targetName + ")"
+            // Remote badges are checked out as their local branch (created with tracking if missing)
+            text: "📌 Checkout branch (" + (badgeContextMenu.badgeType === "remote"
+                ? badgeContextMenu.targetName.replace(/^[^\/]+\//, "")
+                : badgeContextMenu.targetName) + ")"
             visible: badgeContextMenu.badgeType !== "tag" && !badgeContextMenu.isCurrentHead
             font.pixelSize: 11
             onClicked: {
