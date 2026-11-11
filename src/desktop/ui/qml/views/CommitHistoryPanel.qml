@@ -982,6 +982,80 @@ Rectangle {
                     }
                 }
 
+                // Detached HEAD warning banner
+                Rectangle {
+                    id: detachedBanner
+                    visible: root.branchManager !== null && root.branchManager.isDetached
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: visible ? 40 : 0
+                    color: "#2A1F0A"
+                    border.color: "#B45309"
+                    border.width: 1
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        spacing: 10
+
+                        Text {
+                            text: "⚠"
+                            color: "#F59E0B"
+                            font.pixelSize: 16
+                            font.bold: true
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 0
+
+                            Text {
+                                text: "HEAD detached: non sei su nessun branch"
+                                color: "#FBBF24"
+                                font.pixelSize: 12
+                                font.bold: true
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+                            Text {
+                                text: "I commit fatti qui non appartengono a nessun branch e andranno persi al prossimo checkout. Crea un branch o passa a uno esistente."
+                                color: "#D6B26E"
+                                font.pixelSize: 10
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+                        }
+
+                        Rectangle {
+                            Layout.preferredHeight: 24
+                            implicitWidth: detachedCreateText.implicitWidth + 18
+                            radius: 4
+                            color: detachedCreateMouse.containsMouse ? "#78350F" : "#451A03"
+                            border.color: "#F59E0B"
+                            border.width: 1
+
+                            Text {
+                                id: detachedCreateText
+                                anchors.centerIn: parent
+                                text: "🌿 Crea branch qui"
+                                color: "#FDE68A"
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+
+                            MouseArea {
+                                id: detachedCreateMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: "Crea un branch sul commit attuale e passa a quel branch"
+                                onClicked: root.createBranchRequested("HEAD")
+                            }
+                        }
+                    }
+                }
+
                 // Table Header Bar (matching GitKraken header)
                 Rectangle {
                     Layout.fillWidth: true

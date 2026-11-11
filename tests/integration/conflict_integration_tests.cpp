@@ -32,14 +32,15 @@ namespace
         {
             auto filePath = root / relativePath;
             std::filesystem::create_directories(filePath.parent_path());
-            std::ofstream ofs(filePath, std::ios::trunc);
+            // Binary mode: keep exact LF line endings on Windows too
+            std::ofstream ofs(filePath, std::ios::binary | std::ios::trunc);
             ofs << content;
         }
 
         [[nodiscard]] std::string readFile(const std::string& relativePath)
         {
             auto filePath = root / relativePath;
-            std::ifstream ifs(filePath);
+            std::ifstream ifs(filePath, std::ios::binary);
             return std::string((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
         }
     };
@@ -77,6 +78,12 @@ TEST_CASE (
 
     REQUIRE(executor.execute(gf::git::bo::GitCommand{
         .args = {"config", "user.email", "conflict@gitflux.local"},
+        .workingDirectory = sandbox.root
+    })->exitCode == 0);
+
+    // Make line endings independent of the machine's global config (e.g. core.autocrlf=true on Windows)
+    REQUIRE(executor.execute(gf::git::bo::GitCommand{
+        .args = {"config", "core.autocrlf", "false"},
         .workingDirectory = sandbox.root
     })->exitCode == 0);
 

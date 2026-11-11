@@ -7,6 +7,7 @@ Rectangle {
 
     property var branchManager: null
     property string currentBranch: branchManager ? branchManager.currentBranch : ""
+    property bool isDetached: branchManager ? branchManager.isDetached : false
 
     implicitWidth: branchBtn.implicitWidth
     implicitHeight: 32
@@ -29,15 +30,17 @@ Rectangle {
             anchors.margins: 6
 
             Text {
-                text: "⎇"
-                color: root.branchManager && root.branchManager.hasConflicts ? "#EF4444" : "#3B82F6"
+                text: root.isDetached ? "⚠" : "⎇"
+                color: root.branchManager && root.branchManager.hasConflicts
+                    ? "#EF4444"
+                    : (root.isDetached ? "#F59E0B" : "#3B82F6")
                 font.bold: true
                 font.pixelSize: 13
             }
 
             Text {
-                text: root.currentBranch.length > 0 ? root.currentBranch : "HEAD detached"
-                color: "#F8FAFC"
+                text: (root.isDetached || root.currentBranch.length === 0) ? "HEAD detached" : root.currentBranch
+                color: root.isDetached ? "#FBBF24" : "#F8FAFC"
                 font.bold: true
                 font.pixelSize: 12
                 elide: Text.ElideRight

@@ -9,6 +9,12 @@
 #include <fstream>
 #include <thread>
 #include <vector>
+// std::system() runs through cmd.exe on Windows, where /dev/null does not exist.
+#ifdef _WIN32
+static const std::string kQuietRedirect = " > NUL 2>&1";
+#else
+static const std::string kQuietRedirect = " > /dev/null 2>&1";
+#endif
 
 using namespace gf::git::bl;
 using namespace gf::git::bo;
@@ -28,7 +34,7 @@ namespace
             std::filesystem::create_directories(path);
 
             // Initialize git repo
-            std::string initCmd = "git -C \"" + path.string() + "\" init -b main > /dev/null 2>&1";
+            std::string initCmd = "git -C \"" + path.string() + "\" init -b main" + kQuietRedirect;
             [[maybe_unused]] int r1 = std::system(initCmd.c_str());
 
             std::string configUser = "git -C \"" + path.string() + "\" config user.name \"Watcher Tester\"";
@@ -41,9 +47,9 @@ namespace
             ofs << "Initial commit\n";
             ofs.close();
 
-            std::string addCmd = "git -C \"" + path.string() + "\" add initial.txt > /dev/null 2>&1";
+            std::string addCmd = "git -C \"" + path.string() + "\" add initial.txt" + kQuietRedirect;
             [[maybe_unused]] int r4 = std::system(addCmd.c_str());
-            std::string commitCmd = "git -C \"" + path.string() + "\" commit -m \"Initial\" > /dev/null 2>&1";
+            std::string commitCmd = "git -C \"" + path.string() + "\" commit -m \"Initial\"" + kQuietRedirect;
             [[maybe_unused]] int r5 = std::system(commitCmd.c_str());
         }
 
@@ -100,7 +106,7 @@ TEST_CASE (
         std::this_thread::sleep_for(20ms);
 
         // Create and switch branch via CLI
-        std::string switchCmd = "git -C \"" + repo.path.string() + "\" switch -c feature/reactive > /dev/null 2>&1";
+        std::string switchCmd = "git -C \"" + repo.path.string() + "\" switch -c feature/reactive" + kQuietRedirect;
         int res = std::system(switchCmd.c_str());
         REQUIRE(res == 0);
 
@@ -121,7 +127,7 @@ TEST_CASE (
             ofs << "hello\n";
             ofs.close();
         }
-        std::string addCmd = "git -C \"" + repo.path.string() + "\" add staged.txt > /dev/null 2>&1";
+        std::string addCmd = "git -C \"" + repo.path.string() + "\" add staged.txt" + kQuietRedirect;
         int res = std::system(addCmd.c_str());
         REQUIRE(res == 0);
 

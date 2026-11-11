@@ -14,6 +14,12 @@
 #include <filesystem>
 #include <fstream>
 #include <thread>
+// std::system() runs through cmd.exe on Windows, where /dev/null does not exist.
+#ifdef _WIN32
+static const std::string kQuietRedirect = " > NUL 2>&1";
+#else
+static const std::string kQuietRedirect = " > /dev/null 2>&1";
+#endif
 
 using namespace gf::git::bl;
 using namespace gf::git::bo;
@@ -41,11 +47,11 @@ namespace
             std::filesystem::create_directories(localPath);
 
             // Init bare origin
-            std::string initBare = "git init --bare -b main \"" + originPath.string() + "\" > /dev/null 2>&1";
+            std::string initBare = "git init --bare -b main \"" + originPath.string() + "\"" + kQuietRedirect;
             [[maybe_unused]] int r1 = std::system(initBare.c_str());
 
             // Init local and push to origin
-            std::string initLocal = "git -C \"" + localPath.string() + "\" init -b main > /dev/null 2>&1";
+            std::string initLocal = "git -C \"" + localPath.string() + "\" init -b main" + kQuietRedirect;
             [[maybe_unused]] int r2 = std::system(initLocal.c_str());
 
             std::string cfgUser = "git -C \"" + localPath.string() + "\" config user.name \"Async Tester\"";
@@ -58,16 +64,16 @@ namespace
             ofs << "Initial async content\n";
             ofs.close();
 
-            std::string addCmd = "git -C \"" + localPath.string() + "\" add file.txt > /dev/null 2>&1";
+            std::string addCmd = "git -C \"" + localPath.string() + "\" add file.txt" + kQuietRedirect;
             [[maybe_unused]] int r5 = std::system(addCmd.c_str());
-            std::string commitCmd = "git -C \"" + localPath.string() + "\" commit -m \"Init\" > /dev/null 2>&1";
+            std::string commitCmd = "git -C \"" + localPath.string() + "\" commit -m \"Init\"" + kQuietRedirect;
             [[maybe_unused]] int r6 = std::system(commitCmd.c_str());
 
             std::string remoteAdd = "git -C \"" + localPath.string() + "\" remote add origin \"" + originPath.string() +
-                "\" > /dev/null 2>&1";
+                "\"" + kQuietRedirect;
             [[maybe_unused]] int r7 = std::system(remoteAdd.c_str());
 
-            std::string pushCmd = "git -C \"" + localPath.string() + "\" push -u origin main > /dev/null 2>&1";
+            std::string pushCmd = "git -C \"" + localPath.string() + "\" push -u origin main" + kQuietRedirect;
             [[maybe_unused]] int r8 = std::system(pushCmd.c_str());
         }
 

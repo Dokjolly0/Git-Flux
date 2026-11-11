@@ -23,6 +23,12 @@
 #include <fstream>
 #include <memory>
 #include <vector>
+// std::system() runs through cmd.exe on Windows, where /dev/null does not exist.
+#ifdef _WIN32
+static const std::string kQuietRedirect = " > NUL 2>&1";
+#else
+static const std::string kQuietRedirect = " > /dev/null 2>&1";
+#endif
 
 using namespace gf::git::bl;
 using namespace gf::git::bo;
@@ -64,13 +70,13 @@ namespace
             std::filesystem::create_directories(repoDir2);
 
             // Init bare origins
-            std::string initBare1 = "git init --bare -b main \"" + bareOrigin1.string() + "\" > /dev/null 2>&1";
+            std::string initBare1 = "git init --bare -b main \"" + bareOrigin1.string() + "\"" + kQuietRedirect;
             [[maybe_unused]] int r1 = std::system(initBare1.c_str());
-            std::string initBare2 = "git init --bare -b main \"" + bareOrigin2.string() + "\" > /dev/null 2>&1";
+            std::string initBare2 = "git init --bare -b main \"" + bareOrigin2.string() + "\"" + kQuietRedirect;
             [[maybe_unused]] int r2 = std::system(initBare2.c_str());
 
             // Init repo 1
-            std::string init1 = "git -C \"" + repoDir1.string() + "\" init -b main > /dev/null 2>&1";
+            std::string init1 = "git -C \"" + repoDir1.string() + "\" init -b main" + kQuietRedirect;
             [[maybe_unused]] int r3 = std::system(init1.c_str());
             std::string cfgU1 = "git -C \"" + repoDir1.string() + "\" config user.name \"Batch Tester\"";
             [[maybe_unused]] int r4 = std::system(cfgU1.c_str());
@@ -80,18 +86,18 @@ namespace
             std::ofstream f1(repoDir1 / "f1.txt");
             f1 << "file1\n";
             f1.close();
-            std::string a1 = "git -C \"" + repoDir1.string() + "\" add f1.txt > /dev/null 2>&1";
+            std::string a1 = "git -C \"" + repoDir1.string() + "\" add f1.txt" + kQuietRedirect;
             [[maybe_unused]] int r6 = std::system(a1.c_str());
-            std::string c1 = "git -C \"" + repoDir1.string() + "\" commit -m \"Init 1\" > /dev/null 2>&1";
+            std::string c1 = "git -C \"" + repoDir1.string() + "\" commit -m \"Init 1\"" + kQuietRedirect;
             [[maybe_unused]] int r7 = std::system(c1.c_str());
             std::string rem1 = "git -C \"" + repoDir1.string() + "\" remote add origin \"" + bareOrigin1.string() +
-                "\" > /dev/null 2>&1";
+                "\"" + kQuietRedirect;
             [[maybe_unused]] int r8 = std::system(rem1.c_str());
-            std::string p1 = "git -C \"" + repoDir1.string() + "\" push -u origin main > /dev/null 2>&1";
+            std::string p1 = "git -C \"" + repoDir1.string() + "\" push -u origin main" + kQuietRedirect;
             [[maybe_unused]] int r9 = std::system(p1.c_str());
 
             // Init repo 2
-            std::string init2 = "git -C \"" + repoDir2.string() + "\" init -b main > /dev/null 2>&1";
+            std::string init2 = "git -C \"" + repoDir2.string() + "\" init -b main" + kQuietRedirect;
             [[maybe_unused]] int r10 = std::system(init2.c_str());
             std::string cfgU2 = "git -C \"" + repoDir2.string() + "\" config user.name \"Batch Tester\"";
             [[maybe_unused]] int r11 = std::system(cfgU2.c_str());
@@ -101,14 +107,14 @@ namespace
             std::ofstream f2(repoDir2 / "f2.txt");
             f2 << "file2\n";
             f2.close();
-            std::string a2 = "git -C \"" + repoDir2.string() + "\" add f2.txt > /dev/null 2>&1";
+            std::string a2 = "git -C \"" + repoDir2.string() + "\" add f2.txt" + kQuietRedirect;
             [[maybe_unused]] int r13 = std::system(a2.c_str());
-            std::string c2 = "git -C \"" + repoDir2.string() + "\" commit -m \"Init 2\" > /dev/null 2>&1";
+            std::string c2 = "git -C \"" + repoDir2.string() + "\" commit -m \"Init 2\"" + kQuietRedirect;
             [[maybe_unused]] int r14 = std::system(c2.c_str());
             std::string rem2 = "git -C \"" + repoDir2.string() + "\" remote add origin \"" + bareOrigin2.string() +
-                "\" > /dev/null 2>&1";
+                "\"" + kQuietRedirect;
             [[maybe_unused]] int r15 = std::system(rem2.c_str());
-            std::string p2 = "git -C \"" + repoDir2.string() + "\" push -u origin main > /dev/null 2>&1";
+            std::string p2 = "git -C \"" + repoDir2.string() + "\" push -u origin main" + kQuietRedirect;
             [[maybe_unused]] int r16 = std::system(p2.c_str());
         }
 
