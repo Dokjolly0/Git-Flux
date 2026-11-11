@@ -8,6 +8,11 @@ ScrollBar {
     hoverEnabled: true
     active: hovered || pressed || ((control.parent && control.parent.moving) === true) || ((control.parent && control.parent.flicking) === true)
 
+    // A custom contentItem bypasses the built-in styles' AsNeeded handling,
+    // so hide the handle ourselves when the content fits (size >= 1.0).
+    readonly property bool needed: control.policy === ScrollBar.AlwaysOn
+        || (control.policy === ScrollBar.AsNeeded && control.size < 1.0)
+
     implicitWidth: control.orientation === Qt.Vertical ? 8 : 100
     implicitHeight: control.orientation === Qt.Vertical ? 100 : 8
 
@@ -15,6 +20,7 @@ ScrollBar {
         implicitWidth: control.orientation === Qt.Vertical ? 6 : 28
         implicitHeight: control.orientation === Qt.Vertical ? 28 : 6
         radius: control.orientation === Qt.Vertical ? width / 2 : height / 2
+        visible: control.needed
 
         color: control.pressed
             ? "#00E5FF"
