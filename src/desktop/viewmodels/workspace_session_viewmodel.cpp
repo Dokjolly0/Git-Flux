@@ -1,4 +1,7 @@
 #include "desktop/viewmodels/workspace_session_viewmodel.hpp"
+#include <QThread>
+#include <QElapsedTimer>
+#include <QCoreApplication>
 
 #include "core/modules/git/bl/git_conflict_service.hpp"
 #include "core/modules/git/bl/git_repository_watcher_service.hpp"
@@ -40,9 +43,9 @@ namespace gf::desktop
           , m_commitBox(stagingService, m_gitExecutor, this)
           , m_diffViewer(diffService, this)
           , m_commitDiffViewer(diffService, this)
-          , m_branchManager(branchService, historyService, remoteMergeService, &rebaseService, this)
-          , m_stashManager(stashService, this)
-          , m_conflictResolver(conflictService, this)
+          , m_branchManager(branchService, historyService, remoteMergeService, &rebaseService, m_gitExecutor, this)
+          , m_stashManager(stashService, m_gitExecutor, this)
+          , m_conflictResolver(conflictService, m_gitExecutor, this)
     {
         connect(&m_commitBox, &CommitBoxViewModel::commitSucceeded,
                 this, &WorkspaceSessionViewModel::onCommitSucceeded);
@@ -474,10 +477,51 @@ namespace gf::desktop
         }
     }
 
+    template <typename Work>
+    bool WorkspaceSessionViewModel::runRebaseStep(Work work, bool reportOutcome)
+    {
+        const QString path = activeRepoPath();
+        if (path.isEmpty())
+        {
+            return false;
+        }
+
+        ++m_pendingOperations;
+        m_gitExecutor.run(this,
+                          [work, repoPath = std::filesystem::path(path.toStdString())]() { return work(repoPath); },
+                          [this, path, reportOutcome](auto res)
+                          {
+                              --m_pendingOperations;
+                              if (!res)
+                              {
+                                  emit rebaseFailed(QString::fromStdString(res.error().message));
+                                  return;
+                              }
+                              if (path == activeRepoPath())
+                              {
+                                  refreshActiveTab();
+                              }
+                              if constexpr (requires { res->status; })
+                              {
+                                  if (reportOutcome)
+                                  {
+                                      if (res->status == gf::git::bo::RebaseStatus::Conflict)
+                                      {
+                                          emit rebaseConflictDetected();
+                                      }
+                                      else
+                                      {
+                                          emit rebaseSucceeded(QString::fromStdString(res->message));
+                                      }
+                                  }
+                              }
+                          });
+        return true;
+    }
+
     bool WorkspaceSessionViewModel::startRebase(const QString& upstream, const QString& onto)
     {
-        QString path = activeRepoPath();
-        if (path.isEmpty() || upstream.trimmed().isEmpty())
+        if (upstream.trimmed().isEmpty())
         {
             return false;
         }
@@ -490,92 +534,56 @@ namespace gf::desktop
             opts.onto = onto.trimmed().toStdString();
         }
 
-        auto res = m_rebaseService.startRebase(std::filesystem::path(path.toStdString()), opts);
-        if (!res)
+        auto& service = m_rebaseService;
+        return runRebaseStep([&service, opts](const std::filesystem::path& repo)
         {
-            return false;
-        }
-
-        refreshActiveTab();
-        if (res->status == gf::git::bo::RebaseStatus::Conflict)
-        {
-            emit rebaseConflictDetected();
-        }
-        else
-        {
-            emit rebaseSucceeded(QString::fromStdString(res->message));
-        }
-        return true;
+            return service.startRebase(repo, opts);
+        }, true);
     }
 
     bool WorkspaceSessionViewModel::continueRebase()
     {
-        QString path = activeRepoPath();
-        if (path.isEmpty())
-        {
-            return false;
-        }
-
-        auto res = m_rebaseService.continueRebase(std::filesystem::path(path.toStdString()));
-        if (!res)
-        {
-            return false;
-        }
-
-        refreshActiveTab();
-        if (res->status == gf::git::bo::RebaseStatus::Conflict)
-        {
-            emit rebaseConflictDetected();
-        }
-        else
-        {
-            emit rebaseSucceeded(QString::fromStdString(res->message));
-        }
-        return true;
+        auto& service = m_rebaseService;
+        return runRebaseStep([&service](const std::filesystem::path& repo) { return service.continueRebase(repo); },
+                             true);
     }
 
     bool WorkspaceSessionViewModel::skipRebase()
     {
-        QString path = activeRepoPath();
-        if (path.isEmpty())
-        {
-            return false;
-        }
-
-        auto res = m_rebaseService.skipRebase(std::filesystem::path(path.toStdString()));
-        if (!res)
-        {
-            return false;
-        }
-
-        refreshActiveTab();
-        if (res->status == gf::git::bo::RebaseStatus::Conflict)
-        {
-            emit rebaseConflictDetected();
-        }
-        else
-        {
-            emit rebaseSucceeded(QString::fromStdString(res->message));
-        }
-        return true;
+        auto& service = m_rebaseService;
+        return runRebaseStep([&service](const std::filesystem::path& repo) { return service.skipRebase(repo); },
+                             true);
     }
 
     bool WorkspaceSessionViewModel::abortRebase()
     {
-        QString path = activeRepoPath();
-        if (path.isEmpty())
-        {
-            return false;
-        }
+        auto& service = m_rebaseService;
+        return runRebaseStep([&service](const std::filesystem::path& repo) { return service.abortRebase(repo); },
+                             false);
+    }
 
-        auto res = m_rebaseService.abortRebase(std::filesystem::path(path.toStdString()));
-        if (!res)
+    bool WorkspaceSessionViewModel::waitForIdle(int timeoutMs)
+    {
+        QElapsedTimer timer;
+        timer.start();
+        // A completion may queue follow-up work (an operation refreshes the working tree, which
+        // reloads the history...): idle means everything is quiet at the same time.
+        // waitForIdle(0) on a child is a non-blocking "is it idle?" check.
+        while (true)
         {
-            return false;
+            if (m_pendingOperations == 0 && m_workingTree.waitForIdle(0) && m_commitBox.waitForIdle(0)
+                && m_branchManager.waitForIdle(0) && m_stashManager.waitForIdle(0)
+                && m_conflictResolver.waitForIdle(0))
+            {
+                return true;
+            }
+            if (timer.elapsed() > timeoutMs)
+            {
+                return false;
+            }
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+            QThread::msleep(1);
         }
-
-        refreshActiveTab();
-        return true;
     }
 
     bool WorkspaceSessionViewModel::openConflictResolver(const QString& relativePath)

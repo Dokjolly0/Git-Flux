@@ -4,6 +4,7 @@
 #include "core/modules/git/bl/git_history_service.hpp"
 #include "core/modules/git/bl/git_rebase_service.hpp"
 #include "core/modules/git/bl/git_remote_merge_service.hpp"
+#include "desktop/services/serial_git_executor.hpp"
 
 #include <QClipboard>
 #include <QCoreApplication>
@@ -13,6 +14,7 @@
 #include <QUrl>
 #include <QUrlQuery>
 
+#include <expected>
 #include <optional>
 #include <vector>
 
@@ -39,17 +41,69 @@ namespace gf::desktop
           , m_rebaseService(rebaseService)
           , m_branchListModel(this)
           , m_commitHistoryModel(this)
+          , m_ownedExecutor(std::make_unique<SerialGitExecutor>())
     {
-        // A single worker thread keeps background git work for this view model strictly ordered
+        // A single worker thread keeps background git work strictly ordered
         // (e.g. a checkout always completes before the refresh queued after it).
-        m_gitWorker.setMaxThreadCount(1);
+        m_executor = m_ownedExecutor.get();
     }
 
-    BranchManagerViewModel::~BranchManagerViewModel()
+    BranchManagerViewModel::BranchManagerViewModel(git::bl::GitBranchService& branchService,
+                                                   git::bl::GitHistoryService& historyService,
+                                                   git::bl::GitRemoteMergeService& remoteMergeService,
+                                                   git::bl::GitRebaseService* rebaseService,
+                                                   SerialGitExecutor& executor,
+                                                   QObject* parent)
+        : QObject(parent)
+          , m_branchService(branchService)
+          , m_historyService(historyService)
+          , m_remoteMergeService(remoteMergeService)
+          , m_rebaseService(rebaseService)
+          , m_branchListModel(this)
+          , m_commitHistoryModel(this)
+          , m_executor(&executor)
     {
-        // Background tasks reference the services and this object: let them finish first.
-        // Their queued results are dropped automatically once this QObject is gone.
-        m_gitWorker.waitForDone();
+    }
+
+    // The owned executor (declared last) is destroyed first and waits for the running tasks;
+    // a shared executor is destroyed by its owner before this object.
+    BranchManagerViewModel::~BranchManagerViewModel() = default;
+
+    template <typename Work, typename Finish>
+    int BranchManagerViewModel::runOperation(const QString& startMessage, Work work, Finish finish)
+    {
+        const int id = ++m_lastOperationId;
+        setStatusMessage(startMessage);
+        ++m_pendingOperations;
+        updateBusy();
+
+        const auto repoPath = m_repoPath;
+        m_executor->run(this, std::move(work),
+                        [this, id, repoPath, finish](auto result) mutable
+                        {
+                            --m_pendingOperations;
+                            finish(id, repoPath == m_repoPath, std::move(result));
+                            updateBusy();
+                        });
+        return id;
+    }
+
+    void BranchManagerViewModel::completeOperation(int operationId, bool success, const QString& message,
+                                                   const QString& statusMessage)
+    {
+        setStatusMessage(statusMessage.isEmpty() ? message : statusMessage);
+        emit operationCompleted(success, message);
+        emit operationFinished(operationId, success, message);
+    }
+
+    void BranchManagerViewModel::setConflicts(const std::vector<std::string>& files)
+    {
+        m_conflictedFiles.clear();
+        for (const auto& f : files)
+        {
+            m_conflictedFiles.append(QString::fromStdString(f));
+        }
+        emit conflictsChanged();
     }
 
     void BranchManagerViewModel::setRepositoryPath(const QString& path)
@@ -119,24 +173,26 @@ namespace gf::desktop
         const auto fileHistoryPath = m_fileHistoryPath.toStdString();
         const auto generation = m_generation;
 
-        m_gitWorker.start([this, repoPath, fileHistoryPath, generation]()
-        {
-            auto snapshot = std::make_shared<RefreshSnapshot>(loadSnapshot(repoPath, fileHistoryPath));
-            QMetaObject::invokeMethod(this, [this, snapshot, generation]()
-            {
-                m_refreshRunning = false;
-                if (generation == m_generation)
-                {
-                    applySnapshot(*snapshot);
-                }
-                if (m_refreshAgain)
-                {
-                    m_refreshAgain = false;
-                    startBackgroundRefresh();
-                }
-                updateBusy();
-            }, Qt::QueuedConnection);
-        });
+        m_executor->run(this,
+                        [this, repoPath, fileHistoryPath]()
+                        {
+                            // Worker thread: loadSnapshot only reads through the services.
+                            return loadSnapshot(repoPath, fileHistoryPath);
+                        },
+                        [this, generation](RefreshSnapshot snapshot)
+                        {
+                            m_refreshRunning = false;
+                            if (generation == m_generation)
+                            {
+                                applySnapshot(snapshot);
+                            }
+                            if (m_refreshAgain)
+                            {
+                                m_refreshAgain = false;
+                                startBackgroundRefresh();
+                            }
+                            updateBusy();
+                        });
     }
 
     BranchManagerViewModel::RefreshSnapshot
@@ -351,91 +407,55 @@ namespace gf::desktop
             return false;
         }
 
-        setStatusMessage(QStringLiteral("Checkout di %1 in corso...").arg(branchName));
-        ++m_pendingOperations;
-        updateBusy();
+        struct Outcome
+        {
+            QString error;                           // empty on success
+            std::optional<RefreshSnapshot> snapshot; // reloaded state after a successful checkout
+        };
 
+        auto& branchService = m_branchService;
         const auto repoPath = m_repoPath;
         const auto fileHistoryPath = m_fileHistoryPath.toStdString();
         const auto generation = m_generation;
-        const git::bo::CheckoutOptions opts{
-            .branchOrCommit = branchName.toStdString()
-        };
+        const git::bo::CheckoutOptions opts{.branchOrCommit = branchName.toStdString()};
 
         // Checkout + reload run on the worker thread so the UI never blocks on git.
-        m_gitWorker.start([this, repoPath, fileHistoryPath, generation, opts, branchName]()
-        {
-            auto res = m_branchService.checkoutBranch(repoPath, opts);
-            const bool ok = res.has_value();
-            const QString error = ok ? QString{} : QString::fromStdString(res.error().message);
-
-            std::shared_ptr<RefreshSnapshot> snapshot;
-            if (ok)
+        runOperation(
+            QStringLiteral("Checkout di %1 in corso...").arg(branchName),
+            [this, &branchService, repoPath, fileHistoryPath, opts]()
             {
-                snapshot = std::make_shared<RefreshSnapshot>(loadSnapshot(repoPath, fileHistoryPath));
-            }
-
-            QMetaObject::invokeMethod(this, [this, ok, error, snapshot, generation, branchName]()
-            {
-                --m_pendingOperations;
-
-                if (!ok)
+                Outcome outcome;
+                if (auto res = branchService.checkoutBranch(repoPath, opts); !res)
                 {
-                    updateBusy();
-                    setStatusMessage(error);
-                    emit operationCompleted(false, error);
+                    outcome.error = QString::fromStdString(res.error().message);
+                }
+                else
+                {
+                    outcome.snapshot = loadSnapshot(repoPath, fileHistoryPath);
+                }
+                return outcome;
+            },
+            [this, generation, branchName](int id, bool sameRepo, Outcome outcome)
+            {
+                if (!outcome.error.isEmpty())
+                {
+                    completeOperation(id, false, outcome.error);
                     return;
                 }
-
-                if (generation == m_generation && snapshot)
+                if (sameRepo && generation == m_generation && outcome.snapshot)
                 {
                     m_followHeadPending = true;
-                    applySnapshot(*snapshot);
+                    applySnapshot(*outcome.snapshot);
                 }
-                updateBusy();
 
                 // Report what git actually did: a remote name may have been resolved to (or created as)
                 // a local branch, while tags and SHAs intentionally leave HEAD detached.
                 const QString message = (m_isDetached || m_currentBranch.isEmpty())
                                             ? QStringLiteral("Checkout di %1 completato (HEAD detached)").arg(branchName)
                                             : QStringLiteral("Passato al branch %1").arg(m_currentBranch);
-                setStatusMessage(message);
                 emit branchSwitched(m_currentBranch.isEmpty() ? branchName : m_currentBranch);
-                emit operationCompleted(true, message);
-            }, Qt::QueuedConnection);
-        });
-
-        return true;
-    }
-
-    bool BranchManagerViewModel::checkoutBranchSync(const QString& branchName)
-    {
-        // Used by composite operations (e.g. merge into another branch) that must run the
-        // next git step only after the checkout has completed.
-        if (m_repoPath.empty() || branchName.isEmpty())
-        {
-            return false;
-        }
-
-        setBusy(true);
-        setStatusMessage(QStringLiteral("Checkout di %1 in corso...").arg(branchName));
-        auto res = m_branchService.checkoutBranch(m_repoPath, git::bo::CheckoutOptions{
-                                                      .branchOrCommit = branchName.toStdString()
-                                                  });
-        setBusy(false);
-
-        if (!res)
-        {
-            setStatusMessage(QString::fromStdString(res.error().message));
-            emit operationCompleted(false, QString::fromStdString(res.error().message));
-            return false;
-        }
-
-        m_currentBranch = branchName;
-        m_isDetached = false;
-        emit currentBranchChanged();
-        m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
-        refresh();
+                completeOperation(id, true, message);
+            });
         return true;
     }
 
@@ -447,36 +467,36 @@ namespace gf::desktop
             return false;
         }
 
-        setBusy(true);
-        setStatusMessage(QStringLiteral("Creazione del branch %1...").arg(branchName));
-
-        git::bo::CreateBranchOptions opts{
+        auto& service = m_branchService;
+        const auto repoPath = m_repoPath;
+        const git::bo::CreateBranchOptions opts{
             .name = branchName.toStdString(),
             .startPoint = startPoint.isEmpty() ? std::nullopt : std::make_optional(startPoint.toStdString()),
             .checkoutAfterCreate = checkoutAfterCreate
         };
 
-        auto res = m_branchService.createBranch(m_repoPath, opts);
-        setBusy(false);
-
-        if (!res)
-        {
-            setStatusMessage(QString::fromStdString(res.error().message));
-            emit operationCompleted(false, QString::fromStdString(res.error().message));
-            return false;
-        }
-
-        setStatusMessage(QStringLiteral("Branch %1 creato con successo").arg(branchName));
-        if (checkoutAfterCreate)
-        {
-            m_followHeadPending = true;
-        }
-        refresh();
-        if (checkoutAfterCreate)
-        {
-            emit branchSwitched(branchName);
-        }
-        emit operationCompleted(true, QStringLiteral("Branch %1 creato").arg(branchName));
+        runOperation(
+            QStringLiteral("Creazione del branch %1...").arg(branchName),
+            [&service, repoPath, opts]() { return service.createBranch(repoPath, opts); },
+            [this, branchName, checkoutAfterCreate](int id, bool sameRepo, auto res)
+            {
+                if (!res)
+                {
+                    completeOperation(id, false, QString::fromStdString(res.error().message));
+                    return;
+                }
+                if (sameRepo)
+                {
+                    m_followHeadPending = m_followHeadPending || checkoutAfterCreate;
+                    refresh();
+                    if (checkoutAfterCreate)
+                    {
+                        emit branchSwitched(branchName);
+                    }
+                }
+                completeOperation(id, true, QStringLiteral("Branch %1 creato").arg(branchName),
+                                  QStringLiteral("Branch %1 creato con successo").arg(branchName));
+            });
         return true;
     }
 
@@ -487,22 +507,25 @@ namespace gf::desktop
             return false;
         }
 
-        setBusy(true);
-        setStatusMessage(QStringLiteral("Eliminazione del branch %1...").arg(branchName));
-
-        auto res = m_branchService.deleteBranch(m_repoPath, branchName.toStdString(), force);
-        setBusy(false);
-
-        if (!res)
-        {
-            setStatusMessage(QString::fromStdString(res.error().message));
-            emit operationCompleted(false, QString::fromStdString(res.error().message));
-            return false;
-        }
-
-        setStatusMessage(QStringLiteral("Branch %1 eliminato").arg(branchName));
-        refresh();
-        emit operationCompleted(true, QStringLiteral("Branch %1 eliminato").arg(branchName));
+        auto& service = m_branchService;
+        const auto repoPath = m_repoPath;
+        runOperation(
+            QStringLiteral("Eliminazione del branch %1...").arg(branchName),
+            [&service, repoPath, name = branchName.toStdString(), force]() { return service.deleteBranch(repoPath, name, force); },
+            [this, branchName](int id, bool sameRepo, auto res)
+            {
+                if (!res)
+                {
+                    completeOperation(id, false, QString::fromStdString(res.error().message));
+                    return;
+                }
+                if (sameRepo)
+                {
+                    refresh();
+                }
+                completeOperation(id, true, QStringLiteral("Branch %1 eliminato").arg(branchName),
+                                  QStringLiteral("Branch %1 eliminato").arg(branchName));
+            });
         return true;
     }
 
@@ -513,22 +536,25 @@ namespace gf::desktop
             return false;
         }
 
-        setBusy(true);
-        setStatusMessage(QStringLiteral("Ridenominazione di %1 in %2...").arg(oldName, newName));
-
-        auto res = m_branchService.renameBranch(m_repoPath, oldName.toStdString(), newName.toStdString());
-        setBusy(false);
-
-        if (!res)
-        {
-            setStatusMessage(QString::fromStdString(res.error().message));
-            emit operationCompleted(false, QString::fromStdString(res.error().message));
-            return false;
-        }
-
-        setStatusMessage(QStringLiteral("Branch rinominato in %1").arg(newName));
-        refresh();
-        emit operationCompleted(true, QStringLiteral("Branch rinominato in %1").arg(newName));
+        auto& service = m_branchService;
+        const auto repoPath = m_repoPath;
+        runOperation(
+            QStringLiteral("Ridenominazione di %1 in %2...").arg(oldName, newName),
+            [&service, repoPath, from = oldName.toStdString(), to = newName.toStdString()]() { return service.renameBranch(repoPath, from, to); },
+            [this, newName](int id, bool sameRepo, auto res)
+            {
+                if (!res)
+                {
+                    completeOperation(id, false, QString::fromStdString(res.error().message));
+                    return;
+                }
+                if (sameRepo)
+                {
+                    refresh();
+                }
+                completeOperation(id, true, QStringLiteral("Branch rinominato in %1").arg(newName),
+                                  QStringLiteral("Branch rinominato in %1").arg(newName));
+            });
         return true;
     }
 
@@ -539,43 +565,43 @@ namespace gf::desktop
             return false;
         }
 
-        setBusy(true);
-        setStatusMessage(QStringLiteral("Merge di %1 in corso...").arg(sourceBranch));
-
-        git::bo::MergeOptions opts{
+        auto& service = m_remoteMergeService;
+        const auto repoPath = m_repoPath;
+        const git::bo::MergeOptions opts{
             .sourceBranchOrCommit = sourceBranch.toStdString(),
             .noFastForward = noFf
         };
-
-        auto res = m_remoteMergeService.mergeBranch(m_repoPath, opts);
-        setBusy(false);
-
-        if (!res)
-        {
-            setStatusMessage(QString::fromStdString(res.error().message));
-            emit operationCompleted(false, QString::fromStdString(res.error().message));
-            return false;
-        }
-
-        if (res->status == git::bo::MergeStatus::Conflict)
-        {
-            m_conflictedFiles.clear();
-            for (const auto& f : res->conflictedFiles)
+        runOperation(
+            QStringLiteral("Merge di %1 in corso...").arg(sourceBranch),
+            [&service, repoPath, opts]() { return service.mergeBranch(repoPath, opts); },
+            [this, sourceBranch](int id, bool sameRepo, auto res)
             {
-                m_conflictedFiles.append(QString::fromStdString(f));
-            }
-            emit conflictsChanged();
-            setStatusMessage(QStringLiteral("Conflitti di merge rilevati in %1 file").arg(m_conflictedFiles.size()));
-            emit operationCompleted(false, QStringLiteral("Conflitti di merge rilevati"));
-            return false;
-        }
-
-        m_conflictedFiles.clear();
-        emit conflictsChanged();
-        setStatusMessage(QStringLiteral("Merge di %1 completato con successo").arg(sourceBranch));
-        m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
-        refresh();
-        emit operationCompleted(true, QStringLiteral("Merge completato"));
+                if (!res)
+                {
+                    completeOperation(id, false, QString::fromStdString(res.error().message));
+                    return;
+                }
+                if (res->status == git::bo::MergeStatus::Conflict)
+                {
+                    if (sameRepo)
+                    {
+                        setConflicts(res->conflictedFiles);
+                        refresh(); // the target branch may have been checked out first
+                    }
+                    completeOperation(id, false, QStringLiteral("Conflitti di merge rilevati"),
+                                      QStringLiteral("Conflitti di merge rilevati in %1 file")
+                                      .arg(res->conflictedFiles.size()));
+                    return;
+                }
+                if (sameRepo)
+                {
+                    setConflicts({});
+                    m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
+                    refresh();
+                }
+                completeOperation(id, true, QStringLiteral("Merge completato"),
+                                  QStringLiteral("Merge di %1 completato con successo").arg(sourceBranch));
+            });
         return true;
     }
 
@@ -586,25 +612,27 @@ namespace gf::desktop
             return false;
         }
 
-        setBusy(true);
-        setStatusMessage(QStringLiteral("Annullamento del merge in corso..."));
-
-        auto res = m_remoteMergeService.abortMerge(m_repoPath);
-        setBusy(false);
-
-        if (!res)
-        {
-            setStatusMessage(QString::fromStdString(res.error().message));
-            emit operationCompleted(false, QString::fromStdString(res.error().message));
-            return false;
-        }
-
-        m_conflictedFiles.clear();
-        emit conflictsChanged();
-        setStatusMessage(QStringLiteral("Merge annullato con successo"));
-        m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
-        refresh();
-        emit operationCompleted(true, QStringLiteral("Merge annullato"));
+        auto& service = m_remoteMergeService;
+        const auto repoPath = m_repoPath;
+        runOperation(
+            QStringLiteral("Annullamento del merge in corso..."),
+            [&service, repoPath]() { return service.abortMerge(repoPath); },
+            [this](int id, bool sameRepo, auto res)
+            {
+                if (!res)
+                {
+                    completeOperation(id, false, QString::fromStdString(res.error().message));
+                    return;
+                }
+                if (sameRepo)
+                {
+                    setConflicts({});
+                    m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
+                    refresh();
+                }
+                completeOperation(id, true, QStringLiteral("Merge annullato"),
+                                  QStringLiteral("Merge annullato con successo"));
+            });
         return true;
     }
 
@@ -773,22 +801,30 @@ namespace gf::desktop
             return false;
         }
 
-        setBusy(true);
-        auto res = m_remoteMergeService.setRemoteUrl(m_repoPath, remoteName.toStdString(), newUrl.toStdString());
-        setBusy(false);
-
-        if (!res)
-        {
-            QString err = QString::fromStdString(res.error().message);
-            setStatusMessage(err);
-            emit operationCompleted(false, err);
-            return false;
-        }
-
-        m_remoteUrl = newUrl;
-        emit remoteUrlChanged();
-        setStatusMessage(QStringLiteral("URL del remote %1 aggiornato").arg(remoteName));
-        emit operationCompleted(true, QStringLiteral("URL del remote %1 aggiornato con successo").arg(remoteName));
+        auto& service = m_remoteMergeService;
+        const auto repoPath = m_repoPath;
+        runOperation(
+            QStringLiteral("Aggiornamento dell'URL del remote %1...").arg(remoteName),
+            [&service, repoPath, remote = remoteName.toStdString(), url = newUrl.toStdString()]()
+            {
+                return service.setRemoteUrl(repoPath, remote, url);
+            },
+            [this, remoteName, newUrl](int id, bool sameRepo, auto res)
+            {
+                if (!res)
+                {
+                    completeOperation(id, false, QString::fromStdString(res.error().message));
+                    return;
+                }
+                if (sameRepo)
+                {
+                    m_remoteUrl = newUrl;
+                    emit remoteUrlChanged();
+                }
+                completeOperation(id, true,
+                                  QStringLiteral("URL del remote %1 aggiornato con successo").arg(remoteName),
+                                  QStringLiteral("URL del remote %1 aggiornato").arg(remoteName));
+            });
         return true;
     }
 
@@ -836,25 +872,27 @@ namespace gf::desktop
             return false;
         }
 
-        setBusy(true);
-        setStatusMessage(QStringLiteral("Reset al commit %1 (%2) in corso...").arg(commitSha.left(7), mode));
-
-        auto res = m_branchService.resetCommit(m_repoPath, commitSha.toStdString(), mode.toStdString());
-        setBusy(false);
-
-        if (!res)
-        {
-            setStatusMessage(QString::fromStdString(res.error().message));
-            emit operationCompleted(false, QString::fromStdString(res.error().message));
-            return false;
-        }
-
-        setStatusMessage(QStringLiteral("Reset al commit %1 (%2) completato").arg(commitSha.left(7), mode));
-        m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
-        refresh();
-        emit branchSwitched(m_currentBranch);
-        emit operationCompleted(
-            true, QStringLiteral("Reset al commit %1 completato con successo").arg(commitSha.left(7)));
+        auto& service = m_branchService;
+        const auto repoPath = m_repoPath;
+        runOperation(
+            QStringLiteral("Reset al commit %1 (%2) in corso...").arg(commitSha.left(7), mode),
+            [&service, repoPath, sha = commitSha.toStdString(), resetMode = mode.toStdString()]() { return service.resetCommit(repoPath, sha, resetMode); },
+            [this, commitSha, mode](int id, bool sameRepo, auto res)
+            {
+                if (!res)
+                {
+                    completeOperation(id, false, QString::fromStdString(res.error().message));
+                    return;
+                }
+                if (sameRepo)
+                {
+                    m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
+                    refresh();
+                    emit branchSwitched(m_currentBranch);
+                }
+                completeOperation(id, true, QStringLiteral("Reset al commit %1 completato con successo").arg(commitSha.left(7)),
+                                  QStringLiteral("Reset al commit %1 (%2) completato").arg(commitSha.left(7), mode));
+            });
         return true;
     }
 
@@ -865,25 +903,27 @@ namespace gf::desktop
             return false;
         }
 
-        setBusy(true);
-        setStatusMessage(QStringLiteral("Revert del commit %1 in corso...").arg(commitSha.left(7)));
-
-        auto res = m_branchService.revertCommit(m_repoPath, commitSha.toStdString());
-        setBusy(false);
-
-        if (!res)
-        {
-            setStatusMessage(QString::fromStdString(res.error().message));
-            emit operationCompleted(false, QString::fromStdString(res.error().message));
-            return false;
-        }
-
-        setStatusMessage(QStringLiteral("Revert del commit %1 completato").arg(commitSha.left(7)));
-        m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
-        refresh();
-        emit branchSwitched(m_currentBranch);
-        emit operationCompleted(
-            true, QStringLiteral("Revert del commit %1 completato con successo").arg(commitSha.left(7)));
+        auto& service = m_branchService;
+        const auto repoPath = m_repoPath;
+        runOperation(
+            QStringLiteral("Revert del commit %1 in corso...").arg(commitSha.left(7)),
+            [&service, repoPath, sha = commitSha.toStdString()]() { return service.revertCommit(repoPath, sha); },
+            [this, commitSha](int id, bool sameRepo, auto res)
+            {
+                if (!res)
+                {
+                    completeOperation(id, false, QString::fromStdString(res.error().message));
+                    return;
+                }
+                if (sameRepo)
+                {
+                    m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
+                    refresh();
+                    emit branchSwitched(m_currentBranch);
+                }
+                completeOperation(id, true, QStringLiteral("Revert del commit %1 completato con successo").arg(commitSha.left(7)),
+                                  QStringLiteral("Revert del commit %1 completato").arg(commitSha.left(7)));
+            });
         return true;
     }
 
@@ -894,26 +934,33 @@ namespace gf::desktop
             return false;
         }
 
-        setBusy(true);
-        setStatusMessage(QStringLiteral("Modifica del messaggio del commit %1 in corso...").arg(commitSha.left(7)));
-
-        auto res = m_branchService.rewordCommit(m_repoPath, commitSha.toStdString(), newMessage.toStdString());
-        setBusy(false);
-
-        if (!res)
-        {
-            setStatusMessage(QString::fromStdString(res.error().message));
-            emit operationCompleted(false, QString::fromStdString(res.error().message));
-            return false;
-        }
-
-        const QString newSha = QString::fromStdString(*res);
-        setStatusMessage(QStringLiteral("Messaggio del commit aggiornato (%1 → %2)").arg(commitSha.left(7), newSha.left(7)));
-        refresh();
-        emit branchSwitched(m_currentBranch);
-        emit commitReworded(commitSha, newSha);
-        emit operationCompleted(
-            true, QStringLiteral("Messaggio del commit %1 aggiornato con successo").arg(commitSha.left(7)));
+        auto& service = m_branchService;
+        const auto repoPath = m_repoPath;
+        runOperation(
+            QStringLiteral("Modifica del messaggio del commit %1 in corso...").arg(commitSha.left(7)),
+            [&service, repoPath, sha = commitSha.toStdString(), message = newMessage.toStdString()]()
+            {
+                return service.rewordCommit(repoPath, sha, message);
+            },
+            [this, commitSha](int id, bool sameRepo, auto res)
+            {
+                if (!res)
+                {
+                    completeOperation(id, false, QString::fromStdString(res.error().message));
+                    return;
+                }
+                const QString newSha = QString::fromStdString(*res);
+                if (sameRepo)
+                {
+                    refresh();
+                    emit branchSwitched(m_currentBranch);
+                    emit commitReworded(commitSha, newSha);
+                }
+                completeOperation(id, true,
+                                  QStringLiteral("Messaggio del commit %1 aggiornato con successo").arg(commitSha.left(7)),
+                                  QStringLiteral("Messaggio del commit aggiornato (%1 → %2)")
+                                  .arg(commitSha.left(7), newSha.left(7)));
+            });
         return true;
     }
 
@@ -930,30 +977,30 @@ namespace gf::desktop
             return false;
         }
 
-        setBusy(true);
-        setStatusMessage(QStringLiteral("Cherry-pick del commit %1 in corso...").arg(commitSha.left(7)));
-
-        git::bo::CherryPickOptions opts{
-            .commitSha = commitSha.toStdString()
-        };
-
-        auto res = m_rebaseService->cherryPick(m_repoPath, opts);
-        setBusy(false);
-
-        if (!res || !res->success)
-        {
-            QString err = res ? QString::fromStdString(res->message) : QString::fromStdString(res.error().message);
-            setStatusMessage(err);
-            emit operationCompleted(false, err);
-            return false;
-        }
-
-        setStatusMessage(QStringLiteral("Cherry-pick del commit %1 completato con successo").arg(commitSha.left(7)));
-        m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
-        refresh();
-        emit branchSwitched(m_currentBranch);
-        emit operationCompleted(
-            true, QStringLiteral("Cherry-pick del commit %1 completato con successo").arg(commitSha.left(7)));
+        auto* service = m_rebaseService;
+        const auto repoPath = m_repoPath;
+        const git::bo::CherryPickOptions opts{.commitSha = commitSha.toStdString()};
+        runOperation(
+            QStringLiteral("Cherry-pick del commit %1 in corso...").arg(commitSha.left(7)),
+            [service, repoPath, opts]() { return service->cherryPick(repoPath, opts); },
+            [this, commitSha](int id, bool sameRepo, auto res)
+            {
+                if (!res || !res->success)
+                {
+                    completeOperation(id, false, res ? QString::fromStdString(res->message)
+                                                     : QString::fromStdString(res.error().message));
+                    return;
+                }
+                if (sameRepo)
+                {
+                    m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
+                    refresh();
+                    emit branchSwitched(m_currentBranch);
+                }
+                const QString message =
+                    QStringLiteral("Cherry-pick del commit %1 completato con successo").arg(commitSha.left(7));
+                completeOperation(id, true, message);
+            });
         return true;
     }
 
@@ -963,9 +1010,6 @@ namespace gf::desktop
         {
             return false;
         }
-
-        setBusy(true);
-        setStatusMessage(QStringLiteral("Creazione del tag %1 in corso...").arg(tagName));
 
         git::bo::CreateTagOptions opts;
         opts.name = tagName.trimmed().toStdString();
@@ -978,19 +1022,24 @@ namespace gf::desktop
             opts.message = message.trimmed().toStdString();
         }
 
-        auto res = m_historyService.createTag(m_repoPath, opts);
-        setBusy(false);
-
-        if (!res)
-        {
-            setStatusMessage(QString::fromStdString(res.error().message));
-            emit operationCompleted(false, QString::fromStdString(res.error().message));
-            return false;
-        }
-
-        setStatusMessage(QStringLiteral("Tag %1 creato con successo").arg(tagName));
-        refresh();
-        emit operationCompleted(true, QStringLiteral("Tag %1 creato con successo").arg(tagName));
+        auto& service = m_historyService;
+        const auto repoPath = m_repoPath;
+        runOperation(
+            QStringLiteral("Creazione del tag %1 in corso...").arg(tagName),
+            [&service, repoPath, opts]() { return service.createTag(repoPath, opts); },
+            [this, tagName](int id, bool sameRepo, auto res)
+            {
+                if (!res)
+                {
+                    completeOperation(id, false, QString::fromStdString(res.error().message));
+                    return;
+                }
+                if (sameRepo)
+                {
+                    refresh();
+                }
+                completeOperation(id, true, QStringLiteral("Tag %1 creato con successo").arg(tagName));
+            });
         return true;
     }
 
@@ -1001,22 +1050,25 @@ namespace gf::desktop
             return false;
         }
 
-        setBusy(true);
-        setStatusMessage(QStringLiteral("Eliminazione del tag %1 in corso...").arg(tagName));
-
-        auto res = m_historyService.deleteTag(m_repoPath, tagName.trimmed().toStdString());
-        setBusy(false);
-
-        if (!res)
-        {
-            setStatusMessage(QString::fromStdString(res.error().message));
-            emit operationCompleted(false, QString::fromStdString(res.error().message));
-            return false;
-        }
-
-        setStatusMessage(QStringLiteral("Tag %1 eliminato").arg(tagName));
-        refresh();
-        emit operationCompleted(true, QStringLiteral("Tag %1 eliminato con successo").arg(tagName));
+        auto& service = m_historyService;
+        const auto repoPath = m_repoPath;
+        runOperation(
+            QStringLiteral("Eliminazione del tag %1 in corso...").arg(tagName),
+            [&service, repoPath, tag = tagName.trimmed().toStdString()]() { return service.deleteTag(repoPath, tag); },
+            [this, tagName](int id, bool sameRepo, auto res)
+            {
+                if (!res)
+                {
+                    completeOperation(id, false, QString::fromStdString(res.error().message));
+                    return;
+                }
+                if (sameRepo)
+                {
+                    refresh();
+                }
+                completeOperation(id, true, QStringLiteral("Tag %1 eliminato con successo").arg(tagName),
+                                  QStringLiteral("Tag %1 eliminato").arg(tagName));
+            });
         return true;
     }
 
@@ -1027,22 +1079,23 @@ namespace gf::desktop
             return false;
         }
 
-        setBusy(true);
-        setStatusMessage(QStringLiteral("Creazione del worktree in %1...").arg(targetPath));
-
-        auto res = m_branchService.createWorktree(m_repoPath, targetPath.toStdString(),
-                                                  commitOrBranch.trimmed().toStdString());
-        setBusy(false);
-
-        if (!res)
-        {
-            setStatusMessage(QString::fromStdString(res.error().message));
-            emit operationCompleted(false, QString::fromStdString(res.error().message));
-            return false;
-        }
-
-        setStatusMessage(QStringLiteral("Worktree creato con successo in %1").arg(targetPath));
-        emit operationCompleted(true, QStringLiteral("Worktree creato con successo in %1").arg(targetPath));
+        auto& service = m_branchService;
+        const auto repoPath = m_repoPath;
+        runOperation(
+            QStringLiteral("Creazione del worktree in %1...").arg(targetPath),
+            [&service, repoPath, path = targetPath.toStdString(), ref = commitOrBranch.trimmed().toStdString()]()
+            {
+                return service.createWorktree(repoPath, path, ref);
+            },
+            [this, targetPath](int id, bool, auto res)
+            {
+                if (!res)
+                {
+                    completeOperation(id, false, QString::fromStdString(res.error().message));
+                    return;
+                }
+                completeOperation(id, true, QStringLiteral("Worktree creato con successo in %1").arg(targetPath));
+            });
         return true;
     }
 
@@ -1059,9 +1112,6 @@ namespace gf::desktop
             return false;
         }
 
-        setBusy(true);
-        setStatusMessage(QStringLiteral("Rebase su %1 in corso...").arg(targetBranch));
-
         git::bo::RebaseOptions opts{
             .upstream = targetBranch.toStdString(),
             .autostash = true
@@ -1071,34 +1121,38 @@ namespace gf::desktop
             opts.branch = m_currentBranch.toStdString();
         }
 
-        auto res = m_rebaseService->startRebase(m_repoPath, opts);
-        setBusy(false);
-
-        if (!res)
-        {
-            setStatusMessage(QString::fromStdString(res.error().message));
-            emit operationCompleted(false, QString::fromStdString(res.error().message));
-            return false;
-        }
-
-        if (res->status == git::bo::RebaseStatus::Conflict)
-        {
-            m_conflictedFiles.clear();
-            for (const auto& f : res->conflictedFiles)
+        auto* service = m_rebaseService;
+        const auto repoPath = m_repoPath;
+        const QString switchedTo; // the current branch
+        const QString okMessage = QStringLiteral("Rebase su %1 completato con successo").arg(targetBranch);
+        runOperation(
+            QStringLiteral("Rebase su %1 in corso...").arg(targetBranch),
+            [service, repoPath, opts]() { return service->startRebase(repoPath, opts); },
+            [this, switchedTo, okMessage](int id, bool sameRepo, auto res)
             {
-                m_conflictedFiles.append(QString::fromStdString(f));
-            }
-            emit conflictsChanged();
-            setStatusMessage(QStringLiteral("Conflitti rilevati durante il rebase"));
-            emit operationCompleted(false, QStringLiteral("Conflitti rilevati durante il rebase"));
-            return false;
-        }
-
-        setStatusMessage(QStringLiteral("Rebase su %1 completato con successo").arg(targetBranch));
-        m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
-        refresh();
-        emit branchSwitched(m_currentBranch);
-        emit operationCompleted(true, QStringLiteral("Rebase su %1 completato con successo").arg(targetBranch));
+                if (!res)
+                {
+                    completeOperation(id, false, QString::fromStdString(res.error().message));
+                    return;
+                }
+                if (res->status == git::bo::RebaseStatus::Conflict)
+                {
+                    if (sameRepo)
+                    {
+                        setConflicts(res->conflictedFiles);
+                        refresh();
+                    }
+                    completeOperation(id, false, QStringLiteral("Conflitti rilevati durante il rebase"));
+                    return;
+                }
+                if (sameRepo)
+                {
+                    m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
+                    refresh();
+                    emit branchSwitched(switchedTo.isEmpty() ? m_currentBranch : switchedTo);
+                }
+                completeOperation(id, true, okMessage);
+            });
         return true;
     }
 
@@ -1115,44 +1169,45 @@ namespace gf::desktop
             return false;
         }
 
-        setBusy(true);
-        setStatusMessage(QStringLiteral("Rebase di %1 su %2 in corso...").arg(sourceBranch, targetBranch));
-
-        git::bo::RebaseOptions opts{
+        const git::bo::RebaseOptions opts{
             .upstream = targetBranch.toStdString(),
             .branch = sourceBranch.toStdString(),
             .autostash = true
         };
 
-        auto res = m_rebaseService->startRebase(m_repoPath, opts);
-        setBusy(false);
-
-        if (!res)
-        {
-            setStatusMessage(QString::fromStdString(res.error().message));
-            emit operationCompleted(false, QString::fromStdString(res.error().message));
-            return false;
-        }
-
-        if (res->status == git::bo::RebaseStatus::Conflict)
-        {
-            m_conflictedFiles.clear();
-            for (const auto& f : res->conflictedFiles)
+        auto* service = m_rebaseService;
+        const auto repoPath = m_repoPath;
+        const QString switchedTo = sourceBranch;
+        const QString okMessage =
+            QStringLiteral("Rebase di %1 su %2 completato con successo").arg(sourceBranch, targetBranch);
+        runOperation(
+            QStringLiteral("Rebase di %1 su %2 in corso...").arg(sourceBranch, targetBranch),
+            [service, repoPath, opts]() { return service->startRebase(repoPath, opts); },
+            [this, switchedTo, okMessage](int id, bool sameRepo, auto res)
             {
-                m_conflictedFiles.append(QString::fromStdString(f));
-            }
-            emit conflictsChanged();
-            setStatusMessage(QStringLiteral("Conflitti rilevati durante il rebase"));
-            emit operationCompleted(false, QStringLiteral("Conflitti rilevati durante il rebase"));
-            return false;
-        }
-
-        setStatusMessage(QStringLiteral("Rebase di %1 su %2 completato con successo").arg(sourceBranch, targetBranch));
-        m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
-        refresh();
-        emit branchSwitched(sourceBranch);
-        emit operationCompleted(
-            true, QStringLiteral("Rebase di %1 su %2 completato con successo").arg(sourceBranch, targetBranch));
+                if (!res)
+                {
+                    completeOperation(id, false, QString::fromStdString(res.error().message));
+                    return;
+                }
+                if (res->status == git::bo::RebaseStatus::Conflict)
+                {
+                    if (sameRepo)
+                    {
+                        setConflicts(res->conflictedFiles);
+                        refresh();
+                    }
+                    completeOperation(id, false, QStringLiteral("Conflitti rilevati durante il rebase"));
+                    return;
+                }
+                if (sameRepo)
+                {
+                    m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
+                    refresh();
+                    emit branchSwitched(switchedTo.isEmpty() ? m_currentBranch : switchedTo);
+                }
+                completeOperation(id, true, okMessage);
+            });
         return true;
     }
 
@@ -1174,12 +1229,52 @@ namespace gf::desktop
             return mergeBranch(sourceBranch);
         }
 
-        if (!checkoutBranchSync(effectiveTarget))
-        {
-            return false;
-        }
-
-        return mergeBranch(sourceBranch);
+        // Checkout of the target, then merge: one task, so nothing can run in between.
+        using MergeOutcome = std::expected<git::bo::MergeResult, git::ports::GitOpsError>;
+        auto& branchService = m_branchService;
+        auto& mergeService = m_remoteMergeService;
+        const auto repoPath = m_repoPath;
+        const git::bo::CheckoutOptions checkout{.branchOrCommit = effectiveTarget.toStdString()};
+        const git::bo::MergeOptions opts{.sourceBranchOrCommit = sourceBranch.toStdString()};
+        runOperation(
+            QStringLiteral("Checkout di %1 e merge di %2 in corso...").arg(effectiveTarget, sourceBranch),
+            [&branchService, &mergeService, repoPath, checkout, opts]() -> MergeOutcome
+            {
+                if (auto res = branchService.checkoutBranch(repoPath, checkout); !res)
+                {
+                    return std::unexpected(res.error());
+                }
+                return mergeService.mergeBranch(repoPath, opts);
+            },
+            [this, sourceBranch](int id, bool sameRepo, auto res)
+            {
+                if (!res)
+                {
+                    completeOperation(id, false, QString::fromStdString(res.error().message));
+                    return;
+                }
+                if (res->status == git::bo::MergeStatus::Conflict)
+                {
+                    if (sameRepo)
+                    {
+                        setConflicts(res->conflictedFiles);
+                        refresh(); // the target branch may have been checked out first
+                    }
+                    completeOperation(id, false, QStringLiteral("Conflitti di merge rilevati"),
+                                      QStringLiteral("Conflitti di merge rilevati in %1 file")
+                                      .arg(res->conflictedFiles.size()));
+                    return;
+                }
+                if (sameRepo)
+                {
+                    setConflicts({});
+                    m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
+                    refresh();
+                }
+                completeOperation(id, true, QStringLiteral("Merge completato"),
+                                  QStringLiteral("Merge di %1 completato con successo").arg(sourceBranch));
+            });
+        return true;
     }
 
     namespace
@@ -1210,31 +1305,39 @@ namespace gf::desktop
         }
 
         const QString target = localBranchName(targetBranch);
-        setBusy(true);
-        setStatusMessage(QStringLiteral("Fast-forward di '%1' a '%2' in corso...").arg(target, sourceBranch));
-
-        auto res = m_branchService.fastForwardBranch(m_repoPath, target.toStdString(), sourceBranch.toStdString());
-        setBusy(false);
-
-        if (!res)
-        {
-            setStatusMessage(QString::fromStdString(res.error().message));
-            emit operationCompleted(false, QString::fromStdString(res.error().message));
-            return false;
-        }
-
-        setStatusMessage(QStringLiteral("'%1' aggiornato a '%2' (fast-forward)").arg(target, sourceBranch));
-        if (m_currentBranch == target)
-        {
-            m_followHeadPending = true;
-        }
-        refresh();
-        if (m_currentBranch == target)
-        {
-            emit branchSwitched(m_currentBranch);
-        }
-        emit operationCompleted(
-            true, QStringLiteral("Fast-forward di '%1' a '%2' completato con successo").arg(target, sourceBranch));
+        auto& service = m_branchService;
+        const auto repoPath = m_repoPath;
+        runOperation(
+            QStringLiteral("Fast-forward di '%1' a '%2' in corso...").arg(target, sourceBranch),
+            [&service, repoPath, t = target.toStdString(), src = sourceBranch.toStdString()]()
+            {
+                return service.fastForwardBranch(repoPath, t, src);
+            },
+            [this, target, sourceBranch](int id, bool sameRepo, auto res)
+            {
+                if (!res)
+                {
+                    completeOperation(id, false, QString::fromStdString(res.error().message));
+                    return;
+                }
+                if (sameRepo)
+                {
+                    const bool isCurrent = m_currentBranch == target;
+                    if (isCurrent)
+                    {
+                        m_followHeadPending = true;
+                    }
+                    refresh();
+                    if (isCurrent)
+                    {
+                        emit branchSwitched(m_currentBranch);
+                    }
+                }
+                completeOperation(id, true,
+                                  QStringLiteral("Fast-forward di '%1' a '%2' completato con successo")
+                                  .arg(target, sourceBranch),
+                                  QStringLiteral("'%1' aggiornato a '%2' (fast-forward)").arg(target, sourceBranch));
+            });
         return true;
     }
 

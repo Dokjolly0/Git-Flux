@@ -12,6 +12,25 @@ Dialog {
     anchors.centerIn: Overlay.overlay
 
     property var branchManager: null
+
+    // Operations are asynchronous: remember which one this dialog started and react to its
+    // outcome only (another queued operation may complete first).
+    property int pendingOperationId: 0
+
+    Connections {
+        target: root.branchManager
+        enabled: root.pendingOperationId !== 0
+
+        function onOperationFinished(operationId, success, message) {
+            if (operationId !== root.pendingOperationId) return;
+            root.pendingOperationId = 0;
+            if (success) {
+                root.close();
+            } else {
+                errorText.text = message;
+            }
+        }
+    }
     property string commitOrBranch: ""
 
     function openWithTarget(target) {
@@ -260,10 +279,9 @@ Dialog {
                         errorText.text = "Specificare un percorso valido per il worktree";
                         return;
                     }
-                    if (root.branchManager) {
-                        var ok = root.branchManager.createWorktree(path, root.commitOrBranch);
-                        if (ok) {
-                            root.close();
+                    if (root.branchManager && root.pendingOperationId === 0) {
+                        if (root.branchManager.createWorktree(path, root.commitOrBranch)) {
+                            root.pendingOperationId = root.branchManager.lastOperationId;
                         } else {
                             errorText.text = root.branchManager.statusMessage;
                         }

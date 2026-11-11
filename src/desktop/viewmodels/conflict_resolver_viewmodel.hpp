@@ -14,6 +14,8 @@ namespace gf::git::bl
 
 namespace gf::desktop
 {
+    class SerialGitExecutor;
+
     class ConflictResolverViewModel : public QObject
     {
         Q_OBJECT
@@ -31,7 +33,10 @@ namespace gf::desktop
     public:
         explicit ConflictResolverViewModel(gf::git::bl::GitConflictService& conflictService,
                                            QObject* parent = nullptr);
-        ~ConflictResolverViewModel() override = default;
+        /// Shares `executor` (which must be destroyed before this viewmodel) with the session.
+        ConflictResolverViewModel(gf::git::bl::GitConflictService& conflictService, SerialGitExecutor& executor,
+                                  QObject* parent = nullptr);
+        ~ConflictResolverViewModel() override;
 
         [[nodiscard]] QString repoPath() const { return m_repoPath; }
         void setRepoPath(const QString& path);
@@ -48,7 +53,11 @@ namespace gf::desktop
 
     Q_INVOKABLE bool loadFile(const QString& relativeFilePath);
     Q_INVOKABLE void resolveHunk(int hunkIndex, int side, const QString& customText = {});
-    Q_INVOKABLE bool applyResolution(bool autoStage = true);
+        // Asynchronous: returns whether the resolution was submitted; resolutionApplied() or
+        // errorMessage report the outcome.
+        Q_INVOKABLE bool applyResolution(bool autoStage = true);
+        /// Test helper: processes events until the submitted resolution has been written.
+        bool waitForIdle(int timeoutMs = 10000);
     Q_INVOKABLE void clear();
 
         signals :
@@ -65,6 +74,7 @@ namespace gf::desktop
         void resolutionApplied(const QString& filePath);
 
     private:
+        void connectModel();
         void setBusy(bool busy);
         void setError(const QString& message);
         void clearError();
@@ -77,5 +87,9 @@ namespace gf::desktop
         QString m_errorMessage;
         bool m_isBinary{false};
         bool m_isBusy{false};
+
+        SerialGitExecutor* m_executor{nullptr};
+        // Declared last: destroyed first, waiting for its tasks while this object is alive.
+        std::unique_ptr<SerialGitExecutor> m_ownedExecutor;
     };
 } // namespace gf::desktop

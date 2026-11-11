@@ -2,6 +2,11 @@
 
 #include "core/modules/git/bl/git_conflict_service.hpp"
 #include "core/modules/git/bl/conflict_marker_parser.hpp"
+#include "desktop/services/serial_git_executor.hpp"
+
+#include <QCoreApplication>
+#include <QElapsedTimer>
+#include <QThread>
 
 namespace gf::desktop
 {
@@ -10,6 +15,26 @@ namespace gf::desktop
         : QObject(parent)
           , m_conflictService(conflictService)
           , m_hunksModel(this)
+          , m_ownedExecutor(std::make_unique<SerialGitExecutor>())
+    {
+        m_executor = m_ownedExecutor.get();
+        connectModel();
+    }
+
+    ConflictResolverViewModel::ConflictResolverViewModel(gf::git::bl::GitConflictService& conflictService,
+                                                         SerialGitExecutor& executor,
+                                                         QObject* parent)
+        : QObject(parent)
+          , m_conflictService(conflictService)
+          , m_hunksModel(this)
+          , m_executor(&executor)
+    {
+        connectModel();
+    }
+
+    ConflictResolverViewModel::~ConflictResolverViewModel() = default;
+
+    void ConflictResolverViewModel::connectModel()
     {
         connect(&m_hunksModel, &ConflictHunkListModel::resolutionChanged, this, [this]()
         {
@@ -153,18 +178,43 @@ namespace gf::desktop
             .autoStage = autoStage
         };
 
-        auto applyRes = m_conflictService.applyConflictResolution(path, opts);
-        if (!applyRes)
-        {
-            setError(QString::fromStdString(applyRes.error().message));
-            setBusy(false);
-            return false;
-        }
-
+        // Writing the file and `git add` run on the git executor.
+        auto& service = m_conflictService;
         const QString resolvedPath = m_currentFilePath;
-        clear();
-        setBusy(false);
-        emit resolutionApplied(resolvedPath);
+        const QString repoPath = m_repoPath;
+        m_executor->run(this,
+                        [&service, path, opts]() { return service.applyConflictResolution(path, opts); },
+                        [this, resolvedPath, repoPath](auto applyRes)
+                        {
+                            setBusy(false);
+                            if (!applyRes)
+                            {
+                                setError(QString::fromStdString(applyRes.error().message));
+                                return;
+                            }
+                            // Clear only if the view still shows the file that was resolved.
+                            if (m_repoPath == repoPath && m_currentFilePath == resolvedPath)
+                            {
+                                clear();
+                            }
+                            emit resolutionApplied(resolvedPath);
+                        });
+        return true;
+    }
+
+    bool ConflictResolverViewModel::waitForIdle(int timeoutMs)
+    {
+        QElapsedTimer timer;
+        timer.start();
+        while (m_isBusy)
+        {
+            if (timer.elapsed() > timeoutMs)
+            {
+                return false;
+            }
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+            QThread::msleep(1);
+        }
         return true;
     }
 } // namespace gf::desktop

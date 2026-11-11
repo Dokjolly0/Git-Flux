@@ -589,6 +589,8 @@ public:
     std::atomic<int> stageAllOrder{0};
     std::atomic<int> commitOrder{0};
     std::atomic<int> stageAllDelayMs{0};
+    std::atomic<bool> mergeConflicts{false};
+    std::atomic<int> mergeDelayMs{0};
 
     std::expected<gf::git::bo::RepoWorkingTreeStatus, gf::git::ports::GitOpsError>
     getWorkingTreeStatus(const std::filesystem::path&) override
@@ -791,6 +793,17 @@ public:
     std::expected<gf::git::bo::MergeResult, gf::git::ports::GitOpsError>
     mergeBranch(const std::filesystem::path&, const gf::git::bo::MergeOptions&) override
     {
+        if (mergeDelayMs > 0)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(mergeDelayMs.load()));
+        }
+        if (mergeConflicts)
+        {
+            return gf::git::bo::MergeResult{
+                .status = gf::git::bo::MergeStatus::Conflict,
+                .conflictedFiles = {"src/a.cpp", "src/b.cpp"}
+            };
+        }
         return gf::git::bo::MergeResult{.status = gf::git::bo::MergeStatus::Merged};
     }
 
@@ -801,20 +814,21 @@ public:
     }
 
     std::vector<gf::git::bo::GitStashItem> stashesToReturn;
-    bool stashPushCalled = false;
-    bool stashPopCalled = false;
-    bool stashApplyCalled = false;
-    bool stashDropCalled = false;
-    bool stashClearCalled = false;
+    std::atomic<bool> stashPushCalled{false};
+    std::atomic<bool> stashPopCalled{false};
+    std::atomic<bool> stashApplyCalled{false};
+    std::atomic<bool> stashDropCalled{false};
+    std::atomic<bool> stashClearCalled{false};
+    std::atomic<bool> stashPopFails{false};
 
     bool rebaseInProgressToReturn = false;
-    bool startRebaseCalled = false;
-    bool continueRebaseCalled = false;
-    bool skipRebaseCalled = false;
-    bool abortRebaseCalled = false;
+    std::atomic<bool> startRebaseCalled{false};
+    std::atomic<bool> continueRebaseCalled{false};
+    std::atomic<bool> skipRebaseCalled{false};
+    std::atomic<bool> abortRebaseCalled{false};
 
     gf::git::bo::ConflictFile conflictFileToReturn;
-    bool applyConflictResolutionCalled = false;
+    std::atomic<bool> applyConflictResolutionCalled{false};
 
     std::expected<std::vector<gf::git::bo::GitStashItem>, gf::git::ports::GitOpsError>
     listStashes(const std::filesystem::path&) override
@@ -833,6 +847,14 @@ public:
     stashPop(const std::filesystem::path&, const gf::git::bo::StashApplyOptions&) override
     {
         stashPopCalled = true;
+        if (stashPopFails)
+        {
+            return std::unexpected(gf::git::ports::GitOpsError{
+                .kind = gf::git::ports::GitOpsError::Kind::InvalidOperation,
+                .exitCode = 1,
+                .message = "conflict while popping"
+            });
+        }
         return {};
     }
 
@@ -1680,6 +1702,81 @@ TEST_CASE (
 }
 
 TEST_CASE (
+"BranchManagerViewModel runs local operations asynchronously"
+,
+"[viewmodel][branch][async][operations]"
+)
+ {
+    ensureQtApp();
+
+    MockFullGitOps mockOps;
+    gf::git::bl::GitBranchService branchService(mockOps);
+    gf::git::bl::GitHistoryService historyService(mockOps);
+    gf::git::bl::GitRemoteMergeService remoteMergeService(mockOps);
+    BranchManagerViewModel branchVm(branchService, historyService, remoteMergeService);
+    const auto repoA = std::filesystem::temp_directory_path() / "gf-ops-a";
+    const auto repoB = std::filesystem::temp_directory_path() / "gf-ops-b";
+    std::filesystem::create_directories(repoA);
+    std::filesystem::create_directories(repoB);
+
+    branchVm.setRepositoryPath(QString::fromStdString(repoA.string()));
+    REQUIRE(branchVm.waitForIdle());
+
+    QSignalSpy finishedSpy(&branchVm, &BranchManagerViewModel::operationFinished);
+    QSignalSpy conflictsSpy(&branchVm, &BranchManagerViewModel::conflictsChanged);
+
+    SECTION("each operation gets its own id, reported with its outcome") {
+        REQUIRE(branchVm.createTag("v1"));
+        const int tagId = branchVm.lastOperationId();
+        REQUIRE(branchVm.deleteBranch("old"));
+        const int deleteId = branchVm.lastOperationId();
+        CHECK(tagId != deleteId);
+        CHECK(branchVm.isBusy());
+        CHECK(finishedSpy.count() == 0); // nothing ran on the GUI thread
+
+        REQUIRE(branchVm.waitForIdle());
+        REQUIRE(finishedSpy.count() == 2);
+        // Serial executor: completions arrive in submission order
+        CHECK(finishedSpy.at(0).at(0).toInt() == tagId);
+        CHECK(finishedSpy.at(0).at(1).toBool());
+        CHECK(finishedSpy.at(1).at(0).toInt() == deleteId);
+        CHECK_FALSE(branchVm.isBusy());
+
+        // Invalid input is rejected synchronously: no id, no completion
+        const int before = branchVm.lastOperationId();
+        CHECK_FALSE(branchVm.createTag("   "));
+        CHECK(branchVm.lastOperationId() == before);
+    }
+
+    SECTION("a merge with conflicts exposes the conflicted files and fails") {
+        mockOps.mergeConflicts = true;
+        REQUIRE(branchVm.mergeBranch("feature"));
+        REQUIRE(branchVm.waitForIdle());
+        REQUIRE(finishedSpy.count() == 1);
+        CHECK_FALSE(finishedSpy.at(0).at(1).toBool());
+        CHECK(branchVm.hasConflicts());
+        CHECK(branchVm.conflictedFiles() == QStringList{"src/a.cpp", "src/b.cpp"});
+    }
+
+    SECTION("switching repository mid-operation reports the outcome but keeps the new state") {
+        mockOps.mergeConflicts = true;
+        mockOps.mergeDelayMs = 80;
+        REQUIRE(branchVm.mergeBranch("feature"));
+        branchVm.setRepositoryPath(QString::fromStdString(repoB.string()));
+        REQUIRE(branchVm.waitForIdle());
+        REQUIRE(finishedSpy.count() == 1);
+        CHECK_FALSE(finishedSpy.at(0).at(1).toBool());
+        // The conflicts belong to repo A: repo B, now shown, must not inherit them
+        CHECK_FALSE(branchVm.hasConflicts());
+        CHECK(conflictsSpy.count() == 0);
+    }
+
+    std::error_code ec;
+    std::filesystem::remove_all(repoA, ec);
+    std::filesystem::remove_all(repoB, ec);
+}
+
+TEST_CASE (
 "BranchManagerViewModel operations and signal propagation"
 ,
 "[viewmodel][branch][manager]"
@@ -1713,22 +1810,26 @@ TEST_CASE (
     // Create branch
     bool created = branchVm.createBranch("feature/test", true);
     CHECK(created);
+    REQUIRE(branchVm.waitForIdle());
     CHECK(switchedSpy.count() == 2);
     CHECK(completedSpy.count() == 2);
 
     // Delete branch
     bool deleted = branchVm.deleteBranch("feature/test", false);
     CHECK(deleted);
+    REQUIRE(branchVm.waitForIdle());
     CHECK(completedSpy.count() == 3);
 
     // Rename branch
     bool renamed = branchVm.renameBranch("old-name", "new-name");
     CHECK(renamed);
+    REQUIRE(branchVm.waitForIdle());
     CHECK(completedSpy.count() == 4);
 
     // Merge branch
     bool merged = branchVm.mergeBranch("feature/test", false);
     CHECK(merged);
+    REQUIRE(branchVm.waitForIdle());
     CHECK(completedSpy.count() == 5);
 
     // Remote operations with options
@@ -1744,12 +1845,15 @@ TEST_CASE (
 
     // Branch creation with custom start point
     CHECK(branchVm.createBranch("feature/from-commit", true, "a1b2c3d"));
+    REQUIRE(branchVm.waitForIdle());
 
     // Remote URL manipulation and SSH conversion
     CHECK(branchVm.setRemoteUrl("origin", "https://github.com/Dokjolly0/Git-Flux.git"));
+    REQUIRE(branchVm.waitForIdle());
     CHECK(branchVm.remoteUrl() == "https://github.com/Dokjolly0/Git-Flux.git");
 
     CHECK(branchVm.convertRemoteToSsh("origin"));
+    REQUIRE(branchVm.waitForIdle());
     CHECK(branchVm.remoteUrl() == "git@github.com:Dokjolly0/Git-Flux.git");
 
     // Pull Request URL Generation
@@ -1760,6 +1864,7 @@ TEST_CASE (
 
     // GitLab PR URL
     CHECK(branchVm.setRemoteUrl("origin", "https://gitlab.com/group/my-project.git"));
+    REQUIRE(branchVm.waitForIdle());
     QString gitlabPrUrl = branchVm.buildPullRequestUrl("feature/x", "main", "Title", "Body");
     CHECK(gitlabPrUrl.contains("https://gitlab.com/group/my-project/-/merge_requests/new"));
     CHECK(gitlabPrUrl.contains("source_branch"));
@@ -1767,6 +1872,7 @@ TEST_CASE (
 
     // Bitbucket PR URL
     CHECK(branchVm.setRemoteUrl("origin", "git@bitbucket.org:org/repo.git"));
+    REQUIRE(branchVm.waitForIdle());
     QString bitbucketPrUrl = branchVm.buildPullRequestUrl("feature/y", "main");
     CHECK(bitbucketPrUrl.contains("https://bitbucket.org/org/repo/pull-requests/new"));
     CHECK(bitbucketPrUrl.contains("source=feature/y"));
@@ -1780,16 +1886,27 @@ TEST_CASE (
     CHECK(branchVmWithRebase.checkoutCommit("c0ffee1"));
     REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.resetCommit("c0ffee1", "soft"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.resetCommit("c0ffee1", "mixed"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.resetCommit("c0ffee1", "hard"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.revertCommit("c0ffee1"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.cherryPickCommit("c0ffee1"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.createTag("v1.0.0", "c0ffee1", "Annotated tag"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.deleteTag("v1.0.0"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.createWorktree(QString::fromStdString((tempDir / "wt_test").string()), "c0ffee1"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.rebaseOnto("main"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.rebaseBranch("feature/test", "main"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.mergeBranchInto("feature/test", "main"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
 
     branchVmWithRebase.copyToClipboard("sample commit sha");
 
@@ -1932,13 +2049,15 @@ TEST_CASE (
 
         QSignalSpy opSpy(&vm, &StashManagerViewModel::operationSucceeded);
 
-        // Refresh populates stashesModel
+        // Refresh populates stashesModel (asynchronously)
         vm.refresh();
+        REQUIRE(vm.waitForIdle());
         CHECK(vm.stashesModel()->rowCount() == 1);
 
         // Push
         bool pushed = vm.push("New stash message", true, false);
         CHECK(pushed);
+        REQUIRE(vm.waitForIdle());
         CHECK(mockOps.stashPushCalled);
         CHECK(opSpy.count() == 1);
         CHECK(opSpy.takeFirst().at(0).toString() == "push");
@@ -1946,6 +2065,7 @@ TEST_CASE (
         // Apply
         bool applied = vm.apply(0, false);
         CHECK(applied);
+        REQUIRE(vm.waitForIdle());
         CHECK(mockOps.stashApplyCalled);
         CHECK(opSpy.count() == 1);
         CHECK(opSpy.takeFirst().at(0).toString() == "apply");
@@ -1953,6 +2073,7 @@ TEST_CASE (
         // Pop
         bool popped = vm.pop(0, false);
         CHECK(popped);
+        REQUIRE(vm.waitForIdle());
         CHECK(mockOps.stashPopCalled);
         CHECK(opSpy.count() == 1);
         CHECK(opSpy.takeFirst().at(0).toString() == "pop");
@@ -1960,6 +2081,7 @@ TEST_CASE (
         // Drop
         bool dropped = vm.drop(0);
         CHECK(dropped);
+        REQUIRE(vm.waitForIdle());
         CHECK(mockOps.stashDropCalled);
         CHECK(opSpy.count() == 1);
         CHECK(opSpy.takeFirst().at(0).toString() == "drop");
@@ -1967,9 +2089,20 @@ TEST_CASE (
         // Clear
         bool cleared = vm.clear();
         CHECK(cleared);
+        REQUIRE(vm.waitForIdle());
         CHECK(mockOps.stashClearCalled);
         CHECK(opSpy.count() == 1);
         CHECK(opSpy.takeFirst().at(0).toString() == "clear");
+
+        // Failures are reported, not swallowed
+        QSignalSpy failSpy(&vm, &StashManagerViewModel::operationFailed);
+        mockOps.stashPopFails = true;
+        CHECK(vm.pop(0, false));
+        REQUIRE(vm.waitForIdle());
+        REQUIRE(failSpy.count() == 1);
+        CHECK(failSpy.at(0).at(0).toString() == "pop");
+        CHECK(vm.hasError());
+        CHECK(opSpy.count() == 0);
     }
 }
 
@@ -2083,6 +2216,8 @@ TEST_CASE (
         // Apply resolution
         bool applied = vm.applyResolution(true);
         CHECK(applied);
+        CHECK(vm.isBusy());
+        REQUIRE(vm.waitForIdle());
         CHECK(mockOps.applyConflictResolutionCalled);
         CHECK(resAppliedSpy.count() == 1);
         CHECK(resAppliedSpy.takeFirst().at(0).toString() == "src/main.cpp");
@@ -2138,22 +2273,26 @@ TEST_CASE (
     QSignalSpy rebaseSucceededSpy(&sessionVm, &WorkspaceSessionViewModel::rebaseSucceeded);
     bool rebaseStarted = sessionVm.startRebase("main");
     CHECK(rebaseStarted);
+    REQUIRE(sessionVm.waitForIdle());
     CHECK(mockOps.startRebaseCalled);
     CHECK(rebaseSucceededSpy.count() == 1);
 
     // Continue rebase
     bool cont = sessionVm.continueRebase();
     CHECK(cont);
+    REQUIRE(sessionVm.waitForIdle());
     CHECK(mockOps.continueRebaseCalled);
 
     // Skip rebase
     bool skipped = sessionVm.skipRebase();
     CHECK(skipped);
+    REQUIRE(sessionVm.waitForIdle());
     CHECK(mockOps.skipRebaseCalled);
 
     // Abort rebase
     bool aborted = sessionVm.abortRebase();
     CHECK(aborted);
+    REQUIRE(sessionVm.waitForIdle());
     CHECK(mockOps.abortRebaseCalled);
 
     // Sub-viewmodels accessors

@@ -3,7 +3,8 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
-#include <QThreadPool>
+#include <memory>
+#include <vector>
 #include <filesystem>
 #include <string>
 
@@ -20,6 +21,8 @@ namespace gf::git::bl
 
 namespace gf::desktop
 {
+    class SerialGitExecutor;
+
     class BranchManagerViewModel final : public QObject
     {
         Q_OBJECT
@@ -32,16 +35,28 @@ namespace gf::desktop
         Q_PROPERTY(QString fileHistoryPath READ fileHistoryPath NOTIFY fileHistoryPathChanged)
         Q_PROPERTY(bool hasConflicts READ hasConflicts NOTIFY conflictsChanged)
         Q_PROPERTY(QStringList conflictedFiles READ conflictedFiles NOTIFY conflictsChanged)
+        // Id of the operation started by the last call (read right after calling it; matched by
+        // operationFinished). 0 when no operation was ever started.
+        Q_PROPERTY(int lastOperationId READ lastOperationId)
 
         Q_PROPERTY(BranchListModel* branchList READ branchList CONSTANT)
         Q_PROPERTY(CommitHistoryListModel* commitHistory READ commitHistory CONSTANT)
 
     public:
+        /// Standalone: owns a private executor.
         explicit BranchManagerViewModel(git::bl::GitBranchService& branchService,
                                         git::bl::GitHistoryService& historyService,
                                         git::bl::GitRemoteMergeService& remoteMergeService,
                                         git::bl::GitRebaseService* rebaseService = nullptr,
                                         QObject* parent = nullptr);
+        /// Shares `executor` (which must be destroyed before this viewmodel) with the other
+        /// viewmodels of the session, so every git operation on the repository is ordered.
+        BranchManagerViewModel(git::bl::GitBranchService& branchService,
+                               git::bl::GitHistoryService& historyService,
+                               git::bl::GitRemoteMergeService& remoteMergeService,
+                               git::bl::GitRebaseService* rebaseService,
+                               SerialGitExecutor& executor,
+                               QObject* parent = nullptr);
         ~BranchManagerViewModel() override;
 
         /// Spins the event loop until no background git work (refresh, checkout) is queued or
@@ -56,6 +71,7 @@ namespace gf::desktop
         [[nodiscard]] QString fileHistoryPath() const noexcept { return m_fileHistoryPath; }
         [[nodiscard]] bool hasConflicts() const noexcept { return !m_conflictedFiles.isEmpty(); }
         [[nodiscard]] QStringList conflictedFiles() const noexcept { return m_conflictedFiles; }
+        [[nodiscard]] int lastOperationId() const noexcept { return m_lastOperationId; }
 
         [[nodiscard]] BranchListModel* branchList() noexcept { return &m_branchListModel; }
         [[nodiscard]] CommitHistoryListModel* commitHistory() noexcept { return &m_commitHistoryModel; }
@@ -120,6 +136,9 @@ namespace gf::desktop
         void conflictsChanged();
         void branchSwitched(const QString& newBranch);
         void operationCompleted(bool success, const QString& message);
+        // Same outcome, tagged with the id returned by lastOperationId when the operation was
+        // started: lets a dialog react only to its own operation.
+        void operationFinished(int operationId, bool success, const QString& message);
         void commitReworded(const QString& oldSha, const QString& newSha);
         // The history view should select the HEAD commit: HEAD moved to another commit of the same
         // repository (commit, external git command...), or an operation that targets the current
@@ -134,8 +153,18 @@ namespace gf::desktop
         [[nodiscard]] RefreshSnapshot loadSnapshot(const std::filesystem::path& repoPath,
                                                    const std::string& fileHistoryPath) const;
         void applySnapshot(RefreshSnapshot& snapshot);
-        bool checkoutBranchSync(const QString& branchName);
         void updateBusy();
+
+        // Runs `work` (git calls only, on the shared executor) and then `finish(id, sameRepo,
+        // result)` on the GUI thread. Shows `startMessage`, keeps isBusy set meanwhile and returns
+        // the operation id (also exposed as lastOperationId). `sameRepo` is false when the view
+        // moved to another repository meanwhile: report the outcome but leave the state alone.
+        template <typename Work, typename Finish>
+        int runOperation(const QString& startMessage, Work work, Finish finish);
+        // Reports an operation outcome: status bar, operationCompleted and operationFinished.
+        void completeOperation(int operationId, bool success, const QString& message,
+                               const QString& statusMessage = QString());
+        void setConflicts(const std::vector<std::string>& files);
         void setBusy(bool busy);
         void setStatusMessage(const QString& message);
 
@@ -161,10 +190,12 @@ namespace gf::desktop
         bool m_refreshRunning = false;     // a background reload is in flight
         bool m_refreshAgain = false;       // another reload was requested while one was running
         bool m_syncBusy = false;           // a synchronous operation is running on the GUI thread
-        int m_pendingOperations = 0;       // background operations (checkout) not yet completed
+        int m_pendingOperations = 0;       // background operations not yet completed
+        int m_lastOperationId = 0;
         quint64 m_generation = 0;          // bumped when repo/filter changes: stale results are dropped
 
-        // Declared last: destroyed first, after the destructor has waited for its tasks.
-        QThreadPool m_gitWorker;
+        SerialGitExecutor* m_executor = nullptr;
+        // Declared last: destroyed first, waiting for its tasks while this object is alive.
+        std::unique_ptr<SerialGitExecutor> m_ownedExecutor;
     };
 } // namespace gf::desktop

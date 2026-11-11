@@ -12,6 +12,14 @@ Dialog {
 
     property var stashManager: null
 
+    Connections {
+        target: root.stashManager
+
+        function onOperationSucceeded(operation) {
+            if (operation === "push") stashMsgInput.text = "";
+        }
+    }
+
     background: Rectangle {
         color: "#0F172A"
         radius: 8
@@ -75,10 +83,8 @@ Dialog {
                         }
                         onClicked: {
                             if (root.stashManager) {
-                                var ok = root.stashManager.push(stashMsgInput.text, untrackedCheck.checked, keepIndexCheck.checked);
-                                if (ok) {
-                                    stashMsgInput.text = "";
-                                }
+                                // Asynchronous: the message is cleared on operationSucceeded("push").
+                                root.stashManager.push(stashMsgInput.text, untrackedCheck.checked, keepIndexCheck.checked);
                             }
                         }
                     }

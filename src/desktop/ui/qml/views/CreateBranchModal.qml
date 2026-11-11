@@ -11,6 +11,25 @@ Dialog {
     anchors.centerIn: Overlay.overlay
 
     property var branchManager: null
+
+    // Operations are asynchronous: remember which one this dialog started and react to its
+    // outcome only (another queued operation may complete first).
+    property int pendingOperationId: 0
+
+    Connections {
+        target: root.branchManager
+        enabled: root.pendingOperationId !== 0
+
+        function onOperationFinished(operationId, success, message) {
+            if (operationId !== root.pendingOperationId) return;
+            root.pendingOperationId = 0;
+            if (success) {
+                root.close();
+            } else {
+                branchErrorText.text = message;
+            }
+        }
+    }
     property string startPoint: ""
 
     function openWithStartPoint(point) {
@@ -208,10 +227,9 @@ Dialog {
                 onClicked: {
                     var name = branchNameField.text.trim();
                     if (!name) return;
-                    if (root.branchManager) {
-                        var ok = root.branchManager.createBranch(name, checkoutCheckbox.checked, root.startPoint);
-                        if (ok) {
-                            root.close();
+                    if (root.branchManager && root.pendingOperationId === 0) {
+                        if (root.branchManager.createBranch(name, checkoutCheckbox.checked, root.startPoint)) {
+                            root.pendingOperationId = root.branchManager.lastOperationId;
                         } else {
                             branchErrorText.text = root.branchManager.statusMessage;
                         }

@@ -1,6 +1,14 @@
 #include "desktop/viewmodels/stash_manager_viewmodel.hpp"
 
 #include "core/modules/git/bl/git_stash_service.hpp"
+#include "core/shared/utf8_path.hpp"
+#include "desktop/services/serial_git_executor.hpp"
+
+#include <QCoreApplication>
+#include <QElapsedTimer>
+#include <QThread>
+
+#include <expected>
 
 namespace gf::desktop
 {
@@ -9,8 +17,22 @@ namespace gf::desktop
         : QObject(parent)
           , m_stashService(stashService)
           , m_stashesModel(this)
+          , m_ownedExecutor(std::make_unique<SerialGitExecutor>())
+    {
+        m_executor = m_ownedExecutor.get();
+    }
+
+    StashManagerViewModel::StashManagerViewModel(gf::git::bl::GitStashService& stashService,
+                                                 SerialGitExecutor& executor,
+                                                 QObject* parent)
+        : QObject(parent)
+          , m_stashService(stashService)
+          , m_stashesModel(this)
+          , m_executor(&executor)
     {
     }
+
+    StashManagerViewModel::~StashManagerViewModel() = default;
 
     void StashManagerViewModel::setRepoPath(const QString& path)
     {
@@ -19,12 +41,14 @@ namespace gf::desktop
             return;
         }
         m_repoPath = path;
+        ++m_generation; // results still in flight belong to the previous repository
         emit repoPathChanged();
         refresh();
     }
 
-    void StashManagerViewModel::setBusy(bool busy)
+    void StashManagerViewModel::updateBusy()
     {
+        const bool busy = m_pendingTasks > 0;
         if (m_isBusy == busy)
         {
             return;
@@ -58,25 +82,34 @@ namespace gf::desktop
             return;
         }
 
-        setBusy(true);
         clearError();
+        ++m_pendingTasks;
+        updateBusy();
 
-        const std::filesystem::path path(m_repoPath.toStdString());
-        auto result = m_stashService.listStashes(path);
-
-        if (result)
-        {
-            m_stashesModel.setStashes(std::move(*result));
-        }
-        else
-        {
-            setError(QString::fromStdString(result.error().message));
-        }
-
-        setBusy(false);
+        auto& service = m_stashService;
+        const auto path = gf::core::utf8ToPath(m_repoPath.toStdString());
+        const quint64 generation = m_generation;
+        m_executor->run(this,
+                        [&service, path]() { return service.listStashes(path); },
+                        [this, generation](auto result)
+                        {
+                            --m_pendingTasks;
+                            if (generation == m_generation)
+                            {
+                                if (result)
+                                {
+                                    m_stashesModel.setStashes(std::move(*result));
+                                }
+                                else
+                                {
+                                    setError(QString::fromStdString(result.error().message));
+                                }
+                            }
+                            updateBusy();
+                        });
     }
 
-    bool StashManagerViewModel::push(const QString& message, bool includeUntracked, bool keepIndex)
+    bool StashManagerViewModel::runOperation(const QString& name, Operation operation)
     {
         if (m_repoPath.isEmpty())
         {
@@ -84,10 +117,48 @@ namespace gf::desktop
             return false;
         }
 
-        setBusy(true);
         clearError();
+        ++m_pendingTasks;
+        updateBusy();
 
-        const std::filesystem::path path(m_repoPath.toStdString());
+        const quint64 generation = m_generation;
+        m_executor->run(this, std::move(operation),
+                        [this, name, generation](const std::string& error)
+                        {
+                            --m_pendingTasks;
+                            if (!error.empty())
+                            {
+                                const QString message = QString::fromStdString(error);
+                                if (generation == m_generation)
+                                {
+                                    setError(message);
+                                }
+                                emit operationFailed(name, message);
+                            }
+                            else
+                            {
+                                if (generation == m_generation)
+                                {
+                                    refresh();
+                                }
+                                emit operationSucceeded(name);
+                            }
+                            updateBusy();
+                        });
+        return true;
+    }
+
+    namespace
+    {
+        template <typename Result>
+        std::string errorOf(const Result& result)
+        {
+            return result ? std::string{} : result.error().message;
+        }
+    } // namespace
+
+    bool StashManagerViewModel::push(const QString& message, bool includeUntracked, bool keepIndex)
+    {
         gf::git::bo::StashPushOptions opts;
         if (!message.trimmed().isEmpty())
         {
@@ -96,131 +167,64 @@ namespace gf::desktop
         opts.includeUntracked = includeUntracked;
         opts.keepIndex = keepIndex;
 
-        auto result = m_stashService.stashPush(path, opts);
-        if (!result)
-        {
-            setError(QString::fromStdString(result.error().message));
-            setBusy(false);
-            return false;
-        }
-
-        setBusy(false);
-        refresh();
-        emit operationSucceeded("push");
-        return true;
+        auto& service = m_stashService;
+        const auto path = gf::core::utf8ToPath(m_repoPath.toStdString());
+        return runOperation("push", [&service, path, opts]() { return errorOf(service.stashPush(path, opts)); });
     }
 
     bool StashManagerViewModel::pop(int index, bool restoreIndex)
     {
-        if (m_repoPath.isEmpty())
-        {
-            setError("Nessun repository selezionato");
-            return false;
-        }
-
-        setBusy(true);
-        clearError();
-
-        const std::filesystem::path path(m_repoPath.toStdString());
-        gf::git::bo::StashApplyOptions opts{
+        const gf::git::bo::StashApplyOptions opts{
             .stashIndex = static_cast<std::size_t>(index >= 0 ? index : 0),
             .restoreIndex = restoreIndex
         };
-
-        auto result = m_stashService.stashPop(path, opts);
-        if (!result)
-        {
-            setError(QString::fromStdString(result.error().message));
-            setBusy(false);
-            return false;
-        }
-
-        setBusy(false);
-        refresh();
-        emit operationSucceeded("pop");
-        return true;
+        auto& service = m_stashService;
+        const auto path = gf::core::utf8ToPath(m_repoPath.toStdString());
+        return runOperation("pop", [&service, path, opts]() { return errorOf(service.stashPop(path, opts)); });
     }
 
     bool StashManagerViewModel::apply(int index, bool restoreIndex)
     {
-        if (m_repoPath.isEmpty())
-        {
-            setError("Nessun repository selezionato");
-            return false;
-        }
-
-        setBusy(true);
-        clearError();
-
-        const std::filesystem::path path(m_repoPath.toStdString());
-        gf::git::bo::StashApplyOptions opts{
+        const gf::git::bo::StashApplyOptions opts{
             .stashIndex = static_cast<std::size_t>(index >= 0 ? index : 0),
             .restoreIndex = restoreIndex
         };
-
-        auto result = m_stashService.stashApply(path, opts);
-        if (!result)
-        {
-            setError(QString::fromStdString(result.error().message));
-            setBusy(false);
-            return false;
-        }
-
-        setBusy(false);
-        refresh();
-        emit operationSucceeded("apply");
-        return true;
+        auto& service = m_stashService;
+        const auto path = gf::core::utf8ToPath(m_repoPath.toStdString());
+        return runOperation("apply", [&service, path, opts]() { return errorOf(service.stashApply(path, opts)); });
     }
 
     bool StashManagerViewModel::drop(int index)
     {
-        if (m_repoPath.isEmpty())
+        const auto stashIndex = static_cast<std::size_t>(index >= 0 ? index : 0);
+        auto& service = m_stashService;
+        const auto path = gf::core::utf8ToPath(m_repoPath.toStdString());
+        return runOperation("drop", [&service, path, stashIndex]()
         {
-            setError("Nessun repository selezionato");
-            return false;
-        }
-
-        setBusy(true);
-        clearError();
-
-        const std::filesystem::path path(m_repoPath.toStdString());
-        auto result = m_stashService.stashDrop(path, static_cast<std::size_t>(index >= 0 ? index : 0));
-        if (!result)
-        {
-            setError(QString::fromStdString(result.error().message));
-            setBusy(false);
-            return false;
-        }
-
-        setBusy(false);
-        refresh();
-        emit operationSucceeded("drop");
-        return true;
+            return errorOf(service.stashDrop(path, stashIndex));
+        });
     }
 
     bool StashManagerViewModel::clear()
     {
-        if (m_repoPath.isEmpty())
+        auto& service = m_stashService;
+        const auto path = gf::core::utf8ToPath(m_repoPath.toStdString());
+        return runOperation("clear", [&service, path]() { return errorOf(service.stashClear(path)); });
+    }
+
+    bool StashManagerViewModel::waitForIdle(int timeoutMs)
+    {
+        QElapsedTimer timer;
+        timer.start();
+        while (m_pendingTasks > 0)
         {
-            setError("Nessun repository selezionato");
-            return false;
+            if (timer.elapsed() > timeoutMs)
+            {
+                return false;
+            }
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+            QThread::msleep(1);
         }
-
-        setBusy(true);
-        clearError();
-
-        const std::filesystem::path path(m_repoPath.toStdString());
-        auto result = m_stashService.stashClear(path);
-        if (!result)
-        {
-            setError(QString::fromStdString(result.error().message));
-            setBusy(false);
-            return false;
-        }
-
-        setBusy(false);
-        refresh();
-        emit operationSucceeded("clear");
         return true;
     }
 } // namespace gf::desktop

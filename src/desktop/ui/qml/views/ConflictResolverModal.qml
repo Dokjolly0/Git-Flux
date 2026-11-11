@@ -12,6 +12,14 @@ Dialog {
 
     property var conflictResolver: null
 
+    Connections {
+        target: root.conflictResolver
+
+        function onResolutionApplied(filePath) {
+            root.close();
+        }
+    }
+
     background: Rectangle {
         color: "#0F172A"
         radius: 8
@@ -414,10 +422,8 @@ Dialog {
                 }
                 onClicked: {
                     if (root.conflictResolver) {
-                        var ok = root.conflictResolver.applyResolution(autoStageCheck.checked);
-                        if (ok) {
-                            root.close();
-                        }
+                        // Asynchronous: the dialog closes on resolutionApplied (errors stay visible).
+                        root.conflictResolver.applyResolution(autoStageCheck.checked);
                     }
                 }
             }

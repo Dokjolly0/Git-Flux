@@ -121,7 +121,11 @@ namespace gf::desktop
     Q_INVOKABLE void refreshActiveTab();
     Q_INVOKABLE void checkWorkingTreeUpdates();
 
-        // Rebase
+        /// Test helper: processes events until this session and its viewmodels have no git work
+        /// queued or running.
+        bool waitForIdle(int timeoutMs = 10000);
+
+        // Rebase (asynchronous: outcome via rebaseSucceeded / rebaseConflictDetected / rebaseFailed)
     Q_INVOKABLE bool startRebase(const QString& upstream, const QString& onto = {});
     Q_INVOKABLE bool continueRebase();
     Q_INVOKABLE bool skipRebase();
@@ -139,12 +143,17 @@ namespace gf::desktop
         void rebaseStatusChanged();
         void rebaseSucceeded(const QString& message);
         void rebaseConflictDetected();
+        void rebaseFailed(const QString& message);
 
     private:
         void addTabInternal(const QString& repoId, const QString& name, const QString& path);
         void onCommitSucceeded(const QString& sha, const QString& summary);
         void onFsDebouncedBatch(const gf::git::bo::FsDebouncedBatch& batch);
         void onWorkingTreeRefreshed(const QString& repoPath);
+        // Runs a rebase step (`work(repoPath)`) on the git executor, then refreshes the tab and
+        // reports the outcome (rebaseSucceeded / rebaseConflictDetected when `reportOutcome`).
+        template <typename Work>
+        bool runRebaseStep(Work work, bool reportOutcome);
 
         repositories::bl::RepositoryService& m_repoService;
         workspaces::bl::WorkspaceService& m_workspaceService;
@@ -166,6 +175,7 @@ namespace gf::desktop
 
         // HEAD/branch seen by the last working tree refresh of the active tab: a change means a
         // commit, checkout, reset... (from the app or an external git) and reloads the history.
+        int m_pendingOperations = 0; // rebase steps not yet completed
         QString m_observedHeadOid;
         QString m_observedBranch;
 

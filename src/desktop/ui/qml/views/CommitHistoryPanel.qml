@@ -39,6 +39,26 @@ Rectangle {
     // Commit message editing (reword)
     property bool isEditingMessage: false
     property string pendingSelectSha: ""   // new SHA to select once the history reloads after a reword
+    // Ids of the asynchronous operations started by the message editor / rename dialog.
+    property int pendingRewordOperationId: 0
+    property int pendingRenameOperationId: 0
+
+    Connections {
+        target: root.branchManager
+        enabled: root.pendingRewordOperationId !== 0 || root.pendingRenameOperationId !== 0
+
+        function onOperationFinished(operationId, success, message) {
+            if (operationId === root.pendingRewordOperationId) {
+                root.pendingRewordOperationId = 0;
+                if (success) root.isEditingMessage = false;
+            } else if (operationId === root.pendingRenameOperationId) {
+                root.pendingRenameOperationId = 0;
+                if (success) renameBranchModal.close();
+                else renameErrorText.text = message;
+            }
+        }
+    }
+
     // A reword rewrites HEAD too: the reworded commit, not HEAD, must stay selected.
     property string rewordedSelectSha: ""
 
@@ -67,8 +87,9 @@ Rectangle {
             root.isEditingMessage = false;
             return;
         }
-        if (root.branchManager.rewordCommit(root.selectedCommit.sha, message)) {
-            root.isEditingMessage = false;
+        // Asynchronous: leave edit mode once the reword succeeded (keep the text on failure).
+        if (root.pendingRewordOperationId === 0 && root.branchManager.rewordCommit(root.selectedCommit.sha, message)) {
+            root.pendingRewordOperationId = root.branchManager.lastOperationId;
         }
     }
 
@@ -4065,9 +4086,12 @@ Rectangle {
                             return;
                         }
                         if (root.branchManager) {
-                            var ok = root.branchManager.renameBranch(renameBranchModal.targetBranch, newName);
-                            if (ok) renameBranchModal.close();
-                            else renameErrorText.text = root.branchManager.statusMessage;
+                            if (root.pendingRenameOperationId !== 0) return;
+                            if (root.branchManager.renameBranch(renameBranchModal.targetBranch, newName)) {
+                                root.pendingRenameOperationId = root.branchManager.lastOperationId;
+                            } else {
+                                renameErrorText.text = root.branchManager.statusMessage;
+                            }
                         }
                     }
                 }
