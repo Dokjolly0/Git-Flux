@@ -1489,6 +1489,16 @@ Rectangle {
                                                         root.selectCommitByIndex(commitRow.index);
                                                     }
                                                 }
+
+                                                // Double-click on a branch badge checks it out directly (no menu).
+                                                // Remote badges resolve to their local branch in the git layer.
+                                                onDoubleClicked: function (mouse) {
+                                                    if (mouse.button !== Qt.LeftButton || isDraggingBadge || !root.branchManager) return;
+                                                    if (modelData.type !== "local" && modelData.type !== "remote") return;
+                                                    if (modelData.isHead) return; // already the checked-out branch
+                                                    extraRefsPopup.close();
+                                                    root.branchManager.checkoutBranch(modelData.name);
+                                                }
                                             }
                                         }
                                     }
