@@ -3,11 +3,16 @@
 #include <QObject>
 #include <QString>
 #include <QVariantList>
+#include <expected>
 #include <filesystem>
+#include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "core/modules/syntax/syntax_highlighter.hpp"
+#include "core/modules/git/ports/repository_git_ops.hpp"
+#include "desktop/services/serial_git_executor.hpp"
 #include "desktop/viewmodels/diff_line_list_model.hpp"
 
 namespace gf::git::bl
@@ -40,6 +45,9 @@ namespace gf::desktop
         Q_PROPERTY(QVariantList hunks READ hunks NOTIFY diffLoaded)
         Q_PROPERTY(QVariantList blameLines READ blameLines NOTIFY blameLoaded)
         Q_PROPERTY(bool isBlameLoading READ isBlameLoading NOTIFY blameLoaded)
+        // A diff requested by loadDiff / loadCommitFileDiff is being read (the previous one stays
+        // visible meanwhile).
+        Q_PROPERTY(bool isLoading READ isLoading NOTIFY isLoadingChanged)
 
         // Diff context control (`-U<n>`, default 10, -1 for full file)
         Q_PROPERTY(int contextLines READ contextLines WRITE setContextLines NOTIFY contextLinesChanged)
@@ -59,7 +67,7 @@ namespace gf::desktop
 
     public:
         explicit DiffViewModel(gf::git::bl::GitDiffService& diffService, QObject* parent = nullptr);
-        ~DiffViewModel() override = default;
+        ~DiffViewModel() override;
 
         [[nodiscard]] DiffLineListModel* linesModel() noexcept { return &m_linesModel; }
         [[nodiscard]] QString filePath() const noexcept { return m_filePath; }
@@ -80,6 +88,7 @@ namespace gf::desktop
         [[nodiscard]] QVariantList hunks() const noexcept { return m_hunks; }
         [[nodiscard]] QVariantList blameLines() const noexcept { return m_blameLines; }
         [[nodiscard]] bool isBlameLoading() const noexcept { return m_isBlameLoading; }
+        [[nodiscard]] bool isLoading() const noexcept { return m_isLoading; }
 
         [[nodiscard]] int contextLines() const noexcept { return m_contextLines; }
         [[nodiscard]] bool isFullContext() const noexcept { return m_contextLines < 0; }
@@ -101,10 +110,16 @@ namespace gf::desktop
     Q_INVOKABLE bool reloadCurrentDiff();
     Q_INVOKABLE void copyToClipboard(const QString& text) const;
 
-    Q_INVOKABLE bool loadDiff(const QString& repoPath, const QString& filePath, const QString& scope);
-    Q_INVOKABLE bool loadCommitFileDiff(const QString& repoPath, const QString& commitSha, const QString& filePath);
-    Q_INVOKABLE bool loadBlame(const QString& repoPath, const QString& revision, const QString& filePath);
-    Q_INVOKABLE void clear();
+        // Asynchronous, "latest wins": git runs on a background thread, only the result of the
+        // most recent request is applied (diffLoaded / blameLoaded), failures emit loadFailed.
+        // They return whether a request was started.
+        Q_INVOKABLE bool loadDiff(const QString& repoPath, const QString& filePath, const QString& scope);
+        Q_INVOKABLE bool loadCommitFileDiff(const QString& repoPath, const QString& commitSha, const QString& filePath);
+        Q_INVOKABLE bool loadBlame(const QString& repoPath, const QString& revision, const QString& filePath);
+        Q_INVOKABLE void clear();
+
+        /// Test helper: processes events until the requested diff and blame have been applied.
+        bool waitForIdle(int timeoutMs = 10000);
 
         signals :
 
@@ -115,16 +130,22 @@ namespace gf::desktop
         void markdownRenderedChanged();
         void markdownDocumentChanged();
         void showMarkdownRichDiffChanged();
+        void isLoadingChanged();
         void loadFailed(const QString& errorMessage);
 
     private:
+        struct DiffFetch;
+        struct BlameFetch;
+
+        // Applies a diff read on the worker (GUI thread): dedup, Markdown preview, models, blame.
+        void applyFetchedDiff(const QString& repoPath, const QString& filePath, const QString& revision,
+                              const QString& scope, int contextLines, DiffFetch& fetch);
+        void setLoading(bool loading);
         void processFileDiff(const gf::git::bo::FileDiff& diff,
                              const std::vector<gf::core::syntax::MarkdownLineState>* newFileSeedStates = nullptr);
         void populateMarkdownDocument(const std::string& content, const gf::git::bo::FileDiff& diff);
-        void updateMarkdownStateForDiff(const std::filesystem::path& repoPath,
-                                        const std::string& filePath,
-                                        const std::string& primaryRevision,
-                                        const std::string& fallbackRevision,
+        // `contentRes` is the full file content, read on the worker (see DiffFetch).
+        void updateMarkdownStateForDiff(const std::expected<std::string, gf::git::ports::GitOpsError>& contentRes,
                                         const std::string& deletedFallbackNotice,
                                         const gf::git::bo::FileDiff& diff,
                                         std::vector<gf::core::syntax::MarkdownLineState>& outSeedStates,
@@ -166,5 +187,12 @@ namespace gf::desktop
         QVariantList m_markdownToc;
         QString m_markdownSource;
         QString m_markdownNotice;
+
+        bool m_isLoading = false;
+        LatestRequest m_diffRequest;
+        LatestRequest m_blameRequest;
+        // Private read lane: selection reads never wait behind the session's mutations.
+        // Declared last: destroyed first, waiting for its tasks while this object is alive.
+        std::unique_ptr<SerialGitExecutor> m_readExecutor;
     };
 } // namespace gf::desktop

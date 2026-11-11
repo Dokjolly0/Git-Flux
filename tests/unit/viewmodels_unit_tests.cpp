@@ -55,6 +55,7 @@
 
 #include <QGuiApplication>
 #include <QSignalSpy>
+#include <QTest>
 #include <filesystem>
 #include <memory>
 
@@ -590,6 +591,11 @@ public:
     std::atomic<int> commitOrder{0};
     std::atomic<int> stageAllDelayMs{0};
     std::atomic<bool> mergeConflicts{false};
+    // Selection reads: call counters and an optional delay (to make requests overlap)
+    std::atomic<int> commitFileDiffCalls{0};
+    std::atomic<int> commitFilesCalls{0};
+    std::atomic<int> readDelayMs{0};
+    std::atomic<bool> echoCommitDiffPath{false};
     std::atomic<int> mergeDelayMs{0};
 
     std::expected<gf::git::bo::RepoWorkingTreeStatus, gf::git::ports::GitOpsError>
@@ -668,11 +674,37 @@ public:
     }
 
     std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
-    getCommitFileDiffWithContext(const std::filesystem::path&, const std::string&, const std::string&,
+    getCommitFileDiffWithContext(const std::filesystem::path&, const std::string&, const std::string& filePath,
                                  int contextLines) override
     {
+        ++commitFileDiffCalls;
+        if (readDelayMs > 0)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(readDelayMs.load()));
+        }
         lastContextLinesRequested = contextLines;
+        if (echoCommitDiffPath)
+        {
+            auto diff = diffToReturn;
+            diff.newPath = filePath;
+            diff.oldPath = filePath;
+            return diff;
+        }
         return diffToReturn;
+    }
+
+    std::expected<std::vector<gf::git::bo::CommitFileChange>, gf::git::ports::GitOpsError>
+    getCommitFiles(const std::filesystem::path&, const std::string& commitSha) override
+    {
+        ++commitFilesCalls;
+        if (readDelayMs > 0)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(readDelayMs.load()));
+        }
+        // One file named after the commit, so a test can tell which request produced the result
+        return std::vector<gf::git::bo::CommitFileChange>{
+            gf::git::bo::CommitFileChange{.path = "file-of-" + commitSha, .additions = 1}
+        };
     }
 
     std::expected<std::string, gf::git::ports::GitOpsError>
@@ -1777,6 +1809,99 @@ TEST_CASE (
 }
 
 TEST_CASE (
+"Selection reads are asynchronous and only the latest result is applied"
+,
+"[viewmodel][async][latest]"
+)
+ {
+    ensureQtApp();
+
+    MockFullGitOps mockOps;
+    const auto repoDir = std::filesystem::temp_directory_path();
+    const QString repoPath = QString::fromStdString(repoDir.string());
+    gf::git::bo::DiffHunk hunk;
+    hunk.header = "@@ -1 +1 @@";
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Addition, .content = "x"});
+    mockOps.diffToReturn.hunks = {hunk};
+
+    SECTION("a burst of commit-file diffs runs git at most twice and shows the last file") {
+        gf::git::bl::GitDiffService diffService(mockOps);
+        DiffViewModel diffVm(diffService);
+        QSignalSpy loadedSpy(&diffVm, &DiffViewModel::diffLoaded);
+        mockOps.echoCommitDiffPath = true;
+        mockOps.readDelayMs = 30;
+
+        for (int i = 0; i < 10; ++i)
+        {
+            REQUIRE(diffVm.loadCommitFileDiff(repoPath, "c0ffee1", QStringLiteral("file%1.cpp").arg(i)));
+        }
+        CHECK(diffVm.isLoading());
+        REQUIRE(diffVm.waitForIdle());
+        CHECK_FALSE(diffVm.isLoading());
+
+        // The first request may already be running when the burst arrives; the 8 in between are
+        // skipped before git runs.
+        CHECK(mockOps.commitFileDiffCalls.load() <= 2);
+        CHECK(diffVm.filePath() == "file9.cpp");
+        CHECK(loadedSpy.count() == 1);
+    }
+
+    SECTION("clear() drops a diff that is still being read") {
+        gf::git::bl::GitDiffService diffService(mockOps);
+        DiffViewModel diffVm(diffService);
+        mockOps.readDelayMs = 50;
+        REQUIRE(diffVm.loadCommitFileDiff(repoPath, "c0ffee1", "late.cpp"));
+        diffVm.clear();
+        CHECK_FALSE(diffVm.isLoading());
+        // Give the late result time to arrive: it must not be applied
+        QTest::qWait(150);
+        CHECK(diffVm.filePath().isEmpty());
+        CHECK(diffVm.isEmpty());
+    }
+
+    SECTION("commit files: only the selection the user stops on is reported") {
+        gf::git::bl::GitBranchService branchService(mockOps);
+        gf::git::bl::GitHistoryService historyService(mockOps);
+        gf::git::bl::GitRemoteMergeService remoteMergeService(mockOps);
+        BranchManagerViewModel branchVm(branchService, historyService, remoteMergeService);
+        branchVm.setRepositoryPath(repoPath);
+        REQUIRE(branchVm.waitForIdle());
+
+        QSignalSpy filesSpy(&branchVm, &BranchManagerViewModel::commitFilesLoaded);
+        mockOps.readDelayMs = 30;
+        for (int i = 0; i < 10; ++i)
+        {
+            branchVm.requestCommitFiles(QStringLiteral("sha%1").arg(i));
+        }
+        CHECK(filesSpy.count() == 0); // nothing on the GUI thread
+        REQUIRE(filesSpy.wait(5000));
+        QTest::qWait(100); // a stale result arriving late would show up here
+        REQUIRE(filesSpy.count() == 1);
+        CHECK(filesSpy.at(0).at(0).toString() == "sha9");
+        const auto files = filesSpy.at(0).at(1).toList();
+        REQUIRE(files.size() == 1);
+        CHECK(files.at(0).toMap().value("path").toString() == "file-of-sha9");
+        CHECK(mockOps.commitFilesCalls.load() <= 2);
+    }
+
+    SECTION("leaving file history before it loads keeps the full history") {
+        gf::git::bl::GitBranchService branchService(mockOps);
+        gf::git::bl::GitHistoryService historyService(mockOps);
+        gf::git::bl::GitRemoteMergeService remoteMergeService(mockOps);
+        BranchManagerViewModel branchVm(branchService, historyService, remoteMergeService);
+        branchVm.setRepositoryPath(repoPath);
+        REQUIRE(branchVm.waitForIdle());
+
+        QSignalSpy historySpy(&branchVm, &BranchManagerViewModel::fileHistoryPathChanged);
+        REQUIRE(branchVm.loadFileHistory("src/main.cpp"));
+        branchVm.clearFileHistory();
+        REQUIRE(branchVm.waitForIdle());
+        CHECK(branchVm.fileHistoryPath().isEmpty());
+        CHECK(historySpy.count() == 0);
+    }
+}
+
+TEST_CASE (
 "BranchManagerViewModel operations and signal propagation"
 ,
 "[viewmodel][branch][manager]"
@@ -1914,6 +2039,7 @@ TEST_CASE (
     QSignalSpy fileHistorySpy(&branchVmWithRebase, &BranchManagerViewModel::fileHistoryPathChanged);
     CHECK(branchVmWithRebase.fileHistoryPath().isEmpty());
     CHECK(branchVmWithRebase.loadFileHistory("src/main.cpp"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.fileHistoryPath() == "src/main.cpp");
     CHECK(fileHistorySpy.count() == 1);
 
@@ -1921,8 +2047,11 @@ TEST_CASE (
     CHECK(branchVmWithRebase.fileHistoryPath().isEmpty());
     CHECK(fileHistorySpy.count() == 2);
 
-    auto repoFiles = branchVmWithRebase.listRepositoryFiles();
-    (void)repoFiles;
+    QSignalSpy repoFilesSpy(&branchVmWithRebase, &BranchManagerViewModel::repositoryFilesLoaded);
+    branchVmWithRebase.requestRepositoryFiles();
+    REQUIRE(branchVmWithRebase.waitForIdle());
+    // Without a repository the (empty) answer is immediate, otherwise it arrives from the worker
+    REQUIRE((repoFilesSpy.count() == 1 || repoFilesSpy.wait(5000)));
 }
 
 TEST_CASE (
@@ -2523,25 +2652,30 @@ TEST_CASE (
 
     // Switch to inline
     diffVm.setViewMode("inline");
+    REQUIRE(diffVm.waitForIdle());
     CHECK(diffVm.viewMode() == "inline");
     CHECK(modeSpy.count() == 1);
 
     // Redundant switch should not re-emit
     diffVm.setViewMode("inline");
+    REQUIRE(diffVm.waitForIdle());
     CHECK(modeSpy.count() == 1);
 
     // Switch to hunk
     diffVm.setViewMode("hunk");
+    REQUIRE(diffVm.waitForIdle());
     CHECK(diffVm.viewMode() == "hunk");
     CHECK(modeSpy.count() == 2);
 
     // Switch to blame
     diffVm.setViewMode("blame");
+    REQUIRE(diffVm.waitForIdle());
     CHECK(diffVm.viewMode() == "blame");
     CHECK(modeSpy.count() == 3);
 
     // Switch back to split
     diffVm.setViewMode("split");
+    REQUIRE(diffVm.waitForIdle());
     CHECK(diffVm.viewMode() == "split");
     CHECK(modeSpy.count() == 4);
 
@@ -2558,6 +2692,7 @@ TEST_CASE (
     mockOps.diffToReturn.oldPath = "test.txt";
 
     CHECK(diffVm.loadDiff(QString::fromStdString(std::filesystem::temp_directory_path().string()), "test.txt", "unstaged"));
+    REQUIRE(diffVm.waitForIdle());
     CHECK(diffVm.maxLineLength() == 48);
 
     diffVm.clear();
@@ -2904,26 +3039,31 @@ TEST_CASE (
         mockOps.diffToReturn.hunks = {hunk};
 
         REQUIRE(diffVm.loadDiff(repoPath, "src/main.cpp", "unstaged"));
+        REQUIRE(diffVm.waitForIdle());
         CHECK(mockOps.lastContextLinesRequested == 10);
         CHECK(loadedSpy.count() == 1);
 
         diffVm.setContextLines(25);
+        REQUIRE(diffVm.waitForIdle());
         CHECK(diffVm.contextLines() == 25);
         CHECK(mockOps.lastContextLinesRequested == 25);
         CHECK(ctxSpy.count() == 1);
         CHECK(loadedSpy.count() == 2);
 
         diffVm.expandContext(15);
+        REQUIRE(diffVm.waitForIdle());
         CHECK(diffVm.contextLines() == 40);
         CHECK(mockOps.lastContextLinesRequested == 40);
         CHECK(ctxSpy.count() == 2);
 
         diffVm.toggleFullContext();
+        REQUIRE(diffVm.waitForIdle());
         CHECK(diffVm.contextLines() == -1);
         CHECK(diffVm.isFullContext());
         CHECK(mockOps.lastContextLinesRequested == -1);
 
         diffVm.toggleFullContext();
+        REQUIRE(diffVm.waitForIdle());
         CHECK(diffVm.contextLines() == 40);
         CHECK_FALSE(diffVm.isFullContext());
         CHECK(mockOps.lastContextLinesRequested == 40);
@@ -2975,6 +3115,7 @@ TEST_CASE (
         mockOps.diffToReturn.hunks = {mdHunk};
 
         REQUIRE(diffVm.loadDiff(repoPath, "README.md", "unstaged"));
+        REQUIRE(diffVm.waitForIdle());
         CHECK(diffVm.isMarkdown());
         CHECK(diffVm.markdownSource() == QString::fromStdString(mdContent));
         REQUIRE(diffVm.markdownToc().size() == 1);
@@ -3042,6 +3183,7 @@ TEST_CASE (
         mockOps.diffToReturn.hunks = {cppHunk};
 
         REQUIRE(diffVm.loadDiff(repoPath, "src/app.cpp", "unstaged"));
+        REQUIRE(diffVm.waitForIdle());
         CHECK_FALSE(diffVm.isMarkdown());
         CHECK_FALSE(diffVm.isMarkdownRendered());
         CHECK(diffVm.markdownBlocks().isEmpty());
@@ -3056,6 +3198,7 @@ TEST_CASE (
         mockOps.diffToReturn.hunks = {docsHunk};
 
         REQUIRE(diffVm.loadDiff(repoPath, "DOCS.md", "unstaged"));
+        REQUIRE(diffVm.waitForIdle());
         CHECK(diffVm.isMarkdown());
         CHECK(diffVm.isMarkdownRendered());
     }

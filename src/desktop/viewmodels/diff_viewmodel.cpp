@@ -8,6 +8,9 @@
 #include "core/modules/syntax/syntax_highlighter.hpp"
 
 #include <QClipboard>
+#include <QCoreApplication>
+#include <QElapsedTimer>
+#include <QThread>
 #include <QCryptographicHash>
 #include <QGuiApplication>
 #include <QHash>
@@ -166,11 +169,89 @@ namespace gf::desktop
         };
     } // namespace
 
+    /// Diff read on the worker: the diff itself and, for Markdown files, the full file content
+    /// used by the rendered preview.
+    struct DiffViewModel::DiffFetch
+    {
+        bool skipped = false; // superseded before git ran
+        std::optional<std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>> diff;
+        std::optional<std::expected<std::string, gf::git::ports::GitOpsError>> markdownContent;
+        std::string deletedNotice;
+    };
+
+    /// Blame read and turned into view rows on the worker (highlighting included).
+    struct DiffViewModel::BlameFetch
+    {
+        bool skipped = false;
+        bool ok = false;
+        QVariantList lines;
+        int maxLineLength = 0;
+        QString languageName;
+        QString languageIcon;
+    };
+
+    namespace
+    {
+        // Worker thread: reads the full content of a Markdown file for the rendered preview.
+        // `primary` / `fallback` are revisions for `git show <rev>:<path>` ("" = working tree).
+        std::expected<std::string, gf::git::ports::GitOpsError>
+        readMarkdownContent(gf::git::bl::GitDiffService& service, const std::filesystem::path& repoPath,
+                            const std::string& filePath, const gf::git::bo::FileDiff& diff,
+                            const std::string& primary, const std::string& fallback)
+        {
+            const std::string targetPath = diff.isDeletedFile
+                                               ? (diff.oldPath.empty() ? filePath : diff.oldPath)
+                                               : (diff.newPath.empty() ? filePath : diff.newPath);
+            auto contentRes = service.getFileContent(repoPath, primary, targetPath);
+            if (!contentRes && !fallback.empty())
+            {
+                contentRes = service.getFileContent(repoPath, fallback, targetPath);
+            }
+            return contentRes;
+        }
+
+        bool isMarkdownDiff(const gf::git::bo::FileDiff& diff, const std::string& filePath)
+        {
+            const auto langInfo = gf::core::syntax::LanguageDetector::detect(
+                diff.displayPath().empty() ? filePath : diff.displayPath());
+            return langInfo.language == gf::core::syntax::Language::Markdown && !diff.isBinary;
+        }
+    } // namespace
+
     DiffViewModel::DiffViewModel(gf::git::bl::GitDiffService& diffService, QObject* parent)
         : QObject(parent)
           , m_diffService(diffService)
           , m_linesModel(this)
+          , m_readExecutor(std::make_unique<SerialGitExecutor>())
     {
+    }
+
+    // m_readExecutor (declared last) is destroyed first and waits for the running read.
+    DiffViewModel::~DiffViewModel() = default;
+
+    void DiffViewModel::setLoading(bool loading)
+    {
+        if (m_isLoading != loading)
+        {
+            m_isLoading = loading;
+            emit isLoadingChanged();
+        }
+    }
+
+    bool DiffViewModel::waitForIdle(int timeoutMs)
+    {
+        QElapsedTimer timer;
+        timer.start();
+        while (m_isLoading || m_isBlameLoading)
+        {
+            if (timer.elapsed() > timeoutMs)
+            {
+                return false;
+            }
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+            QThread::msleep(1);
+        }
+        return true;
     }
 
     void DiffViewModel::setViewMode(const QString& mode)
@@ -341,14 +422,12 @@ namespace gf::desktop
         }
     }
 
-    void DiffViewModel::updateMarkdownStateForDiff(const std::filesystem::path& repoPath,
-                                                   const std::string& filePath,
-                                                   const std::string& primaryRevision,
-                                                   const std::string& fallbackRevision,
-                                                   const std::string& deletedFallbackNotice,
-                                                   const gf::git::bo::FileDiff& diff,
-                                                   std::vector<gf::core::syntax::MarkdownLineState>& outSeedStates,
-                                                   bool& outHasSeedStates)
+    void DiffViewModel::updateMarkdownStateForDiff(
+        const std::expected<std::string, gf::git::ports::GitOpsError>& contentRes,
+        const std::string& deletedFallbackNotice,
+        const gf::git::bo::FileDiff& diff,
+        std::vector<gf::core::syntax::MarkdownLineState>& outSeedStates,
+        bool& outHasSeedStates)
     {
         outSeedStates.clear();
         outHasSeedStates = false;
@@ -357,19 +436,9 @@ namespace gf::desktop
         m_markdownSource.clear();
         m_markdownNotice.clear();
 
-        const std::string targetPath = diff.isDeletedFile
-                                           ? (diff.oldPath.empty() ? filePath : diff.oldPath)
-                                           : (diff.newPath.empty() ? filePath : diff.newPath);
-
-        auto contentRes = m_diffService.getFileContent(repoPath, primaryRevision, targetPath);
-        if (!contentRes && !fallbackRevision.empty())
-        {
-            contentRes = m_diffService.getFileContent(repoPath, fallbackRevision, targetPath);
-        }
-
         if (contentRes)
         {
-            std::string content = std::move(*contentRes);
+            std::string content = *contentRes;
             if (content.empty() && !diff.isDeletedFile && !diff.hunks.empty())
             {
                 bool hasNewSideLines = false;
@@ -736,76 +805,101 @@ namespace gf::desktop
             diffScope = gf::git::bo::DiffScope::Untracked;
         }
 
-        std::filesystem::path rPath = gf::core::utf8ToPath(repoPath.toStdString());
-        std::string fPath = filePath.toStdString();
+        const auto id = m_diffRequest.next();
+        setLoading(true);
 
-        auto result = m_diffService.getFileDiff(rPath, fPath, diffScope, m_contextLines);
+        auto& service = m_diffService;
+        const auto rPath = gf::core::utf8ToPath(repoPath.toStdString());
+        const std::string fPath = filePath.toStdString();
+        const int contextLines = m_contextLines;
+        m_readExecutor->run(this,
+                            [&service, isCurrent = m_diffRequest.guard(id), rPath, fPath, diffScope, contextLines]()
+                            {
+                                DiffFetch fetch;
+                                if (!isCurrent())
+                                {
+                                    fetch.skipped = true; // another file was selected meanwhile
+                                    return fetch;
+                                }
+                                fetch.diff = service.getFileDiff(rPath, fPath, diffScope, contextLines);
+                                if (*fetch.diff && isMarkdownDiff(**fetch.diff, fPath))
+                                {
+                                    const auto& diff = **fetch.diff;
+                                    if (diffScope == gf::git::bo::DiffScope::Staged)
+                                    {
+                                        fetch.markdownContent = readMarkdownContent(
+                                            service, rPath, fPath, diff, diff.isDeletedFile ? "HEAD" : ":0", "");
+                                        fetch.deletedNotice =
+                                            "File eliminato nello stage — visualizzata la versione in HEAD.";
+                                    }
+                                    else
+                                    {
+                                        fetch.markdownContent = readMarkdownContent(
+                                            service, rPath, fPath, diff, diff.isDeletedFile ? ":0" : "",
+                                            diff.isDeletedFile ? "HEAD" : "");
+                                        fetch.deletedNotice =
+                                            "File eliminato nella working tree — visualizzata l'ultima versione tracciata.";
+                                    }
+                                }
+                                return fetch;
+                            },
+                            [this, id, repoPath, filePath, scope, contextLines](DiffFetch fetch)
+                            {
+                                if (!m_diffRequest.isCurrent(id) || fetch.skipped)
+                                {
+                                    return;
+                                }
+                                applyFetchedDiff(repoPath, filePath, QString(), scope, contextLines, fetch);
+                            });
+        return true;
+    }
+
+    void DiffViewModel::applyFetchedDiff(const QString& repoPath, const QString& filePath, const QString& revision,
+                                         const QString& scope, int contextLines, DiffFetch& fetch)
+    {
+        setLoading(false);
+        auto& result = *fetch.diff;
         if (!result)
         {
             clear();
             emit loadFailed(QString::fromStdString(result.error().message));
-            return false;
+            return;
         }
 
-        if (m_hasLastDiff&&
+        const bool sameScope = revision.isEmpty() ? (m_lastScope.compare(scope, Qt::CaseInsensitive) == 0) : true;
+        if (m_hasLastDiff &&
             m_currentRepoPath == repoPath &&
             m_filePath == filePath &&
-            m_currentRevision.isEmpty() &&
-            m_lastScope.compare(scope, Qt::CaseInsensitive) == 0 &&
-            m_lastContextLines == m_contextLines &&
+            m_currentRevision == revision &&
+            sameScope &&
+            m_lastContextLines == contextLines &&
             m_lastDiff == *result)
         {
-            return true;
+            return;
         }
 
         m_currentRepoPath = repoPath;
-        m_currentRevision.clear();
+        m_currentRevision = revision;
         m_filePath = filePath;
-        m_lastScope = scope;
-        m_lastContextLines = m_contextLines;
+        m_lastScope = revision.isEmpty() ? scope : QString();
+        m_lastContextLines = contextLines;
         m_lastDiff = *result;
         m_hasLastDiff = true;
 
-        const auto langInfo = gf::core::syntax::LanguageDetector::detect(
-            result->displayPath().empty() ? fPath : result->displayPath());
         std::vector<gf::core::syntax::MarkdownLineState> mdSeedStates;
         bool hasMdSeeds = false;
-        if (langInfo.language == gf::core::syntax::Language::Markdown && !result->isBinary)
+        if (fetch.markdownContent)
         {
-            if (diffScope == gf::git::bo::DiffScope::Staged)
-            {
-                const std::string primary = result->isDeletedFile ? "HEAD" : ":0";
-                updateMarkdownStateForDiff(rPath,
-                                           fPath,
-                                           primary,
-                                           "",
-                                           "File eliminato nello stage — visualizzata la versione in HEAD.",
-                                           *result,
-                                           mdSeedStates,
-                                           hasMdSeeds);
-            }
-            else
-            {
-                const std::string primary = result->isDeletedFile ? ":0" : "";
-                const std::string fallback = result->isDeletedFile ? "HEAD" : "";
-                updateMarkdownStateForDiff(rPath,
-                                           fPath,
-                                           primary,
-                                           fallback,
-                                           "File eliminato nella working tree — visualizzata l'ultima versione tracciata.",
-                                           *result,
-                                           mdSeedStates,
-                                           hasMdSeeds);
-            }
+            updateMarkdownStateForDiff(*fetch.markdownContent, fetch.deletedNotice, *result, mdSeedStates,
+                                       hasMdSeeds);
         }
 
         processFileDiff(*result, hasMdSeeds ? &mdSeedStates : nullptr);
 
         if (m_viewMode == QStringLiteral("blame"))
         {
-            loadBlame(repoPath, QString(), filePath);
+            loadBlame(repoPath, revision, filePath);
         }
-        return true;
     }
 
     bool DiffViewModel::loadCommitFileDiff(const QString& repoPath, const QString& commitSha, const QString& filePath)
@@ -816,59 +910,42 @@ namespace gf::desktop
             return false;
         }
 
-        std::filesystem::path rPath = gf::core::utf8ToPath(repoPath.toStdString());
-        std::string fPath = filePath.toStdString();
-        std::string shaStr = commitSha.toStdString();
+        const auto id = m_diffRequest.next();
+        setLoading(true);
 
-        auto result = m_diffService.getCommitFileDiff(rPath, shaStr, fPath, m_contextLines);
-        if (!result)
-        {
-            clear();
-            emit loadFailed(QString::fromStdString(result.error().message));
-            return false;
-        }
-
-        if (m_hasLastDiff&&
-            m_currentRepoPath == repoPath &&
-            m_filePath == filePath &&
-            m_currentRevision == commitSha &&
-            m_lastContextLines == m_contextLines &&
-            m_lastDiff == *result)
-        {
-            return true;
-        }
-
-        m_currentRepoPath = repoPath;
-        m_currentRevision = commitSha;
-        m_filePath = filePath;
-        m_lastScope.clear();
-        m_lastContextLines = m_contextLines;
-        m_lastDiff = *result;
-        m_hasLastDiff = true;
-
-        const auto langInfo = gf::core::syntax::LanguageDetector::detect(
-            result->displayPath().empty() ? fPath : result->displayPath());
-        std::vector<gf::core::syntax::MarkdownLineState> mdSeedStates;
-        bool hasMdSeeds = false;
-        if (langInfo.language == gf::core::syntax::Language::Markdown && !result->isBinary)
-        {
-            const std::string primary = result->isDeletedFile ? (shaStr + "^") : shaStr;
-            updateMarkdownStateForDiff(rPath,
-                                       fPath,
-                                       primary,
-                                       "",
-                                       "File eliminato in questo commit — visualizzata la versione del commit precedente.",
-                                       *result,
-                                       mdSeedStates,
-                                       hasMdSeeds);
-        }
-
-        processFileDiff(*result, hasMdSeeds ? &mdSeedStates : nullptr);
-
-        if (m_viewMode == QStringLiteral("blame"))
-        {
-            loadBlame(repoPath, commitSha, filePath);
-        }
+        auto& service = m_diffService;
+        const auto rPath = gf::core::utf8ToPath(repoPath.toStdString());
+        const std::string fPath = filePath.toStdString();
+        const std::string shaStr = commitSha.toStdString();
+        const int contextLines = m_contextLines;
+        m_readExecutor->run(this,
+                            [&service, isCurrent = m_diffRequest.guard(id), rPath, fPath, shaStr, contextLines]()
+                            {
+                                DiffFetch fetch;
+                                if (!isCurrent())
+                                {
+                                    fetch.skipped = true; // another commit/file was selected meanwhile
+                                    return fetch;
+                                }
+                                fetch.diff = service.getCommitFileDiff(rPath, shaStr, fPath, contextLines);
+                                if (*fetch.diff && isMarkdownDiff(**fetch.diff, fPath))
+                                {
+                                    const auto& diff = **fetch.diff;
+                                    fetch.markdownContent = readMarkdownContent(
+                                        service, rPath, fPath, diff, diff.isDeletedFile ? (shaStr + "^") : shaStr, "");
+                                    fetch.deletedNotice =
+                                        "File eliminato in questo commit — visualizzata la versione del commit precedente.";
+                                }
+                                return fetch;
+                            },
+                            [this, id, repoPath, commitSha, filePath, contextLines](DiffFetch fetch)
+                            {
+                                if (!m_diffRequest.isCurrent(id) || fetch.skipped)
+                                {
+                                    return;
+                                }
+                                applyFetchedDiff(repoPath, filePath, commitSha, QString(), contextLines, fetch);
+                            });
         return true;
     }
 
@@ -876,82 +953,114 @@ namespace gf::desktop
     {
         if (repoPath.isEmpty() || filePath.isEmpty())
         {
+            m_blameRequest.invalidate();
+            m_isBlameLoading = false;
             m_blameLines.clear();
             emit blameLoaded();
             return false;
         }
 
+        const auto id = m_blameRequest.next();
         m_isBlameLoading = true;
         emit blameLoaded();
 
-        std::filesystem::path rPath = gf::core::utf8ToPath(repoPath.toStdString());
-        auto result = m_diffService.getFileBlame(rPath, revision.toStdString(), filePath.toStdString());
-        m_isBlameLoading = false;
+        auto& service = m_diffService;
+        const auto rPath = gf::core::utf8ToPath(repoPath.toStdString());
+        m_readExecutor->run(this,
+                            [&service, isCurrent = m_blameRequest.guard(id), rPath,
+                                rev = revision.toStdString(), path = filePath.toStdString()]()
+                            {
+                                BlameFetch fetch;
+                                if (!isCurrent())
+                                {
+                                    fetch.skipped = true;
+                                    return fetch;
+                                }
+                                auto result = service.getFileBlame(rPath, rev, path);
+                                if (!result)
+                                {
+                                    return fetch;
+                                }
+                                fetch.ok = true;
 
-        if (!result)
-        {
-            m_blameLines.clear();
-            emit blameLoaded();
-            return false;
-        }
+                                // Rows (with syntax highlighting) are built here, off the GUI thread:
+                                // large files have tens of thousands of lines.
+                                const auto langInfo = gf::core::syntax::LanguageDetector::detect(path);
+                                fetch.languageName = QString::fromStdString(langInfo.name);
+                                fetch.languageIcon = QString::fromStdString(langInfo.icon);
 
-        auto langInfo = gf::core::syntax::LanguageDetector::detect(filePath.toStdString());
-        m_languageName = QString::fromStdString(langInfo.name);
-        m_languageIcon = QString::fromStdString(langInfo.icon);
+                                const std::size_t count = std::min(result->size(), kMaxRenderedDiffLines);
+                                fetch.lines.reserve(static_cast<qsizetype>(count));
+                                gf::core::syntax::MarkdownLineState mdState{};
+                                for (std::size_t idx = 0; idx < count; ++idx)
+                                {
+                                    const auto& bl = (*result)[idx];
+                                    int visualLen = 0;
+                                    for (char c : bl.content)
+                                    {
+                                        if (c == '\t')
+                                        {
+                                            visualLen += 4 - (visualLen % 4);
+                                        }
+                                        else
+                                        {
+                                            visualLen += 1;
+                                        }
+                                        if (visualLen >= kMaxVisualLineLength)
+                                        {
+                                            visualLen = kMaxVisualLineLength;
+                                            break;
+                                        }
+                                    }
+                                    fetch.maxLineLength = std::max(fetch.maxLineLength, visualLen);
 
-        const std::size_t count = std::min(result->size(), kMaxRenderedDiffLines);
-        m_blameLines.clear();
-        m_blameLines.reserve(static_cast<qsizetype>(count));
-        m_maxLineLength = 0;
-        gf::core::syntax::MarkdownLineState mdState{};
-
-        for (std::size_t idx = 0; idx < count; ++idx)
-        {
-            const auto& bl = (*result)[idx];
-            int visualLen = 0;
-            for (char c : bl.content)
-            {
-                if (c == '\t')
-                {
-                    visualLen += 4 - (visualLen % 4);
-                }
-                else
-                {
-                    visualLen += 1;
-                }
-                if (visualLen >= kMaxVisualLineLength)
-                {
-                    visualLen = kMaxVisualLineLength;
-                    break;
-                }
-            }
-            if (visualLen > m_maxLineLength)
-            {
-                m_maxLineLength = visualLen;
-            }
-            QVariantMap map;
-            map[QStringLiteral("commitSha")] = QString::fromStdString(bl.commitSha);
-            map[QStringLiteral("shortSha")] = QString::fromStdString(bl.shortSha);
-            map[QStringLiteral("author")] = QString::fromStdString(bl.author);
-            map[QStringLiteral("authorEmail")] = QString::fromStdString(bl.authorEmail);
-            map[QStringLiteral("date")] = QString::fromStdString(bl.date);
-            map[QStringLiteral("lineNumber")] = bl.lineNumber;
-            map[QStringLiteral("content")] = QString::fromStdString(bl.content);
-            map[QStringLiteral("richContent")] = QString::fromStdString(
-                gf::core::syntax::SyntaxHighlighter::highlightLine(bl.content, langInfo.language, mdState));
-            map[QStringLiteral("avatarUrl")] = computeBlameAvatar(QString::fromStdString(bl.author),
-                                                                  QString::fromStdString(bl.authorEmail));
-            map[QStringLiteral("initials")] = computeBlameInitials(QString::fromStdString(bl.author));
-            map[QStringLiteral("color")] = computeBlameColor(QString::fromStdString(bl.author));
-            m_blameLines.append(map);
-        }
-
-        emit blameLoaded();
+                                    QVariantMap map;
+                                    map[QStringLiteral("commitSha")] = QString::fromStdString(bl.commitSha);
+                                    map[QStringLiteral("shortSha")] = QString::fromStdString(bl.shortSha);
+                                    map[QStringLiteral("author")] = QString::fromStdString(bl.author);
+                                    map[QStringLiteral("authorEmail")] = QString::fromStdString(bl.authorEmail);
+                                    map[QStringLiteral("date")] = QString::fromStdString(bl.date);
+                                    map[QStringLiteral("lineNumber")] = bl.lineNumber;
+                                    map[QStringLiteral("content")] = QString::fromStdString(bl.content);
+                                    map[QStringLiteral("richContent")] = QString::fromStdString(
+                                        gf::core::syntax::SyntaxHighlighter::highlightLine(
+                                            bl.content, langInfo.language, mdState));
+                                    map[QStringLiteral("avatarUrl")] = computeBlameAvatar(
+                                        QString::fromStdString(bl.author), QString::fromStdString(bl.authorEmail));
+                                    map[QStringLiteral("initials")] = computeBlameInitials(
+                                        QString::fromStdString(bl.author));
+                                    map[QStringLiteral("color")] = computeBlameColor(QString::fromStdString(bl.author));
+                                    fetch.lines.append(map);
+                                }
+                                return fetch;
+                            },
+                            [this, id](BlameFetch fetch)
+                            {
+                                if (!m_blameRequest.isCurrent(id) || fetch.skipped)
+                                {
+                                    return;
+                                }
+                                m_isBlameLoading = false;
+                                m_blameLines.clear();
+                                if (fetch.ok)
+                                {
+                                    m_languageName = fetch.languageName;
+                                    m_languageIcon = fetch.languageIcon;
+                                    m_blameLines = std::move(fetch.lines);
+                                    m_maxLineLength = fetch.maxLineLength;
+                                }
+                                emit blameLoaded();
+                            });
         return true;
     }
 
     void DiffViewModel::clear()
     {
+        // Drop the reads still in flight: they belong to what is being cleared.
+        m_diffRequest.invalidate();
+        m_blameRequest.invalidate();
+        setLoading(false);
+
         const bool hadMarkdown = m_isMarkdown;
         m_filePath.clear();
         m_oldPath.clear();

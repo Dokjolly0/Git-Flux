@@ -42,6 +42,7 @@ namespace gf::desktop
           , m_branchListModel(this)
           , m_commitHistoryModel(this)
           , m_ownedExecutor(std::make_unique<SerialGitExecutor>())
+          , m_readExecutor(std::make_unique<SerialGitExecutor>())
     {
         // A single worker thread keeps background git work strictly ordered
         // (e.g. a checkout always completes before the refresh queued after it).
@@ -62,6 +63,7 @@ namespace gf::desktop
           , m_branchListModel(this)
           , m_commitHistoryModel(this)
           , m_executor(&executor)
+          , m_readExecutor(std::make_unique<SerialGitExecutor>())
     {
     }
 
@@ -130,6 +132,9 @@ namespace gf::desktop
             // Results still in flight for the previous repository must be discarded.
             ++m_generation;
             m_repoPath = newPath;
+            m_commitFilesRequest.invalidate();
+            m_fileHistoryRequest.invalidate();
+            m_repositoryFilesRequest.invalidate();
             m_headSha.clear(); // another repository's HEAD is not a "move"
             m_followHeadPending = false;
         }
@@ -344,60 +349,84 @@ namespace gf::desktop
         }
     }
 
-    QVariantList BranchManagerViewModel::getCommitFiles(const QString& commitSha)
+    namespace
+    {
+        // Worker-safe: QVariant containers are implicitly shared and safe to build off the GUI thread.
+        template <typename Items>
+        QVariantList commitFilesToVariantList(const Items& items)
+        {
+            QVariantList list;
+            list.reserve(static_cast<qsizetype>(items.size()));
+            for (const auto& item : items)
+            {
+                QVariantMap map;
+                map[QStringLiteral("path")] = QString::fromStdString(item.path);
+                map[QStringLiteral("oldPath")] = QString::fromStdString(item.oldPath);
+                map[QStringLiteral("additions")] = item.additions;
+                map[QStringLiteral("deletions")] = item.deletions;
+                map[QStringLiteral("isBinary")] = item.isBinary;
+
+                QString statusChar;
+                QString statusLabel;
+                switch (item.status)
+                {
+                case git::bo::FileChangeStatus::Added:
+                    statusChar = QStringLiteral("A");
+                    statusLabel = QStringLiteral("Added");
+                    break;
+                case git::bo::FileChangeStatus::Deleted:
+                    statusChar = QStringLiteral("D");
+                    statusLabel = QStringLiteral("Deleted");
+                    break;
+                case git::bo::FileChangeStatus::Renamed:
+                    statusChar = QStringLiteral("R");
+                    statusLabel = QStringLiteral("Renamed");
+                    break;
+                case git::bo::FileChangeStatus::Copied:
+                    statusChar = QStringLiteral("C");
+                    statusLabel = QStringLiteral("Copied");
+                    break;
+                default:
+                    statusChar = QStringLiteral("M");
+                    statusLabel = QStringLiteral("Modified");
+                    break;
+                }
+                map[QStringLiteral("status")] = statusChar;
+                map[QStringLiteral("statusLabel")] = statusLabel;
+                list.append(map);
+            }
+            return list;
+        }
+    } // namespace
+
+    void BranchManagerViewModel::requestCommitFiles(const QString& commitSha)
     {
         if (m_repoPath.empty() || commitSha.isEmpty())
         {
-            return {};
+            m_commitFilesRequest.invalidate();
+            return;
         }
 
-        auto res = m_historyService.getCommitFiles(m_repoPath, commitSha.toStdString());
-        if (!res)
-        {
-            return {};
-        }
-
-        QVariantList list;
-        list.reserve(static_cast<qsizetype>(res->size()));
-        for (const auto& item : *res)
-        {
-            QVariantMap map;
-            map[QStringLiteral("path")] = QString::fromStdString(item.path);
-            map[QStringLiteral("oldPath")] = QString::fromStdString(item.oldPath);
-            map[QStringLiteral("additions")] = item.additions;
-            map[QStringLiteral("deletions")] = item.deletions;
-            map[QStringLiteral("isBinary")] = item.isBinary;
-
-            QString statusChar;
-            QString statusLabel;
-            switch (item.status)
-            {
-            case git::bo::FileChangeStatus::Added:
-                statusChar = QStringLiteral("A");
-                statusLabel = QStringLiteral("Added");
-                break;
-            case git::bo::FileChangeStatus::Deleted:
-                statusChar = QStringLiteral("D");
-                statusLabel = QStringLiteral("Deleted");
-                break;
-            case git::bo::FileChangeStatus::Renamed:
-                statusChar = QStringLiteral("R");
-                statusLabel = QStringLiteral("Renamed");
-                break;
-            case git::bo::FileChangeStatus::Copied:
-                statusChar = QStringLiteral("C");
-                statusLabel = QStringLiteral("Copied");
-                break;
-            default:
-                statusChar = QStringLiteral("M");
-                statusLabel = QStringLiteral("Modified");
-                break;
-            }
-            map[QStringLiteral("status")] = statusChar;
-            map[QStringLiteral("statusLabel")] = statusLabel;
-            list.append(map);
-        }
-        return list;
+        const auto id = m_commitFilesRequest.next();
+        auto& service = m_historyService;
+        m_readExecutor->run(this,
+                            [&service, isCurrent = m_commitFilesRequest.guard(id), repoPath = m_repoPath,
+                                sha = commitSha.toStdString()]() -> std::optional<QVariantList>
+                            {
+                                if (!isCurrent())
+                                {
+                                    return std::nullopt; // another commit was selected meanwhile
+                                }
+                                auto res = service.getCommitFiles(repoPath, sha);
+                                return res ? commitFilesToVariantList(*res) : QVariantList{};
+                            },
+                            [this, id, commitSha](std::optional<QVariantList> files)
+                            {
+                                if (m_commitFilesRequest.isCurrent(id) && files)
+                                {
+                                    emit commitFilesLoaded(commitSha, *files);
+                                }
+                            });
     }
 
     bool BranchManagerViewModel::checkoutBranch(const QString& branchName)
@@ -1474,22 +1503,50 @@ namespace gf::desktop
         logOpts.pathFilter = cleanPath.toStdString();
         logOpts.dateOrder = true;
 
-        auto logRes = m_historyService.getCommitHistory(m_repoPath, logOpts);
-        if (logRes)
-        {
-            ++m_generation; // drop background reloads computed with the previous filter
-            m_fileHistoryPath = cleanPath;
-            m_commitHistoryModel.setWip(false, 0);
-            m_commitHistoryModel.setCommits(std::move(*logRes));
-            emit fileHistoryPathChanged();
-            return true;
-        }
-
-        return false;
+        // `git log --follow` over the whole history can take hundreds of ms on large repositories.
+        const auto id = m_fileHistoryRequest.next();
+        ++m_pendingOperations;
+        updateBusy();
+        auto& service = m_historyService;
+        const auto repoPath = m_repoPath;
+        m_readExecutor->run(this,
+                            [&service, isCurrent = m_fileHistoryRequest.guard(id), repoPath, logOpts]()
+                            {
+                                using Result = decltype(service.getCommitHistory(repoPath, logOpts));
+                                if (!isCurrent())
+                                {
+                                    return std::optional<Result>{}; // superseded before it ran
+                                }
+                                return std::optional<Result>{service.getCommitHistory(repoPath, logOpts)};
+                            },
+                            [this, id, repoPath, cleanPath](auto fetched)
+                            {
+                                --m_pendingOperations;
+                                // Stale: another file was picked, history mode was left or the repo changed.
+                                if (fetched && m_fileHistoryRequest.isCurrent(id) && repoPath == m_repoPath)
+                                {
+                                    auto& logRes = *fetched;
+                                    if (logRes)
+                                    {
+                                        ++m_generation; // drop background reloads computed with the previous filter
+                                        m_fileHistoryPath = cleanPath;
+                                        m_commitHistoryModel.setWip(false, 0);
+                                        m_commitHistoryModel.setCommits(std::move(*logRes));
+                                        emit fileHistoryPathChanged();
+                                    }
+                                    else
+                                    {
+                                        setStatusMessage(QString::fromStdString(logRes.error().message));
+                                    }
+                                }
+                                updateBusy();
+                            });
+        return true;
     }
 
     void BranchManagerViewModel::clearFileHistory()
     {
+        m_fileHistoryRequest.invalidate(); // a file history still loading must not land afterwards
         if (m_fileHistoryPath.isEmpty())
         {
             return;
@@ -1500,25 +1557,36 @@ namespace gf::desktop
         refresh();
     }
 
-    QStringList BranchManagerViewModel::listRepositoryFiles()
+    void BranchManagerViewModel::requestRepositoryFiles()
     {
         if (m_repoPath.empty())
         {
-            return {};
+            emit repositoryFilesLoaded({});
+            return;
         }
 
-        auto res = m_historyService.listTrackedFiles(m_repoPath);
-        if (!res)
-        {
-            return {};
-        }
-
-        QStringList list;
-        list.reserve(static_cast<qsizetype>(res->size()));
-        for (const auto& f : *res)
-        {
-            list.append(QString::fromStdString(f));
-        }
-        return list;
+        const auto id = m_repositoryFilesRequest.next();
+        auto& service = m_historyService;
+        m_readExecutor->run(this,
+                            [&service, repoPath = m_repoPath]()
+                            {
+                                QStringList list;
+                                if (auto res = service.listTrackedFiles(repoPath))
+                                {
+                                    list.reserve(static_cast<qsizetype>(res->size()));
+                                    for (const auto& f : *res)
+                                    {
+                                        list.append(QString::fromStdString(f));
+                                    }
+                                }
+                                return list;
+                            },
+                            [this, id](QStringList files)
+                            {
+                                if (m_repositoryFilesRequest.isCurrent(id))
+                                {
+                                    emit repositoryFilesLoaded(files);
+                                }
+                            });
     }
 } // namespace gf::desktop

@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <string>
 
+#include "desktop/services/serial_git_executor.hpp"
 #include "desktop/viewmodels/branch_list_model.hpp"
 #include "desktop/viewmodels/commit_history_list_model.hpp"
 
@@ -21,7 +22,6 @@ namespace gf::git::bl
 
 namespace gf::desktop
 {
-    class SerialGitExecutor;
 
     class BranchManagerViewModel final : public QObject
     {
@@ -120,11 +120,15 @@ namespace gf::desktop
                                                               const QString& body = QString()) const;
 
     Q_INVOKABLE void setWipStatus(bool hasWip, int changedFilesCount = 0);
-    Q_INVOKABLE QVariantList getCommitFiles(const QString& commitSha);
+    /// Asynchronous, latest wins: the files arrive with commitFilesLoaded(commitSha, files).
+    Q_INVOKABLE void requestCommitFiles(const QString& commitSha);
 
+    /// Asynchronous: the filtered history is applied (and fileHistoryPathChanged emitted) when
+    /// `git log --follow` completes; a newer request or clearFileHistory() supersedes it.
     Q_INVOKABLE bool loadFileHistory(const QString& filePath);
     Q_INVOKABLE void clearFileHistory();
-    Q_INVOKABLE QStringList listRepositoryFiles();
+    /// Asynchronous: the tracked files arrive with repositoryFilesLoaded(files).
+    Q_INVOKABLE void requestRepositoryFiles();
 
         signals :
 
@@ -145,6 +149,8 @@ namespace gf::desktop
         // commit completed (checkout, pull, merge, reset, rebase...) even if HEAD did not move.
         // Emitted after the commit history has been reloaded, so the commit is in the model.
         void followHeadRequested(const QString& headSha);
+        void commitFilesLoaded(const QString& commitSha, const QVariantList& files);
+        void repositoryFilesLoaded(const QStringList& files);
 
     private:
         struct RefreshSnapshot;
@@ -194,8 +200,15 @@ namespace gf::desktop
         int m_lastOperationId = 0;
         quint64 m_generation = 0;          // bumped when repo/filter changes: stale results are dropped
 
+        LatestRequest m_commitFilesRequest;
+        LatestRequest m_fileHistoryRequest;
+        LatestRequest m_repositoryFilesRequest;
+
         SerialGitExecutor* m_executor = nullptr;
-        // Declared last: destroyed first, waiting for its tasks while this object is alive.
+        // Declared last: destroyed first, waiting for their tasks while this object is alive.
         std::unique_ptr<SerialGitExecutor> m_ownedExecutor;
+        // Selection reads (commit files, file history, file list) run on their own lane, so
+        // they never wait behind a long mutation or reload of the session queue.
+        std::unique_ptr<SerialGitExecutor> m_readExecutor;
     };
 } // namespace gf::desktop

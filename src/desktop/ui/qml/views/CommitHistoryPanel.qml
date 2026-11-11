@@ -39,6 +39,22 @@ Rectangle {
     // Commit message editing (reword)
     property bool isEditingMessage: false
     property string pendingSelectSha: ""   // new SHA to select once the history reloads after a reword
+    // Selection reads are asynchronous (latest wins): apply only what matches the current selection.
+    Connections {
+        target: root.branchManager
+
+        function onCommitFilesLoaded(commitSha, files) {
+            if (!root.selectedCommit || root.selectedCommit.sha !== commitSha) return;
+            root.commitFiles = files || [];
+            root.updateTreeItems();
+        }
+
+        function onFileHistoryPathChanged() {
+            // Entering file history mode (or picking another file): start from its newest commit.
+            if (root.branchManager.fileHistoryPath !== "") root.autoSelectFirstCommit();
+        }
+    }
+
     // Ids of the asynchronous operations started by the message editor / rename dialog.
     property int pendingRewordOperationId: 0
     property int pendingRenameOperationId: 0
@@ -431,8 +447,9 @@ Rectangle {
             root.closeFileDiff();
         }
         if (root.branchManager) {
+            // Asynchronous: the first commit is selected once the filtered history has loaded
+            // (onFileHistoryPathChanged).
             root.branchManager.loadFileHistory(filePath);
-            root.autoSelectFirstCommit();
         }
     }
 
@@ -554,9 +571,9 @@ Rectangle {
             return;
         }
 
-        var files = root.branchManager.getCommitFiles(commit.sha);
-        root.commitFiles = files || [];
-        root.updateTreeItems();
+        // Asynchronous, latest wins: the list arrives with commitFilesLoaded (holding an arrow key
+        // only reads the files of the commit the selection stops on).
+        root.branchManager.requestCommitFiles(commit.sha);
 
         // If file history mode is active, automatically open the diff of the tracked file in this commit!
         if (root.branchManager && root.branchManager.fileHistoryPath !== "" && root.sessionVm && root.sessionVm.commitDiffViewer) {
@@ -4253,12 +4270,23 @@ Rectangle {
         property var filteredRepoFiles: []
 
         function openModal() {
-            var files = (root.branchManager) ? root.branchManager.listRepositoryFiles() : [];
-            allRepoFiles = files || [];
+            // Asynchronous: the list fills in when `git ls-files` completes (onRepositoryFilesLoaded).
+            allRepoFiles = [];
             fileHistorySearchField.text = "";
             applyFilter("");
+            if (root.branchManager) root.branchManager.requestRepositoryFiles();
             open();
             fileHistorySearchField.forceActiveFocus();
+        }
+
+        Connections {
+            target: root.branchManager
+            enabled: fileHistoryModal.visible
+
+            function onRepositoryFilesLoaded(files) {
+                fileHistoryModal.allRepoFiles = files || [];
+                fileHistoryModal.applyFilter(fileHistorySearchField.text);
+            }
         }
 
         function applyFilter(query) {

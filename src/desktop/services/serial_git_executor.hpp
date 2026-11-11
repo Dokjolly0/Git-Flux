@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QThreadPool>
 
+#include <atomic>
 #include <memory>
 #include <type_traits>
 #include <utility>
@@ -56,5 +57,36 @@ namespace gf::desktop
 
     private:
         QThreadPool m_pool;
+    };
+
+    /// "Latest wins" bookkeeping for one kind of read (diff of the selected file, files of the
+    /// selected commit...). Each request takes a new id; an older request is skipped before it
+    /// even runs git if a newer one exists by the time the executor reaches it, and its result
+    /// is dropped if it completes late. Holding an arrow key therefore runs git only for the
+    /// entry the user stops on.
+    ///
+    /// next()/invalidate() are called on the GUI thread; isCurrent() may be called from any
+    /// thread, through the shared counter captured by the work lambda (see guard()).
+    class LatestRequest final
+    {
+    public:
+        using Id = quint64;
+
+        /// Starts a new request, superseding every previous one.
+        Id next() { return ++*m_latest; }
+
+        /// Supersedes every request without starting a new one (e.g. the view was cleared).
+        void invalidate() { ++*m_latest; }
+
+        [[nodiscard]] bool isCurrent(Id id) const { return m_latest->load() == id; }
+
+        /// Thread-safe "is request `id` still the latest?" check to capture in a work lambda.
+        [[nodiscard]] auto guard(Id id) const
+        {
+            return [latest = m_latest, id]() { return latest->load() == id; };
+        }
+
+    private:
+        std::shared_ptr<std::atomic<Id>> m_latest = std::make_shared<std::atomic<Id>>(0);
     };
 } // namespace gf::desktop

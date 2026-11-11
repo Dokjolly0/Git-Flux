@@ -709,11 +709,13 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
 
-            // Empty State
+            // Empty State (diffs load asynchronously: say so instead of "select a file" meanwhile)
             Text {
                 anchors.centerIn: parent
                 visible: !root.diffViewer || root.diffViewer.isEmpty
-                text: "Seleziona un file per visualizzarne il diff o il blame"
+                text: (root.diffViewer && root.diffViewer.isLoading)
+                    ? "Caricamento del diff..."
+                    : "Seleziona un file per visualizzarne il diff o il blame"
                 color: "#64748B"
                 font.pixelSize: 13
             }
