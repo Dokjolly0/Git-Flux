@@ -4,6 +4,7 @@
 #include <QString>
 #include <QStringList>
 #include <QVariantList>
+#include <functional>
 #include <memory>
 
 namespace gf::git::bl
@@ -37,7 +38,7 @@ namespace gf::desktop
     public:
         explicit BatchOperationsViewModel(gf::git::bl::MultiRepoBatchCoordinator& coordinator,
                                           QObject* parent = nullptr);
-        ~BatchOperationsViewModel() override = default;
+        ~BatchOperationsViewModel() override;
 
         [[nodiscard]] bool isRunning() const noexcept { return m_isRunning; }
         [[nodiscard]] int progressPercentage() const noexcept { return m_progressPercentage; }
@@ -70,6 +71,13 @@ namespace gf::desktop
         void onProgressUpdate(const gf::git::bo::BatchProgressUpdate& update);
         void onReportCompleted(const gf::git::bo::BatchOperationReport& report);
 
+        /// Shared between this object and the callbacks handed to the coordinator, which run on
+        /// background threads and may outlive this view model (e.g. a cancelled batch finishing
+        /// during shutdown). The destructor clears `owner` under the mutex.
+        struct CallbackGuard;
+        [[nodiscard]] std::function<void(const gf::git::bo::BatchProgressUpdate&)> makeProgressCallback() const;
+        [[nodiscard]] std::function<void(const gf::git::bo::BatchOperationReport&)> makeReportCallback() const;
+
         gf::git::bl::MultiRepoBatchCoordinator& m_coordinator;
 
         bool m_isRunning{false};
@@ -84,5 +92,6 @@ namespace gf::desktop
         QVariantList m_lastReportItems{};
 
         QString m_currentOperationId{};
+        std::shared_ptr<CallbackGuard> m_guard;
     };
 } // namespace gf::desktop

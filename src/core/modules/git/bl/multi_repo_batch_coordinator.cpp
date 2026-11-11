@@ -24,6 +24,55 @@ namespace gf::git::bl
     {
     }
 
+    MultiRepoBatchCoordinator::~MultiRepoBatchCoordinator()
+    {
+        {
+            std::lock_guard<std::mutex> lock(m_lifetime->mutex);
+            m_lifetime->alive = false; // queued tasks that start from now on exit immediately
+        }
+        {
+            std::lock_guard<std::mutex> lock(m_activeOpsMutex);
+            for (const auto& [opId, taskId] : m_opToTaskId)
+            {
+                (void)m_taskRunner.cancelTask(taskId);
+            }
+        }
+        // Tasks already inside their body still use this object: wait for them to leave.
+        std::unique_lock<std::mutex> lock(m_lifetime->mutex);
+        m_lifetime->cv.wait(lock, [this]() { return m_lifetime->running == 0; });
+    }
+
+    tasks::bl::TaskExecutable MultiRepoBatchCoordinator::guardTask(tasks::bl::TaskExecutable body) const
+    {
+        return [state = m_lifetime, body = std::move(body)](
+            tasks::ports::ITaskProgressSink& sink) -> std::expected<void, std::string>
+        {
+            {
+                std::lock_guard<std::mutex> lock(state->mutex);
+                if (!state->alive)
+                {
+                    return std::unexpected(std::string("Coordinatore batch non più disponibile"));
+                }
+                ++state->running;
+            }
+
+            struct RunningScope
+            {
+                LifetimeState& state;
+                ~RunningScope()
+                {
+                    {
+                        std::lock_guard<std::mutex> lock(state.mutex);
+                        --state.running;
+                    }
+                    state.cv.notify_all();
+                }
+            } scope{*state};
+
+            return body(sink);
+        };
+    }
+
     std::vector<bo::RepoBatchTarget>
     MultiRepoBatchCoordinator::resolveTargets(const std::vector<std::string>& repoIds)
     {
@@ -260,9 +309,10 @@ namespace gf::git::bl
         uint64_t idNum = m_nextOpId.fetch_add(1);
         std::string opId = "batch-fetch-" + std::to_string(idNum);
 
+        std::lock_guard<std::mutex> opsLock(m_activeOpsMutex); // see m_opToTaskId
         std::string taskId = m_taskRunner.postTask(
             opId,
-            [this, opId, targets, remoteName, onProgress, onCompleted](
+            guardTask([this, opId, targets, remoteName, onProgress, onCompleted](
             tasks::ports::ITaskProgressSink& sink) -> std::expected<void, std::string>
             {
                 auto report = runBatchLoop(opId, bo::BatchOperationType::Fetch, targets, remoteName, onProgress, &sink);
@@ -282,14 +332,10 @@ namespace gf::git::bl
                     return std::unexpected(std::to_string(report.failedCount) + " repository hanno riportato errori");
                 }
                 return {};
-            },
+            }),
             tasks::bo::TaskPriority::Normal
         );
-
-        {
-            std::lock_guard<std::mutex> lock(m_activeOpsMutex);
-            m_opToTaskId[opId] = taskId;
-        }
+        m_opToTaskId[opId] = taskId;
 
         return opId;
     }
@@ -323,9 +369,10 @@ namespace gf::git::bl
         uint64_t idNum = m_nextOpId.fetch_add(1);
         std::string opId = "batch-pull-" + std::to_string(idNum);
 
+        std::lock_guard<std::mutex> opsLock(m_activeOpsMutex); // see m_opToTaskId
         std::string taskId = m_taskRunner.postTask(
             opId,
-            [this, opId, targets, remoteName, onProgress, onCompleted](
+            guardTask([this, opId, targets, remoteName, onProgress, onCompleted](
             tasks::ports::ITaskProgressSink& sink) -> std::expected<void, std::string>
             {
                 auto report = runBatchLoop(opId, bo::BatchOperationType::Pull, targets, remoteName, onProgress, &sink);
@@ -345,14 +392,10 @@ namespace gf::git::bl
                     return std::unexpected(std::to_string(report.failedCount) + " repository hanno riportato errori");
                 }
                 return {};
-            },
+            }),
             tasks::bo::TaskPriority::Normal
         );
-
-        {
-            std::lock_guard<std::mutex> lock(m_activeOpsMutex);
-            m_opToTaskId[opId] = taskId;
-        }
+        m_opToTaskId[opId] = taskId;
 
         return opId;
     }
@@ -365,9 +408,10 @@ namespace gf::git::bl
         uint64_t idNum = m_nextOpId.fetch_add(1);
         std::string opId = "batch-status-" + std::to_string(idNum);
 
+        std::lock_guard<std::mutex> opsLock(m_activeOpsMutex); // see m_opToTaskId
         std::string taskId = m_taskRunner.postTask(
             opId,
-            [this, opId, targets, onProgress, onCompleted](
+            guardTask([this, opId, targets, onProgress, onCompleted](
             tasks::ports::ITaskProgressSink& sink) -> std::expected<void, std::string>
             {
                 auto report = runBatchLoop(opId, bo::BatchOperationType::Status, targets, "", onProgress, &sink);
@@ -387,14 +431,10 @@ namespace gf::git::bl
                     return std::unexpected(std::to_string(report.failedCount) + " repository hanno riportato errori");
                 }
                 return {};
-            },
+            }),
             tasks::bo::TaskPriority::High
         );
-
-        {
-            std::lock_guard<std::mutex> lock(m_activeOpsMutex);
-            m_opToTaskId[opId] = taskId;
-        }
+        m_opToTaskId[opId] = taskId;
 
         return opId;
     }

@@ -5,13 +5,59 @@
 #include <QMetaObject>
 #include <QVariantMap>
 
+#include <mutex>
+
 namespace gf::desktop
 {
+    struct BatchOperationsViewModel::CallbackGuard
+    {
+        std::mutex mutex;
+        BatchOperationsViewModel* owner = nullptr;
+    };
+
     BatchOperationsViewModel::BatchOperationsViewModel(gf::git::bl::MultiRepoBatchCoordinator& coordinator,
                                                        QObject* parent)
         : QObject(parent)
           , m_coordinator(coordinator)
+          , m_guard(std::make_shared<CallbackGuard>())
     {
+        m_guard->owner = this;
+    }
+
+    BatchOperationsViewModel::~BatchOperationsViewModel()
+    {
+        if (m_isRunning && !m_currentOperationId.isEmpty())
+        {
+            (void)m_coordinator.cancelBatch(m_currentOperationId.toStdString());
+        }
+        // From now on, callbacks still running on coordinator threads become no-ops. Events they
+        // already posted to this object are discarded by ~QObject.
+        std::scoped_lock lock(m_guard->mutex);
+        m_guard->owner = nullptr;
+    }
+
+    std::function<void(const gf::git::bo::BatchProgressUpdate&)> BatchOperationsViewModel::makeProgressCallback() const
+    {
+        return [guard = m_guard](const gf::git::bo::BatchProgressUpdate& update)
+        {
+            std::scoped_lock lock(guard->mutex);
+            if (guard->owner)
+            {
+                guard->owner->onProgressUpdate(update);
+            }
+        };
+    }
+
+    std::function<void(const gf::git::bo::BatchOperationReport&)> BatchOperationsViewModel::makeReportCallback() const
+    {
+        return [guard = m_guard](const gf::git::bo::BatchOperationReport& report)
+        {
+            std::scoped_lock lock(guard->mutex);
+            if (guard->owner)
+            {
+                guard->owner->onReportCompleted(report);
+            }
+        };
     }
 
     void BatchOperationsViewModel::fetchGroup(const QString& groupId, const QString& remoteName)
@@ -33,14 +79,8 @@ namespace gf::desktop
         m_currentOperationId = QString::fromStdString(m_coordinator.executeGroupFetchAsync(
             groupId.toStdString(),
             remoteName.toStdString(),
-            [this](const gf::git::bo::BatchProgressUpdate& update)
-            {
-                onProgressUpdate(update);
-            },
-            [this](const gf::git::bo::BatchOperationReport& report)
-            {
-                onReportCompleted(report);
-            }
+            makeProgressCallback(),
+            makeReportCallback()
         ));
     }
 
@@ -63,14 +103,8 @@ namespace gf::desktop
         m_currentOperationId = QString::fromStdString(m_coordinator.executeWorkspaceFetchAsync(
             workspaceId.toStdString(),
             remoteName.toStdString(),
-            [this](const gf::git::bo::BatchProgressUpdate& update)
-            {
-                onProgressUpdate(update);
-            },
-            [this](const gf::git::bo::BatchOperationReport& report)
-            {
-                onReportCompleted(report);
-            }
+            makeProgressCallback(),
+            makeReportCallback()
         ));
     }
 
@@ -107,14 +141,8 @@ namespace gf::desktop
         m_currentOperationId = QString::fromStdString(m_coordinator.executeBatchFetchAsync(
             targets,
             remoteName.toStdString(),
-            [this](const gf::git::bo::BatchProgressUpdate& update)
-            {
-                onProgressUpdate(update);
-            },
-            [this](const gf::git::bo::BatchOperationReport& report)
-            {
-                onReportCompleted(report);
-            }
+            makeProgressCallback(),
+            makeReportCallback()
         ));
     }
 
@@ -151,14 +179,8 @@ namespace gf::desktop
         m_currentOperationId = QString::fromStdString(m_coordinator.executeBatchPullAsync(
             targets,
             remoteName.toStdString(),
-            [this](const gf::git::bo::BatchProgressUpdate& update)
-            {
-                onProgressUpdate(update);
-            },
-            [this](const gf::git::bo::BatchOperationReport& report)
-            {
-                onReportCompleted(report);
-            }
+            makeProgressCallback(),
+            makeReportCallback()
         ));
     }
 
@@ -194,14 +216,8 @@ namespace gf::desktop
 
         m_currentOperationId = QString::fromStdString(m_coordinator.executeBatchStatusAsync(
             targets,
-            [this](const gf::git::bo::BatchProgressUpdate& update)
-            {
-                onProgressUpdate(update);
-            },
-            [this](const gf::git::bo::BatchOperationReport& report)
-            {
-                onReportCompleted(report);
-            }
+            makeProgressCallback(),
+            makeReportCallback()
         ));
     }
 
