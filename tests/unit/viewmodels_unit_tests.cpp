@@ -37,7 +37,10 @@
 #include "core/modules/git/bl/multi_repo_batch_coordinator.hpp"
 #include "core/modules/tasks/bl/background_task_runner.hpp"
 
+#include <atomic>
+#include <mutex>
 #include <set>
+#include <thread>
 
 #include "infrastructure/persistence/sqlite/connection/sqlite_connection.hpp"
 #include "infrastructure/persistence/sqlite/migrations/schema_migrator.hpp"
@@ -562,6 +565,10 @@ TEST_CASE (
 class MockFullGitOps final : public gf::git::ports::IRepositoryGitOps
 {
 public:
+    std::atomic<int> listBranchesCalls{0};
+    std::mutex threadMutex;
+    std::thread::id lastListBranchesThread{};
+    std::vector<gf::git::bo::GitBranch> branchesToReturn{};
     gf::git::bo::RepoWorkingTreeStatus statusToReturn;
     gf::git::bo::FileDiff diffToReturn;
     std::string fileContentToReturn;
@@ -665,7 +672,12 @@ public:
     std::expected<std::vector<gf::git::bo::GitBranch>, gf::git::ports::GitOpsError>
     listBranches(const std::filesystem::path&) override
     {
-        return std::vector<gf::git::bo::GitBranch>{};
+        ++listBranchesCalls;
+        {
+            std::scoped_lock lock(threadMutex);
+            lastListBranchesThread = std::this_thread::get_id();
+        }
+        return branchesToReturn;
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
@@ -1483,6 +1495,7 @@ TEST_CASE (
     auto tempDir = std::filesystem::temp_directory_path();
 
     branchVm.setRepositoryPath(QString::fromStdString(tempDir.string()));
+    REQUIRE(branchVm.waitForIdle());
 
     QSignalSpy switchedSpy(&branchVm, &BranchManagerViewModel::branchSwitched);
     QSignalSpy completedSpy(&branchVm, &BranchManagerViewModel::operationCompleted);
@@ -1490,6 +1503,9 @@ TEST_CASE (
     // Checkout
     bool checkedOut = branchVm.checkoutBranch("main");
     CHECK(checkedOut);
+    // Checkout runs on the background worker: wait for it (and the coalesced refresh) to finish
+    REQUIRE(branchVm.waitForIdle());
+    CHECK_FALSE(branchVm.isBusy());
     CHECK(switchedSpy.count() == 1);
     CHECK(completedSpy.count() == 1);
 
@@ -1558,8 +1574,10 @@ TEST_CASE (
     gf::git::bl::GitRebaseService rebaseService(mockOps);
     BranchManagerViewModel branchVmWithRebase(branchService, historyService, remoteMergeService, &rebaseService);
     branchVmWithRebase.setRepositoryPath(QString::fromStdString(tempDir.string()));
+    REQUIRE(branchVmWithRebase.waitForIdle());
 
     CHECK(branchVmWithRebase.checkoutCommit("c0ffee1"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.resetCommit("c0ffee1", "soft"));
     CHECK(branchVmWithRebase.resetCommit("c0ffee1", "mixed"));
     CHECK(branchVmWithRebase.resetCommit("c0ffee1", "hard"));
@@ -1587,6 +1605,58 @@ TEST_CASE (
 
     auto repoFiles = branchVmWithRebase.listRepositoryFiles();
     (void)repoFiles;
+}
+
+TEST_CASE (
+"BranchManagerViewModel coalesces refreshes and runs git reads off the GUI thread"
+,
+"[viewmodel][branch][async]"
+)
+ {
+    ensureQtApp();
+
+    MockFullGitOps mockOps;
+    mockOps.branchesToReturn = {
+        gf::git::bo::GitBranch{.name = "main", .isCurrent = true},
+        gf::git::bo::GitBranch{.name = "develop"}
+    };
+    gf::git::bl::GitBranchService branchService(mockOps);
+    gf::git::bl::GitHistoryService historyService(mockOps);
+    gf::git::bl::GitRemoteMergeService remoteMergeService(mockOps);
+
+    BranchManagerViewModel branchVm(branchService, historyService, remoteMergeService);
+    const auto tempDir = std::filesystem::temp_directory_path();
+
+    // setRepositoryPath + several refresh() requests in the same event-loop iteration => one reload
+    branchVm.setRepositoryPath(QString::fromStdString(tempDir.string()));
+    branchVm.refresh();
+    branchVm.refresh();
+    branchVm.setRepositoryPath(QString::fromStdString(tempDir.string())); // same path: no reset
+    branchVm.refresh();
+    CHECK(mockOps.listBranchesCalls.load() == 0); // nothing ran synchronously
+
+    REQUIRE(branchVm.waitForIdle());
+    CHECK(mockOps.listBranchesCalls.load() == 1);
+    {
+        std::scoped_lock lock(mockOps.threadMutex);
+        CHECK(mockOps.lastListBranchesThread != std::this_thread::get_id());
+    }
+    CHECK(branchVm.currentBranch() == "main");
+    CHECK_FALSE(branchVm.isBusy());
+
+    // Checkout returns immediately; branch state and signals arrive once the worker is done
+    QSignalSpy switchedSpy(&branchVm, &BranchManagerViewModel::branchSwitched);
+    mockOps.branchesToReturn = {
+        gf::git::bo::GitBranch{.name = "main"},
+        gf::git::bo::GitBranch{.name = "develop", .isCurrent = true}
+    };
+    REQUIRE(branchVm.checkoutBranch("develop"));
+    CHECK(branchVm.isBusy());
+    REQUIRE(branchVm.waitForIdle());
+    CHECK(switchedSpy.count() == 1);
+    CHECK(switchedSpy.at(0).at(0).toString() == "develop");
+    CHECK(branchVm.currentBranch() == "develop");
+    CHECK_FALSE(branchVm.isBusy());
 }
 
 TEST_CASE (

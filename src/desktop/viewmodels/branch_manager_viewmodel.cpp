@@ -6,12 +6,27 @@
 #include "core/modules/git/bl/git_remote_merge_service.hpp"
 
 #include <QClipboard>
+#include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QGuiApplication>
+#include <QThread>
 #include <QUrl>
 #include <QUrlQuery>
 
+#include <optional>
+#include <vector>
+
 namespace gf::desktop
 {
+    /// Result of the git reads behind a refresh, produced on the worker thread and
+    /// applied to the Qt models on the GUI thread.
+    struct BranchManagerViewModel::RefreshSnapshot
+    {
+        std::optional<std::vector<git::bo::GitBranch>> branches;
+        std::optional<std::vector<git::bo::GitCommitLogItem>> commits;
+        std::optional<std::vector<git::bo::GitRemote>> remotes;
+    };
+
     BranchManagerViewModel::BranchManagerViewModel(git::bl::GitBranchService& branchService,
                                                    git::bl::GitHistoryService& historyService,
                                                    git::bl::GitRemoteMergeService& remoteMergeService,
@@ -25,12 +40,23 @@ namespace gf::desktop
           , m_branchListModel(this)
           , m_commitHistoryModel(this)
     {
+        // A single worker thread keeps background git work for this view model strictly ordered
+        // (e.g. a checkout always completes before the refresh queued after it).
+        m_gitWorker.setMaxThreadCount(1);
+    }
+
+    BranchManagerViewModel::~BranchManagerViewModel()
+    {
+        // Background tasks reference the services and this object: let them finish first.
+        // Their queued results are dropped automatically once this QObject is gone.
+        m_gitWorker.waitForDone();
     }
 
     void BranchManagerViewModel::setRepositoryPath(const QString& path)
     {
         if (path.isEmpty())
         {
+            ++m_generation;
             m_repoPath.clear();
             m_currentBranch.clear();
             m_remoteUrl.clear();
@@ -42,46 +68,118 @@ namespace gf::desktop
             return;
         }
 
-        m_repoPath = std::filesystem::path(path.toStdString());
+        const std::filesystem::path newPath(path.toStdString());
+        if (newPath != m_repoPath)
+        {
+            // Results still in flight for the previous repository must be discarded.
+            ++m_generation;
+            m_repoPath = newPath;
+        }
         refresh();
     }
 
-    void BranchManagerViewModel::setBusy(bool busy)
-    {
-        if (m_isBusy != busy)
-        {
-            m_isBusy = busy;
-            emit busyChanged();
-        }
-    }
-
-    void BranchManagerViewModel::setStatusMessage(const QString& message)
-    {
-        if (m_statusMessage != message)
-        {
-            m_statusMessage = message;
-            emit statusMessageChanged();
-        }
-    }
-
     void BranchManagerViewModel::refresh()
+    {
+        // Coalesce: every refresh request issued during the same event-loop iteration
+        // (operation result, branchSwitched -> refreshActiveTab, fs-watcher batch, ...)
+        // results in a single reload of branches, history and remotes.
+        if (m_repoPath.empty() || m_refreshScheduled)
+        {
+            return;
+        }
+        m_refreshScheduled = true;
+        QMetaObject::invokeMethod(this, [this]()
+        {
+            m_refreshScheduled = false;
+            startBackgroundRefresh();
+        }, Qt::QueuedConnection);
+    }
+
+    void BranchManagerViewModel::startBackgroundRefresh()
     {
         if (m_repoPath.empty())
         {
             return;
         }
-
-        setBusy(true);
-
-        // 1. Refresh branches
-        auto branchRes = m_branchService.listBranches(m_repoPath);
-        if (branchRes)
+        if (m_refreshRunning)
         {
-            m_branchListModel.setBranches(*branchRes);
+            // State may have changed after the running reload started: run once more when it ends.
+            m_refreshAgain = true;
+            return;
+        }
+
+        m_refreshRunning = true;
+        updateBusy();
+
+        const auto repoPath = m_repoPath;
+        const auto fileHistoryPath = m_fileHistoryPath.toStdString();
+        const auto generation = m_generation;
+
+        m_gitWorker.start([this, repoPath, fileHistoryPath, generation]()
+        {
+            auto snapshot = std::make_shared<RefreshSnapshot>(loadSnapshot(repoPath, fileHistoryPath));
+            QMetaObject::invokeMethod(this, [this, snapshot, generation]()
+            {
+                m_refreshRunning = false;
+                if (generation == m_generation)
+                {
+                    applySnapshot(*snapshot);
+                }
+                if (m_refreshAgain)
+                {
+                    m_refreshAgain = false;
+                    startBackgroundRefresh();
+                }
+                updateBusy();
+            }, Qt::QueuedConnection);
+        });
+    }
+
+    BranchManagerViewModel::RefreshSnapshot
+    BranchManagerViewModel::loadSnapshot(const std::filesystem::path& repoPath,
+                                         const std::string& fileHistoryPath) const
+    {
+        // Runs on the worker thread: only git reads here, no Qt model access.
+        RefreshSnapshot snapshot;
+
+        if (auto branchRes = m_branchService.listBranches(repoPath))
+        {
+            snapshot.branches = std::move(*branchRes);
+        }
+
+        // Complete commit history across all branches with date ordering (keeps commits at their creation row)
+        git::bo::CommitLogOptions logOpts;
+        logOpts.maxCount = 0; // 0 = unlimited (complete history)
+        logOpts.revisionRange = std::string("--all");
+        logOpts.dateOrder = true;
+        if (!fileHistoryPath.empty())
+        {
+            logOpts.followRenames = true;
+            logOpts.pathFilter = fileHistoryPath;
+        }
+        if (auto logRes = m_historyService.getCommitHistory(repoPath, logOpts))
+        {
+            snapshot.commits = std::move(*logRes);
+        }
+
+        if (auto remotesRes = m_remoteMergeService.listRemotes(repoPath))
+        {
+            snapshot.remotes = std::move(*remotesRes);
+        }
+
+        return snapshot;
+    }
+
+    void BranchManagerViewModel::applySnapshot(RefreshSnapshot& snapshot)
+    {
+        // 1. Branches and current branch / detached state
+        if (snapshot.branches)
+        {
+            m_branchListModel.setBranches(*snapshot.branches);
 
             QString newCurrent;
             bool detached = false;
-            for (const auto& b : *branchRes)
+            for (const auto& b : *snapshot.branches)
             {
                 if (b.isCurrent)
                 {
@@ -99,28 +197,18 @@ namespace gf::desktop
             }
         }
 
-        // 2. Refresh commit history across all branches with date ordering (keeps commits at their creation row)
-        git::bo::CommitLogOptions logOpts;
-        logOpts.maxCount = 0; // 0 = unlimited (complete history)
-        logOpts.revisionRange = std::string("--all");
-        logOpts.dateOrder = true;
-        if (!m_fileHistoryPath.isEmpty())
+        // 2. Commit history
+        if (snapshot.commits)
         {
-            logOpts.followRenames = true;
-            logOpts.pathFilter = m_fileHistoryPath.toStdString();
-        }
-        auto logRes = m_historyService.getCommitHistory(m_repoPath, logOpts);
-        if (logRes)
-        {
-            m_commitHistoryModel.setCommits(std::move(*logRes));
+            m_commitHistoryModel.setCommits(std::move(*snapshot.commits));
+            snapshot.commits.reset();
         }
 
-        // 3. Refresh remote URL
-        auto remotesRes = m_remoteMergeService.listRemotes(m_repoPath);
-        QString url;
-        if (remotesRes && !remotesRes->empty())
+        // 3. Remote URL (prefer "origin", otherwise the first remote)
+        if (snapshot.remotes)
         {
-            for (const auto& r : *remotesRes)
+            QString url;
+            for (const auto& r : *snapshot.remotes)
             {
                 if (r.name == "origin")
                 {
@@ -128,20 +216,58 @@ namespace gf::desktop
                     break;
                 }
             }
-            if (url.isEmpty())
+            if (url.isEmpty() && !snapshot.remotes->empty())
             {
-                url = QString::fromStdString((*remotesRes)[0].pushUrl.empty()
-                                                 ? (*remotesRes)[0].fetchUrl
-                                                 : (*remotesRes)[0].pushUrl);
+                const auto& first = snapshot.remotes->front();
+                url = QString::fromStdString(first.pushUrl.empty() ? first.fetchUrl : first.pushUrl);
+            }
+            if (m_remoteUrl != url)
+            {
+                m_remoteUrl = url;
+                emit remoteUrlChanged();
             }
         }
-        if (m_remoteUrl != url)
-        {
-            m_remoteUrl = url;
-            emit remoteUrlChanged();
-        }
+    }
 
-        setBusy(false);
+    bool BranchManagerViewModel::waitForIdle(int timeoutMs)
+    {
+        QElapsedTimer timer;
+        timer.start();
+        while (m_refreshScheduled || m_refreshRunning || m_pendingOperations > 0)
+        {
+            if (timer.elapsed() > timeoutMs)
+            {
+                return false;
+            }
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+            QThread::msleep(1);
+        }
+        return true;
+    }
+
+    void BranchManagerViewModel::setBusy(bool busy)
+    {
+        m_syncBusy = busy;
+        updateBusy();
+    }
+
+    void BranchManagerViewModel::updateBusy()
+    {
+        const bool busy = m_syncBusy || m_refreshRunning || m_pendingOperations > 0;
+        if (m_isBusy != busy)
+        {
+            m_isBusy = busy;
+            emit busyChanged();
+        }
+    }
+
+    void BranchManagerViewModel::setStatusMessage(const QString& message)
+    {
+        if (m_statusMessage != message)
+        {
+            m_statusMessage = message;
+            emit statusMessageChanged();
+        }
     }
 
     QVariantList BranchManagerViewModel::getCommitFiles(const QString& commitSha)
@@ -207,14 +333,76 @@ namespace gf::desktop
             return false;
         }
 
-        setBusy(true);
         setStatusMessage(QStringLiteral("Checkout di %1 in corso...").arg(branchName));
+        ++m_pendingOperations;
+        updateBusy();
 
-        git::bo::CheckoutOptions opts{
+        const auto repoPath = m_repoPath;
+        const auto fileHistoryPath = m_fileHistoryPath.toStdString();
+        const auto generation = m_generation;
+        const git::bo::CheckoutOptions opts{
             .branchOrCommit = branchName.toStdString()
         };
 
-        auto res = m_branchService.checkoutBranch(m_repoPath, opts);
+        // Checkout + reload run on the worker thread so the UI never blocks on git.
+        m_gitWorker.start([this, repoPath, fileHistoryPath, generation, opts, branchName]()
+        {
+            auto res = m_branchService.checkoutBranch(repoPath, opts);
+            const bool ok = res.has_value();
+            const QString error = ok ? QString{} : QString::fromStdString(res.error().message);
+
+            std::shared_ptr<RefreshSnapshot> snapshot;
+            if (ok)
+            {
+                snapshot = std::make_shared<RefreshSnapshot>(loadSnapshot(repoPath, fileHistoryPath));
+            }
+
+            QMetaObject::invokeMethod(this, [this, ok, error, snapshot, generation, branchName]()
+            {
+                --m_pendingOperations;
+
+                if (!ok)
+                {
+                    updateBusy();
+                    setStatusMessage(error);
+                    emit operationCompleted(false, error);
+                    return;
+                }
+
+                if (generation == m_generation && snapshot)
+                {
+                    applySnapshot(*snapshot);
+                }
+                updateBusy();
+
+                // Report what git actually did: a remote name may have been resolved to (or created as)
+                // a local branch, while tags and SHAs intentionally leave HEAD detached.
+                const QString message = (m_isDetached || m_currentBranch.isEmpty())
+                                            ? QStringLiteral("Checkout di %1 completato (HEAD detached)").arg(branchName)
+                                            : QStringLiteral("Passato al branch %1").arg(m_currentBranch);
+                setStatusMessage(message);
+                emit branchSwitched(m_currentBranch.isEmpty() ? branchName : m_currentBranch);
+                emit operationCompleted(true, message);
+            }, Qt::QueuedConnection);
+        });
+
+        return true;
+    }
+
+    bool BranchManagerViewModel::checkoutBranchSync(const QString& branchName)
+    {
+        // Used by composite operations (e.g. merge into another branch) that must run the
+        // next git step only after the checkout has completed.
+        if (m_repoPath.empty() || branchName.isEmpty())
+        {
+            return false;
+        }
+
+        setBusy(true);
+        setStatusMessage(QStringLiteral("Checkout di %1 in corso...").arg(branchName));
+        auto res = m_branchService.checkoutBranch(m_repoPath, git::bo::CheckoutOptions{
+                                                      .branchOrCommit = branchName.toStdString()
+                                                  });
         setBusy(false);
 
         if (!res)
@@ -224,16 +412,10 @@ namespace gf::desktop
             return false;
         }
 
+        m_currentBranch = branchName;
+        m_isDetached = false;
+        emit currentBranchChanged();
         refresh();
-
-        // Report what git actually did: a remote name may have been resolved to (or created as)
-        // a local branch, while tags and SHAs intentionally leave HEAD detached.
-        const QString message = (m_isDetached || m_currentBranch.isEmpty())
-                                    ? QStringLiteral("Checkout di %1 completato (HEAD detached)").arg(branchName)
-                                    : QStringLiteral("Passato al branch %1").arg(m_currentBranch);
-        setStatusMessage(message);
-        emit branchSwitched(m_currentBranch.isEmpty() ? branchName : m_currentBranch);
-        emit operationCompleted(true, message);
         return true;
     }
 
@@ -960,7 +1142,7 @@ namespace gf::desktop
             return mergeBranch(sourceBranch);
         }
 
-        if (!checkoutBranch(effectiveTarget))
+        if (!checkoutBranchSync(effectiveTarget))
         {
             return false;
         }
@@ -1156,6 +1338,7 @@ namespace gf::desktop
         auto logRes = m_historyService.getCommitHistory(m_repoPath, logOpts);
         if (logRes)
         {
+            ++m_generation; // drop background reloads computed with the previous filter
             m_fileHistoryPath = cleanPath;
             m_commitHistoryModel.setWip(false, 0);
             m_commitHistoryModel.setCommits(std::move(*logRes));
@@ -1172,6 +1355,7 @@ namespace gf::desktop
         {
             return;
         }
+        ++m_generation; // drop background reloads computed with the file filter
         m_fileHistoryPath.clear();
         emit fileHistoryPathChanged();
         refresh();

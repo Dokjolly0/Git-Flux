@@ -3,7 +3,9 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QThreadPool>
 #include <filesystem>
+#include <string>
 
 #include "desktop/viewmodels/branch_list_model.hpp"
 #include "desktop/viewmodels/commit_history_list_model.hpp"
@@ -40,7 +42,11 @@ namespace gf::desktop
                                         git::bl::GitRemoteMergeService& remoteMergeService,
                                         git::bl::GitRebaseService* rebaseService = nullptr,
                                         QObject* parent = nullptr);
-        ~BranchManagerViewModel() override = default;
+        ~BranchManagerViewModel() override;
+
+        /// Spins the event loop until no background git work (refresh, checkout) is queued or
+        /// running. Intended for tests and shutdown paths; returns false on timeout.
+        bool waitForIdle(int timeoutMs = 10000);
 
         [[nodiscard]] QString currentBranch() const noexcept { return m_currentBranch; }
         [[nodiscard]] bool isDetached() const noexcept { return m_isDetached; }
@@ -55,8 +61,12 @@ namespace gf::desktop
         [[nodiscard]] CommitHistoryListModel* commitHistory() noexcept { return &m_commitHistoryModel; }
 
     Q_INVOKABLE void setRepositoryPath(const QString& path);
+    /// Requests a reload of branches, history and remotes. Requests are coalesced and the git
+    /// reads run on a background thread; models are updated on the GUI thread when done.
     Q_INVOKABLE void refresh();
 
+    /// Starts the checkout on the background thread (returns false only for invalid input);
+    /// the outcome is reported through branchSwitched / operationCompleted.
     Q_INVOKABLE bool checkoutBranch(const QString& branchName);
     Q_INVOKABLE bool checkoutCommit(const QString& commitSha);
     Q_INVOKABLE bool createBranch(const QString& branchName, bool checkoutAfterCreate = true,
@@ -113,6 +123,14 @@ namespace gf::desktop
         void commitReworded(const QString& oldSha, const QString& newSha);
 
     private:
+        struct RefreshSnapshot;
+
+        void startBackgroundRefresh();
+        [[nodiscard]] RefreshSnapshot loadSnapshot(const std::filesystem::path& repoPath,
+                                                   const std::string& fileHistoryPath) const;
+        void applySnapshot(RefreshSnapshot& snapshot);
+        bool checkoutBranchSync(const QString& branchName);
+        void updateBusy();
         void setBusy(bool busy);
         void setStatusMessage(const QString& message);
 
@@ -132,5 +150,14 @@ namespace gf::desktop
         QString m_statusMessage;
         QString m_remoteUrl;
         QStringList m_conflictedFiles;
+        bool m_refreshScheduled = false;   // a coalesced refresh is queued on the event loop
+        bool m_refreshRunning = false;     // a background reload is in flight
+        bool m_refreshAgain = false;       // another reload was requested while one was running
+        bool m_syncBusy = false;           // a synchronous operation is running on the GUI thread
+        int m_pendingOperations = 0;       // background operations (checkout) not yet completed
+        quint64 m_generation = 0;          // bumped when repo/filter changes: stale results are dropped
+
+        // Declared last: destroyed first, after the destructor has waited for its tasks.
+        QThreadPool m_gitWorker;
     };
 } // namespace gf::desktop
