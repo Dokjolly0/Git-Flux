@@ -8,6 +8,7 @@
 #include <memory>
 #include <vector>
 
+#include "desktop/services/serial_git_executor.hpp"
 #include "desktop/viewmodels/branch_manager_viewmodel.hpp"
 #include "desktop/viewmodels/commit_box_viewmodel.hpp"
 #include "desktop/viewmodels/conflict_resolver_viewmodel.hpp"
@@ -143,6 +144,7 @@ namespace gf::desktop
         void addTabInternal(const QString& repoId, const QString& name, const QString& path);
         void onCommitSucceeded(const QString& sha, const QString& summary);
         void onFsDebouncedBatch(const gf::git::bo::FsDebouncedBatch& batch);
+        void onWorkingTreeRefreshed(const QString& repoPath);
 
         repositories::bl::RepositoryService& m_repoService;
         workspaces::bl::WorkspaceService& m_workspaceService;
@@ -161,5 +163,14 @@ namespace gf::desktop
         int m_activeTabIndex = -1;
         bool m_isRebaseInProgress{false};
         QString m_currentGroupName;
+
+        // HEAD/branch seen by the last working tree refresh of the active tab: a change means a
+        // commit, checkout, reset... (from the app or an external git) and reloads the history.
+        QString m_observedHeadOid;
+        QString m_observedBranch;
+
+        // Serial git queue shared by the working tree and the commit box (stage-then-commit
+        // ordering). Declared last: destroyed first, waiting for its tasks while they are alive.
+        SerialGitExecutor m_gitExecutor;
     };
 } // namespace gf::desktop

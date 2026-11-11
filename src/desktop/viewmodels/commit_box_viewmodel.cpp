@@ -1,7 +1,14 @@
 #include "desktop/viewmodels/commit_box_viewmodel.hpp"
 
 #include "core/modules/git/bl/git_staging_service.hpp"
+#include "core/shared/utf8_path.hpp"
+#include "desktop/services/serial_git_executor.hpp"
 
+#include <QCoreApplication>
+#include <QElapsedTimer>
+#include <QThread>
+
+#include <expected>
 #include <filesystem>
 
 namespace gf::desktop
@@ -9,8 +16,21 @@ namespace gf::desktop
     CommitBoxViewModel::CommitBoxViewModel(gf::git::bl::GitStagingService& stagingService, QObject* parent)
         : QObject(parent)
           , m_stagingService(stagingService)
+          , m_ownedExecutor(std::make_unique<SerialGitExecutor>())
+    {
+        m_executor = m_ownedExecutor.get();
+    }
+
+    CommitBoxViewModel::CommitBoxViewModel(gf::git::bl::GitStagingService& stagingService,
+                                           SerialGitExecutor& executor,
+                                           QObject* parent)
+        : QObject(parent)
+          , m_stagingService(stagingService)
+          , m_executor(&executor)
     {
     }
+
+    CommitBoxViewModel::~CommitBoxViewModel() = default;
 
     void CommitBoxViewModel::setCommitMessage(const QString& msg)
     {
@@ -77,35 +97,62 @@ namespace gf::desktop
             };
         }
 
-        std::filesystem::path rPath(repoPath.toStdString());
-        auto result = m_stagingService.createCommit(rPath, options);
+        const auto rPath = gf::core::utf8ToPath(repoPath.toStdString());
+        const QString committedMessage = m_commitMessage;
+        auto& staging = m_stagingService;
 
-        m_isBusy = false;
-        emit isBusyChanged();
-        emit canCommitChanged();
+        m_executor->run(this,
+                        [&staging, rPath, options]()
+                        {
+                            return staging.createCommit(rPath, options);
+                        },
+                        [this, committedMessage](
+                        std::expected<gf::git::bo::CommitResult, gf::git::ports::GitOpsError> result)
+                        {
+                            m_isBusy = false;
+                            emit isBusyChanged();
+                            emit canCommitChanged();
 
-        if (!result)
+                            if (!result)
+                            {
+                                m_lastErrorMessage = QString::fromStdString(result.error().message);
+                                emit lastErrorMessageChanged();
+                                emit commitFailed(m_lastErrorMessage);
+                                return;
+                            }
+
+                            m_lastErrorMessage.clear();
+                            emit lastErrorMessageChanged();
+
+                            // Reset the message unless the user already started a new one meanwhile.
+                            if (m_commitMessage == committedMessage)
+                            {
+                                m_commitMessage.clear();
+                                emit commitMessageChanged();
+                            }
+                            m_isAmend = false;
+                            emit isAmendChanged();
+                            emit canCommitChanged();
+
+                            emit commitSucceeded(QString::fromStdString(result->commitSha),
+                                                 QString::fromStdString(result->summary));
+                        });
+        return true;
+    }
+
+    bool CommitBoxViewModel::waitForIdle(int timeoutMs)
+    {
+        QElapsedTimer timer;
+        timer.start();
+        while (m_isBusy)
         {
-            m_lastErrorMessage = QString::fromStdString(result.error().message);
-            emit lastErrorMessageChanged();
-            emit commitFailed(m_lastErrorMessage);
-            return false;
+            if (timer.elapsed() > timeoutMs)
+            {
+                return false;
+            }
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+            QThread::msleep(1);
         }
-
-        m_lastErrorMessage.clear();
-        emit lastErrorMessageChanged();
-
-        QString sha = QString::fromStdString(result->commitSha);
-        QString summary = QString::fromStdString(result->summary);
-
-        // Reset commit message upon successful commit
-        m_commitMessage.clear();
-        m_isAmend = false;
-        emit commitMessageChanged();
-        emit isAmendChanged();
-        emit canCommitChanged();
-
-        emit commitSucceeded(sha, summary);
         return true;
     }
 

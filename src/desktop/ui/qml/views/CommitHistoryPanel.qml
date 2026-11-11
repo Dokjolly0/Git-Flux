@@ -745,14 +745,21 @@ Rectangle {
             fullMsg += "\n\n" + wipDescriptionField.text.trim();
         }
 
-        // Auto-stage all if nothing is in staging
+        // Auto-stage all if nothing is in staging. Staging and commit share the session's serial
+        // git queue, so the commit always runs after the files have been staged.
         if (root.sessionVm.workingTree && root.sessionVm.workingTree.stagedCount === 0) {
             root.sessionVm.workingTree.stageAll(root.sessionVm.activeRepoPath);
         }
 
         root.sessionVm.commitBox.setCommitMessage(fullMsg);
-        var ok = root.sessionVm.commitBox.executeCommit(root.sessionVm.activeRepoPath);
-        if (ok) {
+        // Asynchronous: the fields are cleared on commitSucceeded, and kept if the commit fails.
+        root.sessionVm.commitBox.executeCommit(root.sessionVm.activeRepoPath);
+    }
+
+    Connections {
+        target: (root.sessionVm && root.sessionVm.commitBox) ? root.sessionVm.commitBox : null
+
+        function onCommitSucceeded(sha, summary) {
             wipSummaryField.text = "";
             wipDescriptionField.text = "";
         }

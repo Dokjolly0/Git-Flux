@@ -36,8 +36,8 @@ namespace gf::desktop
           , m_workspaceService(workspaceService)
           , m_rebaseService(rebaseService)
           , m_watcherService(watcherService)
-          , m_workingTree(statusService, stagingService, this)
-          , m_commitBox(stagingService, this)
+          , m_workingTree(statusService, stagingService, m_gitExecutor, this)
+          , m_commitBox(stagingService, m_gitExecutor, this)
           , m_diffViewer(diffService, this)
           , m_commitDiffViewer(diffService, this)
           , m_branchManager(branchService, historyService, remoteMergeService, &rebaseService, this)
@@ -47,14 +47,10 @@ namespace gf::desktop
         connect(&m_commitBox, &CommitBoxViewModel::commitSucceeded,
                 this, &WorkspaceSessionViewModel::onCommitSucceeded);
 
-        connect(&m_workingTree, &WorkingTreeViewModel::statusChanged,
-                this, [this]()
-                {
-                    bool hasWip = !m_workingTree.isClean();
-                    int count = m_workingTree.stagedCount() + m_workingTree.unstagedCount() + m_workingTree.
-                        untrackedCount();
-                    m_branchManager.setWipStatus(hasWip, count);
-                });
+        // Working tree reads are asynchronous: everything that depends on the fresh status
+        // (WIP row, HEAD moves, rebase state, tab badges) happens when a refresh lands.
+        connect(&m_workingTree, &WorkingTreeViewModel::refreshed,
+                this, &WorkspaceSessionViewModel::onWorkingTreeRefreshed);
 
         connect(&m_branchManager, &BranchManagerViewModel::branchSwitched,
                 this, [this](const QString&) { refreshActiveTab(); });
@@ -394,23 +390,16 @@ namespace gf::desktop
             return;
         }
 
+        // The history is reloaded below anyway: the first status of this tab is not a HEAD move.
+        m_observedHeadOid.clear();
+        m_observedBranch.clear();
         m_workingTree.refresh(path);
-        bool hasWip = !m_workingTree.isClean();
-        int count = m_workingTree.stagedCount() + m_workingTree.unstagedCount() + m_workingTree.untrackedCount();
-        m_branchManager.setWipStatus(hasWip, count);
         m_diffViewer.clear();
         m_commitDiffViewer.clear();
         m_branchManager.setRepositoryPath(path);
         m_stashManager.setRepoPath(path);
         m_conflictResolver.setRepoPath(path);
         checkRebaseStatus();
-
-        if (m_activeTabIndex >= 0 && m_activeTabIndex < static_cast<int>(m_tabs.size()))
-        {
-            m_tabs[static_cast<std::size_t>(m_activeTabIndex)].branch = m_workingTree.branchName();
-            m_tabs[static_cast<std::size_t>(m_activeTabIndex)].isDirty = !m_workingTree.isClean();
-            emit tabsChanged();
-        }
     }
 
     void WorkspaceSessionViewModel::checkWorkingTreeUpdates()
@@ -421,31 +410,43 @@ namespace gf::desktop
             return;
         }
 
-        QString previousHeadOid = m_workingTree.headOid();
-        QString previousBranchName = m_workingTree.branchName();
-
+        // Polled every 1.5 s and on window activation: asynchronous and coalesced, so a slow
+        // `git status` never blocks the UI nor piles up. onWorkingTreeRefreshed() handles the result.
         m_workingTree.refresh(path);
-        bool hasWip = !m_workingTree.isClean();
-        int count = m_workingTree.stagedCount() + m_workingTree.unstagedCount() + m_workingTree.untrackedCount();
+    }
+
+    void WorkspaceSessionViewModel::onWorkingTreeRefreshed(const QString& repoPath)
+    {
+        if (repoPath != activeRepoPath())
+        {
+            return; // a tab that is no longer active
+        }
+
+        const bool hasWip = !m_workingTree.isClean();
+        const int count = m_workingTree.stagedCount() + m_workingTree.unstagedCount() + m_workingTree.untrackedCount();
         m_branchManager.setWipStatus(hasWip, count);
 
-        // If HEAD commit SHA changed (commit made externally or locally, rebased, checked out, reset, etc.)
-        // or branch name changed, refresh the branch manager and commit history immediately!
-        if ((!previousHeadOid.isEmpty() && m_workingTree.headOid() != previousHeadOid) ||
-            (!previousBranchName.isEmpty() && m_workingTree.branchName() != previousBranchName))
+        // HEAD commit or branch changed (commit made here or externally, checkout, rebase, reset...):
+        // reload the branches and the commit history.
+        const QString head = m_workingTree.headOid();
+        const QString branch = m_workingTree.branchName();
+        const bool headMoved = (!m_observedHeadOid.isEmpty() && head != m_observedHeadOid)
+            || (!m_observedBranch.isEmpty() && branch != m_observedBranch);
+        m_observedHeadOid = head;
+        m_observedBranch = branch;
+        if (headMoved)
         {
             m_branchManager.refresh();
-            checkRebaseStatus();
         }
+        checkRebaseStatus();
 
         if (m_activeTabIndex >= 0 && m_activeTabIndex < static_cast<int>(m_tabs.size()))
         {
-            bool dirty = !m_workingTree.isClean();
-            if (m_tabs[static_cast<std::size_t>(m_activeTabIndex)].isDirty != dirty ||
-                m_tabs[static_cast<std::size_t>(m_activeTabIndex)].branch != m_workingTree.branchName())
+            auto& tab = m_tabs[static_cast<std::size_t>(m_activeTabIndex)];
+            if (tab.isDirty != hasWip || tab.branch != branch)
             {
-                m_tabs[static_cast<std::size_t>(m_activeTabIndex)].isDirty = dirty;
-                m_tabs[static_cast<std::size_t>(m_activeTabIndex)].branch = m_workingTree.branchName();
+                tab.isDirty = hasWip;
+                tab.branch = branch;
                 emit tabsChanged();
             }
         }
@@ -606,24 +607,15 @@ namespace gf::desktop
 
             if (std::filesystem::path(currentActive.toStdString()) == batch.repositoryPath)
             {
-                if (batch.requiresWorkingTreeRefresh())
+                // A ref change (.git/HEAD...) also changes the branch shown in the status and the
+                // tab badge: refresh the working tree in both cases (asynchronous, coalesced).
+                if (batch.requiresWorkingTreeRefresh() || batch.requiresBranchRefresh())
                 {
                     m_workingTree.refresh(currentActive);
-                    bool hasWip = !m_workingTree.isClean();
-                    int count = m_workingTree.stagedCount() + m_workingTree.unstagedCount() + m_workingTree.
-                        untrackedCount();
-                    m_branchManager.setWipStatus(hasWip, count);
-                    checkRebaseStatus();
                 }
                 if (batch.requiresBranchRefresh())
                 {
                     m_branchManager.setRepositoryPath(currentActive);
-                    if (m_activeTabIndex >= 0 && m_activeTabIndex < static_cast<int>(m_tabs.size()))
-                    {
-                        m_tabs[static_cast<std::size_t>(m_activeTabIndex)].branch = m_workingTree.branchName();
-                        m_tabs[static_cast<std::size_t>(m_activeTabIndex)].isDirty = !m_workingTree.isClean();
-                        emit tabsChanged();
-                    }
                 }
             }
         }, Qt::QueuedConnection);

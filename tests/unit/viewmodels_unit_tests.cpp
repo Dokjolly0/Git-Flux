@@ -9,6 +9,7 @@
 #include "desktop/viewmodels/quick_open_viewmodel.hpp"
 #include "desktop/viewmodels/working_tree_file_list_model.hpp"
 #include "desktop/viewmodels/diff_line_list_model.hpp"
+#include "desktop/services/serial_git_executor.hpp"
 #include "desktop/viewmodels/working_tree_viewmodel.hpp"
 #include "desktop/viewmodels/commit_box_viewmodel.hpp"
 #include "desktop/viewmodels/diff_viewmodel.hpp"
@@ -576,16 +577,24 @@ public:
     std::string fileContentToReturn;
     int lastContextLinesRequested = -999;
     std::string lastFileContentRevision;
-    bool getStatusCalled = false;
-    bool stageCalled = false;
-    bool unstageCalled = false;
-    bool discardCalled = false;
-    bool commitCalled = false;
+    // Set from the viewmodels' git worker threads, read by the test thread.
+    std::atomic<bool> getStatusCalled{false};
+    std::atomic<int> getStatusCalls{0};
+    std::atomic<bool> stageCalled{false};
+    std::atomic<bool> unstageCalled{false};
+    std::atomic<bool> discardCalled{false};
+    std::atomic<bool> commitCalled{false};
+    // Execution order of stageAll / createCommit (1, 2, ...), and an optional stageAll delay.
+    std::atomic<int> operationCounter{0};
+    std::atomic<int> stageAllOrder{0};
+    std::atomic<int> commitOrder{0};
+    std::atomic<int> stageAllDelayMs{0};
 
     std::expected<gf::git::bo::RepoWorkingTreeStatus, gf::git::ports::GitOpsError>
     getWorkingTreeStatus(const std::filesystem::path&) override
     {
         getStatusCalled = true;
+        ++getStatusCalls;
         return statusToReturn;
     }
 
@@ -599,7 +608,12 @@ public:
     std::expected<void, gf::git::ports::GitOpsError>
     stageAll(const std::filesystem::path&) override
     {
+        if (stageAllDelayMs > 0)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(stageAllDelayMs.load()));
+        }
         stageCalled = true;
+        stageAllOrder = ++operationCounter;
         return {};
     }
 
@@ -628,6 +642,7 @@ public:
     createCommit(const std::filesystem::path&, const gf::git::bo::CommitOptions&) override
     {
         commitCalled = true;
+        commitOrder = ++operationCounter;
         return gf::git::bo::CommitResult{
             .commitSha = "1234567890123456789012345678901234567890",
             .shortSha = "12345678",
@@ -1018,27 +1033,90 @@ TEST_CASE (
         });
 
         QSignalSpy statusSpy(&wtVm, &WorkingTreeViewModel::statusChanged);
+        QSignalSpy refreshedSpy(&wtVm, &WorkingTreeViewModel::refreshed);
         bool refreshed = wtVm.refresh(QString::fromStdString(validTempDir.string()));
         REQUIRE(refreshed);
+        // Asynchronous: nothing is applied until the git worker delivers the status
+        CHECK(statusSpy.count() == 0);
+        REQUIRE(wtVm.waitForIdle());
         CHECK(statusSpy.count() == 1);
+        CHECK(refreshedSpy.count() == 1);
         CHECK(wtVm.branchName().toStdString() == "feature/phase2");
         CHECK(wtVm.aheadCount() == 2);
         CHECK(wtVm.stagedCount() == 1);
         CHECK(wtVm.stagedModel()->rowCount() == 1);
         CHECK_FALSE(wtVm.isClean());
 
-        // Stage file trigger
+        // A refresh with nothing new still reports completion, without statusChanged
+        CHECK(wtVm.refresh(QString::fromStdString(validTempDir.string())));
+        REQUIRE(wtVm.waitForIdle());
+        CHECK(statusSpy.count() == 1);
+        CHECK(refreshedSpy.count() == 2);
+
+        // Stage file trigger (busy while the operation runs, then a status re-read)
+        QSignalSpy busySpy(&wtVm, &WorkingTreeViewModel::isBusyChanged);
         CHECK(wtVm.stageFile(QString::fromStdString(validTempDir.string()), "b.txt"));
+        CHECK(wtVm.isBusy());
+        REQUIRE(wtVm.waitForIdle());
+        CHECK_FALSE(wtVm.isBusy());
+        CHECK(busySpy.count() == 2);
         CHECK(mockOps.stageCalled);
+        CHECK(refreshedSpy.count() == 3);
 
         // Unstage file trigger
         CHECK(wtVm.unstageFile(QString::fromStdString(validTempDir.string()), "a.txt"));
+        REQUIRE(wtVm.waitForIdle());
         CHECK(mockOps.unstageCalled);
 
         // Discard file and discard all triggers
         CHECK(wtVm.discardFile(QString::fromStdString(validTempDir.string()), "a.txt"));
+        REQUIRE(wtVm.waitForIdle());
         CHECK(mockOps.discardCalled);
         CHECK(wtVm.discardAll(QString::fromStdString(validTempDir.string())));
+        REQUIRE(wtVm.waitForIdle());
+    }
+
+    SECTION("WorkingTreeViewModel coalesces refreshes and drops stale results") {
+        WorkingTreeViewModel wtVm(statusService, stagingService);
+        QSignalSpy refreshedSpy(&wtVm, &WorkingTreeViewModel::refreshed);
+        const QString path = QString::fromStdString(validTempDir.string());
+
+        // A burst (poll timer + fs watcher + focus) reads the status at most twice
+        mockOps.getStatusCalls = 0;
+        for (int i = 0; i < 10; ++i)
+        {
+            CHECK(wtVm.refresh(path));
+        }
+        REQUIRE(wtVm.waitForIdle());
+        CHECK(mockOps.getStatusCalls.load() == 2);
+        CHECK(refreshedSpy.count() == 2);
+
+        // Clearing while a read is in flight: the late result must not resurrect the old state
+        mockOps.statusToReturn.branch.headName = "stale";
+        CHECK(wtVm.refresh(path));
+        CHECK_FALSE(wtVm.refresh({}));
+        REQUIRE(wtVm.waitForIdle());
+        CHECK(wtVm.branchName().isEmpty());
+        CHECK(refreshedSpy.count() == 2);
+    }
+
+    SECTION("Stage then commit stay ordered on a shared executor") {
+        // The WIP "commit" button stages everything and commits right away: with a shared serial
+        // executor the commit can't overtake a slow stage.
+        SerialGitExecutor executor;
+        WorkingTreeViewModel wtVm(statusService, stagingService, executor);
+        CommitBoxViewModel commitVm(stagingService, executor);
+        const QString path = QString::fromStdString(validTempDir.string());
+
+        mockOps.stageAllDelayMs = 80;
+        CHECK(wtVm.stageAll(path));
+        commitVm.setCommitMessage("feat: stage and commit");
+        CHECK(commitVm.executeCommit(path));
+        REQUIRE(commitVm.waitForIdle());
+        REQUIRE(wtVm.waitForIdle());
+
+        CHECK(mockOps.stageAllOrder.load() == 1);
+        CHECK(mockOps.commitOrder.load() == 2);
     }
 
     SECTION("CommitBoxViewModel validates message and triggers commit") {
@@ -1054,6 +1132,11 @@ TEST_CASE (
         QSignalSpy successSpy(&commitVm, &CommitBoxViewModel::commitSucceeded);
         bool committed = commitVm.executeCommit(QString::fromStdString(validTempDir.string()));
         REQUIRE(committed);
+        // Running: busy, and a second commit can't start
+        CHECK(commitVm.isBusy());
+        CHECK_FALSE(commitVm.canCommit());
+        CHECK_FALSE(commitVm.executeCommit(QString::fromStdString(validTempDir.string())));
+        REQUIRE(commitVm.waitForIdle());
         CHECK(mockOps.commitCalled);
         CHECK(successSpy.count() == 1);
 
@@ -2165,14 +2248,16 @@ TEST_CASE (
     watcherService.onRawEvent(event);
     watcherService.flushAll();
 
-    // Process queued Qt events (QMetaObject::invokeMethod)
+    // Process queued Qt events (QMetaObject::invokeMethod), then the asynchronous status read
     QCoreApplication::processEvents();
+    REQUIRE(sessionVm.workingTree()->waitForIdle());
 
     CHECK(mockOps.getStatusCalled);
 
     // Test checkWorkingTreeUpdates
     mockOps.getStatusCalled = false;
     sessionVm.checkWorkingTreeUpdates();
+    REQUIRE(sessionVm.workingTree()->waitForIdle());
     CHECK(mockOps.getStatusCalled);
 
     // Closing repository tab stops watching

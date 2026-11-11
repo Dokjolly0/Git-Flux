@@ -5,6 +5,10 @@
 #include <QVariantList>
 #include <QVariantMap>
 
+#include <functional>
+#include <memory>
+#include <string>
+
 #include "desktop/viewmodels/working_tree_file_list_model.hpp"
 
 #ifndef Q_MOC_RUN
@@ -19,6 +23,14 @@ namespace gf::git::bl
 
 namespace gf::desktop
 {
+    class SerialGitExecutor;
+
+    /// Working tree status and staging operations.
+    ///
+    /// Every git call runs on a SerialGitExecutor (shared with the commit box in a session, so
+    /// stage-then-commit stays ordered): the GUI thread never waits for `git status`. Refresh
+    /// requests are coalesced, and only the result for the most recently requested repository
+    /// is applied. `refreshed(path)` is emitted after every completed refresh, changed or not.
     class WorkingTreeViewModel final : public QObject
     {
         Q_OBJECT
@@ -42,10 +54,16 @@ namespace gf::desktop
         Q_PROPERTY(bool isBusy READ isBusy NOTIFY isBusyChanged)
 
     public:
+        /// Standalone: owns a private executor.
         explicit WorkingTreeViewModel(gf::git::bl::GitWorkingTreeService& statusService,
                                       gf::git::bl::GitStagingService& stagingService,
                                       QObject* parent = nullptr);
-        ~WorkingTreeViewModel() override = default;
+        /// Shares `executor` (which must be destroyed before this viewmodel).
+        WorkingTreeViewModel(gf::git::bl::GitWorkingTreeService& statusService,
+                             gf::git::bl::GitStagingService& stagingService,
+                             SerialGitExecutor& executor,
+                             QObject* parent = nullptr);
+        ~WorkingTreeViewModel() override;
 
         [[nodiscard]] WorkingTreeFileListModel* stagedModel() noexcept { return &m_stagedModel; }
         [[nodiscard]] WorkingTreeFileListModel* unstagedModel() noexcept { return &m_unstagedModel; }
@@ -66,13 +84,19 @@ namespace gf::desktop
         [[nodiscard]] bool isUnborn() const noexcept { return m_isUnborn; }
         [[nodiscard]] bool isBusy() const noexcept { return m_isBusy; }
 
-    Q_INVOKABLE bool refresh(const QString& repoPath);
-    Q_INVOKABLE bool stageFile(const QString& repoPath, const QString& filePath);
-    Q_INVOKABLE bool stageAll(const QString& repoPath);
-    Q_INVOKABLE bool unstageFile(const QString& repoPath, const QString& filePath);
-    Q_INVOKABLE bool unstageAll(const QString& repoPath);
-    Q_INVOKABLE bool discardFile(const QString& repoPath, const QString& filePath);
-    Q_INVOKABLE bool discardAll(const QString& repoPath);
+        // Asynchronous: these return whether the request was accepted. The new state arrives
+        // with statusChanged()/refreshed(); failures with operationFailed(). An empty path
+        // clears the state immediately.
+        Q_INVOKABLE bool refresh(const QString& repoPath);
+        Q_INVOKABLE bool stageFile(const QString& repoPath, const QString& filePath);
+        Q_INVOKABLE bool stageAll(const QString& repoPath);
+        Q_INVOKABLE bool unstageFile(const QString& repoPath, const QString& filePath);
+        Q_INVOKABLE bool unstageAll(const QString& repoPath);
+        Q_INVOKABLE bool discardFile(const QString& repoPath, const QString& filePath);
+        Q_INVOKABLE bool discardAll(const QString& repoPath);
+
+        /// Test helper: processes events until no refresh or operation is pending.
+        bool waitForIdle(int timeoutMs = 10000);
 
         [[nodiscard]] Q_INVOKABLE QVariantList getStagedFiles() const;
         [[nodiscard]] Q_INVOKABLE QVariantList getUnstagedFiles() const;
@@ -81,10 +105,21 @@ namespace gf::desktop
         signals :
 
         void statusChanged();
+        // A refresh of `repoPath` completed and its state is now exposed (emitted even when
+        // nothing changed, after statusChanged() when something did).
+        void refreshed(const QString& repoPath);
         void isBusyChanged();
         void operationFailed(const QString& errorMessage);
 
     private:
+        using Mutation = std::function<std::string()>; // returns an error message, empty on success
+
+        void clearState();
+        void startRefresh();
+        void applyStatus(const QString& repoPath, const gf::git::bo::RepoWorkingTreeStatus& status);
+        bool runMutation(const QString& repoPath, Mutation mutation);
+        void setPendingOperations(int count);
+
         gf::git::bl::GitWorkingTreeService& m_statusService;
         gf::git::bl::GitStagingService& m_stagingService;
 
@@ -110,5 +145,15 @@ namespace gf::desktop
         QString m_lastRepoPath;
         gf::git::bo::RepoWorkingTreeStatus m_lastStatus;
         bool m_hasLastStatus = false;
+
+        QString m_requestedPath;        // repository whose status the view wants (latest request)
+        bool m_refreshInFlight = false; // a status read is running on the executor
+        bool m_refreshQueued = false;   // another refresh was requested meanwhile: run once more
+        int m_pendingOperations = 0;    // staging operations not yet completed
+        quint64 m_generation = 0;       // bumped on clear: results still in flight are dropped
+
+        SerialGitExecutor* m_executor = nullptr;
+        // Declared last: destroyed first, waiting for its tasks while this object is alive.
+        std::unique_ptr<SerialGitExecutor> m_ownedExecutor;
     };
 } // namespace gf::desktop

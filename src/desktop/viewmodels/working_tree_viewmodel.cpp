@@ -3,7 +3,13 @@
 #include "core/modules/git/bl/git_working_tree_service.hpp"
 #include "core/modules/git/bl/git_staging_service.hpp"
 #include "core/shared/utf8_path.hpp"
+#include "desktop/services/serial_git_executor.hpp"
 
+#include <QCoreApplication>
+#include <QElapsedTimer>
+#include <QThread>
+
+#include <expected>
 #include <filesystem>
 
 namespace gf::desktop
@@ -18,47 +24,118 @@ namespace gf::desktop
           , m_unstagedModel(this)
           , m_untrackedModel(this)
           , m_conflictedModel(this)
+          , m_ownedExecutor(std::make_unique<SerialGitExecutor>())
     {
+        m_executor = m_ownedExecutor.get();
+    }
+
+    WorkingTreeViewModel::WorkingTreeViewModel(gf::git::bl::GitWorkingTreeService& statusService,
+                                               gf::git::bl::GitStagingService& stagingService,
+                                               SerialGitExecutor& executor,
+                                               QObject* parent)
+        : QObject(parent)
+          , m_statusService(statusService)
+          , m_stagingService(stagingService)
+          , m_stagedModel(this)
+          , m_unstagedModel(this)
+          , m_untrackedModel(this)
+          , m_conflictedModel(this)
+          , m_executor(&executor)
+    {
+    }
+
+    WorkingTreeViewModel::~WorkingTreeViewModel() = default;
+
+    void WorkingTreeViewModel::clearState()
+    {
+        m_stagedModel.clear();
+        m_unstagedModel.clear();
+        m_untrackedModel.clear();
+        m_conflictedModel.clear();
+        m_stagedCount = 0;
+        m_unstagedCount = 0;
+        m_untrackedCount = 0;
+        m_conflictedCount = 0;
+        m_isClean = true;
+        m_branchName.clear();
+        m_headOid.clear();
+        m_aheadCount = 0;
+        m_behindCount = 0;
+        m_isDetached = false;
+        m_isUnborn = false;
+        m_lastRepoPath.clear();
+        m_lastStatus = {};
+        m_hasLastStatus = false;
     }
 
     bool WorkingTreeViewModel::refresh(const QString& repoPath)
     {
         if (repoPath.trimmed().isEmpty())
         {
-            m_stagedModel.clear();
-            m_unstagedModel.clear();
-            m_untrackedModel.clear();
-            m_conflictedModel.clear();
-            m_stagedCount = 0;
-            m_unstagedCount = 0;
-            m_untrackedCount = 0;
-            m_conflictedCount = 0;
-            m_isClean = true;
-            m_branchName.clear();
-            m_headOid.clear();
-            m_aheadCount = 0;
-            m_behindCount = 0;
-            m_isDetached = false;
-            m_isUnborn = false;
-            m_lastRepoPath.clear();
-            m_lastStatus = {};
-            m_hasLastStatus = false;
+            ++m_generation; // drop any status still being read for the previous repository
+            m_requestedPath.clear();
+            m_refreshQueued = false;
+            clearState();
             emit statusChanged();
             return false;
         }
 
-        std::filesystem::path rPath = gf::core::utf8ToPath(repoPath.toStdString());
-        auto result = m_statusService.getWorkingTreeStatus(rPath);
-        if (!result)
+        m_requestedPath = repoPath;
+        if (m_refreshInFlight)
         {
-            emit operationFailed(QString::fromStdString(result.error().message));
-            return false;
-        }
-
-        const auto& status = *result;
-        if (m_hasLastStatus&& m_lastRepoPath == repoPath && m_lastStatus == status)
-        {
+            // Coalesce bursts (poll timer, fs watcher, tab switch): one more read when this ends.
+            m_refreshQueued = true;
             return true;
+        }
+        startRefresh();
+        return true;
+    }
+
+    void WorkingTreeViewModel::startRefresh()
+    {
+        m_refreshInFlight = true;
+        const QString path = m_requestedPath;
+        const quint64 generation = m_generation;
+        auto& service = m_statusService;
+
+        m_executor->run(this,
+                        [&service, path]()
+                        {
+                            return service.getWorkingTreeStatus(gf::core::utf8ToPath(path.toStdString()));
+                        },
+                        [this, path, generation](
+                        std::expected<gf::git::bo::RepoWorkingTreeStatus, gf::git::ports::GitOpsError> result)
+                        {
+                            m_refreshInFlight = false;
+                            // Stale: the view cleared or moved to another repository meanwhile.
+                            if (generation == m_generation && path == m_requestedPath)
+                            {
+                                if (result)
+                                {
+                                    applyStatus(path, *result);
+                                }
+                                else
+                                {
+                                    emit operationFailed(QString::fromStdString(result.error().message));
+                                }
+                            }
+                            if (m_refreshQueued)
+                            {
+                                m_refreshQueued = false;
+                                if (!m_requestedPath.isEmpty())
+                                {
+                                    startRefresh();
+                                }
+                            }
+                        });
+    }
+
+    void WorkingTreeViewModel::applyStatus(const QString& repoPath, const gf::git::bo::RepoWorkingTreeStatus& status)
+    {
+        if (m_hasLastStatus && m_lastRepoPath == repoPath && m_lastStatus == status)
+        {
+            emit refreshed(repoPath);
+            return;
         }
 
         const bool sameRepo = m_hasLastStatus && (m_lastRepoPath == repoPath);
@@ -97,110 +174,151 @@ namespace gf::desktop
         m_hasLastStatus = true;
 
         emit statusChanged();
+        emit refreshed(repoPath);
+    }
+
+    void WorkingTreeViewModel::setPendingOperations(int count)
+    {
+        const bool wasBusy = m_isBusy;
+        m_pendingOperations = count;
+        m_isBusy = m_pendingOperations > 0;
+        if (m_isBusy != wasBusy)
+        {
+            emit isBusyChanged();
+        }
+    }
+
+    bool WorkingTreeViewModel::runMutation(const QString& repoPath, Mutation mutation)
+    {
+        if (repoPath.trimmed().isEmpty())
+        {
+            return false;
+        }
+
+        setPendingOperations(m_pendingOperations + 1);
+        const quint64 generation = m_generation;
+        m_executor->run(this,
+                        std::move(mutation),
+                        [this, repoPath, generation](const std::string& error)
+                        {
+                            setPendingOperations(m_pendingOperations - 1);
+                            if (!error.empty())
+                            {
+                                emit operationFailed(QString::fromStdString(error));
+                            }
+                            // Re-read even after a failure (a partial operation may have changed
+                            // files), unless the view was cleared or moved to another repository.
+                            const bool stillShown = generation == m_generation
+                                && (m_requestedPath.isEmpty() || m_requestedPath == repoPath);
+                            if (stillShown)
+                            {
+                                m_hasLastStatus = false;
+                                refresh(repoPath);
+                            }
+                        });
         return true;
     }
 
     bool WorkingTreeViewModel::stageFile(const QString& repoPath, const QString& filePath)
     {
-        std::filesystem::path rPath = gf::core::utf8ToPath(repoPath.toStdString());
-        auto res = m_stagingService.stageFiles(rPath, {filePath.toStdString()});
-        if (!res)
+        auto& staging = m_stagingService;
+        const auto rPath = gf::core::utf8ToPath(repoPath.toStdString());
+        const std::vector<std::string> files{filePath.toStdString()};
+        return runMutation(repoPath, [&staging, rPath, files]() -> std::string
         {
-            emit operationFailed(QString::fromStdString(res.error().message));
-            return false;
-        }
-        m_hasLastStatus = false;
-        return refresh(repoPath);
+            auto res = staging.stageFiles(rPath, files);
+            return res ? std::string{} : res.error().message;
+        });
     }
 
     bool WorkingTreeViewModel::stageAll(const QString& repoPath)
     {
-        std::filesystem::path rPath = gf::core::utf8ToPath(repoPath.toStdString());
-        auto res = m_stagingService.stageAll(rPath);
-        if (!res)
+        auto& staging = m_stagingService;
+        const auto rPath = gf::core::utf8ToPath(repoPath.toStdString());
+        return runMutation(repoPath, [&staging, rPath]() -> std::string
         {
-            emit operationFailed(QString::fromStdString(res.error().message));
-            return false;
-        }
-        m_hasLastStatus = false;
-        return refresh(repoPath);
+            auto res = staging.stageAll(rPath);
+            return res ? std::string{} : res.error().message;
+        });
     }
 
     bool WorkingTreeViewModel::unstageFile(const QString& repoPath, const QString& filePath)
     {
-        std::filesystem::path rPath = gf::core::utf8ToPath(repoPath.toStdString());
-        auto res = m_stagingService.unstageFiles(rPath, {filePath.toStdString()});
-        if (!res)
+        auto& staging = m_stagingService;
+        const auto rPath = gf::core::utf8ToPath(repoPath.toStdString());
+        const std::vector<std::string> files{filePath.toStdString()};
+        return runMutation(repoPath, [&staging, rPath, files]() -> std::string
         {
-            emit operationFailed(QString::fromStdString(res.error().message));
-            return false;
-        }
-        m_hasLastStatus = false;
-        return refresh(repoPath);
+            auto res = staging.unstageFiles(rPath, files);
+            return res ? std::string{} : res.error().message;
+        });
     }
 
     bool WorkingTreeViewModel::unstageAll(const QString& repoPath)
     {
-        std::filesystem::path rPath = gf::core::utf8ToPath(repoPath.toStdString());
-        auto res = m_stagingService.unstageAll(rPath);
-        if (!res)
+        auto& staging = m_stagingService;
+        const auto rPath = gf::core::utf8ToPath(repoPath.toStdString());
+        return runMutation(repoPath, [&staging, rPath]() -> std::string
         {
-            emit operationFailed(QString::fromStdString(res.error().message));
-            return false;
-        }
-        m_hasLastStatus = false;
-        return refresh(repoPath);
+            auto res = staging.unstageAll(rPath);
+            return res ? std::string{} : res.error().message;
+        });
     }
 
     bool WorkingTreeViewModel::discardFile(const QString& repoPath, const QString& filePath)
     {
-        std::filesystem::path rPath = gf::core::utf8ToPath(repoPath.toStdString());
-        std::string pathStr = filePath.toStdString();
-        // 1. Unstage if staged
-        (void)m_stagingService.unstageFiles(rPath, {pathStr});
-        // 2. Discard working tree changes
-        auto res = m_stagingService.discardFiles(rPath, {pathStr});
-        if (!res)
+        auto& staging = m_stagingService;
+        const auto rPath = gf::core::utf8ToPath(repoPath.toStdString());
+        const std::vector<std::string> files{filePath.toStdString()};
+        return runMutation(repoPath, [&staging, rPath, files]() -> std::string
         {
-            emit operationFailed(QString::fromStdString(res.error().message));
-            return false;
-        }
-        m_hasLastStatus = false;
-        return refresh(repoPath);
+            // 1. Unstage if staged, 2. discard working tree changes
+            (void)staging.unstageFiles(rPath, files);
+            auto res = staging.discardFiles(rPath, files);
+            return res ? std::string{} : res.error().message;
+        });
     }
 
     bool WorkingTreeViewModel::discardAll(const QString& repoPath)
     {
-        std::filesystem::path rPath = gf::core::utf8ToPath(repoPath.toStdString());
-        // 1. Unstage all staged files
-        (void)m_stagingService.unstageAll(rPath);
-
-        // 2. Collect all modified/untracked files
+        // The file list is what the user sees now (collected on the GUI thread).
         std::vector<std::string> allFiles;
-        for (const auto& item : m_stagedModel.items())
+        for (const auto* model : {&m_stagedModel, &m_unstagedModel, &m_untrackedModel})
         {
-            allFiles.push_back(item.path);
-        }
-        for (const auto& item : m_unstagedModel.items())
-        {
-            allFiles.push_back(item.path);
-        }
-        for (const auto& item : m_untrackedModel.items())
-        {
-            allFiles.push_back(item.path);
-        }
-
-        if (!allFiles.empty())
-        {
-            auto res = m_stagingService.discardFiles(rPath, allFiles);
-            if (!res)
+            for (const auto& item : model->items())
             {
-                emit operationFailed(QString::fromStdString(res.error().message));
-                return false;
+                allFiles.push_back(item.path);
             }
         }
-        m_hasLastStatus = false;
-        return refresh(repoPath);
+
+        auto& staging = m_stagingService;
+        const auto rPath = gf::core::utf8ToPath(repoPath.toStdString());
+        return runMutation(repoPath, [&staging, rPath, allFiles]() -> std::string
+        {
+            (void)staging.unstageAll(rPath);
+            if (allFiles.empty())
+            {
+                return {};
+            }
+            auto res = staging.discardFiles(rPath, allFiles);
+            return res ? std::string{} : res.error().message;
+        });
+    }
+
+    bool WorkingTreeViewModel::waitForIdle(int timeoutMs)
+    {
+        QElapsedTimer timer;
+        timer.start();
+        while (m_refreshInFlight || m_refreshQueued || m_pendingOperations > 0)
+        {
+            if (timer.elapsed() > timeoutMs)
+            {
+                return false;
+            }
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+            QThread::msleep(1);
+        }
+        return true;
     }
 
     QVariantList WorkingTreeViewModel::getStagedFiles() const
