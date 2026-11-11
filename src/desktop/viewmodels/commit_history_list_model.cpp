@@ -380,6 +380,43 @@ namespace gf::desktop
 
             return result;
         }
+
+        /// Extracts `Co-authored-by: Name <email>` trailers from a commit body, skipping the
+        /// main author and duplicates (matched by e-mail, case-insensitive).
+        QVariantList computeCoAuthors(const git::bo::GitCommitLogItem& c)
+        {
+            static const QRegularExpression kCoAuthorRe(
+                QStringLiteral("^\\s*co-authored-by\\s*:\\s*(.*?)\\s*<([^>]*)>\\s*$"),
+                QRegularExpression::CaseInsensitiveOption | QRegularExpression::MultilineOption);
+
+            QVariantList result;
+            QSet<QString> seenEmails;
+            seenEmails.insert(QString::fromStdString(c.authorEmail).trimmed().toLower());
+
+            auto it = kCoAuthorRe.globalMatch(QString::fromStdString(c.body));
+            while (it.hasNext())
+            {
+                const auto match = it.next();
+                const QString name = match.captured(1).trimmed();
+                const QString email = match.captured(2).trimmed();
+                const QString key = email.toLower();
+                if ((name.isEmpty() && email.isEmpty()) || (!key.isEmpty() && seenEmails.contains(key)))
+                {
+                    continue;
+                }
+                seenEmails.insert(key);
+
+                const QString displayName = name.isEmpty() ? email : name;
+                QVariantMap entry;
+                entry[QStringLiteral("name")] = displayName;
+                entry[QStringLiteral("email")] = email;
+                entry[QStringLiteral("avatarUrl")] = computeAvatarUrl(displayName, email);
+                entry[QStringLiteral("initials")] = computeInitials(displayName);
+                entry[QStringLiteral("color")] = computeAuthorColor(displayName, email);
+                result.append(entry);
+            }
+            return result;
+        }
     } // namespace
 
     CommitHistoryListModel::CommitHistoryListModel(QObject* parent)
@@ -532,6 +569,8 @@ namespace gf::desktop
         map[QStringLiteral("authorInitials")] = computeInitials(QString::fromStdString(c.authorName));
         map[QStringLiteral("authorColor")] = computeAuthorColor(QString::fromStdString(c.authorName),
                                                                 QString::fromStdString(c.authorEmail));
+
+        map[QStringLiteral("coAuthors")] = computeCoAuthors(c);
 
         map[QStringLiteral("committerName")] = QString::fromStdString(c.committerName);
         map[QStringLiteral("committerEmail")] = QString::fromStdString(c.committerEmail);

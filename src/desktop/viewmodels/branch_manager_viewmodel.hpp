@@ -66,6 +66,7 @@ namespace gf::desktop
 
     Q_INVOKABLE bool resetCommit(const QString& commitSha, const QString& mode = QStringLiteral("mixed"));
     Q_INVOKABLE bool revertCommit(const QString& commitSha);
+    Q_INVOKABLE bool rewordCommit(const QString& commitSha, const QString& newMessage);
     Q_INVOKABLE bool cherryPickCommit(const QString& commitSha);
     Q_INVOKABLE bool createTag(const QString& tagName, const QString& targetCommit = QString(),
                                const QString& message = QString());
@@ -107,6 +108,7 @@ namespace gf::desktop
         void conflictsChanged();
         void branchSwitched(const QString& newBranch);
         void operationCompleted(bool success, const QString& message);
+        void commitReworded(const QString& oldSha, const QString& newSha);
 
     private:
         void setBusy(bool busy);

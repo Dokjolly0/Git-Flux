@@ -312,6 +312,37 @@ namespace gf::git::bl
         return m_gitOps.revertCommit(repoPath, commitSha);
     }
 
+    std::expected<std::string, ports::GitOpsError>
+    GitBranchService::rewordCommit(const std::filesystem::path& repoPath,
+                                   const std::string& commitSha,
+                                   const std::string& newMessage)
+    {
+        if (auto valid = validateRepoPath(repoPath); !valid)
+        {
+            return std::unexpected(valid.error());
+        }
+        if (commitSha.empty())
+        {
+            return std::unexpected(ports::GitOpsError{
+                .kind = ports::GitOpsError::Kind::InvalidOperation,
+                .exitCode = -1,
+                .message = "SHA del commit non può essere vuoto",
+                .command = "reword"
+            });
+        }
+        if (newMessage.find_first_not_of(" \t\r\n") == std::string::npos)
+        {
+            return std::unexpected(ports::GitOpsError{
+                .kind = ports::GitOpsError::Kind::EmptyCommitMessage,
+                .exitCode = -1,
+                .message = "Il messaggio del commit non può essere vuoto",
+                .command = "reword"
+            });
+        }
+        auto lock = RepositoryLockCoordinator::instance().acquire(repoPath);
+        return m_gitOps.rewordCommit(repoPath, commitSha, newMessage);
+    }
+
     std::expected<void, ports::GitOpsError>
     GitBranchService::createWorktree(const std::filesystem::path& repoPath,
                                      const std::filesystem::path& worktreePath,

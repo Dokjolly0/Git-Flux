@@ -60,6 +60,12 @@ namespace gf::git::bl
         [[nodiscard]] std::expected<void, ports::GitOpsError>
         revertCommit(const std::filesystem::path& repoPath, const std::string& commitSha);
 
+        /// Rewrites the message of a commit reachable from HEAD, replaying all descendant commits.
+        /// Returns the new SHA of the reworded commit.
+        [[nodiscard]] std::expected<std::string, ports::GitOpsError>
+        rewordCommit(const std::filesystem::path& repoPath, const std::string& commitSha,
+                     const std::string& newMessage);
+
         /// Creates a worktree for a commit or branch.
         [[nodiscard]] std::expected<void, ports::GitOpsError>
         createWorktree(const std::filesystem::path& repoPath, const std::filesystem::path& worktreePath,

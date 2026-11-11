@@ -3637,6 +3637,285 @@ namespace gf::infra::git
         return {};
     }
 
+    std::expected<std::string, gf::git::ports::GitOpsError>
+    NativeRepositoryGitOps::rewordCommit(const std::filesystem::path& repoPath,
+                                         const std::string& commitSha,
+                                         const std::string& newMessage)
+    {
+        using gf::git::ports::GitOpsError;
+
+        auto makeError = [](GitOpsError::Kind kind, int exitCode, std::string message, std::string command)
+        {
+            return std::unexpected(GitOpsError{
+                .kind = kind,
+                .exitCode = exitCode,
+                .message = std::move(message),
+                .command = std::move(command)
+            });
+        };
+
+        // Runs a git command; returns stdout on exit code 0, or a classified error otherwise.
+        auto runGit = [&](std::vector<std::string> args) -> std::expected<std::string, GitOpsError>
+        {
+            const std::string label = "git " + (args.empty() ? std::string{} : args.front());
+            gf::git::bo::GitCommand cmd{
+                .args = std::move(args),
+                .workingDirectory = repoPath,
+                .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+                .timeout = std::chrono::milliseconds{30'000}
+            };
+            auto exec = m_executor.execute(cmd);
+            if (!exec)
+            {
+                return makeError(GitOpsError::Kind::ExecutionFailed, -1,
+                                 "Impossibile eseguire " + label + ": " + exec.error().message, label);
+            }
+            if (exec->exitCode != 0)
+            {
+                return makeError(GitOpsError::Kind::ExecutionFailed, exec->exitCode,
+                                 exec->stderrBytes.empty() ? exec->stdoutBytes : exec->stderrBytes, label);
+            }
+            return std::move(exec->stdoutBytes);
+        };
+
+        // --- 1. Normalize the new message (LF line endings, no leading/trailing blank lines) ---
+        std::string message;
+        message.reserve(newMessage.size() + 1);
+        for (std::size_t i = 0; i < newMessage.size(); ++i)
+        {
+            if (newMessage[i] == '\r')
+            {
+                if (i + 1 < newMessage.size() && newMessage[i + 1] == '\n') continue;
+                message.push_back('\n');
+                continue;
+            }
+            message.push_back(newMessage[i]);
+        }
+        message = trimString(std::move(message));
+        if (message.empty())
+        {
+            return makeError(GitOpsError::Kind::EmptyCommitMessage, -1,
+                             "Il messaggio del commit non può essere vuoto", "reword");
+        }
+        message.push_back('\n');
+
+        // --- 2. Refuse while another sequencer operation is in progress ---
+        if (auto rebasing = isRebaseInProgress(repoPath); rebasing && *rebasing)
+        {
+            return makeError(GitOpsError::Kind::RebaseInProgress, -1,
+                             "Impossibile modificare il messaggio: un rebase è in corso", "reword");
+        }
+        for (const char* pseudoRef : {"MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD"})
+        {
+            if (runGit({"rev-parse", "-q", "--verify", pseudoRef}))
+            {
+                return makeError(GitOpsError::Kind::InvalidOperation, -1,
+                                 std::string("Impossibile modificare il messaggio: operazione in corso (") +
+                                 pseudoRef + ")", "reword");
+            }
+        }
+
+        // --- 3. Resolve target and HEAD, check that target is an ancestor of HEAD ---
+        if (commitSha.empty() || commitSha.front() == '-')
+        {
+            return makeError(GitOpsError::Kind::CommitNotFound, -1, "SHA del commit non valido", "reword");
+        }
+        auto targetRes = runGit({"rev-parse", "--verify", "--quiet", commitSha + "^{commit}"});
+        if (!targetRes)
+        {
+            return makeError(GitOpsError::Kind::CommitNotFound, targetRes.error().exitCode,
+                             "Commit non trovato: " + commitSha, "git rev-parse");
+        }
+        const std::string targetSha = trimString(*targetRes);
+
+        auto headRes = runGit({"rev-parse", "--verify", "HEAD"});
+        if (!headRes)
+        {
+            return std::unexpected(headRes.error());
+        }
+        const std::string headSha = trimString(*headRes);
+
+        if (targetSha != headSha)
+        {
+            if (!runGit({"merge-base", "--is-ancestor", targetSha, headSha}))
+            {
+                return makeError(GitOpsError::Kind::InvalidOperation, -1,
+                                 "Il commit " + targetSha.substr(0, 7) +
+                                 " non appartiene al branch corrente: fai prima il checkout del branch che lo contiene",
+                                 "reword");
+            }
+        }
+
+        // Descendants of the target on the current branch, parents before children.
+        std::vector<std::string> descendants;
+        if (targetSha != headSha)
+        {
+            auto listRes = runGit({"rev-list", "--topo-order", "--reverse", "--ancestry-path",
+                                   targetSha + ".." + headSha});
+            if (!listRes)
+            {
+                return std::unexpected(listRes.error());
+            }
+            std::size_t start = 0;
+            const std::string& out = *listRes;
+            while (start < out.size())
+            {
+                auto end = out.find('\n', start);
+                if (end == std::string::npos) end = out.size();
+                auto line = trimString(out.substr(start, end - start));
+                if (!line.empty()) descendants.push_back(std::move(line));
+                start = end + 1;
+            }
+        }
+
+        // --- 4. Current committer identity (like a real rebase, rewritten commits get a new committer) ---
+        auto identRes = runGit({"var", "GIT_COMMITTER_IDENT"});
+        if (!identRes)
+        {
+            return makeError(GitOpsError::Kind::InvalidOperation, identRes.error().exitCode,
+                             "Identità git non configurata (user.name / user.email): " + identRes.error().message,
+                             "git var");
+        }
+        const std::string committerIdent = trimString(*identRes);
+
+        // Scratch file inside the git dir, used to feed raw commit objects to `git hash-object`.
+        auto gitDirRes = runGit({"rev-parse", "--git-dir"});
+        if (!gitDirRes)
+        {
+            return std::unexpected(gitDirRes.error());
+        }
+        std::filesystem::path gitDir = gf::core::utf8ToPath(trimString(*gitDirRes));
+        if (gitDir.is_relative())
+        {
+            gitDir = repoPath / gitDir;
+        }
+        const std::filesystem::path scratchFile = gitDir / "GITFLUX_REWORD_OBJECT";
+        struct ScratchCleanup
+        {
+            std::filesystem::path path;
+            ~ScratchCleanup()
+            {
+                std::error_code ec;
+                std::filesystem::remove(path, ec);
+            }
+        } cleanup{scratchFile};
+
+        std::unordered_map<std::string, std::string> rewritten; // old sha -> new sha
+
+        // Rebuilds a raw commit object: remaps parents, refreshes committer, drops signatures
+        // (they would no longer be valid) and optionally replaces the message.
+        auto rewriteCommit = [&](const std::string& oldSha,
+                                 const std::string* replacementMessage) -> std::expected<std::string, GitOpsError>
+        {
+            auto rawRes = runGit({"cat-file", "commit", oldSha});
+            if (!rawRes)
+            {
+                return std::unexpected(rawRes.error());
+            }
+            const std::string& raw = *rawRes;
+
+            const auto sep = raw.find("\n\n");
+            const std::string headerBlock = (sep == std::string::npos) ? raw : raw.substr(0, sep + 1);
+            const std::string oldMessage = (sep == std::string::npos) ? std::string{} : raw.substr(sep + 2);
+
+            std::string rebuilt;
+            rebuilt.reserve(raw.size() + 64);
+            bool skipContinuation = false;
+            std::size_t pos = 0;
+            while (pos < headerBlock.size())
+            {
+                auto end = headerBlock.find('\n', pos);
+                if (end == std::string::npos) end = headerBlock.size();
+                const std::string line = headerBlock.substr(pos, end - pos);
+                pos = end + 1;
+
+                if (!line.empty() && line.front() == ' ')
+                {
+                    // Continuation of a multi-line header (gpgsig, mergetag, ...)
+                    if (!skipContinuation) rebuilt += line + "\n";
+                    continue;
+                }
+                skipContinuation = false;
+
+                const auto spacePos = line.find(' ');
+                const std::string key = line.substr(0, spacePos);
+                const std::string value = (spacePos == std::string::npos) ? std::string{} : line.substr(spacePos + 1);
+
+                if (key == "parent")
+                {
+                    auto it = rewritten.find(value);
+                    rebuilt += "parent " + (it != rewritten.end() ? it->second : value) + "\n";
+                }
+                else if (key == "committer")
+                {
+                    rebuilt += "committer " + committerIdent + "\n";
+                }
+                else if (key == "gpgsig" || key == "gpgsig-sha256")
+                {
+                    skipContinuation = true;
+                }
+                else if (key == "encoding" && replacementMessage)
+                {
+                    // The new message is always UTF-8 (git's default): drop any legacy encoding header.
+                }
+                else
+                {
+                    rebuilt += line + "\n";
+                }
+            }
+            rebuilt += "\n";
+            rebuilt += replacementMessage ? *replacementMessage : oldMessage;
+
+            {
+                std::ofstream ofs(scratchFile, std::ios::binary | std::ios::trunc);
+                if (!ofs)
+                {
+                    return makeError(GitOpsError::Kind::StorageError, -1,
+                                     "Impossibile scrivere il file temporaneo per il commit riscritto",
+                                     "reword");
+                }
+                ofs.write(rebuilt.data(), static_cast<std::streamsize>(rebuilt.size()));
+            }
+
+            auto hashRes = runGit({"hash-object", "-t", "commit", "-w", gf::core::pathToUtf8(scratchFile)});
+            if (!hashRes)
+            {
+                return std::unexpected(hashRes.error());
+            }
+            return trimString(*hashRes);
+        };
+
+        // --- 5. Rewrite the target, then replay every descendant on top of it ---
+        auto newTarget = rewriteCommit(targetSha, &message);
+        if (!newTarget)
+        {
+            return std::unexpected(newTarget.error());
+        }
+        rewritten[targetSha] = *newTarget;
+
+        std::string newHead = *newTarget;
+        for (const auto& sha : descendants)
+        {
+            auto newSha = rewriteCommit(sha, nullptr);
+            if (!newSha)
+            {
+                return std::unexpected(newSha.error());
+            }
+            rewritten[sha] = *newSha;
+            newHead = *newSha;
+        }
+
+        // --- 6. Atomically move HEAD (and the branch it points to), guarded by the old value ---
+        auto updateRes = runGit({"update-ref", "-m", "GitFlux: reword " + targetSha.substr(0, 7),
+                                 "HEAD", newHead, headSha});
+        if (!updateRes)
+        {
+            return std::unexpected(updateRes.error());
+        }
+
+        return *newTarget;
+    }
+
     std::expected<void, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::createWorktree(const std::filesystem::path& repoPath,
                                            const std::filesystem::path& worktreePath,

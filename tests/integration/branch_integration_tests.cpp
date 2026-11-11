@@ -293,3 +293,103 @@ TEST_CASE (
         CHECK(remotes->empty());
     }
 }
+
+TEST_CASE (
+"GitBranchService rewordCommit rewrites HEAD and older commits replaying descendants"
+,
+"[git][branch][reword][integration]"
+)
+ {
+    auto gitDiscovery = gf::infra::git::GitDiscovery::discover();
+    REQUIRE(gitDiscovery.has_value());
+    const auto gitExe = gitDiscovery->directBinaryPath.empty()
+                            ? gitDiscovery->discoveredInPath
+                            : gitDiscovery->directBinaryPath;
+
+    gf::infra::git::NativeGitCommandExecutor executor(gitExe);
+    gf::infra::git::NativeRepositoryGitOps gitOps(executor);
+    gf::git::bl::GitBranchService branchService(gitOps);
+
+    BranchTestSandbox sandbox;
+
+    auto git = [&](std::vector<std::string> args) -> std::string
+    {
+        gf::git::bo::GitCommand cmd{
+            .args = std::move(args),
+            .workingDirectory = sandbox.root,
+            .lockPolicy = gf::git::bo::GitLockPolicy::Standard
+        };
+        auto res = executor.execute(cmd);
+        REQUIRE(res.has_value());
+        REQUIRE(res->exitCode == 0);
+        auto out = res->stdoutBytes;
+        while (!out.empty() && (out.back() == '\n' || out.back() == '\r')) out.pop_back();
+        return out;
+    };
+
+    git({"init", "-b", "main"});
+    git({"config", "user.name", "GitFlux TestBot"});
+    git({"config", "user.email", "testbot@gitflux.local"});
+
+    // Three commits: c1 <- c2 (with co-author trailer) <- c3
+    sandbox.writeFile("a.txt", "one\n");
+    git({"add", "."});
+    git({"commit", "-m", "first"});
+    sandbox.writeFile("a.txt", "two\n");
+    git({"add", "."});
+    git({"commit", "-m", "second", "-m", "Co-authored-by: Jane Doe <jane@example.com>"});
+    const std::string c2 = git({"rev-parse", "HEAD"});
+    const std::string c2Tree = git({"rev-parse", "HEAD^{tree}"});
+    sandbox.writeFile("a.txt", "three\n");
+    git({"add", "."});
+    git({"commit", "-m", "third"});
+    const std::string c3Tree = git({"rev-parse", "HEAD^{tree}"});
+    const std::string c3Author = git({"log", "-1", "--format=%an <%ae> %aI"});
+
+    // Uncommitted change must survive the rewrite untouched
+    sandbox.writeFile("dirty.txt", "local change\n");
+
+    SECTION("Reword an older commit replays descendants and keeps trees")
+    {
+        auto res = branchService.rewordCommit(sandbox.root, c2, "second (edited)\r\n\r\nNew body line\r\n");
+        REQUIRE(res.has_value());
+        CHECK(*res != c2);
+
+        CHECK(git({"log", "-1", "--format=%B", "HEAD~1"}) == "second (edited)\n\nNew body line");
+        CHECK(git({"rev-parse", "HEAD~1"}) == *res);
+        CHECK(git({"rev-parse", "HEAD~1^{tree}"}) == c2Tree);
+        CHECK(git({"rev-parse", "HEAD^{tree}"}) == c3Tree);
+        CHECK(git({"log", "-1", "--format=%s"}) == "third");
+        CHECK(git({"log", "-1", "--format=%an <%ae> %aI"}) == c3Author);
+        CHECK(git({"rev-list", "--count", "HEAD"}) == "3");
+        CHECK(git({"symbolic-ref", "--short", "HEAD"}) == "main");
+        CHECK(sandbox.readFile("dirty.txt") == "local change\n");
+        CHECK_FALSE(std::filesystem::exists(sandbox.root / ".git" / "GITFLUX_REWORD_OBJECT"));
+    }
+
+    SECTION("Reword HEAD behaves like an amend of the message only")
+    {
+        const std::string parentBefore = git({"rev-parse", "HEAD~1"});
+        auto res = branchService.rewordCommit(sandbox.root, "HEAD", "third (edited)");
+        REQUIRE(res.has_value());
+        CHECK(git({"log", "-1", "--format=%s"}) == "third (edited)");
+        CHECK(git({"rev-parse", "HEAD~1"}) == parentBefore);
+        CHECK(git({"rev-parse", "HEAD^{tree}"}) == c3Tree);
+    }
+
+    SECTION("Empty message and commits outside the current branch are rejected")
+    {
+        CHECK_FALSE(branchService.rewordCommit(sandbox.root, c2, "   \n").has_value());
+
+        git({"checkout", "-q", "-b", "side", c2});
+        sandbox.writeFile("b.txt", "side\n");
+        git({"add", "b.txt"});
+        git({"commit", "-m", "side commit"});
+        const std::string sideSha = git({"rev-parse", "HEAD"});
+        git({"checkout", "-q", "main"});
+
+        auto res = branchService.rewordCommit(sandbox.root, sideSha, "should fail");
+        REQUIRE_FALSE(res.has_value());
+        CHECK(res.error().kind == gf::git::ports::GitOpsError::Kind::InvalidOperation);
+    }
+}

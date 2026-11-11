@@ -371,6 +371,26 @@ namespace gf::git::ports
             return {};
         }
 
+        /// Rewrites the message of a commit reachable from HEAD and replays every descendant commit
+        /// on top of it (equivalent to an interactive "reword" rebase, but conflict-free since trees
+        /// are reused as-is). Moves HEAD (and its branch) to the rewritten tip; the working tree and
+        /// the index are left untouched. Returns the new SHA of the reworded commit.
+        [[nodiscard]] virtual std::expected<std::string, GitOpsError>
+        rewordCommit(const std::filesystem::path& repoPath,
+                     const std::string& commitSha,
+                     const std::string& newMessage)
+        {
+            (void)repoPath;
+            (void)commitSha;
+            (void)newMessage;
+            return std::unexpected(GitOpsError{
+                .kind = GitOpsError::Kind::InvalidOperation,
+                .exitCode = -1,
+                .message = "rewordCommit non supportato da questa implementazione",
+                .command = "reword"
+            });
+        }
+
         /// Creates a new git worktree (`git worktree add <worktreePath> <commitOrBranch>`).
         [[nodiscard]] virtual std::expected<void, GitOpsError>
         createWorktree(const std::filesystem::path& repoPath,

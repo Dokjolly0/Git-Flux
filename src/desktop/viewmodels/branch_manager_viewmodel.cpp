@@ -670,6 +670,36 @@ namespace gf::desktop
         return true;
     }
 
+    bool BranchManagerViewModel::rewordCommit(const QString& commitSha, const QString& newMessage)
+    {
+        if (m_repoPath.empty() || commitSha.isEmpty())
+        {
+            return false;
+        }
+
+        setBusy(true);
+        setStatusMessage(QStringLiteral("Modifica del messaggio del commit %1 in corso...").arg(commitSha.left(7)));
+
+        auto res = m_branchService.rewordCommit(m_repoPath, commitSha.toStdString(), newMessage.toStdString());
+        setBusy(false);
+
+        if (!res)
+        {
+            setStatusMessage(QString::fromStdString(res.error().message));
+            emit operationCompleted(false, QString::fromStdString(res.error().message));
+            return false;
+        }
+
+        const QString newSha = QString::fromStdString(*res);
+        setStatusMessage(QStringLiteral("Messaggio del commit aggiornato (%1 → %2)").arg(commitSha.left(7), newSha.left(7)));
+        refresh();
+        emit branchSwitched(m_currentBranch);
+        emit commitReworded(commitSha, newSha);
+        emit operationCompleted(
+            true, QStringLiteral("Messaggio del commit %1 aggiornato con successo").arg(commitSha.left(7)));
+        return true;
+    }
+
     bool BranchManagerViewModel::cherryPickCommit(const QString& commitSha)
     {
         if (m_repoPath.empty() || commitSha.isEmpty())

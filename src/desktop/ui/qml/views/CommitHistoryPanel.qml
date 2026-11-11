@@ -36,6 +36,76 @@ Rectangle {
     property string draggingBranchType: ""
     property string hoveredTargetBranch: ""
 
+    // Commit message editing (reword)
+    property bool isEditingMessage: false
+    property string pendingSelectSha: ""   // new SHA to select once the history reloads after a reword
+
+    function startMessageEdit() {
+        if (!root.selectedCommit || root.isWipSelected || !root.branchManager) return;
+        editSubjectField.text = root.selectedCommit.subject || "";
+        editBodyArea.text = root.selectedCommit.body || "";
+        root.isEditingMessage = true;
+        editSubjectField.forceActiveFocus();
+        editSubjectField.selectAll();
+    }
+
+    function cancelMessageEdit() {
+        root.isEditingMessage = false;
+    }
+
+    function saveMessageEdit() {
+        if (!root.selectedCommit || !root.branchManager) return;
+        var subject = editSubjectField.text.trim();
+        if (subject.length === 0) return;
+        var body = editBodyArea.text.replace(/\s+$/, "");
+        var message = body.length > 0 ? (subject + "\n\n" + body) : subject;
+        var original = (root.selectedCommit.subject || "") + ((root.selectedCommit.body || "").replace(/\s+$/, "").length > 0
+            ? "\n\n" + root.selectedCommit.body.replace(/\s+$/, "") : "");
+        if (message === original) {
+            root.isEditingMessage = false;
+            return;
+        }
+        if (root.branchManager.rewordCommit(root.selectedCommit.sha, message)) {
+            root.isEditingMessage = false;
+        }
+    }
+
+    function selectCommitBySha(sha) {
+        if (!sha || !root.branchManager || !root.branchManager.commitHistory) return false;
+        var model = root.branchManager.commitHistory;
+        var count = model.rowCount();
+        for (var i = 0; i < count; ++i) {
+            var c = model.getCommit(i);
+            if (c && c.sha === sha) {
+                root.selectCommitByIndex(i);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // True when the selected commit is the tip of the checked-out branch (HEAD): rewording it
+    // is a simple amend, otherwise every descendant commit is rewritten as well.
+    readonly property bool selectedIsHead: {
+        if (!root.selectedCommit || root.isWipSelected) return false;
+        var decs = root.selectedCommit.structuredDecorations;
+        if (!decs) return false;
+        for (var i = 0; i < decs.length; ++i) {
+            if (decs[i] && decs[i].isHead) return true;
+        }
+        return false;
+    }
+
+    Connections {
+        target: root.branchManager
+
+        function onCommitReworded(oldSha, newSha) {
+            if (!root.selectCommitBySha(newSha)) {
+                root.pendingSelectSha = newSha;
+            }
+        }
+    }
+
     function isSameBranchRef(a, b) {
         if (!a || !b) return false;
         if (a === b) return true;
@@ -400,6 +470,12 @@ Rectangle {
             return;
         }
 
+        if (root.pendingSelectSha !== "") {
+            var pending = root.pendingSelectSha;
+            root.pendingSelectSha = "";
+            if (root.selectCommitBySha(pending)) return;
+        }
+
         if (root.selectedCommit) {
             var prevSha = root.selectedCommit.sha;
             if (prevSha === "WIP") {
@@ -425,6 +501,9 @@ Rectangle {
     }
 
     function selectCommit(commit) {
+        if (!root.selectedCommit || !commit || root.selectedCommit.sha !== commit.sha) {
+            root.isEditingMessage = false;
+        }
         root.selectedCommit = commit;
         root.selectedFile = null;
         root.isDiffOpen = false;
@@ -1866,6 +1945,36 @@ Rectangle {
                             Layout.fillWidth: true
                         }
 
+                        // Quick action: Edit commit message (reword)
+                        Rectangle {
+                            visible: !root.isEditingMessage
+                            Layout.preferredHeight: 24
+                            implicitWidth: editMsgText.implicitWidth + 18
+                            radius: 4
+                            color: editMsgMouse.containsMouse ? "#1E293B" : "#161B22"
+                            border.color: "#A855F7"
+                            border.width: 1
+
+                            Text {
+                                id: editMsgText
+                                anchors.centerIn: parent
+                                text: "✏ Modifica"
+                                color: "#C084FC"
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+
+                            MouseArea {
+                                id: editMsgMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: "Modifica titolo e descrizione del commit"
+                                onClicked: root.startMessageEdit()
+                            }
+                        }
+
                         // Quick action: Create branch at this commit
                         Rectangle {
                             Layout.preferredHeight: 24
@@ -1907,28 +2016,161 @@ Rectangle {
                         }
                     }
 
-                    // Commit Message (large bold title)
+                    // Commit Message (large bold title) — double-click to edit
                     Text {
+                        visible: !root.isEditingMessage
                         text: root.selectedCommit ? root.selectedCommit.subject : ""
                         color: "#FFFFFF"
                         font.pixelSize: 14
                         font.bold: true
                         wrapMode: Text.Wrap
                         Layout.fillWidth: true
-                        maximumLineCount: 3
-                        elide: Text.ElideRight
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onDoubleClicked: root.startMessageEdit()
+                        }
+                    }
+
+                    // Inline message editor (reword)
+                    ColumnLayout {
+                        visible: root.isEditingMessage
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        TextField {
+                            id: editSubjectField
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 32
+                            placeholderText: "Titolo del commit"
+                            color: "#FFFFFF"
+                            font.pixelSize: 13
+                            font.bold: true
+                            selectByMouse: true
+                            background: Rectangle {
+                                color: "#0D1117"
+                                radius: 4
+                                border.color: editSubjectField.activeFocus ? "#A855F7" : "#30363D"
+                                border.width: 1
+                            }
+                            Keys.onEscapePressed: root.cancelMessageEdit()
+                            Keys.onReturnPressed: editBodyArea.forceActiveFocus()
+                            Keys.onEnterPressed: editBodyArea.forceActiveFocus()
+                        }
+
+                        Text {
+                            visible: editSubjectField.text.length > 72
+                            text: "Titolo lungo (" + editSubjectField.text.length + " caratteri): consigliati al massimo 72"
+                            color: "#F59E0B"
+                            font.pixelSize: 10
+                        }
+
+                        ScrollView {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 110
+                            clip: true
+                            ScrollBar.vertical: FluxScrollBar {
+                            }
+
+                            TextArea {
+                                id: editBodyArea
+                                placeholderText: "Descrizione (opzionale)"
+                                color: "#CBD5E1"
+                                font.pixelSize: 11
+                                wrapMode: TextEdit.Wrap
+                                selectByMouse: true
+                                background: Rectangle {
+                                    color: "#0D1117"
+                                    radius: 4
+                                    border.color: editBodyArea.activeFocus ? "#A855F7" : "#30363D"
+                                    border.width: 1
+                                }
+                                Keys.onEscapePressed: root.cancelMessageEdit()
+                                Keys.onPressed: function (event) {
+                                    if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+                                            && (event.modifiers & Qt.ControlModifier)) {
+                                        root.saveMessageEdit();
+                                        event.accepted = true;
+                                    }
+                                }
+                            }
+                        }
+
+                        // Warning: rewriting history
+                        Rectangle {
+                            Layout.fillWidth: true
+                            implicitHeight: rewordWarnText.implicitHeight + 12
+                            radius: 4
+                            color: "#2A1F0A"
+                            border.color: "#92400E"
+                            border.width: 1
+
+                            Text {
+                                id: rewordWarnText
+                                anchors.fill: parent
+                                anchors.margins: 6
+                                wrapMode: Text.Wrap
+                                color: "#FCD34D"
+                                font.pixelSize: 10
+                                text: root.selectedIsHead
+                                    ? "Il commit verrà riscritto (amend) con un nuovo SHA. Se è già stato pushato servirà un force push."
+                                    : "Il commit non è l'ultimo del branch: verrà eseguito un rebase che riscrive anche tutti i commit successivi (nuovi SHA). Il contenuto dei file non cambia. Se sono già stati pushati servirà un force push."
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+
+                            Text {
+                                text: "Ctrl+Invio per salvare · Esc per annullare"
+                                color: "#6E7681"
+                                font.pixelSize: 10
+                                Layout.fillWidth: true
+                                elide: Text.ElideRight
+                            }
+
+                            Button {
+                                text: "Annulla"
+                                flat: true
+                                onClicked: root.cancelMessageEdit()
+                            }
+
+                            Button {
+                                text: root.selectedIsHead ? "Salva" : "Salva e riscrivi"
+                                enabled: editSubjectField.text.trim().length > 0
+                                         && !(root.branchManager && root.branchManager.isBusy)
+                                highlighted: true
+                                onClicked: root.saveMessageEdit()
+                            }
+                        }
                     }
 
                     // Extended body (if present)
-                    Text {
-                        visible: root.selectedCommit && root.selectedCommit.body && root.selectedCommit.body.length > 0
-                        text: (root.selectedCommit && root.selectedCommit.body) ? root.selectedCommit.body : ""
-                        color: "#94A3B8"
-                        font.pixelSize: 11
-                        wrapMode: Text.Wrap
+                    // Shown in full: grows with the text up to a cap, then scrolls,
+                    // so a long description never squeezes the changed-files list.
+                    ScrollView {
+                        id: bodyScroll
+                        visible: !root.isEditingMessage && root.selectedCommit && root.selectedCommit.body && root.selectedCommit.body.length > 0
                         Layout.fillWidth: true
-                        maximumLineCount: 3
-                        elide: Text.ElideRight
+                        Layout.preferredHeight: Math.min(bodyText.implicitHeight, 200)
+                        clip: true
+                        contentWidth: availableWidth
+                        ScrollBar.vertical: FluxScrollBar {
+                        }
+
+                        TextEdit {
+                            id: bodyText
+                            width: bodyScroll.availableWidth
+                            readOnly: true
+                            selectByMouse: true
+                            text: (root.selectedCommit && root.selectedCommit.body) ? root.selectedCommit.body.replace(/\s+$/, "") : ""
+                            color: "#94A3B8"
+                            selectionColor: "#1E3A8A"
+                            selectedTextColor: "#FFFFFF"
+                            font.pixelSize: 11
+                            wrapMode: TextEdit.Wrap
+                        }
                     }
 
                     // Author Card with circular profile avatar (modern UI/UX)
@@ -2049,6 +2291,105 @@ Rectangle {
                                     color: "#38BDF8"
                                     font.family: "monospace"
                                     font.pixelSize: 11
+                                }
+                            }
+                        }
+                    }
+
+                    // Co-authors (parsed from "Co-authored-by:" trailers)
+                    ColumnLayout {
+                        id: coAuthorsSection
+                        readonly property var coAuthors: (root.selectedCommit && root.selectedCommit.coAuthors) ? root.selectedCommit.coAuthors : []
+                        visible: coAuthors.length > 0
+                        Layout.fillWidth: true
+                        spacing: 4
+
+                        Text {
+                            text: coAuthorsSection.coAuthors.length === 1 ? "CO-AUTORE" : ("CO-AUTORI (" + coAuthorsSection.coAuthors.length + ")")
+                            color: "#8B949E"
+                            font.pixelSize: 10
+                            font.bold: true
+                        }
+
+                        Repeater {
+                            model: coAuthorsSection.coAuthors
+
+                            delegate: RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                Rectangle {
+                                    Layout.preferredWidth: 24
+                                    Layout.preferredHeight: 24
+                                    radius: 12
+                                    color: modelData.color || "#6366F1"
+                                    border.color: "#30363D"
+                                    border.width: 1
+
+                                    Image {
+                                        id: coAvatarImg
+                                        anchors.fill: parent
+                                        source: modelData.avatarUrl || ""
+                                        fillMode: Image.PreserveAspectCrop
+                                        smooth: true
+                                        mipmap: true
+                                    }
+
+                                    // Same circular mask technique used by the author card
+                                    Canvas {
+                                        anchors.fill: parent
+                                        visible: coAvatarImg.status === Image.Ready
+                                        onVisibleChanged: if (visible) requestPaint()
+                                        onAvailableChanged: if (available) requestPaint()
+                                        onPaint: {
+                                            var ctx = getContext("2d");
+                                            ctx.reset();
+                                            var cx = width / 2;
+                                            var cy = height / 2;
+                                            var r = Math.min(width, height) / 2 - 0.5;
+                                            ctx.globalCompositeOperation = "source-over";
+                                            ctx.fillStyle = "#161B22";
+                                            ctx.fillRect(0, 0, width, height);
+                                            ctx.globalCompositeOperation = "destination-out";
+                                            ctx.beginPath();
+                                            ctx.arc(cx, cy, r, 0, Math.PI * 2, false);
+                                            ctx.closePath();
+                                            ctx.fillStyle = "#000000";
+                                            ctx.fill();
+                                            ctx.globalCompositeOperation = "source-over";
+                                            ctx.beginPath();
+                                            ctx.arc(cx, cy, r, 0, Math.PI * 2, false);
+                                            ctx.strokeStyle = "#30363D";
+                                            ctx.lineWidth = 1;
+                                            ctx.stroke();
+                                        }
+                                    }
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: modelData.initials || "??"
+                                        color: "#FFFFFF"
+                                        font.pixelSize: 9
+                                        font.bold: true
+                                        visible: coAvatarImg.status !== Image.Ready
+                                    }
+                                }
+
+                                Text {
+                                    text: modelData.name || ""
+                                    color: "#E2E8F0"
+                                    font.pixelSize: 12
+                                    font.bold: true
+                                    elide: Text.ElideRight
+                                    Layout.maximumWidth: 180
+                                }
+
+                                Text {
+                                    text: modelData.email || ""
+                                    color: "#8B949E"
+                                    font.pixelSize: 11
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
                                 }
                             }
                         }
@@ -3211,6 +3552,15 @@ Rectangle {
             font.pixelSize: 11
             onClicked: {
                 if (root.branchManager) root.branchManager.checkoutCommit(commitContextMenu.targetSha);
+            }
+        }
+
+        MenuItem {
+            text: "✏ Modifica messaggio del commit..."
+            font.pixelSize: 11
+            onClicked: {
+                // The row was already selected by the right-click handler
+                root.startMessageEdit();
             }
         }
 

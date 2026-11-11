@@ -214,6 +214,11 @@ namespace gf::infra::git
         revertCommit(const std::filesystem::path& repoPath,
                      const std::string& commitSha) override;
 
+        [[nodiscard]] std::expected<std::string, gf::git::ports::GitOpsError>
+        rewordCommit(const std::filesystem::path& repoPath,
+                     const std::string& commitSha,
+                     const std::string& newMessage) override;
+
         [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
         createWorktree(const std::filesystem::path& repoPath,
                        const std::filesystem::path& worktreePath,
