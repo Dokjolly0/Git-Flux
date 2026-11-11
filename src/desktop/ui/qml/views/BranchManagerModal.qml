@@ -118,6 +118,7 @@ Dialog {
 
             ListView {
                 id: branchList
+                SmoothWheelScroller {}
                 anchors.fill: parent
                 model: root.branchManager ? root.branchManager.branchList : null
                 boundsBehavior: Flickable.StopAtBounds

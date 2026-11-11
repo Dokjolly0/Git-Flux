@@ -166,6 +166,7 @@ Item {
 
                         ListView {
                             id: groupSelectListView
+                            SmoothWheelScroller {}
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
@@ -316,6 +317,7 @@ Item {
                         // Resulting repositories list
                         ListView {
                             id: previewListView
+                            SmoothWheelScroller {}
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true

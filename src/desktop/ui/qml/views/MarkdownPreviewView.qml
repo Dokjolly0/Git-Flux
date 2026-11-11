@@ -382,6 +382,7 @@ Rectangle {
                     }
 
                     ListView {
+                        SmoothWheelScroller {}
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         clip: true
@@ -436,6 +437,7 @@ Rectangle {
 
                 ListView {
                     id: mdListView
+                    SmoothWheelScroller {}
                     anchors.fill: parent
                     topMargin: 20
                     bottomMargin: 32
@@ -745,6 +747,7 @@ Rectangle {
 
                                         // Horizontal Scrollable Code Area (preserves ASCII/UTF-8 box trees!)
                                         Flickable {
+                                            SmoothWheelScroller {}
                                             Layout.fillWidth: true
                                             Layout.preferredHeight: codePreText.implicitHeight + 22
                                             contentWidth: Math.max(width, codePreText.implicitWidth + 24)
@@ -940,6 +943,7 @@ Rectangle {
 
                                     Flickable {
                                         id: tableFlick
+                                        SmoothWheelScroller {}
                                         width: parent.width
                                         height: tableGrid.implicitHeight
                                         readonly property real baseColWidth: Math.max(130, Math.floor((width - 2) / tableCard.colCount))

@@ -600,6 +600,7 @@ Item {
                         // Repo List
                         ListView {
                             id: repoListView
+                            SmoothWheelScroller {}
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
@@ -1052,6 +1053,7 @@ Item {
                         // Group List
                         ListView {
                             id: groupListView
+                            SmoothWheelScroller {}
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
@@ -1457,6 +1459,7 @@ Item {
                         // Workspace List
                         ListView {
                             id: wsListView
+                            SmoothWheelScroller {}
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
@@ -1910,6 +1913,7 @@ Item {
 
             ListView {
                 id: newGrpRepoList
+                SmoothWheelScroller {}
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.min(150, count * 36)
                 clip: true
@@ -2132,6 +2136,7 @@ Item {
 
             ListView {
                 id: groupPickList
+                SmoothWheelScroller {}
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.min(180, count * 36)
                 clip: true
@@ -2243,6 +2248,7 @@ Item {
 
             ListView {
                 id: repoPickList
+                SmoothWheelScroller {}
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.min(200, count * 40)
                 clip: true
@@ -2357,6 +2363,7 @@ Item {
 
             ListView {
                 id: wsRepoPickList
+                SmoothWheelScroller {}
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.min(200, count * 40)
                 clip: true
@@ -2471,6 +2478,7 @@ Item {
 
             ListView {
                 id: wsGrpPickList
+                SmoothWheelScroller {}
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.min(200, count * 40)
                 clip: true

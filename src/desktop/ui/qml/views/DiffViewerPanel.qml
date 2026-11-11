@@ -747,6 +747,7 @@ Rectangle {
 
                 ListView {
                     id: inlineListView
+                    SmoothWheelScroller {}
                     anchors.fill: parent
                     anchors.bottomMargin: inlineHScrollBar.visible ? 12 : 0
                     focus: true
@@ -1004,6 +1005,7 @@ Rectangle {
 
                     ListView {
                         id: splitListView
+                        SmoothWheelScroller {}
                         anchors.fill: parent
                         anchors.bottomMargin: splitHScrollBar.visible ? 12 : 0
                         focus: true
@@ -1260,6 +1262,7 @@ Rectangle {
 
                 ListView {
                     id: hunkListView
+                    SmoothWheelScroller {}
                     width: root.effectiveWrap ? hunkScrollView.width : Math.max(hunkScrollView.width, root.maxCodeWidth + 120)
                     model: (!root.showingMarkdownPreview && root.diffViewer && root.diffViewer.viewMode === "hunk") ? root.diffViewer.hunks : null
                     spacing: 12
@@ -1392,6 +1395,7 @@ Rectangle {
 
                 ListView {
                     id: blameListView
+                    SmoothWheelScroller {}
                     anchors.fill: parent
                     anchors.bottomMargin: blameHScrollBar.visible ? 12 : 0
                     focus: true

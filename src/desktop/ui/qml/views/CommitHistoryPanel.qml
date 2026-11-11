@@ -1191,6 +1191,7 @@ Rectangle {
                 // Commit Table List
                 ListView {
                     id: commitTableListView
+                    SmoothWheelScroller {}
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
@@ -2150,6 +2151,7 @@ Rectangle {
                         }
 
                         ScrollView {
+                            SmoothWheelScroller {}
                             Layout.fillWidth: true
                             Layout.preferredHeight: 110
                             clip: true
@@ -2235,6 +2237,7 @@ Rectangle {
                     // so a long description never squeezes the changed-files list.
                     ScrollView {
                         id: bodyScroll
+                        SmoothWheelScroller {}
                         visible: !root.isEditingMessage && root.selectedCommit && root.selectedCommit.body && root.selectedCommit.body.length > 0
                         Layout.fillWidth: true
                         Layout.preferredHeight: Math.min(bodyText.implicitHeight, 200)
@@ -3018,6 +3021,7 @@ Rectangle {
 
                     ListView {
                         id: gitKrakenFilesList
+                        SmoothWheelScroller {}
                         anchors.fill: parent
                         model: root.sortedPathFiles
                         spacing: 2
@@ -3226,6 +3230,7 @@ Rectangle {
 
                     ListView {
                         id: gitKrakenTreeList
+                        SmoothWheelScroller {}
                         anchors.fill: parent
                         model: root.treeItems
                         spacing: 2
@@ -4402,6 +4407,7 @@ Rectangle {
 
                 ListView {
                     id: fileHistoryResultsList
+                    SmoothWheelScroller {}
                     anchors.fill: parent
                     anchors.margins: 4
                     model: fileHistoryModal.filteredRepoFiles

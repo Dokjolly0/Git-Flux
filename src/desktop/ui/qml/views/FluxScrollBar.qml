@@ -6,7 +6,22 @@ ScrollBar {
 
     policy: ScrollBar.AsNeeded
     hoverEnabled: true
-    active: hovered || pressed || ((control.parent && control.parent.moving) === true) || ((control.parent && control.parent.flicking) === true)
+    active: hovered || pressed || recentlyScrolled || ((control.parent && control.parent.moving) === true) || ((control.parent && control.parent.flicking) === true)
+
+    // SmoothWheelScroller moves contentX/contentY directly, which doesn't set the
+    // Flickable's moving/flicking flags: light the bar up on position changes too.
+    property bool recentlyScrolled: false
+    onPositionChanged: {
+        if (control.size < 1.0) {
+            control.recentlyScrolled = true;
+            scrollIdleTimer.restart();
+        }
+    }
+    Timer {
+        id: scrollIdleTimer
+        interval: 400
+        onTriggered: control.recentlyScrolled = false
+    }
 
     // A custom contentItem bypasses the built-in styles' AsNeeded handling,
     // so hide the handle ourselves when the content fits (size >= 1.0).

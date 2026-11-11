@@ -1050,6 +1050,7 @@ Dialog {
 
                                     ListView {
                                         id: repoListView
+                                        SmoothWheelScroller {}
                                         anchors.fill: parent
                                         anchors.margins: 4
                                         spacing: 4

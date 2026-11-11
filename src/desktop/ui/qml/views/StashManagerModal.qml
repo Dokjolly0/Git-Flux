@@ -182,6 +182,7 @@ Dialog {
 
                 ListView {
                     id: stashListView
+                    SmoothWheelScroller {}
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true

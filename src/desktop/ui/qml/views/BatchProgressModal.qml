@@ -135,6 +135,7 @@ Dialog {
 
             ListView {
                 id: resultsList
+                SmoothWheelScroller {}
                 anchors.fill: parent
                 anchors.margins: 8
                 spacing: 6

@@ -91,6 +91,7 @@ Dialog {
 
             ListView {
                 id: hunksListView
+                SmoothWheelScroller {}
                 anchors.fill: parent
                 anchors.margins: 6
                 spacing: 12
@@ -206,6 +207,7 @@ Dialog {
                                     }
 
                                     ScrollView {
+                                        SmoothWheelScroller {}
                                         Layout.fillWidth: true
                                         Layout.fillHeight: true
                                         clip: true
@@ -258,6 +260,7 @@ Dialog {
                                     }
 
                                     ScrollView {
+                                        SmoothWheelScroller {}
                                         Layout.fillWidth: true
                                         Layout.fillHeight: true
                                         clip: true
@@ -320,6 +323,7 @@ Dialog {
                                 }
 
                                 ScrollView {
+                                    SmoothWheelScroller {}
                                     visible: customExpandCheck.checked
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true

@@ -61,6 +61,7 @@ Rectangle {
             border.width: 1
 
             ScrollView {
+                SmoothWheelScroller {}
                 anchors.fill: parent
                 anchors.margins: 6
                 clip: true

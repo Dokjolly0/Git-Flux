@@ -122,6 +122,7 @@ Rectangle {
 
                 // Scrollable Tab Bar for Open Repositories
                 ScrollView {
+                    SmoothWheelScroller {}
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
