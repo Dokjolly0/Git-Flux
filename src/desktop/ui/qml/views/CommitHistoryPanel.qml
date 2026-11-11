@@ -929,6 +929,37 @@ Rectangle {
                                 font.pixelSize: 10
                                 font.bold: true
                             }
+
+                            // Drag handle to resize the BRANCH / TAG column
+                            MouseArea {
+                                id: branchColResizer
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: 6
+                                hoverEnabled: true
+                                cursorShape: Qt.SplitHCursor
+                                property real pressX: 0
+                                property int startWidth: 0
+                                onPressed: function (mouse) {
+                                    pressX = mapToItem(root, mouse.x, 0).x;
+                                    startWidth = root.branchTagColWidth;
+                                }
+                                onPositionChanged: function (mouse) {
+                                    if (!pressed) return;
+                                    var dx = mapToItem(root, mouse.x, 0).x - pressX;
+                                    root.branchTagColWidth = Math.max(100, Math.min(480, Math.round(startWidth + dx)));
+                                }
+                                onDoubleClicked: root.branchTagColWidth = 180
+
+                                Rectangle {
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
+                                    width: 2
+                                    color: (branchColResizer.containsMouse || branchColResizer.pressed) ? "#38BDF8" : "transparent"
+                                }
+                            }
                         }
 
                         // Col 2: GRAPH
@@ -1136,20 +1167,47 @@ Rectangle {
                                     return false;
                                 }
 
+                                // Only one "primary" badge is rendered inline (HEAD first, otherwise
+                                // the first local/remote/tag). The others collapse into a "+N" chip
+                                // that opens a popup with the full list, so the column never overflows.
+                                readonly property var allDecs: commitRow.structuredDecorations || []
+                                readonly property int primaryIndex: {
+                                    for (var i = 0; i < allDecs.length; ++i) {
+                                        if (allDecs[i] && allDecs[i].isHead) return i;
+                                    }
+                                    return 0;
+                                }
+                                readonly property var primaryDecs: allDecs.length > 0 ? [allDecs[primaryIndex]] : []
+                                readonly property var extraDecs: {
+                                    var out = [];
+                                    for (var i = 0; i < allDecs.length; ++i) {
+                                        if (i !== primaryIndex) out.push(allDecs[i]);
+                                    }
+                                    return out;
+                                }
+                                readonly property int minConnectorWidth: 8
+
                                 Row {
-                                    anchors.right: parent.right
-                                    anchors.rightMargin: 0
+                                    id: badgeRow
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 6
                                     anchors.verticalCenter: parent.verticalCenter
                                     spacing: 4
-                                    x: Math.max(6, parent.width - width)
 
                                     Repeater {
-                                        model: commitRow.structuredDecorations || []
+                                        model: branchTagCol.primaryDecs
 
                                         delegate: Rectangle {
                                             id: branchBadge
                                             height: 22
-                                            width: Math.min(branchTagCol.width - 24, decText.implicitWidth + 14)
+                                            width: Math.max(24, Math.min(
+                                                branchTagCol.width - 6 - branchTagCol.minConnectorWidth
+                                                    - (moreChip.visible ? moreChip.width + badgeRow.spacing : 0),
+                                                decText.implicitWidth + 14))
+
+                                            ToolTip.visible: badgeMouse.containsMouse && decText.truncated && !badgeMouse.isDraggingBadge
+                                            ToolTip.delay: 400
+                                            ToolTip.text: modelData.name || ""
                                             radius: 4
                                             property bool isHoveredTarget: (root.hoveredTargetBranch !== "" && root.draggingBranchName !== "" && root.isSameBranchRef(root.hoveredTargetBranch, modelData.name))
                                             color: branchBadge.isHoveredTarget
@@ -1282,14 +1340,163 @@ Rectangle {
                                         }
                                     }
 
-                                    // Horizontal connecting line to graph node if row has decorations
+                                    // "+N" chip: collapses the remaining refs of this commit
                                     Rectangle {
-                                        width: 14 + (commitRow.graphLane !== undefined ? commitRow.graphLane : 0) * 22
-                                        height: 2
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        color: commitRow.graphColor || "#06B6D4"
-                                        visible: (commitRow.structuredDecorations && commitRow.structuredDecorations.length > 0)
+                                        id: moreChip
+                                        visible: branchTagCol.extraDecs.length > 0
+                                        height: 22
+                                        width: moreText.implicitWidth + 12
+                                        radius: 4
+                                        color: moreMouse.containsMouse || extraRefsPopup.opened ? "#334155" : "#1E293B"
+                                        border.color: "#475569"
+                                        border.width: 1
+
+                                        Text {
+                                            id: moreText
+                                            anchors.centerIn: parent
+                                            text: "+" + branchTagCol.extraDecs.length
+                                            color: "#CBD5E1"
+                                            font.pixelSize: 11
+                                            font.bold: true
+                                        }
+
+                                        MouseArea {
+                                            id: moreMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onContainsMouseChanged: {
+                                                if (containsMouse) {
+                                                    refsPopupCloseTimer.stop();
+                                                    if (root.draggingBranchName === "") extraRefsPopup.open();
+                                                } else {
+                                                    refsPopupCloseTimer.restart();
+                                                }
+                                            }
+                                            onClicked: {
+                                                commitTableListView.forceActiveFocus();
+                                                root.selectCommitByIndex(commitRow.index);
+                                                refsPopupCloseTimer.stop();
+                                                extraRefsPopup.open();
+                                            }
+                                        }
+
+                                        // Closes the hover popup shortly after the mouse leaves both the
+                                        // chip and the popup (the delay lets the cursor cross the gap).
+                                        Timer {
+                                            id: refsPopupCloseTimer
+                                            interval: 250
+                                            onTriggered: {
+                                                if (!moreMouse.containsMouse && !popupHover.hovered) extraRefsPopup.close();
+                                            }
+                                        }
+
+                                        Popup {
+                                            id: extraRefsPopup
+                                            y: parent.height + 2
+                                            x: 0
+                                            padding: 6
+                                            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+                                            HoverHandler {
+                                                id: popupHover
+                                                onHoveredChanged: {
+                                                    if (hovered) refsPopupCloseTimer.stop();
+                                                    else refsPopupCloseTimer.restart();
+                                                }
+                                            }
+                                            background: Rectangle {
+                                                color: "#0D1117"
+                                                border.color: "#30363D"
+                                                border.width: 1
+                                                radius: 6
+                                            }
+
+                                            contentItem: Column {
+                                                spacing: 4
+
+                                                Text {
+                                                    text: "Riferimenti (" + branchTagCol.allDecs.length + ")"
+                                                    color: "#8B949E"
+                                                    font.pixelSize: 10
+                                                    font.bold: true
+                                                    bottomPadding: 2
+                                                }
+
+                                                Repeater {
+                                                    model: branchTagCol.allDecs
+
+                                                    delegate: Rectangle {
+                                                        // Highlight the ref shown inline in the row
+                                                        readonly property bool isPrimary: index === branchTagCol.primaryIndex
+                                                        height: 22
+                                                        width: Math.min(360, extraText.implicitWidth + 14)
+                                                        radius: 4
+                                                        color: modelData.bgColor || "#0E7490"
+                                                        border.color: (extraMouse.containsMouse || isPrimary) ? "#FFFFFF" : (modelData.borderColor || "#06B6D4")
+                                                        border.width: isPrimary ? 2 : 1
+
+                                                        Text {
+                                                            id: extraText
+                                                            anchors.verticalCenter: parent.verticalCenter
+                                                            anchors.left: parent.left
+                                                            anchors.leftMargin: 7
+                                                            width: parent.width - 14
+                                                            text: modelData.label || modelData.name || ""
+                                                            color: modelData.fgColor || "#FFFFFF"
+                                                            font.pixelSize: 11
+                                                            font.bold: true
+                                                            elide: Text.ElideMiddle
+                                                        }
+
+                                                        MouseArea {
+                                                            id: extraMouse
+                                                            anchors.fill: parent
+                                                            hoverEnabled: true
+                                                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                                            cursorShape: Qt.PointingHandCursor
+                                                            onClicked: function (mouse) {
+                                                                if (mouse.button === Qt.RightButton && modelData.type) {
+                                                                    badgeContextMenu.targetName = modelData.name || "";
+                                                                    badgeContextMenu.badgeType = modelData.type || "local";
+                                                                    badgeContextMenu.isCurrentHead = modelData.isHead || false;
+                                                                    badgeContextMenu.targetCommitSha = commitRow.sha;
+                                                                    extraRefsPopup.close();
+                                                                    badgeContextMenu.popup();
+                                                                }
+                                                            }
+                                                            onDoubleClicked: function (mouse) {
+                                                                if (mouse.button === Qt.LeftButton && root.branchManager
+                                                                        && (modelData.type === "local" || modelData.type === "remote")) {
+                                                                    extraRefsPopup.close();
+                                                                    root.branchManager.checkoutBranch(modelData.name);
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                Text {
+                                                    text: "Doppio clic: checkout · Clic destro: azioni"
+                                                    color: "#6E7681"
+                                                    font.pixelSize: 9
+                                                    topPadding: 2
+                                                }
+                                            }
+                                        }
                                     }
+                                }
+
+                                // Horizontal connecting line from the badges to the graph column:
+                                // fills only the space left, so it never pushes badges off-screen.
+                                Rectangle {
+                                    anchors.left: badgeRow.right
+                                    anchors.leftMargin: 2
+                                    anchors.right: parent.right
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    height: 2
+                                    color: commitRow.graphColor || "#06B6D4"
+                                    visible: branchTagCol.allDecs.length > 0
                                 }
                             }
 
