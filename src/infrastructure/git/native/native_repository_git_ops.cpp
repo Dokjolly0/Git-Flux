@@ -55,6 +55,41 @@ namespace gf::infra::git
             return std::string(message.substr(0, newlinePos));
         }
 
+        /// Runs a git command in `repoPath`; returns trimmed stdout on exit code 0, an error otherwise.
+        [[nodiscard]] std::expected<std::string, gf::git::ports::GitOpsError>
+        runGitCapture(gf::git::ports::IGitCommandExecutor& executor,
+                      const std::filesystem::path& repoPath,
+                      std::vector<std::string> args)
+        {
+            const std::string label = "git " + (args.empty() ? std::string{} : args.front());
+            gf::git::bo::GitCommand cmd{
+                .args = std::move(args),
+                .workingDirectory = repoPath,
+                .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+                .timeout = std::chrono::milliseconds{30'000}
+            };
+            auto exec = executor.execute(cmd);
+            if (!exec)
+            {
+                return std::unexpected(gf::git::ports::GitOpsError{
+                    .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+                    .exitCode = -1,
+                    .message = "Impossibile eseguire " + label + ": " + exec.error().message,
+                    .command = label
+                });
+            }
+            if (exec->exitCode != 0)
+            {
+                return std::unexpected(gf::git::ports::GitOpsError{
+                    .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+                    .exitCode = exec->exitCode,
+                    .message = exec->stderrBytes.empty() ? exec->stdoutBytes : exec->stderrBytes,
+                    .command = label
+                });
+            }
+            return trimString(std::move(exec->stdoutBytes));
+        }
+
         [[nodiscard]] bool isStashNotFoundError(std::string_view output) noexcept
         {
             return output.find("is not a valid reference") != std::string_view::npos ||
@@ -3914,6 +3949,158 @@ namespace gf::infra::git
         }
 
         return *newTarget;
+    }
+
+    namespace
+    {
+        struct FastForwardPlan
+        {
+            std::string targetRef;   // refs/heads/<target>
+            std::string targetSha;
+            std::string sourceSha;
+            bool possible = false;   // target is a strict ancestor of source
+        };
+
+        [[nodiscard]] std::expected<FastForwardPlan, gf::git::ports::GitOpsError>
+        planFastForward(gf::git::ports::IGitCommandExecutor& executor,
+                        const std::filesystem::path& repoPath,
+                        const std::string& targetBranch,
+                        const std::string& sourceRef)
+        {
+            using gf::git::ports::GitOpsError;
+            if (targetBranch.empty() || sourceRef.empty() ||
+                targetBranch.front() == '-' || sourceRef.front() == '-')
+            {
+                return std::unexpected(GitOpsError{
+                    .kind = GitOpsError::Kind::InvalidBranchName,
+                    .exitCode = -1,
+                    .message = "Branch di origine o destinazione non valido",
+                    .command = "fast-forward"
+                });
+            }
+
+            FastForwardPlan plan;
+            plan.targetRef = "refs/heads/" + targetBranch;
+
+            auto tgt = runGitCapture(executor, repoPath, {"rev-parse", "--verify", "--quiet", plan.targetRef + "^{commit}"});
+            if (!tgt)
+            {
+                return std::unexpected(GitOpsError{
+                    .kind = GitOpsError::Kind::BranchNotFound,
+                    .exitCode = tgt.error().exitCode,
+                    .message = "Branch locale non trovato: " + targetBranch,
+                    .command = "git rev-parse"
+                });
+            }
+            auto src = runGitCapture(executor, repoPath, {"rev-parse", "--verify", "--quiet", sourceRef + "^{commit}"});
+            if (!src)
+            {
+                return std::unexpected(GitOpsError{
+                    .kind = GitOpsError::Kind::BranchNotFound,
+                    .exitCode = src.error().exitCode,
+                    .message = "Riferimento non trovato: " + sourceRef,
+                    .command = "git rev-parse"
+                });
+            }
+            plan.targetSha = *tgt;
+            plan.sourceSha = *src;
+
+            if (plan.targetSha != plan.sourceSha)
+            {
+                // exit 0 => ancestor, exit 1 => not ancestor (diverged or ahead)
+                plan.possible = runGitCapture(executor, repoPath,
+                                              {"merge-base", "--is-ancestor", plan.targetSha, plan.sourceSha})
+                    .has_value();
+            }
+            return plan;
+        }
+    } // namespace
+
+    std::expected<bool, gf::git::ports::GitOpsError>
+    NativeRepositoryGitOps::canFastForwardBranch(const std::filesystem::path& repoPath,
+                                                 const std::string& targetBranch,
+                                                 const std::string& sourceRef)
+    {
+        auto plan = planFastForward(m_executor, repoPath, targetBranch, sourceRef);
+        if (!plan)
+        {
+            return std::unexpected(plan.error());
+        }
+        return plan->possible;
+    }
+
+    std::expected<void, gf::git::ports::GitOpsError>
+    NativeRepositoryGitOps::fastForwardBranch(const std::filesystem::path& repoPath,
+                                              const std::string& targetBranch,
+                                              const std::string& sourceRef)
+    {
+        using gf::git::ports::GitOpsError;
+
+        auto plan = planFastForward(m_executor, repoPath, targetBranch, sourceRef);
+        if (!plan)
+        {
+            return std::unexpected(plan.error());
+        }
+        if (plan->targetSha == plan->sourceSha)
+        {
+            return {}; // already up to date
+        }
+        if (!plan->possible)
+        {
+            return std::unexpected(GitOpsError{
+                .kind = GitOpsError::Kind::InvalidOperation,
+                .exitCode = -1,
+                .message = "Fast-forward impossibile: '" + targetBranch + "' non è un antenato di '" + sourceRef +
+                           "' (i branch sono divergenti)",
+                .command = "fast-forward"
+            });
+        }
+
+        // Checked-out branch: update the working tree too, git refuses if local changes would be overwritten.
+        auto headRef = runGitCapture(m_executor, repoPath, {"symbolic-ref", "-q", "HEAD"});
+        if (headRef && *headRef == plan->targetRef)
+        {
+            auto merged = runGitCapture(m_executor, repoPath, {"merge", "--ff-only", plan->sourceSha});
+            if (!merged)
+            {
+                auto err = merged.error();
+                err.command = "git merge --ff-only";
+                return std::unexpected(std::move(err));
+            }
+            return {};
+        }
+
+        // Branch checked out in another worktree: moving the ref would desync that worktree.
+        if (auto worktrees = runGitCapture(m_executor, repoPath, {"worktree", "list", "--porcelain"}))
+        {
+            const std::string needle = "branch " + plan->targetRef;
+            std::size_t start = 0;
+            const std::string& out = *worktrees;
+            while (start < out.size())
+            {
+                auto end = out.find('\n', start);
+                if (end == std::string::npos) end = out.size();
+                if (trimString(out.substr(start, end - start)) == needle)
+                {
+                    return std::unexpected(GitOpsError{
+                        .kind = GitOpsError::Kind::InvalidOperation,
+                        .exitCode = -1,
+                        .message = "Il branch '" + targetBranch + "' è in checkout in un altro worktree",
+                        .command = "fast-forward"
+                    });
+                }
+                start = end + 1;
+            }
+        }
+
+        auto updated = runGitCapture(m_executor, repoPath,
+                                     {"update-ref", "-m", "GitFlux: fast-forward " + targetBranch + " to " + sourceRef,
+                                      plan->targetRef, plan->sourceSha, plan->targetSha});
+        if (!updated)
+        {
+            return std::unexpected(updated.error());
+        }
+        return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>

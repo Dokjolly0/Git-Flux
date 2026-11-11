@@ -66,6 +66,16 @@ namespace gf::git::bl
         rewordCommit(const std::filesystem::path& repoPath, const std::string& commitSha,
                      const std::string& newMessage);
 
+        /// True when local branch `targetBranch` can be fast-forwarded to `sourceRef`.
+        [[nodiscard]] std::expected<bool, ports::GitOpsError>
+        canFastForwardBranch(const std::filesystem::path& repoPath, const std::string& targetBranch,
+                             const std::string& sourceRef);
+
+        /// Fast-forwards local branch `targetBranch` to `sourceRef` (fails if branches diverged).
+        [[nodiscard]] std::expected<void, ports::GitOpsError>
+        fastForwardBranch(const std::filesystem::path& repoPath, const std::string& targetBranch,
+                          const std::string& sourceRef);
+
         /// Creates a worktree for a commit or branch.
         [[nodiscard]] std::expected<void, ports::GitOpsError>
         createWorktree(const std::filesystem::path& repoPath, const std::filesystem::path& worktreePath,

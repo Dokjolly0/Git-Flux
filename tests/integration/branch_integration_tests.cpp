@@ -393,3 +393,91 @@ TEST_CASE (
         CHECK(res.error().kind == gf::git::ports::GitOpsError::Kind::InvalidOperation);
     }
 }
+
+TEST_CASE (
+"GitBranchService fast-forwards a branch that is behind on the same history line"
+,
+"[git][branch][fastforward][integration]"
+)
+ {
+    auto gitDiscovery = gf::infra::git::GitDiscovery::discover();
+    REQUIRE(gitDiscovery.has_value());
+    const auto gitExe = gitDiscovery->directBinaryPath.empty()
+                            ? gitDiscovery->discoveredInPath
+                            : gitDiscovery->directBinaryPath;
+
+    gf::infra::git::NativeGitCommandExecutor executor(gitExe);
+    gf::infra::git::NativeRepositoryGitOps gitOps(executor);
+    gf::git::bl::GitBranchService branchService(gitOps);
+
+    BranchTestSandbox sandbox;
+
+    auto git = [&](std::vector<std::string> args) -> std::string
+    {
+        gf::git::bo::GitCommand cmd{
+            .args = std::move(args),
+            .workingDirectory = sandbox.root,
+            .lockPolicy = gf::git::bo::GitLockPolicy::Standard
+        };
+        auto res = executor.execute(cmd);
+        REQUIRE(res.has_value());
+        REQUIRE(res->exitCode == 0);
+        auto out = res->stdoutBytes;
+        while (!out.empty() && (out.back() == '\n' || out.back() == '\r')) out.pop_back();
+        return out;
+    };
+
+    git({"init", "-b", "main"});
+    git({"config", "user.name", "GitFlux TestBot"});
+    git({"config", "user.email", "testbot@gitflux.local"});
+
+    // main: c1 ; feature: c1 <- c2 <- c3 (main is behind feature, same line)
+    sandbox.writeFile("a.txt", "one\n");
+    git({"add", "."});
+    git({"commit", "-m", "c1"});
+    git({"checkout", "-q", "-b", "feature"});
+    sandbox.writeFile("a.txt", "two\n");
+    git({"commit", "-qam", "c2"});
+    sandbox.writeFile("a.txt", "three\n");
+    git({"commit", "-qam", "c3"});
+    const std::string featureSha = git({"rev-parse", "feature"});
+
+    SECTION("Non checked-out target: only the ref moves")
+    {
+        CHECK(branchService.canFastForwardBranch(sandbox.root, "main", "feature").value());
+        CHECK_FALSE(branchService.canFastForwardBranch(sandbox.root, "feature", "main").value());
+
+        REQUIRE(branchService.fastForwardBranch(sandbox.root, "main", "feature").has_value());
+        CHECK(git({"rev-parse", "main"}) == featureSha);
+        CHECK(git({"symbolic-ref", "--short", "HEAD"}) == "feature");
+
+        // Already aligned: nothing more to fast-forward
+        CHECK_FALSE(branchService.canFastForwardBranch(sandbox.root, "main", "feature").value());
+    }
+
+    SECTION("Checked-out target: working tree is updated too")
+    {
+        git({"checkout", "-q", "main"});
+        CHECK(sandbox.readFile("a.txt") == "one\n");
+
+        REQUIRE(branchService.fastForwardBranch(sandbox.root, "main", "feature").has_value());
+        CHECK(git({"rev-parse", "HEAD"}) == featureSha);
+        CHECK(git({"symbolic-ref", "--short", "HEAD"}) == "main");
+        CHECK(sandbox.readFile("a.txt") == "three\n");
+    }
+
+    SECTION("Diverged branches cannot be fast-forwarded")
+    {
+        git({"checkout", "-q", "main"});
+        sandbox.writeFile("b.txt", "main only\n");
+        git({"add", "b.txt"});
+        git({"commit", "-m", "main-only"});
+        const std::string mainSha = git({"rev-parse", "main"});
+
+        CHECK_FALSE(branchService.canFastForwardBranch(sandbox.root, "main", "feature").value());
+        auto res = branchService.fastForwardBranch(sandbox.root, "main", "feature");
+        REQUIRE_FALSE(res.has_value());
+        CHECK(res.error().kind == gf::git::ports::GitOpsError::Kind::InvalidOperation);
+        CHECK(git({"rev-parse", "main"}) == mainSha);
+    }
+}

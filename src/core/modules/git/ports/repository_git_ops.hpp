@@ -391,6 +391,38 @@ namespace gf::git::ports
             });
         }
 
+        /// Returns true when local branch `targetBranch` can be fast-forwarded to `sourceRef`
+        /// (target is a strict ancestor of source). Returns false when they already match or diverged.
+        [[nodiscard]] virtual std::expected<bool, GitOpsError>
+        canFastForwardBranch(const std::filesystem::path& repoPath,
+                             const std::string& targetBranch,
+                             const std::string& sourceRef)
+        {
+            (void)repoPath;
+            (void)targetBranch;
+            (void)sourceRef;
+            return false;
+        }
+
+        /// Fast-forwards local branch `targetBranch` to `sourceRef`. When the target is the
+        /// checked-out branch the working tree is updated (`git merge --ff-only`); otherwise only
+        /// the ref is moved (`git update-ref`, guarded by its old value). Fails if not fast-forward.
+        [[nodiscard]] virtual std::expected<void, GitOpsError>
+        fastForwardBranch(const std::filesystem::path& repoPath,
+                          const std::string& targetBranch,
+                          const std::string& sourceRef)
+        {
+            (void)repoPath;
+            (void)targetBranch;
+            (void)sourceRef;
+            return std::unexpected(GitOpsError{
+                .kind = GitOpsError::Kind::InvalidOperation,
+                .exitCode = -1,
+                .message = "fastForwardBranch non supportato da questa implementazione",
+                .command = "fast-forward"
+            });
+        }
+
         /// Creates a new git worktree (`git worktree add <worktreePath> <commitOrBranch>`).
         [[nodiscard]] virtual std::expected<void, GitOpsError>
         createWorktree(const std::filesystem::path& repoPath,

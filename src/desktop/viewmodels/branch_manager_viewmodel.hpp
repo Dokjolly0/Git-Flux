@@ -75,6 +75,8 @@ namespace gf::desktop
 
     Q_INVOKABLE bool mergeBranch(const QString& sourceBranch, bool noFf = false);
     Q_INVOKABLE bool mergeBranchInto(const QString& sourceBranch, const QString& targetBranch);
+    Q_INVOKABLE bool canFastForwardBranch(const QString& targetBranch, const QString& sourceBranch);
+    Q_INVOKABLE bool fastForwardBranch(const QString& targetBranch, const QString& sourceBranch);
     Q_INVOKABLE bool rebaseOnto(const QString& targetBranch);
     Q_INVOKABLE bool rebaseBranch(const QString& sourceBranch, const QString& targetBranch);
     Q_INVOKABLE bool abortMerge();

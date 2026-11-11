@@ -343,6 +343,44 @@ namespace gf::git::bl
         return m_gitOps.rewordCommit(repoPath, commitSha, newMessage);
     }
 
+    std::expected<bool, ports::GitOpsError>
+    GitBranchService::canFastForwardBranch(const std::filesystem::path& repoPath,
+                                           const std::string& targetBranch,
+                                           const std::string& sourceRef)
+    {
+        if (auto valid = validateRepoPath(repoPath); !valid)
+        {
+            return std::unexpected(valid.error());
+        }
+        if (targetBranch.empty() || sourceRef.empty())
+        {
+            return false;
+        }
+        return m_gitOps.canFastForwardBranch(repoPath, targetBranch, sourceRef);
+    }
+
+    std::expected<void, ports::GitOpsError>
+    GitBranchService::fastForwardBranch(const std::filesystem::path& repoPath,
+                                        const std::string& targetBranch,
+                                        const std::string& sourceRef)
+    {
+        if (auto valid = validateRepoPath(repoPath); !valid)
+        {
+            return valid;
+        }
+        if (targetBranch.empty() || sourceRef.empty())
+        {
+            return std::unexpected(ports::GitOpsError{
+                .kind = ports::GitOpsError::Kind::InvalidBranchName,
+                .exitCode = -1,
+                .message = "Branch di origine o destinazione non specificato",
+                .command = "fast-forward"
+            });
+        }
+        auto lock = RepositoryLockCoordinator::instance().acquire(repoPath);
+        return m_gitOps.fastForwardBranch(repoPath, targetBranch, sourceRef);
+    }
+
     std::expected<void, ports::GitOpsError>
     GitBranchService::createWorktree(const std::filesystem::path& repoPath,
                                      const std::filesystem::path& worktreePath,

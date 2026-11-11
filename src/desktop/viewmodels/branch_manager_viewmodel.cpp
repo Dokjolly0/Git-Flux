@@ -962,6 +962,58 @@ namespace gf::desktop
         return mergeBranch(sourceBranch);
     }
 
+    namespace
+    {
+        // Drop targets may be remote badges ("origin/foo"): fast-forward always applies to the local branch.
+        QString localBranchName(const QString& name)
+        {
+            return name.startsWith(QLatin1String("origin/")) ? name.mid(7) : name;
+        }
+    } // namespace
+
+    bool BranchManagerViewModel::canFastForwardBranch(const QString& targetBranch, const QString& sourceBranch)
+    {
+        if (m_repoPath.empty() || targetBranch.isEmpty() || sourceBranch.isEmpty())
+        {
+            return false;
+        }
+        auto res = m_branchService.canFastForwardBranch(m_repoPath, localBranchName(targetBranch).toStdString(),
+                                                        sourceBranch.toStdString());
+        return res && *res;
+    }
+
+    bool BranchManagerViewModel::fastForwardBranch(const QString& targetBranch, const QString& sourceBranch)
+    {
+        if (m_repoPath.empty() || targetBranch.isEmpty() || sourceBranch.isEmpty())
+        {
+            return false;
+        }
+
+        const QString target = localBranchName(targetBranch);
+        setBusy(true);
+        setStatusMessage(QStringLiteral("Fast-forward di '%1' a '%2' in corso...").arg(target, sourceBranch));
+
+        auto res = m_branchService.fastForwardBranch(m_repoPath, target.toStdString(), sourceBranch.toStdString());
+        setBusy(false);
+
+        if (!res)
+        {
+            setStatusMessage(QString::fromStdString(res.error().message));
+            emit operationCompleted(false, QString::fromStdString(res.error().message));
+            return false;
+        }
+
+        setStatusMessage(QStringLiteral("'%1' aggiornato a '%2' (fast-forward)").arg(target, sourceBranch));
+        refresh();
+        if (m_currentBranch == target)
+        {
+            emit branchSwitched(m_currentBranch);
+        }
+        emit operationCompleted(
+            true, QStringLiteral("Fast-forward di '%1' a '%2' completato con successo").arg(target, sourceBranch));
+        return true;
+    }
+
     void BranchManagerViewModel::copyToClipboard(const QString& text)
     {
         if (auto* cb = QGuiApplication::clipboard())

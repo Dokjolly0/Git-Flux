@@ -219,6 +219,16 @@ namespace gf::infra::git
                      const std::string& commitSha,
                      const std::string& newMessage) override;
 
+        [[nodiscard]] std::expected<bool, gf::git::ports::GitOpsError>
+        canFastForwardBranch(const std::filesystem::path& repoPath,
+                             const std::string& targetBranch,
+                             const std::string& sourceRef) override;
+
+        [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+        fastForwardBranch(const std::filesystem::path& repoPath,
+                          const std::string& targetBranch,
+                          const std::string& sourceRef) override;
+
         [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
         createWorktree(const std::filesystem::path& repoPath,
                        const std::filesystem::path& worktreePath,

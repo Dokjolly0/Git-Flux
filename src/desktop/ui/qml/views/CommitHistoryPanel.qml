@@ -3810,6 +3810,32 @@ Rectangle {
         id: branchDropMenu
         property string sourceBranch: ""
         property string targetBranch: ""
+        // Evaluated each time the menu opens: target is behind source on the same line of history
+        property bool canFastForward: false
+
+        onAboutToShow: {
+            branchDropMenu.canFastForward = root.branchManager
+                ? root.branchManager.canFastForwardBranch(branchDropMenu.targetBranch, branchDropMenu.sourceBranch)
+                : false;
+        }
+
+        MenuItem {
+            visible: branchDropMenu.canFastForward
+            height: visible ? implicitHeight : 0
+            text: "⏩ Fast-forward '" + branchDropMenu.targetBranch.replace(/^origin\//, "") + "' a '" + branchDropMenu.sourceBranch + "'"
+            font.pixelSize: 11
+            font.bold: true
+            onClicked: {
+                if (root.branchManager) {
+                    root.branchManager.fastForwardBranch(branchDropMenu.targetBranch, branchDropMenu.sourceBranch);
+                }
+            }
+        }
+
+        MenuSeparator {
+            visible: branchDropMenu.canFastForward
+            height: visible ? implicitHeight : 0
+        }
 
         MenuItem {
             text: "🔀 Merge '" + branchDropMenu.sourceBranch + "' in '" + branchDropMenu.targetBranch + "'"
