@@ -59,6 +59,8 @@ namespace gf::desktop
             ++m_generation;
             m_repoPath.clear();
             m_currentBranch.clear();
+            m_headSha.clear();
+            m_followHeadPending = false;
             m_remoteUrl.clear();
             m_isDetached = false;
             m_branchListModel.setBranches({});
@@ -74,6 +76,8 @@ namespace gf::desktop
             // Results still in flight for the previous repository must be discarded.
             ++m_generation;
             m_repoPath = newPath;
+            m_headSha.clear(); // another repository's HEAD is not a "move"
+            m_followHeadPending = false;
         }
         refresh();
     }
@@ -202,6 +206,20 @@ namespace gf::desktop
         {
             m_commitHistoryModel.setCommits(std::move(*snapshot.commits));
             snapshot.commits.reset();
+
+            // A filtered history (file history mode) may not contain HEAD: keep the last known one
+            // (and any pending follow request) until a reload that does.
+            const QString newHead = m_commitHistoryModel.headSha();
+            if (!newHead.isEmpty())
+            {
+                const bool moved = !m_headSha.isEmpty() && newHead != m_headSha;
+                m_headSha = newHead;
+                if (moved || m_followHeadPending)
+                {
+                    m_followHeadPending = false;
+                    emit followHeadRequested(newHead);
+                }
+            }
         }
 
         // 3. Remote URL (prefer "origin", otherwise the first remote)
@@ -371,6 +389,7 @@ namespace gf::desktop
 
                 if (generation == m_generation && snapshot)
                 {
+                    m_followHeadPending = true;
                     applySnapshot(*snapshot);
                 }
                 updateBusy();
@@ -415,6 +434,7 @@ namespace gf::desktop
         m_currentBranch = branchName;
         m_isDetached = false;
         emit currentBranchChanged();
+        m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
         refresh();
         return true;
     }
@@ -447,6 +467,10 @@ namespace gf::desktop
         }
 
         setStatusMessage(QStringLiteral("Branch %1 creato con successo").arg(branchName));
+        if (checkoutAfterCreate)
+        {
+            m_followHeadPending = true;
+        }
         refresh();
         if (checkoutAfterCreate)
         {
@@ -549,6 +573,7 @@ namespace gf::desktop
         m_conflictedFiles.clear();
         emit conflictsChanged();
         setStatusMessage(QStringLiteral("Merge di %1 completato con successo").arg(sourceBranch));
+        m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
         refresh();
         emit operationCompleted(true, QStringLiteral("Merge completato"));
         return true;
@@ -577,6 +602,7 @@ namespace gf::desktop
         m_conflictedFiles.clear();
         emit conflictsChanged();
         setStatusMessage(QStringLiteral("Merge annullato con successo"));
+        m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
         refresh();
         emit operationCompleted(true, QStringLiteral("Merge annullato"));
         return true;
@@ -686,6 +712,7 @@ namespace gf::desktop
 
         QString successMsg = QStringLiteral("Pull da %1 completato con successo%2").arg(remoteName, stratLabel);
         setStatusMessage(successMsg);
+        m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
         refresh();
         emit operationCompleted(true, successMsg);
         return true;
@@ -823,6 +850,7 @@ namespace gf::desktop
         }
 
         setStatusMessage(QStringLiteral("Reset al commit %1 (%2) completato").arg(commitSha.left(7), mode));
+        m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
         refresh();
         emit branchSwitched(m_currentBranch);
         emit operationCompleted(
@@ -851,6 +879,7 @@ namespace gf::desktop
         }
 
         setStatusMessage(QStringLiteral("Revert del commit %1 completato").arg(commitSha.left(7)));
+        m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
         refresh();
         emit branchSwitched(m_currentBranch);
         emit operationCompleted(
@@ -920,6 +949,7 @@ namespace gf::desktop
         }
 
         setStatusMessage(QStringLiteral("Cherry-pick del commit %1 completato con successo").arg(commitSha.left(7)));
+        m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
         refresh();
         emit branchSwitched(m_currentBranch);
         emit operationCompleted(
@@ -1065,6 +1095,7 @@ namespace gf::desktop
         }
 
         setStatusMessage(QStringLiteral("Rebase su %1 completato con successo").arg(targetBranch));
+        m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
         refresh();
         emit branchSwitched(m_currentBranch);
         emit operationCompleted(true, QStringLiteral("Rebase su %1 completato con successo").arg(targetBranch));
@@ -1117,6 +1148,7 @@ namespace gf::desktop
         }
 
         setStatusMessage(QStringLiteral("Rebase di %1 su %2 completato con successo").arg(sourceBranch, targetBranch));
+        m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
         refresh();
         emit branchSwitched(sourceBranch);
         emit operationCompleted(
@@ -1192,6 +1224,10 @@ namespace gf::desktop
         }
 
         setStatusMessage(QStringLiteral("'%1' aggiornato a '%2' (fast-forward)").arg(target, sourceBranch));
+        if (m_currentBranch == target)
+        {
+            m_followHeadPending = true;
+        }
         refresh();
         if (m_currentBranch == target)
         {

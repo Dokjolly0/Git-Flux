@@ -39,6 +39,8 @@ Rectangle {
     // Commit message editing (reword)
     property bool isEditingMessage: false
     property string pendingSelectSha: ""   // new SHA to select once the history reloads after a reword
+    // A reword rewrites HEAD too: the reworded commit, not HEAD, must stay selected.
+    property string rewordedSelectSha: ""
 
     function startMessageEdit() {
         if (!root.selectedCommit || root.isWipSelected || !root.branchManager) return;
@@ -72,16 +74,10 @@ Rectangle {
 
     function selectCommitBySha(sha) {
         if (!sha || !root.branchManager || !root.branchManager.commitHistory) return false;
-        var model = root.branchManager.commitHistory;
-        var count = model.rowCount();
-        for (var i = 0; i < count; ++i) {
-            var c = model.getCommit(i);
-            if (c && c.sha === sha) {
-                root.selectCommitByIndex(i);
-                return true;
-            }
-        }
-        return false;
+        var idx = root.branchManager.commitHistory.indexOfSha(sha);
+        if (idx < 0) return false;
+        root.selectCommitByIndex(idx);
+        return true;
     }
 
     // True when the selected commit is the tip of the checked-out branch (HEAD): rewording it
@@ -100,9 +96,21 @@ Rectangle {
         target: root.branchManager
 
         function onCommitReworded(oldSha, newSha) {
+            root.rewordedSelectSha = newSha;
             if (!root.selectCommitBySha(newSha)) {
                 root.pendingSelectSha = newSha;
             }
+        }
+
+        // HEAD moved, or an operation on the current commit completed (checkout, pull,
+        // merge, reset, rebase...): select HEAD. Emitted right after the history reload,
+        // so the commit is already in the model.
+        function onFollowHeadRequested(newSha) {
+            if (root.rewordedSelectSha !== "") {
+                root.rewordedSelectSha = "";
+                return;
+            }
+            root.selectCommitBySha(newSha);
         }
     }
 
@@ -303,14 +311,16 @@ Rectangle {
         }
     }
 
-    // Auto-select when active branch switches
+    // Close the open diff when the active branch switches
     Connections {
         target: root.branchManager
 
         function onCurrentBranchChanged() {
+            // No re-selection here: this fires before the history is reloaded, so the model
+            // still holds the previous commits. followHeadRequested selects HEAD once
+            // the reload lands.
             root.isDiffOpen = false;
             root.selectedFile = null;
-            root.autoSelectFirstCommit();
         }
     }
 

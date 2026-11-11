@@ -75,6 +75,10 @@ namespace gf::desktop
         void setSearchFilter(const QString& filter);
         [[nodiscard]] int totalCommitsCount() const noexcept { return static_cast<int>(m_rawCommits.size()); }
         Q_INVOKABLE [[nodiscard]] QVariantMap getCommit(int index) const;
+        // Row of the commit with this SHA in the (filtered) list, or -1.
+        Q_INVOKABLE [[nodiscard]] int indexOfSha(const QString& sha) const;
+        // SHA of the commit HEAD points to (attached or detached), empty when it isn't in the list.
+        [[nodiscard]] QString headSha() const noexcept { return m_headSha; }
 
         [[nodiscard]] static QString cachedAvatarForEmail(const QString& rawEmail);
         static void cacheAvatarForEmail(const QString& rawEmail, const QString& avatarUrl);
@@ -105,6 +109,7 @@ namespace gf::desktop
         std::vector<GraphItem> m_graphItems;
         QNetworkAccessManager m_networkManager;
         QSet<QString> m_queriedEmails;
+        QString m_headSha;
         bool m_hasWip = false;
         int m_wipCount = 0;
         int m_maxLanes = 1;

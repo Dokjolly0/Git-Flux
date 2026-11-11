@@ -212,6 +212,23 @@ namespace gf::desktop
             return kAuthorPalette[idx];
         }
 
+        // `git log %D` marks the checked-out commit as "HEAD -> <branch>", or plain "HEAD" when detached.
+        QString findHeadSha(const std::vector<gf::git::bo::GitCommitLogItem>& commits)
+        {
+            for (const auto& c : commits)
+            {
+                for (const auto& decStd : c.refDecorations)
+                {
+                    const QString dec = QString::fromStdString(decStd).trimmed();
+                    if (dec == QLatin1String("HEAD") || dec.startsWith(QLatin1String("HEAD -> ")))
+                    {
+                        return QString::fromStdString(c.sha);
+                    }
+                }
+            }
+            return {};
+        }
+
         QVariantList computeStructuredDecorations(const std::vector<std::string>& rawDecorations)
         {
             struct RawRef
@@ -1017,6 +1034,23 @@ namespace gf::desktop
         emit maxLanesChanged();
     }
 
+    int CommitHistoryListModel::indexOfSha(const QString& sha) const
+    {
+        if (sha.isEmpty())
+        {
+            return -1;
+        }
+        const std::string needle = sha.toStdString();
+        for (std::size_t i = 0; i < m_commits.size(); ++i)
+        {
+            if (m_commits[i].sha == needle)
+            {
+                return static_cast<int>(i);
+            }
+        }
+        return -1;
+    }
+
     void CommitHistoryListModel::setSearchFilter(const QString& filter)
     {
         QString trimmed = filter.trimmed();
@@ -1292,6 +1326,7 @@ namespace gf::desktop
     {
         beginResetModel();
         m_rawCommits = std::move(commits);
+        m_headSha = findHeadSha(m_rawCommits);
         applyWipAndRebuild();
         endResetModel();
         indexAvatarsFromCommits();

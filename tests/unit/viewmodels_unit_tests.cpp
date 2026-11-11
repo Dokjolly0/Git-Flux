@@ -569,6 +569,8 @@ public:
     std::mutex threadMutex;
     std::thread::id lastListBranchesThread{};
     std::vector<gf::git::bo::GitBranch> branchesToReturn{};
+    std::mutex commitLogMutex;
+    std::vector<gf::git::bo::GitCommitLogItem> commitLogToReturn{};
     gf::git::bo::RepoWorkingTreeStatus statusToReturn;
     gf::git::bo::FileDiff diffToReturn;
     std::string fileContentToReturn;
@@ -707,7 +709,14 @@ public:
     std::expected<std::vector<gf::git::bo::GitCommitLogItem>, gf::git::ports::GitOpsError>
     getCommitLog(const std::filesystem::path&, const gf::git::bo::CommitLogOptions&) override
     {
-        return std::vector<gf::git::bo::GitCommitLogItem>{};
+        std::lock_guard lock(commitLogMutex);
+        return commitLogToReturn;
+    }
+
+    void setCommitLog(std::vector<gf::git::bo::GitCommitLogItem> log)
+    {
+        std::lock_guard lock(commitLogMutex);
+        commitLogToReturn = std::move(log);
     }
 
     std::expected<std::vector<gf::git::bo::GitTag>, gf::git::ports::GitOpsError>
@@ -1330,6 +1339,38 @@ TEST_CASE (
         CHECK(model.data(idx, CommitHistoryListModel::IsMergeRole).toBool() == false);
     }
 
+    SECTION("CommitHistoryListModel resolves the HEAD commit and looks up rows by SHA") {
+        CommitHistoryListModel model;
+        CHECK(model.headSha().isEmpty());
+
+        // Attached HEAD: "HEAD -> <branch>"
+        model.setCommits({
+            gf::git::bo::GitCommitLogItem{.sha = "aaaa", .refDecorations = {"origin/main"}},
+            gf::git::bo::GitCommitLogItem{.sha = "bbbb", .refDecorations = {"HEAD -> main", "tag: v1.0"}},
+            gf::git::bo::GitCommitLogItem{.sha = "cccc"}
+        });
+        CHECK(model.headSha() == "bbbb");
+        CHECK(model.indexOfSha("bbbb") == 1);
+        CHECK(model.indexOfSha("cccc") == 2);
+        CHECK(model.indexOfSha("missing") == -1);
+        CHECK(model.indexOfSha("") == -1);
+
+        // Detached HEAD: plain "HEAD"; remote HEAD pointers don't count
+        model.setCommits({
+            gf::git::bo::GitCommitLogItem{.sha = "aaaa", .refDecorations = {"origin/HEAD", "origin/main"}},
+            gf::git::bo::GitCommitLogItem{.sha = "cccc", .refDecorations = {"HEAD"}}
+        });
+        CHECK(model.headSha() == "cccc");
+
+        // The WIP row shifts real commits down by one
+        model.setWip(true, 2);
+        CHECK(model.indexOfSha("cccc") == 2);
+
+        // HEAD not in the list (e.g. file history filter)
+        model.setCommits({gf::git::bo::GitCommitLogItem{.sha = "dddd"}});
+        CHECK(model.headSha().isEmpty());
+    }
+
     SECTION("CommitHistoryListModel filters commits by message, author, or SHA") {
         CommitHistoryListModel model;
 
@@ -1476,6 +1517,83 @@ TEST_CASE (
         CHECK(commitMapGhPages["isOrphan"].toBool() == true);
         CHECK(commitMapGhPages["graphLane"].toInt() == 0);
     }
+}
+
+TEST_CASE (
+"BranchManagerViewModel asks the history to follow HEAD"
+,
+"[viewmodel][branch][manager][head]"
+)
+ {
+    ensureQtApp();
+
+    MockFullGitOps mockOps;
+    gf::git::bl::GitBranchService branchService(mockOps);
+    gf::git::bl::GitHistoryService historyService(mockOps);
+    gf::git::bl::GitRemoteMergeService remoteMergeService(mockOps);
+    BranchManagerViewModel branchVm(branchService, historyService, remoteMergeService);
+    QSignalSpy headSpy(&branchVm, &BranchManagerViewModel::followHeadRequested);
+
+    const auto commit = [](std::string sha, std::vector<std::string> decorations = {}) {
+        return gf::git::bo::GitCommitLogItem{.sha = std::move(sha), .refDecorations = std::move(decorations)};
+    };
+
+    const auto repoA = std::filesystem::temp_directory_path() / "gf-head-a";
+    const auto repoB = std::filesystem::temp_directory_path() / "gf-head-b";
+    std::filesystem::create_directories(repoA);
+    std::filesystem::create_directories(repoB);
+
+    // First load of a repository: nothing "moved"
+    mockOps.setCommitLog({commit("c2", {"HEAD -> main"}), commit("c1")});
+    branchVm.setRepositoryPath(QString::fromStdString(repoA.string()));
+    REQUIRE(branchVm.waitForIdle());
+    CHECK(headSpy.count() == 0);
+
+    // Reload with HEAD unchanged: no signal
+    branchVm.refresh();
+    REQUIRE(branchVm.waitForIdle());
+    CHECK(headSpy.count() == 0);
+
+    // Checkout of an older commit (detached HEAD)
+    mockOps.setCommitLog({commit("c2", {"main"}), commit("c1", {"HEAD"})});
+    branchVm.refresh();
+    REQUIRE(branchVm.waitForIdle());
+    REQUIRE(headSpy.count() == 1);
+    CHECK(headSpy.at(0).at(0).toString() == "c1");
+
+    // New commit / merge on top: HEAD moves forward
+    mockOps.setCommitLog({commit("c3", {"HEAD -> main"}), commit("c2"), commit("c1")});
+    branchVm.refresh();
+    REQUIRE(branchVm.waitForIdle());
+    REQUIRE(headSpy.count() == 2);
+    CHECK(headSpy.at(1).at(0).toString() == "c3");
+
+    // Pull with nothing new: HEAD doesn't move, but the view must still go back to HEAD
+    CHECK(branchVm.pullRemote("origin", "default"));
+    REQUIRE(branchVm.waitForIdle());
+    REQUIRE(headSpy.count() == 3);
+    CHECK(headSpy.at(2).at(0).toString() == "c3");
+
+    // The request is one-shot: a later plain reload doesn't repeat it
+    branchVm.refresh();
+    REQUIRE(branchVm.waitForIdle());
+    CHECK(headSpy.count() == 3);
+
+    // Checkout of a branch on the same commit also selects HEAD
+    CHECK(branchVm.checkoutBranch("main"));
+    REQUIRE(branchVm.waitForIdle());
+    REQUIRE(headSpy.count() == 4);
+    CHECK(headSpy.at(3).at(0).toString() == "c3");
+
+    // Switching to another repository is not a HEAD move
+    mockOps.setCommitLog({commit("x1", {"HEAD -> main"})});
+    branchVm.setRepositoryPath(QString::fromStdString(repoB.string()));
+    REQUIRE(branchVm.waitForIdle());
+    CHECK(headSpy.count() == 4);
+
+    std::error_code ec;
+    std::filesystem::remove_all(repoA, ec);
+    std::filesystem::remove_all(repoB, ec);
 }
 
 TEST_CASE (

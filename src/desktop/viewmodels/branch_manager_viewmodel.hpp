@@ -121,6 +121,11 @@ namespace gf::desktop
         void branchSwitched(const QString& newBranch);
         void operationCompleted(bool success, const QString& message);
         void commitReworded(const QString& oldSha, const QString& newSha);
+        // The history view should select the HEAD commit: HEAD moved to another commit of the same
+        // repository (commit, external git command...), or an operation that targets the current
+        // commit completed (checkout, pull, merge, reset, rebase...) even if HEAD did not move.
+        // Emitted after the commit history has been reloaded, so the commit is in the model.
+        void followHeadRequested(const QString& headSha);
 
     private:
         struct RefreshSnapshot;
@@ -144,6 +149,8 @@ namespace gf::desktop
         CommitHistoryListModel m_commitHistoryModel;
 
         QString m_currentBranch;
+        QString m_headSha;                 // HEAD commit of the last applied snapshot (this repository)
+        bool m_followHeadPending = false;  // an operation asked to select HEAD after the next reload
         QString m_fileHistoryPath;
         bool m_isDetached = false;
         bool m_isBusy = false;
