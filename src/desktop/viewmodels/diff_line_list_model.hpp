@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QAbstractListModel>
+#include <QString>
 #include <string>
 #include <vector>
 
@@ -51,6 +52,8 @@ namespace gf::desktop
         void setDiff(const gf::git::bo::FileDiff& diff,
                      gf::core::syntax::Language lang = gf::core::syntax::Language::Unknown,
                      const std::vector<gf::core::syntax::MarkdownLineState>* newFileSeedStates = nullptr);
+        /// Rows prepared off the GUI thread (headers included, rich text already highlighted).
+        void setRows(std::vector<gf::git::bo::DiffLine> lines, std::vector<QString> richLines);
         void clear();
 
         [[nodiscard]] const std::vector<gf::git::bo::DiffLine>& flatLines() const noexcept
@@ -60,6 +63,6 @@ namespace gf::desktop
 
     private:
         std::vector<gf::git::bo::DiffLine> m_lines;
-        std::vector<std::string> m_richLines;
+        std::vector<QString> m_richLines;
     };
 } // namespace gf::desktop

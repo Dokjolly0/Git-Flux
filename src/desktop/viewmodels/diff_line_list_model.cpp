@@ -63,7 +63,7 @@ namespace gf::desktop
         case RichContentRole:
             if (rowIdx < m_richLines.size())
             {
-                return QString::fromStdString(m_richLines[rowIdx]);
+                return m_richLines[rowIdx];
             }
             return QString::fromStdString(line.content);
 
@@ -142,7 +142,7 @@ namespace gf::desktop
                 .newLineNumber = std::nullopt,
                 .content = hunk.header
             });
-            m_richLines.push_back(gf::core::syntax::SyntaxHighlighter::escapeHtml(hunk.header));
+            m_richLines.push_back(QString::fromStdString(gf::core::syntax::SyntaxHighlighter::escapeHtml(hunk.header)));
 
             gf::core::syntax::MarkdownLineState oldMdState{};
             gf::core::syntax::MarkdownLineState newMdState{};
@@ -167,12 +167,12 @@ namespace gf::desktop
                 m_lines.push_back(l);
                 if (!isMarkdown)
                 {
-                    m_richLines.push_back(gf::core::syntax::SyntaxHighlighter::highlightLine(l.content, lang));
+                    m_richLines.push_back(QString::fromStdString(gf::core::syntax::SyntaxHighlighter::highlightLine(l.content, lang)));
                 }
                 else if (l.kind == gf::git::bo::DiffLineKind::Deletion)
                 {
-                    m_richLines.push_back(
-                        gf::core::syntax::SyntaxHighlighter::highlightLine(l.content, lang, oldMdState));
+                    m_richLines.push_back(QString::fromStdString(
+                        gf::core::syntax::SyntaxHighlighter::highlightLine(l.content, lang, oldMdState)));
                 }
                 else
                 {
@@ -184,8 +184,8 @@ namespace gf::desktop
                             newMdState = (*newFileSeedStates)[idx];
                         }
                     }
-                    m_richLines.push_back(
-                        gf::core::syntax::SyntaxHighlighter::highlightLine(l.content, lang, newMdState));
+                    m_richLines.push_back(QString::fromStdString(
+                        gf::core::syntax::SyntaxHighlighter::highlightLine(l.content, lang, newMdState)));
                     if (l.kind == gf::git::bo::DiffLineKind::Context)
                     {
                         oldMdState = newMdState;
@@ -205,9 +205,17 @@ namespace gf::desktop
                 .newLineNumber = std::nullopt,
                 .content = notice
             });
-            m_richLines.push_back(gf::core::syntax::SyntaxHighlighter::escapeHtml(notice));
+            m_richLines.push_back(QString::fromStdString(gf::core::syntax::SyntaxHighlighter::escapeHtml(notice)));
         }
 
+        endResetModel();
+    }
+
+    void DiffLineListModel::setRows(std::vector<gf::git::bo::DiffLine> lines, std::vector<QString> richLines)
+    {
+        beginResetModel();
+        m_lines = std::move(lines);
+        m_richLines = std::move(richLines);
         endResetModel();
     }
 

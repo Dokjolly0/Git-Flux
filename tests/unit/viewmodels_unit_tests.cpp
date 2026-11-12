@@ -3509,3 +3509,118 @@ TEST_CASE (
     std::error_code ec;
     std::filesystem::remove_all(baseDir, ec);
 }
+
+// ---------------------------------------------------------------------------------------------
+// DiffViewModel: highlighting cost on the GUI thread
+// ---------------------------------------------------------------------------------------------
+
+namespace
+{
+    gf::git::bo::FileDiff makeLargeCppDiff(int hunks, int linesPerHunk)
+    {
+        gf::git::bo::FileDiff diff;
+        diff.oldPath = diff.newPath = "src/big_file.cpp";
+        int oldLine = 1;
+        int newLine = 1;
+        for (int h = 0; h < hunks; ++h)
+        {
+            gf::git::bo::DiffHunk hunk;
+            hunk.oldStartLine = oldLine;
+            hunk.newStartLine = newLine;
+            hunk.header = "@@ -" + std::to_string(oldLine) + " +" + std::to_string(newLine) + " @@";
+            for (int i = 0; i < linesPerHunk; ++i)
+            {
+                gf::git::bo::DiffLine line;
+                const int k = i % 3;
+                line.kind = k == 0 ? gf::git::bo::DiffLineKind::Context
+                                   : (k == 1 ? gf::git::bo::DiffLineKind::Deletion : gf::git::bo::DiffLineKind::Addition);
+                line.content = "    for (const auto& item : items) { if (item.value > " + std::to_string(i) +
+                               ") { result.push_back(std::string(\"value\") + item.name); } } // comment";
+                if (line.kind != gf::git::bo::DiffLineKind::Addition) line.oldLineNumber = oldLine++;
+                if (line.kind != gf::git::bo::DiffLineKind::Deletion) line.newLineNumber = newLine++;
+                if (line.kind == gf::git::bo::DiffLineKind::Addition) ++diff.additionsCount;
+                if (line.kind == gf::git::bo::DiffLineKind::Deletion) ++diff.deletionsCount;
+                hunk.lines.push_back(std::move(line));
+            }
+            diff.hunks.push_back(std::move(hunk));
+        }
+        return diff;
+    }
+} // namespace
+
+TEST_CASE (
+"DiffViewModel applies a large diff without blocking the GUI thread"
+,
+"[viewmodel][diff][async][perf]"
+)
+ {
+    ensureQtApp();
+    MockFullGitOps mockOps;
+    mockOps.diffToReturn = makeLargeCppDiff(50, 100); // 5000 lines, the render cap
+    gf::git::bl::GitDiffService diffService(mockOps);
+    DiffViewModel diffVm(diffService);
+
+    // GUI-thread time from the moment the result is delivered to diffLoaded
+    QElapsedTimer applyTimer;
+    qint64 applyMs = -1;
+    QObject::connect(&diffVm, &DiffViewModel::isLoadingChanged, &diffVm, [&]()
+    {
+        if (!diffVm.isLoading()) applyTimer.start();
+    });
+    QObject::connect(&diffVm, &DiffViewModel::diffLoaded, &diffVm, [&]() { applyMs = applyTimer.elapsed(); });
+
+    const auto repo = std::filesystem::temp_directory_path() / "gf-diff-perf";
+    std::filesystem::create_directories(repo);
+    REQUIRE(diffVm.loadCommitFileDiff(QString::fromStdString(repo.string()), "abc123", "src/big_file.cpp"));
+    REQUIRE(diffVm.waitForIdle());
+    REQUIRE(applyMs >= 0);
+    WARN("GUI-thread apply of a 5000-line diff: " << applyMs << " ms");
+    CHECK(applyMs < 25); // highlighting and row building ran on the worker (~40 ms when inline)
+
+    auto* model = diffVm.linesModel();
+    CHECK(diffVm.hunks().size() == 50);
+    CHECK(diffVm.splitLines().size() > 50);
+    CHECK(model->rowCount() == 5050); // 50 headers + 5000 lines
+    CHECK(model->data(model->index(0, 0), DiffLineListModel::LineKindRole).toString() == "header");
+
+    // Inline and split views share the same highlighted text (highlighted once)
+    const auto inlineRich = model->data(model->index(1, 0), DiffLineListModel::RichContentRole).toString();
+    CHECK(inlineRich.contains("<span"));
+    const auto firstHunkLines = diffVm.hunks().at(0).toMap().value("lines").toList();
+    CHECK(firstHunkLines.at(0).toMap().value("richContent").toString() == inlineRich);
+    const auto firstSplitRow = diffVm.splitLines().at(1).toMap(); // row 0 is the hunk header
+    CHECK(firstSplitRow.value("leftRichContent").toString() == inlineRich);
+    CHECK(diffVm.maxLineLength() > 50);
+
+    SECTION("reloading an unchanged diff keeps the current view") {
+        QSignalSpy loadedSpy(&diffVm, &DiffViewModel::diffLoaded);
+        REQUIRE(diffVm.loadCommitFileDiff(QString::fromStdString(repo.string()), "abc123", "src/big_file.cpp"));
+        REQUIRE(diffVm.waitForIdle());
+        CHECK(loadedSpy.count() == 0);
+        CHECK(model->rowCount() == 5050);
+    }
+
+    SECTION("a changed diff of the same file is rebuilt") {
+        QSignalSpy loadedSpy(&diffVm, &DiffViewModel::diffLoaded);
+        mockOps.diffToReturn = makeLargeCppDiff(2, 10);
+        REQUIRE(diffVm.loadCommitFileDiff(QString::fromStdString(repo.string()), "abc123", "src/big_file.cpp"));
+        REQUIRE(diffVm.waitForIdle());
+        CHECK(loadedSpy.count() == 1);
+        CHECK(model->rowCount() == 22);
+        CHECK(diffVm.hunks().size() == 2);
+    }
+
+    SECTION("diffs over the render cap are truncated in every view") {
+        mockOps.diffToReturn = makeLargeCppDiff(60, 100); // 6000 lines
+        REQUIRE(diffVm.loadCommitFileDiff(QString::fromStdString(repo.string()), "abc123", "src/big_file.cpp"));
+        REQUIRE(diffVm.waitForIdle());
+        CHECK(diffVm.hunks().size() == 50);
+        CHECK(model->rowCount() == 5051); // + truncation notice
+        const auto notice = model->data(model->index(5050, 0), DiffLineListModel::ContentRole).toString();
+        CHECK(notice.contains("troncato"));
+        CHECK(diffVm.splitLines().last().toMap().value("hunkHeader").toString().contains("troncato"));
+    }
+
+    std::error_code ec;
+    std::filesystem::remove_all(repo, ec);
+}

@@ -134,22 +134,34 @@ namespace gf::desktop
         void loadFailed(const QString& errorMessage);
 
     private:
+        struct PreparedDiff;
         struct DiffFetch;
         struct BlameFetch;
 
-        // Applies a diff read on the worker (GUI thread): dedup, Markdown preview, models, blame.
+        // Worker thread (pure functions of their inputs): builds what the view shows for a fetched
+        // diff, unless it equals fetch.comparedWith.
+        static void prepareFetch(DiffFetch& fetch);
+        static void prepareFileDiff(const gf::git::bo::FileDiff& diff,
+                                    const std::vector<gf::core::syntax::MarkdownLineState>* newFileSeedStates,
+                                    PreparedDiff& out);
+        // `contentRes` is the full file content, read on the worker (see DiffFetch).
+        static void prepareMarkdown(const std::expected<std::string, gf::git::ports::GitOpsError>& contentRes,
+                                    const std::string& deletedFallbackNotice,
+                                    const gf::git::bo::FileDiff& diff,
+                                    PreparedDiff& out,
+                                    std::vector<gf::core::syntax::MarkdownLineState>& outSeedStates);
+        static void buildMarkdownDocument(const std::string& content, const gf::git::bo::FileDiff& diff,
+                                          PreparedDiff& out);
+
+        // GUI thread.
+        // Applies a diff read on the worker: dedup, prepared rows, blame.
         void applyFetchedDiff(const QString& repoPath, const QString& filePath, const QString& revision,
                               const QString& scope, int contextLines, DiffFetch& fetch);
+        void applyPreparedDiff(const gf::git::bo::FileDiff& diff, PreparedDiff& prepared);
+        // The view currently shows the diff of this file/revision/scope/context.
+        [[nodiscard]] bool isShowingDiff(const QString& repoPath, const QString& filePath, const QString& revision,
+                                         const QString& scope, int contextLines) const;
         void setLoading(bool loading);
-        void processFileDiff(const gf::git::bo::FileDiff& diff,
-                             const std::vector<gf::core::syntax::MarkdownLineState>* newFileSeedStates = nullptr);
-        void populateMarkdownDocument(const std::string& content, const gf::git::bo::FileDiff& diff);
-        // `contentRes` is the full file content, read on the worker (see DiffFetch).
-        void updateMarkdownStateForDiff(const std::expected<std::string, gf::git::ports::GitOpsError>& contentRes,
-                                        const std::string& deletedFallbackNotice,
-                                        const gf::git::bo::FileDiff& diff,
-                                        std::vector<gf::core::syntax::MarkdownLineState>& outSeedStates,
-                                        bool& outHasSeedStates);
 
         gf::git::bl::GitDiffService& m_diffService;
         DiffLineListModel m_linesModel;
@@ -177,8 +189,8 @@ namespace gf::desktop
         bool m_showMarkdownRichDiff = true;
         int m_maxLineLength = 0;
         bool m_isBlameLoading = false;
-        bool m_hasLastDiff = false;
-        gf::git::bo::FileDiff m_lastDiff;
+        // Diff shown (null when none); shared with the worker to skip unchanged reloads.
+        std::shared_ptr<const gf::git::bo::FileDiff> m_lastDiff;
 
         QVariantList m_splitLines;
         QVariantList m_hunks;
