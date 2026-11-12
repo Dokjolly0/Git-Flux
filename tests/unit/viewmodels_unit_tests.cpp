@@ -3323,3 +3323,189 @@ TEST_CASE (
         CHECK(diffVm.isMarkdownRendered());
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// GitProfilesViewModel: token key derivation off the GUI thread
+// ---------------------------------------------------------------------------------------------
+
+#include "desktop/viewmodels/git_profiles_viewmodel.hpp"
+#include "infrastructure/persistence/sqlite/connection/sqlite_connection.hpp"
+#include "infrastructure/persistence/sqlite/migrations/schema_migrator.hpp"
+
+#include <QNetworkAccessManager>
+#include <QTcpServer>
+#include <QTcpSocket>
+
+namespace
+{
+    // Minimal HTTP server standing in for a Gitea API: records the Authorization header of each
+    // request and answers with an empty repository list.
+    class FakeGiteaServer final : public QObject
+    {
+    public:
+        FakeGiteaServer()
+        {
+            QObject::connect(&m_server, &QTcpServer::newConnection, this, [this]()
+            {
+                while (auto* socket = m_server.nextPendingConnection())
+                {
+                    QObject::connect(socket, &QTcpSocket::readyRead, socket, [this, socket]()
+                    {
+                        m_buffers[socket] += socket->readAll();
+                        const QByteArray& request = m_buffers[socket];
+                        if (!request.contains("\r\n\r\n")) return;
+
+                        QString authorization;
+                        for (const auto& line : request.split('\n'))
+                        {
+                            if (line.toLower().startsWith("authorization:"))
+                            {
+                                authorization = QString::fromUtf8(line.mid(14)).trimmed();
+                            }
+                        }
+                        authorizations.append(authorization);
+                        socket->write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                                      "Content-Length: 2\r\nConnection: close\r\n\r\n[]");
+                        socket->disconnectFromHost();
+                        m_buffers.remove(socket);
+                    });
+                    QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+                }
+            });
+            m_server.listen(QHostAddress::LocalHost, 0);
+        }
+
+        [[nodiscard]] QString url() const
+        {
+            return QStringLiteral("http://127.0.0.1:%1").arg(m_server.serverPort());
+        }
+
+        QStringList authorizations;
+
+    private:
+        QTcpServer m_server;
+        QHash<QTcpSocket*, QByteArray> m_buffers;
+    };
+
+    template <typename Predicate>
+    bool waitUntil(Predicate predicate, int timeoutMs = 5000)
+    {
+        QElapsedTimer timer;
+        timer.start();
+        while (!predicate())
+        {
+            if (timer.elapsed() > timeoutMs) return false;
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+            QThread::msleep(1);
+        }
+        return true;
+    }
+} // namespace
+
+TEST_CASE (
+"GitProfilesViewModel derives token keys off the GUI thread"
+,
+"[viewmodel][profiles][async]"
+)
+ {
+    ensureQtApp();
+    using gf::desktop::viewmodels::GitProfilesViewModel;
+
+    const auto baseDir = std::filesystem::temp_directory_path() / "gf-profiles-async";
+    std::filesystem::remove_all(baseDir);
+    std::filesystem::create_directories(baseDir / "home");
+
+    auto connRes = gf::infra::persistence::sqlite::SqliteConnection::openInMemory();
+    REQUIRE(connRes.has_value());
+    REQUIRE(gf::infra::persistence::sqlite::SchemaMigrator::migrateToLatest(*connRes).has_value());
+    gf::infra::persistence::profiles::SqliteProfileStore store(*connRes);
+    gf::infra::security::CryptoVault vault(baseDir / "vault");
+    gf::infra::git::credentials::SystemCredentialDetector detector(baseDir / "home");
+    QNetworkAccessManager nam;
+    gf::desktop::services::GitProviderApiClient apiClient(&nam);
+    FakeGiteaServer server;
+
+    // A stored custom Gitea profile with an encrypted token
+    gf::core::git::bo::GitProviderProfile profile;
+    profile.id = "custom_gitea.local";
+    profile.providerType = gf::core::git::bo::GitProviderType::Custom;
+    profile.displayName = "Local Gitea";
+    profile.host = "gitea.local";
+    profile.customApiUrl = server.url().toStdString();
+    auto secret = vault.encrypt("first-token");
+    REQUIRE(secret.has_value());
+    profile.tokenSecret = *secret;
+    profile.hasToken = true;
+    REQUIRE(store.saveProfile(profile).has_value());
+
+    // Reference cost of one key derivation on this machine
+    QElapsedTimer kdfTimer;
+    kdfTimer.start();
+    REQUIRE(vault.decrypt(profile.tokenSecret).has_value());
+    const auto kdfMs = kdfTimer.elapsed();
+
+    GitProfilesViewModel vm(store, vault, detector, &apiClient);
+    vm.initialize();
+    REQUIRE(vm.waitForIdle());
+
+    SECTION("selecting a profile decrypts its token in the background") {
+        QElapsedTimer timer;
+        timer.start();
+        vm.selectProfile("custom_gitea.local");
+        const auto selectMs = timer.elapsed();
+        CHECK(vm.isFetching());
+        INFO("key derivation " << kdfMs << " ms, selectProfile " << selectMs << " ms");
+        CHECK(selectMs * 2 < kdfMs + 2); // did not run the derivation on the calling thread
+
+        REQUIRE(waitUntil([&] { return !vm.isFetching(); }));
+        REQUIRE(server.authorizations.size() == 1);
+        CHECK(server.authorizations.at(0) == "token first-token");
+        CHECK(vm.fetchError().isEmpty());
+    }
+
+    SECTION("switching away before the token is ready drops the request") {
+        vm.selectProfile("custom_gitea.local");
+        vm.selectProfile("url");
+        CHECK_FALSE(vm.isFetching());
+        REQUIRE(vm.waitForIdle());
+        waitUntil([] { return false; }, 200); // give a stray request the time to show up
+        CHECK(server.authorizations.isEmpty());
+        CHECK_FALSE(vm.isFetching());
+    }
+
+    SECTION("saving a token encrypts it in the background, then reloads with it") {
+        vm.selectProfile("custom_gitea.local");
+        REQUIRE(waitUntil([&] { return !vm.isFetching(); }));
+        server.authorizations.clear();
+
+        QElapsedTimer timer;
+        timer.start();
+        vm.saveProfileToken("custom_gitea.local", "  second-token  ", QString());
+        CHECK(timer.elapsed() * 2 < kdfMs + 2);
+
+        REQUIRE(vm.waitForIdle());
+        REQUIRE(waitUntil([&] { return !server.authorizations.isEmpty() && !vm.isFetching(); }));
+        CHECK(server.authorizations.last() == "token second-token");
+
+        auto stored = store.getAllProfiles();
+        REQUIRE(stored.has_value());
+        const auto it = std::find_if(stored->begin(), stored->end(),
+                                     [](const auto& p) { return p.id == "custom_gitea.local"; });
+        REQUIRE(it != stored->end());
+        auto decrypted = vault.decrypt(it->tokenSecret);
+        REQUIRE(decrypted.has_value());
+        CHECK(*decrypted == "second-token");
+    }
+
+    SECTION("a custom profile with a token is added once the token is encrypted") {
+        vm.addCustomProfile("git.example.org", "Example Git", "third-token", server.url());
+        REQUIRE(vm.waitForIdle());
+        CHECK(vm.activeProfileId() == "custom_git.example.org");
+        CHECK(vm.activeProfileHasToken());
+        REQUIRE(waitUntil([&] { return !server.authorizations.isEmpty() && !vm.isFetching(); }));
+        CHECK(server.authorizations.last() == "token third-token");
+    }
+
+    std::error_code ec;
+    std::filesystem::remove_all(baseDir, ec);
+}

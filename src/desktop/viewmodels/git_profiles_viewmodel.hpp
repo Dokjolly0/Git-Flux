@@ -5,6 +5,7 @@
 #include "infrastructure/security/crypto_vault.hpp"
 #include "infrastructure/git/credentials/system_credential_detector.hpp"
 #include "desktop/services/git_provider_api_client.hpp"
+#include "desktop/services/serial_git_executor.hpp"
 #include "desktop/viewmodels/remote_repo_list_model.hpp"
 
 #include <QObject>
@@ -42,7 +43,7 @@ namespace gf::desktop::viewmodels
             services::GitProviderApiClient* apiClient,
             QObject* parent = nullptr
         );
-        ~GitProfilesViewModel() override = default;
+        ~GitProfilesViewModel() override;
 
         void initialize();
 
@@ -64,7 +65,12 @@ namespace gf::desktop::viewmodels
 
         [[nodiscard]] RemoteRepoListModel* remoteReposModel() const noexcept { return m_repoModel; }
 
+        /// Test helper: processes events until the pending encryptions/decryptions are applied.
+        bool waitForIdle(int timeoutMs = 10000);
+
     Q_INVOKABLE void selectProfile(const QString& profileId);
+    // Encrypting or decrypting a token runs the key derivation (PBKDF2 / Argon2id, ~100 ms by
+    // design) on a background thread: these calls return at once, the outcome is applied later.
     Q_INVOKABLE void saveProfileToken(const QString& profileId, const QString& token, const QString& username);
     Q_INVOKABLE void clearProfileToken(const QString& profileId);
     Q_INVOKABLE void refreshRepositories();
@@ -96,5 +102,16 @@ namespace gf::desktop::viewmodels
         [[nodiscard]] const core::git::bo::GitProviderProfile* findProfile(const QString& id) const;
         [[nodiscard]] core::git::bo::GitProviderProfile* findProfileMut(const QString& id);
         void fetchActiveProfileRepos();
+        // Stores and selects a new custom profile (its token, if any, already encrypted).
+        void addProfile(core::git::bo::GitProviderProfile profile);
+        // Runs `work` on the crypto thread and `done(result)` on the GUI thread.
+        template <typename Work, typename Done>
+        void runCrypto(Work work, Done done);
+
+        int m_pendingCrypto{0};
+        // Latest wins: switching profile while a token is being decrypted drops the old token.
+        LatestRequest m_tokenRequest;
+        // Declared last: destroyed first, waiting for its tasks while this object is alive.
+        std::unique_ptr<SerialGitExecutor> m_cryptoExecutor;
     };
 } // namespace gf::desktop::viewmodels

@@ -1,5 +1,10 @@
 #include "desktop/viewmodels/git_profiles_viewmodel.hpp"
 #include "core/shared/env_var.hpp"
+#include <QCoreApplication>
+#include <QEventLoop>
+#include <QThread>
+#include <QElapsedTimer>
+
 #include <algorithm>
 #include <optional>
 
@@ -17,7 +22,8 @@ namespace gf::desktop::viewmodels
           m_vault(vault),
           m_detector(detector),
           m_apiClient(apiClient),
-          m_repoModel(new RemoteRepoListModel(this))
+          m_repoModel(new RemoteRepoListModel(this)),
+          m_cryptoExecutor(std::make_unique<SerialGitExecutor>())
     {
         if (m_apiClient)
         {
@@ -48,6 +54,36 @@ namespace gf::desktop::viewmodels
                         }
                     });
         }
+    }
+
+    // The executor (declared last) is destroyed first and waits for the running derivation.
+    GitProfilesViewModel::~GitProfilesViewModel() = default;
+
+    template <typename Work, typename Done>
+    void GitProfilesViewModel::runCrypto(Work work, Done done)
+    {
+        ++m_pendingCrypto;
+        m_cryptoExecutor->run(this, std::move(work), [this, done = std::move(done)](auto result) mutable
+        {
+            --m_pendingCrypto;
+            done(std::move(result));
+        });
+    }
+
+    bool GitProfilesViewModel::waitForIdle(int timeoutMs)
+    {
+        QElapsedTimer timer;
+        timer.start();
+        while (m_pendingCrypto > 0)
+        {
+            if (timer.elapsed() > timeoutMs)
+            {
+                return false;
+            }
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+            QThread::msleep(1);
+        }
+        return true;
     }
 
     void GitProfilesViewModel::initialize()
@@ -278,14 +314,57 @@ namespace gf::desktop::viewmodels
         }
         else
         {
+            // No provider ("url" tab...): drop a token still being decrypted for the previous one.
+            m_tokenRequest.invalidate();
             m_repoModel->clear();
+            if (m_isFetching)
+            {
+                m_isFetching = false;
+                emit isFetchingChanged();
+            }
         }
     }
+
+    namespace
+    {
+        // Provider token from the environment (GITHUB_TOKEN...), used when none is stored.
+        std::optional<std::string> environmentToken(core::git::bo::GitProviderType type)
+        {
+            std::optional<std::string> token;
+            switch (type)
+            {
+            case core::git::bo::GitProviderType::GitHub:
+                token = gf::core::getEnvVar("GITHUB_TOKEN");
+                if (!token) token = gf::core::getEnvVar("GH_TOKEN");
+                break;
+            case core::git::bo::GitProviderType::GitLab:
+                token = gf::core::getEnvVar("GITLAB_TOKEN");
+                break;
+            case core::git::bo::GitProviderType::Bitbucket:
+                token = gf::core::getEnvVar("BITBUCKET_TOKEN");
+                if (!token) token = gf::core::getEnvVar("BITBUCKET_APP_PASSWORD");
+                break;
+            case core::git::bo::GitProviderType::Custom:
+                break;
+            }
+            if (token && token->empty()) token.reset();
+            return token;
+        }
+
+        // Token to use for the API request, resolved on the crypto thread.
+        struct TokenResolution
+        {
+            QString token;
+            QString decryptError;                               // the stored token could not be decrypted
+            std::optional<core::git::bo::EncryptedSecret> envSecret; // env token encrypted, to store
+        };
+    } // namespace
 
     void GitProfilesViewModel::fetchActiveProfileRepos()
     {
         if (m_activeProfileId == QStringLiteral("url"))
         {
+            m_tokenRequest.invalidate();
             m_repoModel->clear();
             m_isFetching = false;
             emit isFetchingChanged();
@@ -300,59 +379,75 @@ namespace gf::desktop::viewmodels
         emit isFetchingChanged();
         emit fetchErrorChanged();
 
-        QString decryptedToken;
-        if (p->hasToken && !p->tokenSecret.empty())
-        {
-            auto decRes = m_vault.decrypt(p->tokenSecret);
-            if (decRes)
-            {
-                decryptedToken = QString::fromStdString(*decRes);
-            }
-            else
-            {
-                m_fetchError = QStringLiteral("Errore decrittazione token Argon2id: %1").arg(
-                    QString::fromStdString(decRes.error()));
-                emit fetchErrorChanged();
-            }
-        }
+        const auto requestId = m_tokenRequest.next();
+        const auto isCurrent = m_tokenRequest.guard(requestId);
+        const auto profileId = m_activeProfileId;
+        const auto secret = p->hasToken ? p->tokenSecret : core::git::bo::EncryptedSecret{};
+        const bool hasStoredToken = p->hasToken;
+        const auto providerType = p->providerType;
+        auto& vault = m_vault;
 
-        if (decryptedToken.isEmpty())
-        {
-            std::optional<std::string> envTok;
-            if (p->providerType == core::git::bo::GitProviderType::GitHub)
+        runCrypto(
+            [&vault, isCurrent, secret, hasStoredToken, providerType]()
             {
-                envTok = gf::core::getEnvVar("GITHUB_TOKEN");
-                if (!envTok) envTok = gf::core::getEnvVar("GH_TOKEN");
-            }
-            else if (p->providerType == core::git::bo::GitProviderType::GitLab)
-            {
-                envTok = gf::core::getEnvVar("GITLAB_TOKEN");
-            }
-            else if (p->providerType == core::git::bo::GitProviderType::Bitbucket)
-            {
-                envTok = gf::core::getEnvVar("BITBUCKET_TOKEN");
-                if (!envTok) envTok = gf::core::getEnvVar("BITBUCKET_APP_PASSWORD");
-            }
-            if (envTok && !envTok->empty())
-            {
-                decryptedToken = QString::fromUtf8(envTok->c_str());
-                auto* pMut = findProfileMut(m_activeProfileId);
-                if (pMut && !pMut->hasToken)
+                TokenResolution resolution;
+                if (!isCurrent())
                 {
-                    auto encRes = m_vault.encrypt(*envTok);
-                    if (encRes)
+                    return resolution; // another profile was selected meanwhile: skip the derivation
+                }
+                if (!secret.empty())
+                {
+                    if (auto decRes = vault.decrypt(secret))
                     {
-                        pMut->tokenSecret = *encRes;
-                        pMut->hasToken = true;
-                        (void)m_store.saveProfile(*pMut);
-                        emit profilesChanged();
-                        emit activeProfileChanged();
+                        resolution.token = QString::fromStdString(*decRes);
+                    }
+                    else
+                    {
+                        resolution.decryptError = QString::fromStdString(decRes.error());
                     }
                 }
-            }
-        }
-
-        m_apiClient->fetchRepositories(m_activeProfileId, *p, decryptedToken);
+                if (resolution.token.isEmpty())
+                {
+                    if (const auto envTok = environmentToken(providerType))
+                    {
+                        resolution.token = QString::fromStdString(*envTok);
+                        if (!hasStoredToken)
+                        {
+                            if (auto encRes = vault.encrypt(*envTok))
+                            {
+                                resolution.envSecret = std::move(*encRes);
+                            }
+                        }
+                    }
+                }
+                return resolution;
+            },
+            [this, requestId, profileId](TokenResolution resolution)
+            {
+                if (!m_tokenRequest.isCurrent(requestId))
+                {
+                    return;
+                }
+                if (!resolution.decryptError.isEmpty())
+                {
+                    m_fetchError = QStringLiteral("Errore decrittazione token Argon2id: %1").arg(resolution.decryptError);
+                    emit fetchErrorChanged();
+                }
+                auto* profile = findProfileMut(profileId);
+                if (!profile)
+                {
+                    return;
+                }
+                if (resolution.envSecret && !profile->hasToken)
+                {
+                    profile->tokenSecret = std::move(*resolution.envSecret);
+                    profile->hasToken = true;
+                    (void)m_store.saveProfile(*profile);
+                    emit profilesChanged();
+                    emit activeProfileChanged();
+                }
+                m_apiClient->fetchRepositories(profileId, *profile, resolution.token);
+            });
     }
 
     void GitProfilesViewModel::refreshRepositories()
@@ -380,37 +475,52 @@ namespace gf::desktop::viewmodels
             p->username = username.trimmed().toStdString();
         }
 
-        const auto trimmedToken = token.trimmed();
-        if (!trimmedToken.isEmpty())
+        // Stores the profile (with the new secret, if any) and reloads its repositories.
+        auto store = [this, profileId](std::optional<core::git::bo::EncryptedSecret> secret)
         {
-            auto encRes = m_vault.encrypt(trimmedToken.toStdString());
-            if (encRes)
+            auto* profile = findProfileMut(profileId);
+            if (!profile) return;
+            if (secret)
             {
-                p->tokenSecret = *encRes;
-                p->hasToken = true;
+                profile->tokenSecret = std::move(*secret);
+                profile->hasToken = true;
             }
-            else
+
+            auto saveRes = m_store.saveProfile(*profile);
+            if (!saveRes)
             {
-                m_fetchError = QStringLiteral("Errore durante la crittografia con Argon2id: %1").arg(
-                    QString::fromStdString(encRes.error()));
+                m_fetchError = QStringLiteral("Errore durante il salvataggio su SQLite: %1").arg(
+                    QString::fromStdString(saveRes.error().message));
                 emit fetchErrorChanged();
                 return;
             }
-        }
 
-        auto saveRes = m_store.saveProfile(*p);
-        if (!saveRes)
+            emit profilesChanged();
+            emit activeProfileChanged();
+
+            fetchActiveProfileRepos();
+        };
+
+        const auto trimmedToken = token.trimmed().toStdString();
+        if (trimmedToken.empty())
         {
-            m_fetchError = QStringLiteral("Errore durante il salvataggio su SQLite: %1").arg(
-                QString::fromStdString(saveRes.error().message));
-            emit fetchErrorChanged();
+            store(std::nullopt);
             return;
         }
 
-        emit profilesChanged();
-        emit activeProfileChanged();
-
-        fetchActiveProfileRepos();
+        auto& vault = m_vault;
+        runCrypto([&vault, trimmedToken]() { return vault.encrypt(trimmedToken); },
+                  [this, store](auto encRes) mutable
+                  {
+                      if (!encRes)
+                      {
+                          m_fetchError = QStringLiteral("Errore durante la crittografia con Argon2id: %1").arg(
+                              QString::fromStdString(encRes.error()));
+                          emit fetchErrorChanged();
+                          return;
+                      }
+                      store(std::move(*encRes));
+                  });
     }
 
     void GitProfilesViewModel::clearProfileToken(const QString& profileId)
@@ -447,20 +557,33 @@ namespace gf::desktop::viewmodels
         p.customApiUrl = apiUrl.trimmed().toStdString();
         p.preferredProtocol = "ssh";
 
-        if (!token.trimmed().isEmpty())
+        const auto trimmedToken = token.trimmed().toStdString();
+        if (trimmedToken.empty())
         {
-            auto encRes = m_vault.encrypt(token.trimmed().toStdString());
-            if (encRes)
-            {
-                p.tokenSecret = *encRes;
-                p.hasToken = true;
-            }
+            addProfile(std::move(p));
+            return;
         }
 
-        (void)m_store.saveProfile(p);
-        m_profiles.push_back(p);
+        auto& vault = m_vault;
+        runCrypto([&vault, trimmedToken]() { return vault.encrypt(trimmedToken); },
+                  [this, p = std::move(p)](auto encRes) mutable
+                  {
+                      if (encRes)
+                      {
+                          p.tokenSecret = std::move(*encRes);
+                          p.hasToken = true;
+                      }
+                      addProfile(std::move(p));
+                  });
+    }
+
+    void GitProfilesViewModel::addProfile(core::git::bo::GitProviderProfile profile)
+    {
+        (void)m_store.saveProfile(profile);
+        const auto id = QString::fromStdString(profile.id);
+        m_profiles.push_back(std::move(profile));
         emit profilesChanged();
 
-        selectProfile(QString::fromStdString(p.id));
+        selectProfile(id);
     }
 } // namespace gf::desktop::viewmodels

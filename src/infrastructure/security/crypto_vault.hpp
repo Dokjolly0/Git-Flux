@@ -5,9 +5,12 @@
 #include <vector>
 #include <expected>
 #include <filesystem>
+#include <mutex>
 
 namespace gf::infra::security
 {
+    /// Thread-safe: encrypt()/decrypt() may run on worker threads (the key derivation takes
+    /// ~100 ms by design and must stay off the GUI thread).
     class CryptoVault
     {
     public:
@@ -39,6 +42,7 @@ namespace gf::infra::security
 
     private:
         std::filesystem::path m_keyStorageDir;
+        mutable std::mutex m_masterSecretMutex; // guards m_cachedMasterSecret and the key file
         mutable std::string m_cachedMasterSecret;
 
         [[nodiscard]] std::string getOrCreateMasterSecret() const;

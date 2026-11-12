@@ -166,6 +166,7 @@ namespace gf::infra::security
 
     std::string CryptoVault::getOrCreateMasterSecret() const
     {
+        const std::lock_guard lock(m_masterSecretMutex);
         if (!m_cachedMasterSecret.empty())
         {
             return m_cachedMasterSecret;
