@@ -32,6 +32,9 @@ Rectangle {
 
     signal stashModalRequested()
 
+    // A conflicted WIP file was opened: the session view shows the 3-way resolver.
+    signal conflictResolveRequested(string filePath)
+
     property string draggingBranchName: ""
     property string draggingBranchType: ""
     property string hoveredTargetBranch: ""
@@ -756,6 +759,11 @@ Rectangle {
     }
 
     function openFileDiff(file) {
+        // Conflicted file in the WIP: resolve it (its diff would only show the markers).
+        if (file && file.isConflicted === true && root.isWipSelected) {
+            root.conflictResolveRequested(file.path);
+            return;
+        }
         if (root.isDiffOpen && root.selectedFile && file && root.selectedFile.path === file.path && root.selectedFile.isStaged === file.isStaged) {
             root.closeFileDiff();
             return;
@@ -3108,12 +3116,16 @@ Rectangle {
                                 // Status icon (pencil for modified, plus for added, trash for deleted)
                                 Text {
                                     text: {
+                                        if (modelData.isConflicted === true) return "⚔";
                                         if (modelData.status === "A") return "➕";
                                         if (modelData.status === "D") return "🗑️";
                                         if (modelData.status === "R" || modelData.status === "C") return "⇄";
                                         return "✏️";
                                     }
+                                    color: "#F87171"
                                     font.pixelSize: 11
+                                    ToolTip.visible: modelData.isConflicted === true && fileRowMouse.containsMouse
+                                    ToolTip.text: "In conflitto: clic per risolvere"
                                 }
 
                                 // Directory dimmed
@@ -3365,13 +3377,18 @@ Rectangle {
                                 // ==========================
                                 Text {
                                     visible: !isFolder
+                                    readonly property bool conflicted: !!modelData.file && modelData.file.isConflicted === true
                                     text: {
+                                        if (conflicted) return "⚔";
                                         if (modelData.status === "A") return "➕";
                                         if (modelData.status === "D") return "🗑️";
                                         if (modelData.status === "R" || modelData.status === "C") return "⇄";
                                         return "✏️";
                                     }
+                                    color: "#F87171"
                                     font.pixelSize: 11
+                                    ToolTip.visible: conflicted && treeRowMouse.containsMouse
+                                    ToolTip.text: "In conflitto: clic per risolvere"
                                 }
 
                                 Text {

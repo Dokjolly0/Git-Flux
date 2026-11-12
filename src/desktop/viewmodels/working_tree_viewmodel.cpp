@@ -362,7 +362,8 @@ namespace gf::desktop
     QVariantList WorkingTreeViewModel::getUnstagedFiles() const
     {
         QVariantList list;
-        auto appendItems = [&list](const std::vector<git::bo::WorkingTreeFileItem>& items, bool isUntracked)
+        auto appendItems = [&list](const std::vector<git::bo::WorkingTreeFileItem>& items, bool isUntracked,
+                                   bool isConflicted = false)
         {
             for (const auto& item : items)
             {
@@ -390,6 +391,8 @@ namespace gf::desktop
                 map[QStringLiteral("status")] = statusChar;
                 map[QStringLiteral("kind")] = QString::fromLatin1(git::bo::fileChangeKindToString(item.kind).data());
                 map[QStringLiteral("isStaged")] = false;
+                // Unmerged path: opening it starts the conflict resolver instead of a diff.
+                map[QStringLiteral("isConflicted")] = isConflicted;
                 map[QStringLiteral("additions")] = 0;
                 map[QStringLiteral("deletions")] = 0;
                 list.append(map);
@@ -397,7 +400,7 @@ namespace gf::desktop
         };
         appendItems(m_unstagedModel.items(), false);
         appendItems(m_untrackedModel.items(), true);
-        appendItems(m_conflictedModel.items(), false);
+        appendItems(m_conflictedModel.items(), false, true);
         return list;
     }
 

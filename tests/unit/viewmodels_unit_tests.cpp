@@ -1141,6 +1141,18 @@ TEST_CASE (
             .kind = gf::git::bo::FileChangeKind::Added,
             .statusCode = 'A'
         });
+        mockOps.statusToReturn.unstagedFiles.push_back(gf::git::bo::WorkingTreeFileItem{
+            .path = "b.txt",
+            .originalPath = {},
+            .kind = gf::git::bo::FileChangeKind::Modified,
+            .statusCode = 'M'
+        });
+        mockOps.statusToReturn.conflictedFiles.push_back(gf::git::bo::WorkingTreeFileItem{
+            .path = "merge.txt",
+            .originalPath = {},
+            .kind = gf::git::bo::FileChangeKind::Conflicted,
+            .statusCode = 'U'
+        });
 
         QSignalSpy statusSpy(&wtVm, &WorkingTreeViewModel::statusChanged);
         QSignalSpy refreshedSpy(&wtVm, &WorkingTreeViewModel::refreshed);
@@ -1156,6 +1168,19 @@ TEST_CASE (
         CHECK(wtVm.stagedCount() == 1);
         CHECK(wtVm.stagedModel()->rowCount() == 1);
         CHECK_FALSE(wtVm.isClean());
+
+        // The WIP file list flags unmerged paths: opening one starts the conflict resolver
+        const auto wipFiles = wtVm.getAllWorkingFiles();
+        REQUIRE(wipFiles.size() == 3);
+        QHash<QString, bool> conflicted;
+        for (const auto& f : wipFiles)
+        {
+            const auto m = f.toMap();
+            conflicted[m.value("path").toString()] = m.value("isConflicted").toBool();
+        }
+        CHECK(conflicted.value("merge.txt"));
+        CHECK_FALSE(conflicted.value("b.txt"));
+        CHECK_FALSE(conflicted.value("a.txt"));
 
         // A refresh with nothing new still reports completion, without statusChanged
         CHECK(wtVm.refresh(QString::fromStdString(validTempDir.string())));

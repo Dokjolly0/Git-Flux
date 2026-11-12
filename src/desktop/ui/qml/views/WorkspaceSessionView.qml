@@ -884,6 +884,11 @@ Rectangle {
             onCreateTagRequested: function (commitSha) {
                 createTagModal.openWithCommit(commitSha);
             }
+            onConflictResolveRequested: function (filePath) {
+                if (root.sessionVm && root.sessionVm.openConflictResolver(filePath)) {
+                    conflictModal.open();
+                }
+            }
             onCreateWorktreeRequested: function (target) {
                 createWorktreeModal.openWithTarget(target);
             }

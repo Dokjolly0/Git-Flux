@@ -129,6 +129,21 @@ TEST_CASE (
     REQUIRE_FALSE(mergeRes->conflictedFiles.empty());
     CHECK(mergeRes->conflictedFiles[0] == "conflict.txt");
 
+    // The unmerged path is reported once, as conflicted (the WIP list opens the resolver on it)
+    auto statusRes = gitOps.getWorkingTreeStatus(sandbox.root);
+    REQUIRE(statusRes.has_value());
+    REQUIRE(statusRes->conflictedFiles.size() == 1);
+    CHECK(statusRes->conflictedFiles[0].path == "conflict.txt");
+    CHECK(statusRes->conflictedFiles[0].kind == gf::git::bo::FileChangeKind::Conflicted);
+    for (const auto& item : statusRes->unstagedFiles)
+    {
+        CHECK(item.path != "conflict.txt");
+    }
+    for (const auto& item : statusRes->stagedFiles)
+    {
+        CHECK(item.path != "conflict.txt");
+    }
+
     // 5. Inspect using GitConflictService
     auto cFileRes = conflictService.getConflictFile(sandbox.root, "conflict.txt");
     REQUIRE(cFileRes.has_value());
