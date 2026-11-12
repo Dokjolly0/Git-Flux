@@ -29,6 +29,9 @@ namespace gf::desktop
 
         Q_PROPERTY(QString currentBranch READ currentBranch NOTIFY currentBranchChanged)
         Q_PROPERTY(bool isDetached READ isDetached NOTIFY currentBranchChanged)
+        // Network operation in progress: "fetch", "pull", "push" or empty (isBusy also covers
+        // local operations and background reloads).
+        Q_PROPERTY(QString remoteOperation READ remoteOperation NOTIFY remoteOperationChanged)
         Q_PROPERTY(bool isBusy READ isBusy NOTIFY busyChanged)
         Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged)
         Q_PROPERTY(QString remoteUrl READ remoteUrl NOTIFY remoteUrlChanged)
@@ -67,6 +70,7 @@ namespace gf::desktop
         [[nodiscard]] bool isDetached() const noexcept { return m_isDetached; }
         [[nodiscard]] bool isBusy() const noexcept { return m_isBusy; }
         [[nodiscard]] QString statusMessage() const noexcept { return m_statusMessage; }
+        [[nodiscard]] QString remoteOperation() const noexcept { return m_remoteOperation; }
         [[nodiscard]] QString remoteUrl() const noexcept { return m_remoteUrl; }
         [[nodiscard]] QString fileHistoryPath() const noexcept { return m_fileHistoryPath; }
         [[nodiscard]] bool hasConflicts() const noexcept { return !m_conflictedFiles.isEmpty(); }
@@ -134,6 +138,7 @@ namespace gf::desktop
 
         void currentBranchChanged();
         void busyChanged();
+        void remoteOperationChanged();
         void statusMessageChanged();
         void remoteUrlChanged();
         void fileHistoryPathChanged();
@@ -171,8 +176,10 @@ namespace gf::desktop
         void completeOperation(int operationId, bool success, const QString& message,
                                const QString& statusMessage = QString());
         void setConflicts(const std::vector<std::string>& files);
-        void setBusy(bool busy);
         void setStatusMessage(const QString& message);
+        // Marks operation `id` as the running network operation `kind` (see remoteOperation).
+        void beginRemoteOperation(int id, const QString& kind);
+        void endRemoteOperation(int id);
 
         git::bl::GitBranchService& m_branchService;
         git::bl::GitHistoryService& m_historyService;
@@ -195,9 +202,10 @@ namespace gf::desktop
         bool m_refreshScheduled = false;   // a coalesced refresh is queued on the event loop
         bool m_refreshRunning = false;     // a background reload is in flight
         bool m_refreshAgain = false;       // another reload was requested while one was running
-        bool m_syncBusy = false;           // a synchronous operation is running on the GUI thread
         int m_pendingOperations = 0;       // background operations not yet completed
         int m_lastOperationId = 0;
+        QString m_remoteOperation;
+        int m_remoteOperationId = 0;
         quint64 m_generation = 0;          // bumped when repo/filter changes: stale results are dropped
 
         LatestRequest m_commitFilesRequest;

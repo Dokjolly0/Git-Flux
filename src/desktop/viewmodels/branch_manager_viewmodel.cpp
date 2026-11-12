@@ -98,6 +98,26 @@ namespace gf::desktop
         emit operationFinished(operationId, success, message);
     }
 
+    void BranchManagerViewModel::beginRemoteOperation(int id, const QString& kind)
+    {
+        m_remoteOperationId = id;
+        if (m_remoteOperation != kind)
+        {
+            m_remoteOperation = kind;
+            emit remoteOperationChanged();
+        }
+    }
+
+    void BranchManagerViewModel::endRemoteOperation(int id)
+    {
+        // Operations complete in submission order: only the last one started clears the state.
+        if (id == m_remoteOperationId && !m_remoteOperation.isEmpty())
+        {
+            m_remoteOperation.clear();
+            emit remoteOperationChanged();
+        }
+    }
+
     void BranchManagerViewModel::setConflicts(const std::vector<std::string>& files)
     {
         m_conflictedFiles.clear();
@@ -324,15 +344,9 @@ namespace gf::desktop
         return true;
     }
 
-    void BranchManagerViewModel::setBusy(bool busy)
-    {
-        m_syncBusy = busy;
-        updateBusy();
-    }
-
     void BranchManagerViewModel::updateBusy()
     {
-        const bool busy = m_syncBusy || m_refreshRunning || m_pendingOperations > 0;
+        const bool busy = m_refreshRunning || m_pendingOperations > 0;
         if (m_isBusy != busy)
         {
             m_isBusy = busy;
@@ -693,34 +707,35 @@ namespace gf::desktop
             return false;
         }
 
-        setBusy(true);
-        setStatusMessage(allRemotes
-                             ? QStringLiteral("Fetch da tutti i remote...")
-                             : QStringLiteral("Fetch da %1...").arg(remoteName));
-
-        git::bo::RemoteOperationOptions opts{
+        auto& service = m_remoteMergeService;
+        const auto repoPath = m_repoPath;
+        const git::bo::RemoteOperationOptions opts{
             .remoteName = remoteName.toStdString(),
             .prune = true,
             .allRemotes = allRemotes
         };
 
-        auto res = m_remoteMergeService.fetchRemote(m_repoPath, opts);
-        setBusy(false);
-
-        if (!res)
-        {
-            QString err = formatRemoteError(res.error().message);
-            setStatusMessage(err);
-            emit operationCompleted(false, err);
-            return false;
-        }
-
-        QString successMsg = allRemotes
-                                 ? QStringLiteral("Fetch da tutti i remote completato")
-                                 : QStringLiteral("Fetch da %1 completato").arg(remoteName);
-        setStatusMessage(successMsg);
-        refresh();
-        emit operationCompleted(true, successMsg);
+        // Network: may take seconds (or wait for credentials), never on the GUI thread.
+        const int operationId = runOperation(
+            allRemotes ? QStringLiteral("Fetch da tutti i remote...") : QStringLiteral("Fetch da %1...").arg(remoteName),
+            [&service, repoPath, opts]() { return service.fetchRemote(repoPath, opts); },
+            [this, remoteName, allRemotes](int id, bool sameRepo, auto res)
+            {
+                endRemoteOperation(id);
+                if (!res)
+                {
+                    completeOperation(id, false, formatRemoteError(res.error().message));
+                    return;
+                }
+                if (sameRepo)
+                {
+                    refresh();
+                }
+                completeOperation(id, true, allRemotes
+                                                ? QStringLiteral("Fetch da tutti i remote completato")
+                                                : QStringLiteral("Fetch da %1 completato").arg(remoteName));
+            });
+        beginRemoteOperation(operationId, QStringLiteral("fetch"));
         return true;
     }
 
@@ -743,35 +758,40 @@ namespace gf::desktop
             return false;
         }
 
-        setBusy(true);
-        QString stratLabel = (strategy == "rebase")
-                                 ? " con rebase"
-                                 : ((strategy == "ff-only") ? " (solo fast-forward)" : "");
-        setStatusMessage(QStringLiteral("Pull da %1%2 in corso...").arg(remoteName, stratLabel));
-
-        git::bo::RemoteOperationOptions opts{
+        const QString stratLabel = (strategy == "rebase")
+                                       ? QStringLiteral(" con rebase")
+                                       : ((strategy == "ff-only") ? QStringLiteral(" (solo fast-forward)") : QString());
+        auto& service = m_remoteMergeService;
+        const auto repoPath = m_repoPath;
+        const git::bo::RemoteOperationOptions opts{
             .remoteName = remoteName.toStdString(),
             .branchName = m_currentBranch.isEmpty() ? std::nullopt : std::make_optional(m_currentBranch.toStdString()),
             .rebase = (strategy == "rebase"),
             .fastForwardOnly = (strategy == "ff-only")
         };
 
-        auto res = m_remoteMergeService.pullRemote(m_repoPath, opts);
-        setBusy(false);
-
-        if (!res)
-        {
-            QString err = formatRemoteError(res.error().message);
-            setStatusMessage(err);
-            emit operationCompleted(false, err);
-            return false;
-        }
-
-        QString successMsg = QStringLiteral("Pull da %1 completato con successo%2").arg(remoteName, stratLabel);
-        setStatusMessage(successMsg);
-        m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
-        refresh();
-        emit operationCompleted(true, successMsg);
+        // On the shared executor: a pull rewrites the working tree, so it stays ordered with
+        // staging, commits and status reads.
+        const int operationId = runOperation(
+            QStringLiteral("Pull da %1%2 in corso...").arg(remoteName, stratLabel),
+            [&service, repoPath, opts]() { return service.pullRemote(repoPath, opts); },
+            [this, remoteName, stratLabel](int id, bool sameRepo, auto res)
+            {
+                endRemoteOperation(id);
+                if (!res)
+                {
+                    completeOperation(id, false, formatRemoteError(res.error().message));
+                    return;
+                }
+                if (sameRepo)
+                {
+                    m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
+                    refresh();
+                }
+                completeOperation(id, true,
+                                  QStringLiteral("Pull da %1 completato con successo%2").arg(remoteName, stratLabel));
+            });
+        beginRemoteOperation(operationId, QStringLiteral("pull"));
         return true;
     }
 
@@ -782,13 +802,13 @@ namespace gf::desktop
             return false;
         }
 
-        setBusy(true);
-        QString optsDesc = force
-                               ? " (force-with-lease)"
-                               : (tags ? " (con tag)" : (setUpstream ? " (set-upstream)" : ""));
-        setStatusMessage(QStringLiteral("Push verso %1%2 in corso...").arg(remoteName, optsDesc));
-
-        git::bo::RemoteOperationOptions opts{
+        const QString optsDesc = force
+                                     ? QStringLiteral(" (force-with-lease)")
+                                     : (tags ? QStringLiteral(" (con tag)")
+                                             : (setUpstream ? QStringLiteral(" (set-upstream)") : QString()));
+        auto& service = m_remoteMergeService;
+        const auto repoPath = m_repoPath;
+        const git::bo::RemoteOperationOptions opts{
             .remoteName = remoteName.toStdString(),
             .branchName = m_currentBranch.isEmpty() ? std::nullopt : std::make_optional(m_currentBranch.toStdString()),
             .setUpstream = setUpstream,
@@ -796,30 +816,38 @@ namespace gf::desktop
             .tags = tags
         };
 
-        auto res = m_remoteMergeService.pushRemote(m_repoPath, opts);
-
-        // Auto-retry with setUpstream if branch has no remote tracking branch
-        if (!res && !setUpstream && (res.error().message.find("no upstream branch") != std::string::npos ||
-            res.error().message.find("set-upstream") != std::string::npos))
-        {
-            opts.setUpstream = true;
-            res = m_remoteMergeService.pushRemote(m_repoPath, opts);
-        }
-
-        setBusy(false);
-
-        if (!res)
-        {
-            QString err = formatRemoteError(res.error().message);
-            setStatusMessage(err);
-            emit operationCompleted(false, err);
-            return false;
-        }
-
-        QString successMsg = QStringLiteral("Push verso %1 completato con successo%2").arg(remoteName, optsDesc);
-        setStatusMessage(successMsg);
-        refresh();
-        emit operationCompleted(true, successMsg);
+        const int operationId = runOperation(
+            QStringLiteral("Push verso %1%2 in corso...").arg(remoteName, optsDesc),
+            [&service, repoPath, options = opts]()
+            {
+                auto opts = options;
+                auto res = service.pushRemote(repoPath, opts);
+                // Auto-retry with setUpstream if the branch has no remote tracking branch
+                if (!res && !opts.setUpstream &&
+                    (res.error().message.find("no upstream branch") != std::string::npos ||
+                     res.error().message.find("set-upstream") != std::string::npos))
+                {
+                    opts.setUpstream = true;
+                    res = service.pushRemote(repoPath, opts);
+                }
+                return res;
+            },
+            [this, remoteName, optsDesc](int id, bool sameRepo, auto res)
+            {
+                endRemoteOperation(id);
+                if (!res)
+                {
+                    completeOperation(id, false, formatRemoteError(res.error().message));
+                    return;
+                }
+                if (sameRepo)
+                {
+                    refresh();
+                }
+                completeOperation(id, true,
+                                  QStringLiteral("Push verso %1 completato con successo%2").arg(remoteName, optsDesc));
+            });
+        beginRemoteOperation(operationId, QStringLiteral("push"));
         return true;
     }
 

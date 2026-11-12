@@ -55,6 +55,7 @@
 
 #include <QGuiApplication>
 #include <QSignalSpy>
+#include <QElapsedTimer>
 #include <QTest>
 #include <filesystem>
 #include <memory>
@@ -597,6 +598,11 @@ public:
     std::atomic<int> readDelayMs{0};
     std::atomic<bool> echoCommitDiffPath{false};
     std::atomic<int> mergeDelayMs{0};
+    std::atomic<int> remoteDelayMs{0};
+    std::atomic<bool> pushNeedsUpstream{false}; // push fails with "no upstream branch" unless setUpstream
+    std::atomic<bool> fetchFailsAuth{false};
+    std::atomic<int> pushCalls{0};
+    std::atomic<bool> lastPushSetUpstream{false};
 
     std::expected<gf::git::bo::RepoWorkingTreeStatus, gf::git::ports::GitOpsError>
     getWorkingTreeStatus(const std::filesystem::path&) override
@@ -807,19 +813,42 @@ public:
     std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
     fetchRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions&) override
     {
+        simulateNetwork();
+        if (fetchFailsAuth)
+        {
+            return std::unexpected(gf::git::ports::GitOpsError{
+                gf::git::ports::GitOpsError::Kind::ExecutionFailed, 1, "git@github.com: Permission denied (publickey)."});
+        }
         return gf::git::bo::RemoteOperationResult{.success = true};
     }
 
     std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
     pullRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions&) override
     {
+        simulateNetwork();
         return gf::git::bo::RemoteOperationResult{.success = true};
     }
 
     std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
-    pushRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions&) override
+    pushRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions& options) override
     {
+        simulateNetwork();
+        ++pushCalls;
+        lastPushSetUpstream = options.setUpstream;
+        if (pushNeedsUpstream && !options.setUpstream)
+        {
+            return std::unexpected(gf::git::ports::GitOpsError{
+                gf::git::ports::GitOpsError::Kind::ExecutionFailed, 1, "fatal: The current branch has no upstream branch."});
+        }
         return gf::git::bo::RemoteOperationResult{.success = true};
+    }
+
+    void simulateNetwork() const
+    {
+        if (remoteDelayMs > 0)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(remoteDelayMs.load()));
+        }
     }
 
     std::expected<gf::git::bo::MergeResult, gf::git::ports::GitOpsError>
@@ -1809,6 +1838,96 @@ TEST_CASE (
 }
 
 TEST_CASE (
+"BranchManagerViewModel runs fetch, pull and push off the GUI thread"
+,
+"[viewmodel][branch][async][remote]"
+)
+ {
+    ensureQtApp();
+
+    MockFullGitOps mockOps;
+    gf::git::bl::GitBranchService branchService(mockOps);
+    gf::git::bl::GitHistoryService historyService(mockOps);
+    gf::git::bl::GitRemoteMergeService remoteMergeService(mockOps);
+    BranchManagerViewModel branchVm(branchService, historyService, remoteMergeService);
+    const auto repo = std::filesystem::temp_directory_path() / "gf-remote-a";
+    std::filesystem::create_directories(repo);
+
+    branchVm.setRepositoryPath(QString::fromStdString(repo.string()));
+    REQUIRE(branchVm.waitForIdle());
+
+    QSignalSpy finishedSpy(&branchVm, &BranchManagerViewModel::operationFinished);
+
+    SECTION("a slow network operation returns immediately and completes later") {
+        mockOps.remoteDelayMs = 150;
+        QElapsedTimer timer;
+        timer.start();
+        REQUIRE(branchVm.fetchRemote("origin"));
+        const int fetchId = branchVm.lastOperationId();
+        REQUIRE(branchVm.pullRemote("origin", "default"));
+        const int pullId = branchVm.lastOperationId();
+        REQUIRE(branchVm.pushRemote("origin"));
+        const int pushId = branchVm.lastOperationId();
+        CHECK(timer.elapsed() < 100); // the GUI thread did not wait for the network
+        CHECK(branchVm.isBusy());
+        CHECK(branchVm.statusMessage().contains("Push"));
+        CHECK(branchVm.remoteOperation() == "push"); // the last one started
+        CHECK(finishedSpy.count() == 0);
+
+        REQUIRE(branchVm.waitForIdle());
+        REQUIRE(finishedSpy.count() == 3);
+        // Same serial lane as the local operations: completions in submission order
+        CHECK(finishedSpy.at(0).at(0).toInt() == fetchId);
+        CHECK(finishedSpy.at(1).at(0).toInt() == pullId);
+        CHECK(finishedSpy.at(2).at(0).toInt() == pushId);
+        for (const auto& args : finishedSpy)
+        {
+            CHECK(args.at(1).toBool());
+        }
+        CHECK_FALSE(branchVm.isBusy());
+        CHECK(branchVm.remoteOperation().isEmpty());
+    }
+
+    SECTION("a local operation or a reload does not count as a network operation") {
+        branchVm.refresh();
+        REQUIRE(branchVm.createTag("v1"));
+        CHECK(branchVm.isBusy());
+        CHECK(branchVm.remoteOperation().isEmpty());
+        REQUIRE(branchVm.waitForIdle());
+    }
+
+    SECTION("a push without upstream is retried with --set-upstream on the worker") {
+        mockOps.pushNeedsUpstream = true;
+        REQUIRE(branchVm.pushRemote("origin"));
+        REQUIRE(branchVm.waitForIdle());
+        REQUIRE(finishedSpy.count() == 1);
+        CHECK(finishedSpy.at(0).at(1).toBool());
+        CHECK(mockOps.pushCalls == 2);
+        CHECK(mockOps.lastPushSetUpstream);
+    }
+
+    SECTION("network failures are reported with a readable message") {
+        mockOps.fetchFailsAuth = true;
+        REQUIRE(branchVm.fetchRemote("origin"));
+        REQUIRE(branchVm.waitForIdle());
+        REQUIRE(finishedSpy.count() == 1);
+        CHECK_FALSE(finishedSpy.at(0).at(1).toBool());
+        CHECK(finishedSpy.at(0).at(2).toString().contains("Autenticazione SSH fallita"));
+        CHECK(branchVm.statusMessage().contains("Autenticazione SSH fallita"));
+    }
+
+    SECTION("an empty repository path is rejected synchronously") {
+        BranchManagerViewModel emptyVm(branchService, historyService, remoteMergeService);
+        CHECK_FALSE(emptyVm.fetchRemote("origin"));
+        CHECK_FALSE(emptyVm.pullRemote("origin"));
+        CHECK_FALSE(emptyVm.pushRemote("origin"));
+    }
+
+    std::error_code ec;
+    std::filesystem::remove_all(repo, ec);
+}
+
+TEST_CASE (
 "Selection reads are asynchronous and only the latest result is applied"
 ,
 "[viewmodel][async][latest]"
@@ -1967,6 +2086,7 @@ TEST_CASE (
     CHECK(branchVm.pushRemote("origin", true, false, false));
     CHECK(branchVm.pushRemote("origin", false, true, false));
     CHECK(branchVm.pushRemote("origin", false, false, true));
+    REQUIRE(branchVm.waitForIdle());
 
     // Branch creation with custom start point
     CHECK(branchVm.createBranch("feature/from-commit", true, "a1b2c3d"));

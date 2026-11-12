@@ -7,6 +7,9 @@ Rectangle {
     color: "#0E1117"
 
     property var sessionVm: null
+    // Network operation in progress ("fetch", "pull", "push" or ""): runs in the background, the
+    // window stays usable; the buttons only wait for it (not for local operations or reloads).
+    readonly property string remoteOperation: (sessionVm && sessionVm.branchManager) ? sessionVm.branchManager.remoteOperation : ""
 
     signal returnToHomeRequested()
 
@@ -273,8 +276,8 @@ Rectangle {
 
                     Button {
                         id: pullMainBtn
-                        text: (root.sessionVm && root.sessionVm.branchManager && root.sessionVm.branchManager.isBusy) ? "⏳ Pull..." : "⬇ Pull"
-                        enabled: !(root.sessionVm && root.sessionVm.branchManager && root.sessionVm.branchManager.isBusy)
+                        text: root.remoteOperation === "pull" ? "⏳ Pull..." : (root.remoteOperation === "fetch" ? "⏳ Fetch..." : "⬇ Pull")
+                        enabled: root.remoteOperation === ""
                         Layout.preferredHeight: 30
                         background: Rectangle {
                             color: parent.hovered ? "#1E293B" : "#161B22"
@@ -384,8 +387,8 @@ Rectangle {
 
                     Button {
                         id: pushMainBtn
-                        text: (root.sessionVm && root.sessionVm.branchManager && root.sessionVm.branchManager.isBusy) ? "⏳ Push..." : "⬆ Push"
-                        enabled: !(root.sessionVm && root.sessionVm.branchManager && root.sessionVm.branchManager.isBusy)
+                        text: root.remoteOperation === "push" ? "⏳ Push..." : "⬆ Push"
+                        enabled: root.remoteOperation === ""
                         Layout.preferredHeight: 30
                         background: Rectangle {
                             color: parent.hovered ? "#1E293B" : "#161B22"
