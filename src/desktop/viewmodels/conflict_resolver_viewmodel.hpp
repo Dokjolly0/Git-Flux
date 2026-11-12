@@ -6,6 +6,7 @@
 #include <memory>
 
 #include "desktop/viewmodels/conflict_hunk_list_model.hpp"
+#include "desktop/services/serial_git_executor.hpp"
 
 namespace gf::git::bl
 {
@@ -14,8 +15,6 @@ namespace gf::git::bl
 
 namespace gf::desktop
 {
-    class SerialGitExecutor;
-
     class ConflictResolverViewModel : public QObject
     {
         Q_OBJECT
@@ -27,6 +26,8 @@ namespace gf::desktop
         Q_PROPERTY(bool allResolved READ allResolved NOTIFY allResolvedChanged)
         Q_PROPERTY(bool isBinary READ isBinary NOTIFY isBinaryChanged)
         Q_PROPERTY(bool isBusy READ isBusy NOTIFY isBusyChanged)
+        // A file requested by loadFile is being read (git index stages + markers parsing).
+        Q_PROPERTY(bool isLoading READ isLoading NOTIFY isLoadingChanged)
         Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
         Q_PROPERTY(bool hasError READ hasError NOTIFY hasErrorChanged)
 
@@ -48,15 +49,20 @@ namespace gf::desktop
         [[nodiscard]] bool allResolved() const noexcept { return m_hunksModel.allResolved(); }
         [[nodiscard]] bool isBinary() const noexcept { return m_isBinary; }
         [[nodiscard]] bool isBusy() const noexcept { return m_isBusy; }
+        [[nodiscard]] bool isLoading() const noexcept { return m_isLoading; }
         [[nodiscard]] QString errorMessage() const { return m_errorMessage; }
         [[nodiscard]] bool hasError() const noexcept { return !m_errorMessage.isEmpty(); }
 
-    Q_INVOKABLE bool loadFile(const QString& relativeFilePath);
+        // Asynchronous: returns whether the read was started (the previous file is cleared at
+        // once); the hunks arrive with currentFilePathChanged, failures set errorMessage. A newer
+        // loadFile, clear() or setRepoPath() supersedes it.
+        Q_INVOKABLE bool loadFile(const QString& relativeFilePath);
     Q_INVOKABLE void resolveHunk(int hunkIndex, int side, const QString& customText = {});
         // Asynchronous: returns whether the resolution was submitted; resolutionApplied() or
         // errorMessage report the outcome.
         Q_INVOKABLE bool applyResolution(bool autoStage = true);
-        /// Test helper: processes events until the submitted resolution has been written.
+        /// Test helper: processes events until the file being loaded and the submitted resolution
+        /// have been applied.
         bool waitForIdle(int timeoutMs = 10000);
     Q_INVOKABLE void clear();
 
@@ -69,6 +75,7 @@ namespace gf::desktop
         void allResolvedChanged();
         void isBinaryChanged();
         void isBusyChanged();
+        void isLoadingChanged();
         void errorMessageChanged();
         void hasErrorChanged();
         void resolutionApplied(const QString& filePath);
@@ -76,6 +83,7 @@ namespace gf::desktop
     private:
         void connectModel();
         void setBusy(bool busy);
+        void setLoading(bool loading);
         void setError(const QString& message);
         void clearError();
 
@@ -87,6 +95,8 @@ namespace gf::desktop
         QString m_errorMessage;
         bool m_isBinary{false};
         bool m_isBusy{false};
+        bool m_isLoading{false};
+        LatestRequest m_loadRequest;
 
         SerialGitExecutor* m_executor{nullptr};
         // Declared last: destroyed first, waiting for its tasks while this object is alive.

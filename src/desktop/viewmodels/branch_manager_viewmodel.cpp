@@ -155,6 +155,7 @@ namespace gf::desktop
             m_commitFilesRequest.invalidate();
             m_fileHistoryRequest.invalidate();
             m_repositoryFilesRequest.invalidate();
+            m_fastForwardRequest.invalidate();
             m_headSha.clear(); // another repository's HEAD is not a "move"
             m_followHeadPending = false;
         }
@@ -1343,15 +1344,42 @@ namespace gf::desktop
         }
     } // namespace
 
-    bool BranchManagerViewModel::canFastForwardBranch(const QString& targetBranch, const QString& sourceBranch)
+    void BranchManagerViewModel::requestFastForwardCheck(const QString& targetBranch, const QString& sourceBranch)
     {
+        const auto id = m_fastForwardRequest.next();
         if (m_repoPath.empty() || targetBranch.isEmpty() || sourceBranch.isEmpty())
         {
-            return false;
+            // Still asynchronous, so callers handle a single code path.
+            QMetaObject::invokeMethod(this, [this, id, targetBranch, sourceBranch]()
+            {
+                if (m_fastForwardRequest.isCurrent(id))
+                {
+                    emit fastForwardCheckReady(targetBranch, sourceBranch, false);
+                }
+            }, Qt::QueuedConnection);
+            return;
         }
-        auto res = m_branchService.canFastForwardBranch(m_repoPath, localBranchName(targetBranch).toStdString(),
-                                                        sourceBranch.toStdString());
-        return res && *res;
+
+        auto& service = m_branchService;
+        m_readExecutor->run(this,
+                            [&service, isCurrent = m_fastForwardRequest.guard(id), repoPath = m_repoPath,
+                                target = localBranchName(targetBranch).toStdString(),
+                                source = sourceBranch.toStdString()]() -> std::optional<bool>
+                            {
+                                if (!isCurrent())
+                                {
+                                    return std::nullopt; // the menu was reopened on other branches
+                                }
+                                auto res = service.canFastForwardBranch(repoPath, target, source);
+                                return res && *res;
+                            },
+                            [this, id, targetBranch, sourceBranch](std::optional<bool> possible)
+                            {
+                                if (m_fastForwardRequest.isCurrent(id) && possible)
+                                {
+                                    emit fastForwardCheckReady(targetBranch, sourceBranch, *possible);
+                                }
+                            });
     }
 
     bool BranchManagerViewModel::fastForwardBranch(const QString& targetBranch, const QString& sourceBranch)

@@ -55,7 +55,8 @@ Dialog {
                 }
 
                 Text {
-                    text: root.conflictResolver ? root.conflictResolver.currentFilePath : ""
+                    text: !root.conflictResolver ? ""
+                        : (root.conflictResolver.isLoading ? "⏳ Caricamento del file..." : root.conflictResolver.currentFilePath)
                     color: "#38BDF8"
                     font.bold: true
                     font.pixelSize: 13

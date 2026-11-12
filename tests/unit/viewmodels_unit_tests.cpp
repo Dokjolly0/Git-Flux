@@ -599,6 +599,9 @@ public:
     std::atomic<bool> echoCommitDiffPath{false};
     std::atomic<int> mergeDelayMs{0};
     std::atomic<int> remoteDelayMs{0};
+    std::atomic<int> conflictFileCalls{0};
+    std::atomic<bool> echoConflictFilePath{false};
+    std::atomic<int> fastForwardChecks{0};
     std::atomic<bool> pushNeedsUpstream{false}; // push fails with "no upstream branch" unless setUpstream
     std::atomic<bool> fetchFailsAuth{false};
     std::atomic<int> pushCalls{0};
@@ -987,9 +990,33 @@ public:
     }
 
     std::expected<gf::git::bo::ConflictFile, gf::git::ports::GitOpsError>
-    getConflictFile(const std::filesystem::path&, const std::string&) override
+    getConflictFile(const std::filesystem::path&, const std::string& filePath) override
     {
+        ++conflictFileCalls;
+        if (readDelayMs > 0)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(readDelayMs.load()));
+        }
+        if (echoConflictFilePath)
+        {
+            auto file = conflictFileToReturn;
+            file.filePath = filePath;
+            return file;
+        }
         return conflictFileToReturn;
+    }
+
+    std::expected<bool, gf::git::ports::GitOpsError>
+    canFastForwardBranch(const std::filesystem::path&, const std::string& targetBranch,
+                         const std::string& sourceRef) override
+    {
+        ++fastForwardChecks;
+        if (readDelayMs > 0)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(readDelayMs.load()));
+        }
+        // "main" can be fast-forwarded to "feature" only
+        return targetBranch == "main" && sourceRef == "feature";
     }
 
     std::expected<std::string, gf::git::ports::GitOpsError>
@@ -2452,6 +2479,9 @@ TEST_CASE (
         // Load conflict file
         bool loaded = vm.loadFile("src/main.cpp");
         CHECK(loaded);
+        CHECK(vm.isLoading());
+        REQUIRE(vm.waitForIdle());
+        CHECK_FALSE(vm.isLoading());
         CHECK(vm.currentFilePath() == "src/main.cpp");
         CHECK(vm.totalHunks() == 1);
         CHECK(vm.resolvedHunks() == 0);
@@ -3619,6 +3649,104 @@ TEST_CASE (
         const auto notice = model->data(model->index(5050, 0), DiffLineListModel::ContentRole).toString();
         CHECK(notice.contains("troncato"));
         CHECK(diffVm.splitLines().last().toMap().value("hunkHeader").toString().contains("troncato"));
+    }
+
+    std::error_code ec;
+    std::filesystem::remove_all(repo, ec);
+}
+
+TEST_CASE (
+"Conflict file loading and fast-forward checks run off the GUI thread, latest wins"
+,
+"[viewmodel][conflict][branch][async][latest]"
+)
+ {
+    ensureQtApp();
+
+    MockFullGitOps mockOps;
+    mockOps.conflictFileToReturn = gf::git::bo::ConflictFile{
+        .filePath = "src/a.cpp",
+        .isBinary = false,
+        .hunks = {
+            gf::git::bo::ConflictHunk{
+                .hunkIndex = 0, .startLine = 1, .baseContent = "",
+                .oursContent = "ours", .theirsContent = "theirs",
+                .chosenSide = std::nullopt, .customContent = std::nullopt, .isResolved = false
+            }
+        },
+        .fullContentWithMarkers = "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> feature\n"
+    };
+    mockOps.echoConflictFilePath = true;
+    const auto repo = std::filesystem::temp_directory_path() / "gf-conflict-async";
+    std::filesystem::create_directories(repo);
+
+    SECTION("conflict resolver: only the last requested file is shown") {
+        gf::git::bl::GitConflictService conflictService(mockOps);
+        ConflictResolverViewModel vm(conflictService);
+        vm.setRepoPath(QString::fromStdString(repo.string()));
+        QSignalSpy fileSpy(&vm, &ConflictResolverViewModel::currentFilePathChanged);
+
+        mockOps.readDelayMs = 40;
+        for (int i = 0; i < 5; ++i)
+        {
+            REQUIRE(vm.loadFile(QStringLiteral("src/file%1.cpp").arg(i)));
+        }
+        CHECK(vm.isLoading());
+        CHECK(vm.currentFilePath().isEmpty()); // nothing read on the GUI thread
+        REQUIRE(vm.waitForIdle());
+        CHECK(vm.currentFilePath() == "src/file4.cpp");
+        CHECK(vm.totalHunks() == 1);
+        CHECK(mockOps.conflictFileCalls <= 2); // superseded reads skipped before running git
+
+        // Closing (clear) before the read completes: nothing lands afterwards
+        REQUIRE(vm.loadFile("src/late.cpp"));
+        vm.clear();
+        CHECK_FALSE(vm.isLoading());
+        REQUIRE(vm.waitForIdle());
+        waitUntil([] { return false; }, 100);
+        CHECK(vm.currentFilePath().isEmpty());
+        CHECK(vm.totalHunks() == 0);
+    }
+
+    SECTION("conflict resolver: a failed read reports the error") {
+        gf::git::bl::GitConflictService conflictService(mockOps);
+        ConflictResolverViewModel vm(conflictService);
+        vm.setRepoPath(QString::fromStdString((repo / "missing").string())); // fails path validation
+        REQUIRE(vm.loadFile("src/a.cpp"));
+        REQUIRE(vm.waitForIdle());
+        CHECK(vm.hasError());
+        CHECK(vm.currentFilePath().isEmpty());
+    }
+
+    SECTION("fast-forward check: asynchronous, only the latest answer is delivered") {
+        gf::git::bl::GitBranchService branchService(mockOps);
+        gf::git::bl::GitHistoryService historyService(mockOps);
+        gf::git::bl::GitRemoteMergeService remoteMergeService(mockOps);
+        BranchManagerViewModel branchVm(branchService, historyService, remoteMergeService);
+        branchVm.setRepositoryPath(QString::fromStdString(repo.string()));
+        REQUIRE(branchVm.waitForIdle());
+
+        QSignalSpy ffSpy(&branchVm, &BranchManagerViewModel::fastForwardCheckReady);
+        mockOps.readDelayMs = 40;
+        branchVm.requestFastForwardCheck("feature", "main");
+        branchVm.requestFastForwardCheck("origin/main", "feature"); // menu reopened on other branches
+        CHECK(ffSpy.count() == 0);
+        REQUIRE(ffSpy.wait(2000));
+        waitUntil([] { return false; }, 120);
+        REQUIRE(ffSpy.count() == 1);
+        CHECK(ffSpy.at(0).at(0).toString() == "origin/main");
+        CHECK(ffSpy.at(0).at(1).toString() == "feature");
+        CHECK(ffSpy.at(0).at(2).toBool()); // "origin/" stripped: main -> feature is possible
+
+        branchVm.requestFastForwardCheck("feature", "main");
+        REQUIRE(ffSpy.wait(2000));
+        CHECK_FALSE(ffSpy.last().at(2).toBool());
+
+        // Invalid input still answers asynchronously (single code path for the menu)
+        branchVm.requestFastForwardCheck("", "main");
+        CHECK(ffSpy.count() == 2);
+        REQUIRE(ffSpy.wait(2000));
+        CHECK_FALSE(ffSpy.last().at(2).toBool());
     }
 
     std::error_code ec;

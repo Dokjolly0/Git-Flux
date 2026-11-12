@@ -105,7 +105,9 @@ namespace gf::desktop
 
     Q_INVOKABLE bool mergeBranch(const QString& sourceBranch, bool noFf = false);
     Q_INVOKABLE bool mergeBranchInto(const QString& sourceBranch, const QString& targetBranch);
-    Q_INVOKABLE bool canFastForwardBranch(const QString& targetBranch, const QString& sourceBranch);
+    /// Asynchronous: the answer arrives with fastForwardCheckReady(target, source, possible).
+    /// A newer check supersedes a pending one.
+    Q_INVOKABLE void requestFastForwardCheck(const QString& targetBranch, const QString& sourceBranch);
     Q_INVOKABLE bool fastForwardBranch(const QString& targetBranch, const QString& sourceBranch);
     Q_INVOKABLE bool rebaseOnto(const QString& targetBranch);
     Q_INVOKABLE bool rebaseBranch(const QString& sourceBranch, const QString& targetBranch);
@@ -156,6 +158,7 @@ namespace gf::desktop
         void followHeadRequested(const QString& headSha);
         void commitFilesLoaded(const QString& commitSha, const QVariantList& files);
         void repositoryFilesLoaded(const QStringList& files);
+        void fastForwardCheckReady(const QString& targetBranch, const QString& sourceBranch, bool possible);
 
     private:
         struct RefreshSnapshot;
@@ -211,6 +214,7 @@ namespace gf::desktop
         LatestRequest m_commitFilesRequest;
         LatestRequest m_fileHistoryRequest;
         LatestRequest m_repositoryFilesRequest;
+        LatestRequest m_fastForwardRequest;
 
         SerialGitExecutor* m_executor = nullptr;
         // Declared last: destroyed first, waiting for their tasks while this object is alive.

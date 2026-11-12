@@ -2,7 +2,6 @@
 
 #include "core/modules/git/bl/git_conflict_service.hpp"
 #include "core/modules/git/bl/conflict_marker_parser.hpp"
-#include "desktop/services/serial_git_executor.hpp"
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
@@ -70,6 +69,16 @@ namespace gf::desktop
         emit isBusyChanged();
     }
 
+    void ConflictResolverViewModel::setLoading(bool loading)
+    {
+        if (m_isLoading == loading)
+        {
+            return;
+        }
+        m_isLoading = loading;
+        emit isLoadingChanged();
+    }
+
     void ConflictResolverViewModel::setError(const QString& message)
     {
         m_errorMessage = message;
@@ -89,6 +98,8 @@ namespace gf::desktop
 
     void ConflictResolverViewModel::clear()
     {
+        m_loadRequest.invalidate();
+        setLoading(false);
         m_currentFilePath.clear();
         m_rawOriginalContent.clear();
         m_isBinary = false;
@@ -112,27 +123,47 @@ namespace gf::desktop
             return false;
         }
 
-        setBusy(true);
-        clearError();
+        clear(); // never show the previous file's hunks under the new name
+        const auto id = m_loadRequest.next();
+        setLoading(true);
 
+        // On the shared git executor: the stages read here are those left by the merge/rebase
+        // queued before.
+        auto& service = m_conflictService;
         const std::filesystem::path path(m_repoPath.toStdString());
-        auto result = m_conflictService.getConflictFile(path, relativeFilePath.toStdString());
+        m_executor->run(this,
+                        [&service, isCurrent = m_loadRequest.guard(id), path,
+                            file = relativeFilePath.toStdString()]()
+                            -> std::optional<std::expected<gf::git::bo::ConflictFile, gf::git::ports::GitOpsError>>
+                        {
+                            if (!isCurrent())
+                            {
+                                return std::nullopt; // another file was requested meanwhile
+                            }
+                            return service.getConflictFile(path, file);
+                        },
+                        [this, id, relativeFilePath](auto result)
+                        {
+                            if (!m_loadRequest.isCurrent(id) || !result)
+                            {
+                                return;
+                            }
+                            setLoading(false);
+                            if (!*result)
+                            {
+                                setError(QString::fromStdString(result->error().message));
+                                return;
+                            }
 
-        if (!result)
-        {
-            setError(QString::fromStdString(result.error().message));
-            setBusy(false);
-            return false;
-        }
+                            auto& file = **result;
+                            m_currentFilePath = relativeFilePath;
+                            m_rawOriginalContent = std::move(file.fullContentWithMarkers);
+                            m_isBinary = file.isBinary;
+                            m_hunksModel.setHunks(std::move(file.hunks));
 
-        m_currentFilePath = relativeFilePath;
-        m_rawOriginalContent = result->fullContentWithMarkers;
-        m_isBinary = result->isBinary;
-        m_hunksModel.setHunks(std::move(result->hunks));
-
-        setBusy(false);
-        emit currentFilePathChanged();
-        emit isBinaryChanged();
+                            emit currentFilePathChanged();
+                            emit isBinaryChanged();
+                        });
         return true;
     }
 
@@ -206,7 +237,7 @@ namespace gf::desktop
     {
         QElapsedTimer timer;
         timer.start();
-        while (m_isBusy)
+        while (m_isBusy || m_isLoading)
         {
             if (timer.elapsed() > timeoutMs)
             {

@@ -3957,19 +3957,38 @@ Rectangle {
         id: branchDropMenu
         property string sourceBranch: ""
         property string targetBranch: ""
-        // Evaluated each time the menu opens: target is behind source on the same line of history
+        // Checked in the background each time the menu opens: target is behind source on the same
+        // line of history. The item keeps its slot while checking, so the entries below never
+        // shift under the cursor.
         property bool canFastForward: false
+        property bool fastForwardChecking: false
 
         onAboutToShow: {
-            branchDropMenu.canFastForward = root.branchManager
-                ? root.branchManager.canFastForwardBranch(branchDropMenu.targetBranch, branchDropMenu.sourceBranch)
-                : false;
+            branchDropMenu.canFastForward = false;
+            branchDropMenu.fastForwardChecking = !!root.branchManager;
+            if (root.branchManager) {
+                root.branchManager.requestFastForwardCheck(branchDropMenu.targetBranch, branchDropMenu.sourceBranch);
+            }
+        }
+
+        Connections {
+            target: root.branchManager
+            function onFastForwardCheckReady(targetBranch, sourceBranch, possible) {
+                if (targetBranch !== branchDropMenu.targetBranch || sourceBranch !== branchDropMenu.sourceBranch) {
+                    return;
+                }
+                branchDropMenu.canFastForward = possible;
+                branchDropMenu.fastForwardChecking = false;
+            }
         }
 
         MenuItem {
-            visible: branchDropMenu.canFastForward
-            height: visible ? implicitHeight : 0
-            text: "⏩ Fast-forward '" + branchDropMenu.targetBranch.replace(/^origin\//, "") + "' a '" + branchDropMenu.sourceBranch + "'"
+            enabled: branchDropMenu.canFastForward
+            text: branchDropMenu.fastForwardChecking
+                ? "⏳ Verifica fast-forward..."
+                : (branchDropMenu.canFastForward
+                    ? "⏩ Fast-forward '" + branchDropMenu.targetBranch.replace(/^origin\//, "") + "' a '" + branchDropMenu.sourceBranch + "'"
+                    : "⏩ Fast-forward non disponibile")
             font.pixelSize: 11
             font.bold: true
             onClicked: {
@@ -3980,8 +3999,6 @@ Rectangle {
         }
 
         MenuSeparator {
-            visible: branchDropMenu.canFastForward
-            height: visible ? implicitHeight : 0
         }
 
         MenuItem {
