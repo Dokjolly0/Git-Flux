@@ -1722,6 +1722,28 @@ namespace gf::infra::git
             args.push_back(*options.revisionRange);
         }
 
+        std::unordered_map<std::string, std::string> stashSelectorsBySha;
+        const bool includeAllStashes = options.revisionRange.has_value() &&
+            *options.revisionRange == "--all" &&
+            (!options.pathFilter.has_value() || options.pathFilter->empty());
+        if (includeAllStashes)
+        {
+            if (auto stashesRes = listStashes(repoPath))
+            {
+                for (const auto& s : *stashesRes)
+                {
+                    if (!s.commitSha.empty())
+                    {
+                        stashSelectorsBySha.try_emplace(s.commitSha, s.selector);
+                        if (s.index > 0)
+                        {
+                            args.push_back(s.commitSha);
+                        }
+                    }
+                }
+            }
+        }
+
         if (options.pathFilter.has_value() && !options.pathFilter->empty())
         {
             args.emplace_back("--");
@@ -1763,7 +1785,33 @@ namespace gf::infra::git
             });
         }
 
-        return gf::git::bl::CommitLogParser::parse(execResult->stdoutBytes);
+        auto commits = gf::git::bl::CommitLogParser::parse(execResult->stdoutBytes);
+        if (!stashSelectorsBySha.empty())
+        {
+            for (auto& c : commits)
+            {
+                auto it = stashSelectorsBySha.find(c.sha);
+                if (it == stashSelectorsBySha.end())
+                {
+                    continue;
+                }
+                bool replaced = false;
+                for (auto& dec : c.refDecorations)
+                {
+                    if (dec == "refs/stash" || dec == "stash")
+                    {
+                        dec = it->second;
+                        replaced = true;
+                        break;
+                    }
+                }
+                if (!replaced)
+                {
+                    c.refDecorations.insert(c.refDecorations.begin(), it->second);
+                }
+            }
+        }
+        return commits;
     }
 
     std::expected<std::vector<std::string>, gf::git::ports::GitOpsError>
@@ -2705,9 +2753,9 @@ namespace gf::infra::git
                 if (fields.size() >= 4)
                 {
                     gf::git::bo::GitStashItem item;
-                    item.selector = std::string(fields[0]);
-                    item.commitSha = std::string(fields[1]);
-                    item.dateIso = std::string(fields[2]);
+                    item.selector = trimString(std::string(fields[0]));
+                    item.commitSha = trimString(std::string(fields[1]));
+                    item.dateIso = trimString(std::string(fields[2]));
 
                     auto openBrace = item.selector.find('{');
                     auto closeBrace = item.selector.find('}', openBrace);

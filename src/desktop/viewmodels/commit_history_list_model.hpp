@@ -55,7 +55,9 @@ namespace gf::desktop
             GraphRoutesRole,
             IsMergeRole,
             IsWipRole,
-            IsOrphanRole
+            IsOrphanRole,
+            IsStashRole,
+            StashSelectorRole
         };
 
         explicit CommitHistoryListModel(QObject* parent = nullptr);
@@ -96,6 +98,8 @@ namespace gf::desktop
             QString color;
             QVariantList routes;
             bool isOrphan = false;
+            bool isStash = false;
+            QString stashSelector;
         };
 
         void indexAvatarsFromCommits();

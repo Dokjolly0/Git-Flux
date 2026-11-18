@@ -172,6 +172,26 @@ TEST_CASE (
         REQUIRE(listAfterApply.has_value());
         CHECK(listAfterApply->size() == 2);
 
+        // Verify getCommitLog("--all") includes both stash@{0} and stash@{1} with stash selectors
+        auto logWithStashes = gitOps.getCommitLog(sandbox.root, gf::git::bo::CommitLogOptions{
+            .maxCount = 0,
+            .revisionRange = std::string("--all"),
+            .dateOrder = true
+        });
+        REQUIRE(logWithStashes.has_value());
+        bool foundStash0 = false;
+        bool foundStash1 = false;
+        for (const auto& item : *logWithStashes)
+        {
+            for (const auto& dec : item.refDecorations)
+            {
+                if (dec == "stash@{0}") foundStash0 = true;
+                if (dec == "stash@{1}") foundStash1 = true;
+            }
+        }
+        CHECK(foundStash0);
+        CHECK(foundStash1);
+
         // Discard restored change to clean working tree
         std::error_code ec;
         std::filesystem::remove(sandbox.root / "second.txt", ec);

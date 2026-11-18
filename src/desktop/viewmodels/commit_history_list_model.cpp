@@ -229,6 +229,47 @@ namespace gf::desktop
             return {};
         }
 
+        bool isStashDecoration(const std::string& dec)
+        {
+            return dec == "refs/stash" || dec == "stash" || dec.starts_with("stash@{");
+        }
+
+        QString extractStashSelector(const std::vector<std::string>& decs)
+        {
+            for (const auto& dec : decs)
+            {
+                if (dec.starts_with("stash@{"))
+                {
+                    return QString::fromStdString(dec);
+                }
+            }
+            for (const auto& dec : decs)
+            {
+                if (dec == "refs/stash" || dec == "stash")
+                {
+                    return QStringLiteral("stash@{0}");
+                }
+            }
+            return {};
+        }
+
+        bool isStashCommit(const git::bo::GitCommitLogItem& c)
+        {
+            return std::any_of(c.refDecorations.begin(), c.refDecorations.end(),
+                               [](const std::string& d) { return isStashDecoration(d); });
+        }
+
+        QVariantMap makeGraphRoute(int fromLane, int toLane, const QString& color, int type, bool dashed = false)
+        {
+            QVariantMap r;
+            r[QStringLiteral("fromLane")] = fromLane;
+            r[QStringLiteral("toLane")] = toLane;
+            r[QStringLiteral("color")] = color;
+            r[QStringLiteral("type")] = type;
+            r[QStringLiteral("dashed")] = dashed;
+            return r;
+        }
+
         QVariantList computeStructuredDecorations(const std::vector<std::string>& rawDecorations)
         {
             struct RawRef
@@ -242,6 +283,7 @@ namespace gf::desktop
             QList<RawRef> tags;
             QList<RawRef> localBranches;
             QList<RawRef> remoteBranches;
+            QStringList stashes;
 
             for (const auto& decStd : rawDecorations)
             {
@@ -252,6 +294,19 @@ namespace gf::desktop
                 if (dec == QLatin1String("origin/HEAD") || dec.endsWith(QLatin1String("/HEAD")) || dec ==
                     QLatin1String("HEAD"))
                 {
+                    continue;
+                }
+
+                if (dec == QLatin1String("refs/stash") || dec == QLatin1String("stash") ||
+                    dec.startsWith(QLatin1String("stash@{")))
+                {
+                    const QString selector = (dec.startsWith(QLatin1String("stash@{")))
+                                                 ? dec
+                                                 : QStringLiteral("stash@{0}");
+                    if (!stashes.contains(selector))
+                    {
+                        stashes.append(selector);
+                    }
                     continue;
                 }
 
@@ -378,6 +433,21 @@ namespace gf::desktop
                     badge[QStringLiteral("borderColor")] = QStringLiteral("#3B82F6"); // Slate border
                     badge[QStringLiteral("fgColor")] = QStringLiteral("#93C5FD"); // Light blue text
                 }
+                result.append(badge);
+            }
+
+            // Process stashes (GitKraken-style amber stash pill)
+            for (const auto& selector : stashes)
+            {
+                QVariantMap badge;
+                badge[QStringLiteral("name")] = selector;
+                badge[QStringLiteral("type")] = QStringLiteral("stash");
+                badge[QStringLiteral("isHead")] = false;
+                badge[QStringLiteral("isOrphan")] = false;
+                badge[QStringLiteral("label")] = QStringLiteral("📦 %1").arg(selector);
+                badge[QStringLiteral("bgColor")] = QStringLiteral("#451A03");
+                badge[QStringLiteral("borderColor")] = QStringLiteral("#F59E0B");
+                badge[QStringLiteral("fgColor")] = QStringLiteral("#FDE68A");
                 result.append(badge);
             }
 
@@ -523,11 +593,15 @@ namespace gf::desktop
         case GraphRoutesRole:
             return (idx < m_graphItems.size()) ? m_graphItems[idx].routes : QVariantList{};
         case IsMergeRole:
-            return c.parents.size() > 1;
+            return !isStashCommit(c) && c.parents.size() > 1;
         case IsWipRole:
             return c.sha == "WIP";
         case IsOrphanRole:
             return (idx < m_graphItems.size()) ? m_graphItems[idx].isOrphan : false;
+        case IsStashRole:
+            return (idx < m_graphItems.size()) ? m_graphItems[idx].isStash : isStashCommit(c);
+        case StashSelectorRole:
+            return (idx < m_graphItems.size()) ? m_graphItems[idx].stashSelector : extractStashSelector(c.refDecorations);
         default:
             return {};
         }
@@ -560,7 +634,9 @@ namespace gf::desktop
             {GraphRoutesRole, "graphRoutes"},
             {IsMergeRole, "isMerge"},
             {IsWipRole, "isWip"},
-            {IsOrphanRole, "isOrphan"}
+            {IsOrphanRole, "isOrphan"},
+            {IsStashRole, "isStash"},
+            {StashSelectorRole, "stashSelector"}
         };
     }
 
@@ -606,14 +682,22 @@ namespace gf::desktop
 
         map[QStringLiteral("structuredDecorations")] = computeStructuredDecorations(c.refDecorations);
 
+        const bool isStash = isStashCommit(c);
         if (idx < m_graphItems.size())
         {
             map[QStringLiteral("graphLane")] = m_graphItems[idx].lane;
             map[QStringLiteral("graphColor")] = m_graphItems[idx].color;
             map[QStringLiteral("graphRoutes")] = m_graphItems[idx].routes;
             map[QStringLiteral("isOrphan")] = m_graphItems[idx].isOrphan;
+            map[QStringLiteral("isStash")] = m_graphItems[idx].isStash;
+            map[QStringLiteral("stashSelector")] = m_graphItems[idx].stashSelector;
         }
-        map[QStringLiteral("isMerge")] = (c.parents.size() > 1);
+        else
+        {
+            map[QStringLiteral("isStash")] = isStash;
+            map[QStringLiteral("stashSelector")] = extractStashSelector(c.refDecorations);
+        }
+        map[QStringLiteral("isMerge")] = (!isStash && c.parents.size() > 1);
         map[QStringLiteral("isWip")] = (c.sha == "WIP");
         if (c.sha == "WIP")
         {
@@ -680,6 +764,10 @@ namespace gf::desktop
         {
             for (const auto& c : m_commits)
             {
+                if (isStashCommit(c))
+                {
+                    continue;
+                }
                 bool isPages = false;
                 for (const auto& dec : c.refDecorations)
                 {
@@ -762,6 +850,10 @@ namespace gf::desktop
 
         auto isOrphanCommit = [&](const git::bo::GitCommitLogItem& c) -> bool
         {
+            if (isStashCommit(c))
+            {
+                return false;
+            }
             if (orphanShas.count(c.sha) > 0)
             {
                 return true;
@@ -787,6 +879,27 @@ namespace gf::desktop
 
         std::vector<std::string> activeLanes;
         std::vector<QString> laneColors;
+        std::vector<bool> laneIsStash;
+
+        auto ensureLaneSize = [&](int targetLane)
+        {
+            while (static_cast<int>(activeLanes.size()) <= targetLane)
+            {
+                const int newIdx = static_cast<int>(activeLanes.size());
+                activeLanes.push_back("");
+                laneColors.push_back(kGraphPalette[newIdx % kGraphPalette.size()]);
+                laneIsStash.push_back(false);
+            }
+            while (static_cast<int>(laneColors.size()) <= targetLane)
+            {
+                const int newIdx = static_cast<int>(laneColors.size());
+                laneColors.push_back(kGraphPalette[newIdx % kGraphPalette.size()]);
+            }
+            while (static_cast<int>(laneIsStash.size()) <= targetLane)
+            {
+                laneIsStash.push_back(false);
+            }
+        };
 
         if (hasOrphans)
         {
@@ -794,42 +907,65 @@ namespace gf::desktop
             laneColors.resize(2);
             laneColors[0] = QStringLiteral("#A855F7"); // Purple for orphan lane (left of main trunk)
             laneColors[1] = QStringLiteral("#06B6D4"); // Cyan for main trunk
+            laneIsStash.resize(2, false);
         }
         else
         {
             activeLanes.resize(1, "");
             laneColors.resize(1);
             laneColors[0] = QStringLiteral("#06B6D4"); // Cyan for main trunk
+            laneIsStash.resize(1, false);
         }
 
         for (std::size_t i = 0; i < m_commits.size(); ++i)
         {
             const auto& commit = m_commits[i];
-            bool isOrphan = isOrphanCommit(commit);
+            const bool isStash = isStashCommit(commit);
+            const QString stashSelector = isStash ? extractStashSelector(commit.refDecorations) : QString{};
+            const bool isOrphan = !isStash && isOrphanCommit(commit);
             int commitLane = -1;
 
-            // 1. Locate if commit is already expected in activeLanes
-            for (int l = 0; l < static_cast<int>(activeLanes.size()); ++l)
+            // 1. Locate if commit is already expected in a non-stash lane of activeLanes
+            if (!isStash)
             {
-                if (activeLanes[l] == commit.sha)
+                for (int l = 0; l < static_cast<int>(activeLanes.size()); ++l)
                 {
-                    if (isOrphan && l >= mainTrunkLane)
+                    if (!laneIsStash[l] && activeLanes[l] == commit.sha)
                     {
-                        continue;
+                        if (isOrphan && l >= mainTrunkLane)
+                        {
+                            continue;
+                        }
+                        if (!isOrphan && l < mainTrunkLane)
+                        {
+                            continue;
+                        }
+                        commitLane = l;
+                        break;
                     }
-                    if (!isOrphan && l < mainTrunkLane)
-                    {
-                        continue;
-                    }
-                    commitLane = l;
-                    break;
                 }
             }
 
-            bool wasExpectedFromAbove = (commitLane != -1);
+            const bool wasExpectedFromAbove = (commitLane != -1);
             if (commitLane == -1)
             {
-                if (isOrphan)
+                if (isStash)
+                {
+                    // Stash commits always occupy a side lane off the main trunk (GitKraken style)
+                    for (int l = mainTrunkLane + 1; l < static_cast<int>(activeLanes.size()); ++l)
+                    {
+                        if (activeLanes[l].empty())
+                        {
+                            commitLane = l;
+                            break;
+                        }
+                    }
+                    if (commitLane == -1)
+                    {
+                        commitLane = std::max(mainTrunkLane + 1, static_cast<int>(activeLanes.size()));
+                    }
+                }
+                else if (isOrphan)
                 {
                     // Orphan commit: locate first free lane in [0, mainTrunkLane - 1] (i.e. lane 0 on the left)
                     for (int l = 0; l < mainTrunkLane; ++l)
@@ -866,71 +1002,88 @@ namespace gf::desktop
                         if (commitLane == -1)
                         {
                             commitLane = std::max(mainTrunkLane, static_cast<int>(activeLanes.size()));
-                            while (static_cast<int>(activeLanes.size()) <= commitLane)
-                            {
-                                int newIdx = static_cast<int>(activeLanes.size());
-                                activeLanes.push_back("");
-                                laneColors.push_back(kGraphPalette[newIdx % kGraphPalette.size()]);
-                            }
                         }
                     }
                 }
             }
 
-            while (static_cast<int>(activeLanes.size()) <= commitLane)
-            {
-                int newIdx = static_cast<int>(activeLanes.size());
-                activeLanes.push_back("");
-                laneColors.push_back(kGraphPalette[newIdx % kGraphPalette.size()]);
-            }
-            while (static_cast<int>(laneColors.size()) <= commitLane)
-            {
-                int newIdx = static_cast<int>(laneColors.size());
-                laneColors.push_back(kGraphPalette[newIdx % kGraphPalette.size()]);
-            }
+            ensureLaneSize(commitLane);
 
-            QString nodeColor = (commit.sha == "WIP") ? QStringLiteral("#F59E0B") : laneColors[commitLane];
+            QString nodeColor = (commit.sha == "WIP" || isStash) ? QStringLiteral("#F59E0B") : laneColors[commitLane];
             QVariantList routes;
 
-            // 2. Pass-through routes for other active lanes
+            // 2. Pass-through routes and stash lanes terminating onto this base commit
             for (int l = 0; l < static_cast<int>(activeLanes.size()); ++l)
             {
-                if (l != commitLane && !activeLanes[l].empty())
+                if (l == commitLane || activeLanes[l].empty())
                 {
-                    QVariantMap r;
-                    r[QStringLiteral("fromLane")] = l;
-                    r[QStringLiteral("toLane")] = l;
-                    r[QStringLiteral("color")] = laneColors[l];
-                    r[QStringLiteral("type")] = 0; // pass-through
-                    routes.append(r);
+                    continue;
+                }
+                if (laneIsStash[l] && activeLanes[l] == commit.sha)
+                {
+                    // Dashed stash connector curves directly into its base commit node
+                    routes.append(makeGraphRoute(l, commitLane, QStringLiteral("#F59E0B"), 2, true));
+                    activeLanes[l] = "";
+                    laneIsStash[l] = false;
+                }
+                else
+                {
+                    const QString routeColor = laneIsStash[l] ? QStringLiteral("#F59E0B") : laneColors[l];
+                    routes.append(makeGraphRoute(l, l, routeColor, 0, laneIsStash[l]));
                 }
             }
 
             // 3. Inbound route from top into node
             if (wasExpectedFromAbove)
             {
-                QVariantMap r;
-                r[QStringLiteral("fromLane")] = commitLane;
-                r[QStringLiteral("toLane")] = commitLane;
-                r[QStringLiteral("color")] = nodeColor;
-                r[QStringLiteral("type")] = 2; // inbound
-                routes.append(r);
+                routes.append(makeGraphRoute(commitLane, commitLane, nodeColor, 2, false));
             }
 
             // 4. Outbound routes to parents
             activeLanes[commitLane] = "";
+            laneIsStash[commitLane] = false;
 
             const auto& parents = commit.parents;
-            if (!parents.empty())
+            if (isStash)
             {
-                // First parent
+                if (!parents.empty())
+                {
+                    const auto& baseSha = parents[0];
+                    int baseLane = -1;
+                    for (int l = 0; l < static_cast<int>(activeLanes.size()); ++l)
+                    {
+                        if (!laneIsStash[l] && activeLanes[l] == baseSha)
+                        {
+                            baseLane = l;
+                            break;
+                        }
+                    }
+                    if (baseLane != -1)
+                    {
+                        routes.append(makeGraphRoute(commitLane, baseLane, QStringLiteral("#F59E0B"), 1, true));
+                    }
+                    else if (knownShas.count(baseSha) > 0)
+                    {
+                        activeLanes[commitLane] = baseSha;
+                        laneIsStash[commitLane] = true;
+                        routes.append(makeGraphRoute(commitLane, commitLane, QStringLiteral("#F59E0B"), 1, true));
+                    }
+                    else
+                    {
+                        routes.append(makeGraphRoute(commitLane, commitLane, QStringLiteral("#F59E0B"), 1, true));
+                    }
+                }
+            }
+            else if (!parents.empty())
+            {
+                // First parent (never merge a real branch onto a stash lane)
                 const auto& p0 = parents[0];
                 if (knownShas.count(p0) > 0)
                 {
                     int p0Lane = -1;
                     for (int l = 0; l < static_cast<int>(activeLanes.size()); ++l)
                     {
-                        if (activeLanes[l] == p0)
+                        if (!laneIsStash[l] && activeLanes[l] == p0)
                         {
                             p0Lane = l;
                             break;
@@ -938,32 +1091,18 @@ namespace gf::desktop
                     }
                     if (p0Lane != -1)
                     {
-                        QVariantMap r;
-                        r[QStringLiteral("fromLane")] = commitLane;
-                        r[QStringLiteral("toLane")] = p0Lane;
-                        r[QStringLiteral("color")] = nodeColor;
-                        r[QStringLiteral("type")] = 1;
-                        routes.append(r);
+                        routes.append(makeGraphRoute(commitLane, p0Lane, nodeColor, 1, false));
                     }
                     else
                     {
                         activeLanes[commitLane] = p0;
-                        QVariantMap r;
-                        r[QStringLiteral("fromLane")] = commitLane;
-                        r[QStringLiteral("toLane")] = commitLane;
-                        r[QStringLiteral("color")] = nodeColor;
-                        r[QStringLiteral("type")] = 1;
-                        routes.append(r);
+                        laneIsStash[commitLane] = false;
+                        routes.append(makeGraphRoute(commitLane, commitLane, nodeColor, 1, false));
                     }
                 }
                 else
                 {
-                    QVariantMap r;
-                    r[QStringLiteral("fromLane")] = commitLane;
-                    r[QStringLiteral("toLane")] = commitLane;
-                    r[QStringLiteral("color")] = nodeColor;
-                    r[QStringLiteral("type")] = 1;
-                    routes.append(r);
+                    routes.append(makeGraphRoute(commitLane, commitLane, nodeColor, 1, false));
                 }
 
                 // Secondary parents (merge commits)
@@ -975,7 +1114,7 @@ namespace gf::desktop
                         int pOtherLane = -1;
                         for (int l = 0; l < static_cast<int>(activeLanes.size()); ++l)
                         {
-                            if (activeLanes[l] == pOther)
+                            if (!laneIsStash[l] && activeLanes[l] == pOther)
                             {
                                 pOtherLane = l;
                                 break;
@@ -994,22 +1133,13 @@ namespace gf::desktop
                             if (pOtherLane == -1)
                             {
                                 pOtherLane = std::max(mainTrunkLane, static_cast<int>(activeLanes.size()));
-                                while (static_cast<int>(activeLanes.size()) <= pOtherLane)
-                                {
-                                    int newIdx = static_cast<int>(activeLanes.size());
-                                    activeLanes.push_back("");
-                                    laneColors.push_back(kGraphPalette[newIdx % kGraphPalette.size()]);
-                                }
+                                ensureLaneSize(pOtherLane);
                             }
                             activeLanes[pOtherLane] = pOther;
+                            laneIsStash[pOtherLane] = false;
                         }
 
-                        QVariantMap r;
-                        r[QStringLiteral("fromLane")] = commitLane;
-                        r[QStringLiteral("toLane")] = pOtherLane;
-                        r[QStringLiteral("color")] = laneColors[pOtherLane];
-                        r[QStringLiteral("type")] = 1;
-                        routes.append(r);
+                        routes.append(makeGraphRoute(commitLane, pOtherLane, laneColors[pOtherLane], 1, false));
                     }
                 }
             }
@@ -1018,6 +1148,10 @@ namespace gf::desktop
             while (activeLanes.size() > static_cast<std::size_t>(mainTrunkLane + 1) && activeLanes.back().empty())
             {
                 activeLanes.pop_back();
+                if (laneIsStash.size() > activeLanes.size())
+                {
+                    laneIsStash.pop_back();
+                }
             }
 
             m_maxLanes = std::max(m_maxLanes, std::max(1, static_cast<int>(activeLanes.size())));
@@ -1027,7 +1161,9 @@ namespace gf::desktop
                 .lane = commitLane,
                 .color = nodeColor,
                 .routes = std::move(routes),
-                .isOrphan = isOrphan
+                .isOrphan = isOrphan,
+                .isStash = isStash,
+                .stashSelector = stashSelector
             };
         }
 
@@ -1091,9 +1227,50 @@ namespace gf::desktop
                     author.contains(lowerFilter) ||
                     email.contains(lowerFilter) ||
                     sha.startsWith(lowerFilter) ||
-                    shortSha.contains(lowerFilter))
+                    shortSha.contains(lowerFilter) ||
+                    (isStashCommit(c) && extractStashSelector(c.refDecorations).toLower().contains(lowerFilter)))
                 {
                     m_commits.push_back(c);
+                }
+            }
+        }
+
+        // Strip Git's internal stash helper commits (index / untracked) and keep only
+        // the base commit parent on stash commits so stashes render cleanly like GitKraken.
+        {
+            std::unordered_set<std::string> stashHelperShas;
+            std::unordered_map<std::string, const git::bo::GitCommitLogItem*> currentMap;
+            currentMap.reserve(m_commits.size());
+            for (const auto& c : m_commits)
+            {
+                currentMap[c.sha] = &c;
+            }
+            for (const auto& c : m_commits)
+            {
+                if (isStashCommit(c) && c.parents.size() > 1)
+                {
+                    for (std::size_t p = 1; p < c.parents.size(); ++p)
+                    {
+                        auto it = currentMap.find(c.parents[p]);
+                        if (it == currentMap.end() || it->second->refDecorations.empty())
+                        {
+                            stashHelperShas.insert(c.parents[p]);
+                        }
+                    }
+                }
+            }
+            if (!stashHelperShas.empty())
+            {
+                std::erase_if(m_commits, [&stashHelperShas](const git::bo::GitCommitLogItem& c)
+                {
+                    return stashHelperShas.count(c.sha) > 0;
+                });
+            }
+            for (auto& c : m_commits)
+            {
+                if (isStashCommit(c) && c.parents.size() > 1)
+                {
+                    c.parents.resize(1);
                 }
             }
         }
@@ -1120,9 +1297,20 @@ namespace gf::desktop
                 wip.committerName = "Modifiche locali";
                 wip.committerEmail = "";
                 wip.committerDateIso = wip.authorDateIso;
-                if (!m_commits.empty())
+                if (!m_headSha.isEmpty())
                 {
-                    wip.parents = {m_commits[0].sha};
+                    wip.parents = {m_headSha.toStdString()};
+                }
+                else
+                {
+                    for (const auto& c : m_commits)
+                    {
+                        if (!isStashCommit(c))
+                        {
+                            wip.parents = {c.sha};
+                            break;
+                        }
+                    }
                 }
                 m_commits.insert(m_commits.begin(), std::move(wip));
             }

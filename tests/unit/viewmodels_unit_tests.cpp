@@ -1747,6 +1747,122 @@ TEST_CASE (
         CHECK(commitMapGhPages["isOrphan"].toBool() == true);
         CHECK(commitMapGhPages["graphLane"].toInt() == 0);
     }
+
+    SECTION("CommitHistoryListModel renders stashes GitKraken-style without internal helper commits or merge lines")
+    {
+        CommitHistoryListModel model;
+
+        std::vector<gf::git::bo::GitCommitLogItem> commits = {
+            gf::git::bo::GitCommitLogItem{
+                .sha = "stash0_sha",
+                .shortSha = "stash0s",
+                .parents = {"base_sha", "idx_sha", "untracked_sha"},
+                .authorName = "Developer",
+                .authorEmail = "dev@test.com",
+                .authorDateIso = "2026-11-18T12:05:00Z",
+                .subject = "On main: my stashed work",
+                .refDecorations = {"refs/stash"}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "untracked_sha",
+                .shortSha = "untr000",
+                .parents = {},
+                .authorName = "Developer",
+                .authorEmail = "dev@test.com",
+                .authorDateIso = "2026-11-18T12:05:00Z",
+                .subject = "untracked files on main: base_sh base commit",
+                .refDecorations = {}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "idx_sha",
+                .shortSha = "idx0000",
+                .parents = {"base_sha"},
+                .authorName = "Developer",
+                .authorEmail = "dev@test.com",
+                .authorDateIso = "2026-11-18T12:05:00Z",
+                .subject = "index on main: base_sh base commit",
+                .refDecorations = {}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "base_sha",
+                .shortSha = "base_sh",
+                .parents = {"root_sha"},
+                .authorName = "Developer",
+                .authorEmail = "dev@test.com",
+                .authorDateIso = "2026-11-18T11:00:00Z",
+                .subject = "base commit",
+                .refDecorations = {"HEAD -> main"}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "root_sha",
+                .shortSha = "root_sh",
+                .parents = {},
+                .authorName = "Developer",
+                .authorEmail = "dev@test.com",
+                .authorDateIso = "2026-11-18T10:00:00Z",
+                .subject = "initial commit",
+                .refDecorations = {}
+            }
+        };
+
+        model.setCommits(commits);
+
+        // Internal helper commits (index on ... and untracked files on ...) are stripped
+        REQUIRE(model.rowCount() == 3);
+
+        const auto idxStash = model.index(0);
+        const auto idxBase = model.index(1);
+        const auto idxRoot = model.index(2);
+
+        CHECK(model.data(idxStash, CommitHistoryListModel::ShaRole).toString() == "stash0_sha");
+        CHECK(model.data(idxStash, CommitHistoryListModel::IsStashRole).toBool() == true);
+        CHECK(model.data(idxStash, CommitHistoryListModel::IsMergeRole).toBool() == false);
+        CHECK(model.data(idxStash, CommitHistoryListModel::IsOrphanRole).toBool() == false);
+        CHECK(model.data(idxStash, CommitHistoryListModel::StashSelectorRole).toString() == "stash@{0}");
+
+        // Only base commit remains as parent
+        const auto stashParents = model.data(idxStash, CommitHistoryListModel::ParentsRole).toStringList();
+        REQUIRE(stashParents.size() == 1);
+        CHECK(stashParents[0] == "base_sha");
+
+        // Stash sits in a side lane off the main trunk (lane 1), while HEAD stays on lane 0
+        const int stashLane = model.data(idxStash, CommitHistoryListModel::GraphLaneRole).toInt();
+        const int baseLane = model.data(idxBase, CommitHistoryListModel::GraphLaneRole).toInt();
+        CHECK(baseLane == 0);
+        CHECK(stashLane == 1);
+        CHECK(model.data(idxRoot, CommitHistoryListModel::GraphLaneRole).toInt() == 0);
+        CHECK(model.data(idxStash, CommitHistoryListModel::GraphColorRole).toString() == "#F59E0B");
+
+        // Stash route is dashed and base commit receives a dashed inbound curve from the stash lane
+        const auto stashRoutes = model.data(idxStash, CommitHistoryListModel::GraphRoutesRole).toList();
+        REQUIRE(stashRoutes.size() == 1);
+        CHECK(stashRoutes[0].toMap()["dashed"].toBool() == true);
+        CHECK(stashRoutes[0].toMap()["fromLane"].toInt() == stashLane);
+
+        const auto baseRoutes = model.data(idxBase, CommitHistoryListModel::GraphRoutesRole).toList();
+        bool foundDashedCurveToBase = false;
+        for (const auto& rv : baseRoutes)
+        {
+            const auto rm = rv.toMap();
+            if (rm["dashed"].toBool() && rm["fromLane"].toInt() == stashLane && rm["toLane"].toInt() == baseLane)
+            {
+                foundDashedCurveToBase = true;
+            }
+        }
+        CHECK(foundDashedCurveToBase);
+
+        // Structured badge is a stash badge, NOT a remote branch badge
+        const auto decs = model.data(idxStash, CommitHistoryListModel::StructuredDecorationsRole).toList();
+        REQUIRE(decs.size() == 1);
+        CHECK(decs[0].toMap()["type"].toString() == "stash");
+        CHECK(decs[0].toMap()["label"].toString() == "📦 stash@{0}");
+
+        // Adding WIP attaches WIP to HEAD (base_sha), not to the stash commit
+        model.setWip(true, 2);
+        REQUIRE(model.rowCount() == 4);
+        CHECK(model.data(model.index(0), CommitHistoryListModel::ShaRole).toString() == "WIP");
+        CHECK(model.data(model.index(0), CommitHistoryListModel::ParentsRole).toStringList() == QStringList{"base_sha"});
+    }
 }
 
 TEST_CASE (

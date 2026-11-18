@@ -15,6 +15,17 @@ Rectangle {
     property var selectedFile: null
     property bool isDiffOpen: false
     readonly property bool isWipSelected: (root.selectedCommit !== null && root.selectedCommit.sha === "WIP")
+    readonly property bool isStashSelected: (root.selectedCommit !== null && root.selectedCommit.isStash === true)
+
+    function resolveStashIndex(selector) {
+        if (selector) {
+            var m = selector.match(/^stash@\{(\d+)\}$/);
+            if (m && m.length > 1) {
+                return parseInt(m[1], 10);
+            }
+        }
+        return 0;
+    }
     property string fileViewMode: "path" // "path" | "tree"
     property string fileCategoryFilter: "all" // "all" | "M" | "A" | "D" | "R"
     property string fileSortOrder: "name_asc" // "name_asc" | "name_desc" | "git"
@@ -82,7 +93,7 @@ Rectangle {
     property string rewordedSelectSha: ""
 
     function startMessageEdit() {
-        if (!root.selectedCommit || root.isWipSelected || !root.branchManager) return;
+        if (!root.selectedCommit || root.isWipSelected || root.isStashSelected || !root.branchManager) return;
         editSubjectField.text = root.selectedCommit.subject || "";
         editBodyArea.text = root.selectedCommit.body || "";
         root.isEditingMessage = true;
@@ -1332,6 +1343,8 @@ Rectangle {
                         required property var graphRoutes
                         required property bool isMerge
                         required property bool isOrphan
+                        required property bool isStash
+                        required property string stashSelector
                         required property int index
 
                         width: commitTableListView.width
@@ -1370,6 +1383,12 @@ Rectangle {
                                 if (mouse.button === Qt.RightButton) {
                                     if (commitRow.sha === "WIP") {
                                         wipContextMenu.popup();
+                                    } else if (commitRow.isStash === true) {
+                                        stashContextMenu.targetSha = commitRow.sha;
+                                        stashContextMenu.targetSubject = commitRow.subject;
+                                        stashContextMenu.targetSelector = commitRow.stashSelector || "stash@{0}";
+                                        stashContextMenu.stashIndex = root.resolveStashIndex(commitRow.stashSelector);
+                                        stashContextMenu.popup();
                                     } else {
                                         commitContextMenu.targetSha = commitRow.sha;
                                         commitContextMenu.targetSubject = commitRow.subject;
@@ -1561,11 +1580,19 @@ Rectangle {
                                                             branchDropMenu.popup(rpt.x, rpt.y);
                                                         }
                                                     } else if (mouse.button === Qt.RightButton) {
-                                                        badgeContextMenu.targetName = modelData.name || "";
-                                                        badgeContextMenu.badgeType = modelData.type || "local";
-                                                        badgeContextMenu.isCurrentHead = modelData.isHead || false;
-                                                        badgeContextMenu.targetCommitSha = commitRow.sha;
-                                                        badgeContextMenu.popup();
+                                                        if (modelData.type === "stash") {
+                                                            stashContextMenu.targetSha = commitRow.sha;
+                                                            stashContextMenu.targetSubject = commitRow.subject;
+                                                            stashContextMenu.targetSelector = modelData.name || commitRow.stashSelector || "stash@{0}";
+                                                            stashContextMenu.stashIndex = root.resolveStashIndex(stashContextMenu.targetSelector);
+                                                            stashContextMenu.popup();
+                                                        } else {
+                                                            badgeContextMenu.targetName = modelData.name || "";
+                                                            badgeContextMenu.badgeType = modelData.type || "local";
+                                                            badgeContextMenu.isCurrentHead = modelData.isHead || false;
+                                                            badgeContextMenu.targetCommitSha = commitRow.sha;
+                                                            badgeContextMenu.popup();
+                                                        }
                                                     } else if (mouse.button === Qt.LeftButton) {
                                                         commitTableListView.forceActiveFocus();
                                                         root.selectCommitByIndex(commitRow.index);
@@ -1740,7 +1767,7 @@ Rectangle {
                                     anchors.right: parent.right
                                     anchors.verticalCenter: parent.verticalCenter
                                     height: 2
-                                    color: commitRow.graphColor || "#06B6D4"
+                                    color: commitRow.isStash ? "#F59E0B" : (commitRow.graphColor || "#06B6D4")
                                     visible: branchTagCol.allDecs.length > 0
                                 }
                             }
@@ -1774,7 +1801,8 @@ Rectangle {
 
                                         // Horizontal connecting line from Col 1 into node
                                         if (commitRow.structuredDecorations && commitRow.structuredDecorations.length > 0) {
-                                            ctx.strokeStyle = commitRow.graphColor || "#06B6D4";
+                                            ctx.setLineDash(commitRow.isStash ? [3, 3] : []);
+                                            ctx.strokeStyle = commitRow.isStash ? "#F59E0B" : (commitRow.graphColor || "#06B6D4");
                                             ctx.beginPath();
                                             ctx.moveTo(0, centerY);
                                             ctx.lineTo(laneX(commitLane), centerY);
@@ -1783,6 +1811,7 @@ Rectangle {
 
                                         for (var i = 0; i < routes.length; ++i) {
                                             var r = routes[i];
+                                            ctx.setLineDash(r.dashed === true ? [4, 3] : []);
                                             ctx.strokeStyle = r.color || "#06B6D4";
                                             ctx.beginPath();
 
@@ -1814,6 +1843,7 @@ Rectangle {
                                             }
                                             ctx.stroke();
                                         }
+                                        ctx.setLineDash([]);
                                     }
                                 }
 
@@ -1837,9 +1867,27 @@ Rectangle {
                                     }
                                 }
 
+                                // 0b. Stash Node (GitKraken-style amber box with stash icon)
+                                Rectangle {
+                                    visible: commitRow.isStash === true && commitRow.sha !== "WIP"
+                                    x: (14 + (commitRow.graphLane !== undefined ? commitRow.graphLane : 0) * 22) - 10
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 20
+                                    height: 20
+                                    radius: 5
+                                    color: "#451A03"
+                                    border.color: commitRow.isSelected ? "#FDE68A" : "#F59E0B"
+                                    border.width: commitRow.isSelected ? 2 : 1.5
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "📦"
+                                        font.pixelSize: 10
+                                    }
+                                }
+
                                 // 1. Standard Commit Node: Circular Avatar or Initials (22x22)
                                 Rectangle {
-                                    visible: !commitRow.isMerge && commitRow.sha !== "WIP"
+                                    visible: !commitRow.isMerge && !commitRow.isStash && commitRow.sha !== "WIP"
                                     x: (14 + (commitRow.graphLane !== undefined ? commitRow.graphLane : 0) * 22) - 11
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: 22
@@ -1913,7 +1961,7 @@ Rectangle {
 
                                 // 2. Merge Commit Node: Small Dot (10x10) in lane color
                                 Rectangle {
-                                    visible: commitRow.isMerge === true && commitRow.sha !== "WIP"
+                                    visible: commitRow.isMerge === true && !commitRow.isStash && commitRow.sha !== "WIP"
                                     x: (14 + (commitRow.graphLane !== undefined ? commitRow.graphLane : 0) * 22) - 5
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: 10
@@ -1939,9 +1987,13 @@ Rectangle {
                                     anchors.rightMargin: 8
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: commitRow.subject || "(Nessun messaggio)"
-                                    color: (commitRow.sha === "WIP") ? "#F59E0B" : (commitRow.isSelected ? "#FFFFFF" : "#E2E8F0")
-                                    font.bold: (commitRow.sha === "WIP") || commitRow.isSelected
-                                    font.italic: (commitRow.sha === "WIP")
+                                    color: (commitRow.sha === "WIP")
+                                        ? "#F59E0B"
+                                        : (commitRow.isStash
+                                            ? (commitRow.isSelected ? "#FDE68A" : "#FBBF24")
+                                            : (commitRow.isSelected ? "#FFFFFF" : "#E2E8F0"))
+                                    font.bold: (commitRow.sha === "WIP") || commitRow.isStash || commitRow.isSelected
+                                    font.italic: (commitRow.sha === "WIP") || commitRow.isStash
                                     font.pixelSize: 12
                                     elide: Text.ElideRight
                                 }
@@ -2091,15 +2143,18 @@ Rectangle {
                     spacing: 12
                     visible: !root.isWipSelected
 
-                    // Top bar: commit sha
+                    // Top bar: commit sha (or stash header & quick actions)
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 8
 
                         Text {
-                            text: "commit: "
-                            color: "#8B949E"
+                            text: root.isStashSelected
+                                ? ("📦 " + (root.selectedCommit.stashSelector || "stash@{0}") + ":")
+                                : "commit: "
+                            color: root.isStashSelected ? "#F59E0B" : "#8B949E"
                             font.pixelSize: 12
+                            font.bold: root.isStashSelected
                         }
                         Text {
                             text: root.selectedCommit ? root.selectedCommit.shortSha : ""
@@ -2113,9 +2168,108 @@ Rectangle {
                             Layout.fillWidth: true
                         }
 
+                        // Stash Quick Action: Pop
+                        Rectangle {
+                            visible: root.isStashSelected
+                            Layout.preferredHeight: 24
+                            implicitWidth: popStashQuickText.implicitWidth + 16
+                            radius: 4
+                            color: popStashQuickMouse.containsMouse ? "#065F46" : "#064E3B"
+                            border.color: "#10B981"
+                            border.width: 1
+
+                            Text {
+                                id: popStashQuickText
+                                anchors.centerIn: parent
+                                text: "↩ Pop"
+                                color: "#6EE7B7"
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+                            MouseArea {
+                                id: popStashQuickMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: "Applica questo stash e rimuovilo dalla lista"
+                                onClicked: {
+                                    if (root.sessionVm && root.sessionVm.stashManager && root.selectedCommit) {
+                                        root.sessionVm.stashManager.pop(root.resolveStashIndex(root.selectedCommit.stashSelector));
+                                    }
+                                }
+                            }
+                        }
+
+                        // Stash Quick Action: Apply
+                        Rectangle {
+                            visible: root.isStashSelected
+                            Layout.preferredHeight: 24
+                            implicitWidth: applyStashQuickText.implicitWidth + 16
+                            radius: 4
+                            color: applyStashQuickMouse.containsMouse ? "#1E3A5F" : "#152232"
+                            border.color: "#38BDF8"
+                            border.width: 1
+
+                            Text {
+                                id: applyStashQuickText
+                                anchors.centerIn: parent
+                                text: "📋 Apply"
+                                color: "#7DD3FC"
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+                            MouseArea {
+                                id: applyStashQuickMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: "Applica questo stash mantenendolo salvato"
+                                onClicked: {
+                                    if (root.sessionVm && root.sessionVm.stashManager && root.selectedCommit) {
+                                        root.sessionVm.stashManager.apply(root.resolveStashIndex(root.selectedCommit.stashSelector), false);
+                                    }
+                                }
+                            }
+                        }
+
+                        // Stash Quick Action: Drop
+                        Rectangle {
+                            visible: root.isStashSelected
+                            Layout.preferredHeight: 24
+                            implicitWidth: dropStashQuickText.implicitWidth + 16
+                            radius: 4
+                            color: dropStashQuickMouse.containsMouse ? "#7F1D1D" : "#450A0A"
+                            border.color: "#EF4444"
+                            border.width: 1
+
+                            Text {
+                                id: dropStashQuickText
+                                anchors.centerIn: parent
+                                text: "🗑 Drop"
+                                color: "#FCA5A5"
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+                            MouseArea {
+                                id: dropStashQuickMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: "Elimina definitivamente questo stash"
+                                onClicked: {
+                                    if (root.sessionVm && root.sessionVm.stashManager && root.selectedCommit) {
+                                        root.sessionVm.stashManager.drop(root.resolveStashIndex(root.selectedCommit.stashSelector));
+                                    }
+                                }
+                            }
+                        }
+
                         // Quick action: Edit commit message (reword)
                         Rectangle {
-                            visible: !root.isEditingMessage
+                            visible: !root.isEditingMessage && !root.isStashSelected
                             Layout.preferredHeight: 24
                             implicitWidth: editMsgText.implicitWidth + 18
                             radius: 4
@@ -2145,6 +2299,7 @@ Rectangle {
 
                         // Quick action: Create branch at this commit
                         Rectangle {
+                            visible: !root.isStashSelected
                             Layout.preferredHeight: 24
                             implicitWidth: createBranchHereText.implicitWidth + 18
                             radius: 4
@@ -3911,6 +4066,67 @@ Rectangle {
             font.pixelSize: 11
             onClicked: {
                 root.stashModalRequested();
+            }
+        }
+    }
+
+    // ==========================================
+    // STASH ROW CONTEXT MENU (GitKraken style)
+    // ==========================================
+    FluxMenu {
+        id: stashContextMenu
+        property string targetSha: ""
+        property string targetSubject: ""
+        property string targetSelector: "stash@{0}"
+        property int stashIndex: 0
+
+        FluxMenuItem {
+            text: "↩ Pop Stash (" + stashContextMenu.targetSelector + ")"
+            font.pixelSize: 11
+            font.bold: true
+            onClicked: {
+                if (root.sessionVm && root.sessionVm.stashManager) {
+                    root.sessionVm.stashManager.pop(stashContextMenu.stashIndex);
+                }
+            }
+        }
+
+        FluxMenuItem {
+            text: "📋 Applica Stash (" + stashContextMenu.targetSelector + ")"
+            font.pixelSize: 11
+            onClicked: {
+                if (root.sessionVm && root.sessionVm.stashManager) {
+                    root.sessionVm.stashManager.apply(stashContextMenu.stashIndex, false);
+                }
+            }
+        }
+
+        FluxMenuItem {
+            text: "🗑 Elimina Stash (Drop " + stashContextMenu.targetSelector + ")"
+            font.pixelSize: 11
+            onClicked: {
+                if (root.sessionVm && root.sessionVm.stashManager) {
+                    root.sessionVm.stashManager.drop(stashContextMenu.stashIndex);
+                }
+            }
+        }
+
+        FluxMenuSeparator {
+        }
+
+        FluxMenuItem {
+            text: "📋 Copia SHA (" + (stashContextMenu.targetSha ? stashContextMenu.targetSha.substring(0, 7) : "") + ")"
+            font.pixelSize: 11
+            onClicked: {
+                if (root.branchManager) root.branchManager.copyToClipboard(stashContextMenu.targetSha);
+            }
+        }
+
+        FluxMenuItem {
+            text: "📋 Copia messaggio dello stash"
+            font.pixelSize: 11
+            onClicked: {
+                if (root.branchManager) root.branchManager.copyToClipboard(stashContextMenu.targetSubject);
             }
         }
     }

@@ -72,6 +72,11 @@ namespace gf::desktop
                             m_workingTree.refresh(path);
                         }
                     }
+                    if (op == QStringLiteral("push") || op == QStringLiteral("pop") ||
+                        op == QStringLiteral("drop") || op == QStringLiteral("clear"))
+                    {
+                        m_branchManager.refresh();
+                    }
                 });
 
         if (m_watcherService)
