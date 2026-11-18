@@ -3832,4 +3832,9 @@ TEST_CASE("Flux UI Kit QML components load and instantiate cleanly", "[qml][ui]"
     requireValidComponent(qmlBaseDir / "views" / "BatchProgressModal.qml");
     requireValidComponent(qmlBaseDir / "views" / "ConflictResolverModal.qml");
     requireValidComponent(qmlBaseDir / "views" / "CloneRepositoryModal.qml");
+    requireValidComponent(qmlBaseDir / "views" / "CommitBox.qml");
+    requireValidComponent(qmlBaseDir / "views" / "WorkingTreePanel.qml");
+    requireValidComponent(qmlBaseDir / "views" / "DiffViewerPanel.qml");
+    requireValidComponent(qmlBaseDir / "views" / "MarkdownPreviewView.qml");
+    requireValidComponent(qmlBaseDir / "views" / "CommitHistoryPanel.qml");
 }

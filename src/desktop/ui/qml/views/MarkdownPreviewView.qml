@@ -116,14 +116,22 @@ Rectangle {
                 // TOC Drawer Toggle
                 Button {
                     id: tocBtn
-                    Layout.preferredHeight: 24
+                    Layout.preferredHeight: 26
+                    leftPadding: 9
+                    rightPadding: 9
+                    hoverEnabled: true
                     enabled: root.diffViewer && root.diffViewer.markdownToc && root.diffViewer.markdownToc.length > 0
                     opacity: enabled ? 1.0 : 0.45
                     background: Rectangle {
-                        color: root.showToc ? "#1E293B" : (tocBtn.hovered ? "#161B22" : "transparent")
-                        radius: 4
-                        border.color: root.showToc ? "#38BDF8" : "#30363D"
+                        color: root.showToc ? "#152336" : (tocBtn.hovered ? "#182232" : "#111824")
+                        radius: 7
+                        border.color: root.showToc ? "#38BDF8" : "#243247"
                         border.width: 1
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 110
+                            }
+                        }
                     }
                     contentItem: RowLayout {
                         spacing: 5
@@ -146,13 +154,21 @@ Rectangle {
                 // Rich Diff Toggle & Jump to Next Change
                 Button {
                     id: richDiffBtn
-                    Layout.preferredHeight: 24
+                    Layout.preferredHeight: 26
+                    leftPadding: 9
+                    rightPadding: 9
+                    hoverEnabled: true
                     readonly property bool isActive: root.diffViewer ? root.diffViewer.showMarkdownRichDiff : true
                     background: Rectangle {
-                        color: richDiffBtn.isActive ? "#172536" : (richDiffBtn.hovered ? "#161B22" : "transparent")
-                        radius: 4
-                        border.color: richDiffBtn.isActive ? "#3FB950" : "#30363D"
+                        color: richDiffBtn.isActive ? "#063B2C" : (richDiffBtn.hovered ? "#182232" : "#111824")
+                        radius: 7
+                        border.color: richDiffBtn.isActive ? "#34D399" : "#243247"
                         border.width: 1
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 110
+                            }
+                        }
                     }
                     contentItem: RowLayout {
                         spacing: 5
@@ -160,11 +176,11 @@ Rectangle {
                             Layout.preferredWidth: 7
                             Layout.preferredHeight: 7
                             radius: 3.5
-                            color: richDiffBtn.isActive ? "#3FB950" : "#64748B"
+                            color: richDiffBtn.isActive ? "#34D399" : "#64748B"
                         }
                         Text {
                             text: "Rich Diff" + (root.changedBlocksCount > 0 ? (" (" + root.changedBlocksCount + ")") : "")
-                            color: richDiffBtn.isActive ? "#7EE787" : "#94A3B8"
+                            color: richDiffBtn.isActive ? "#6EE7B7" : "#94A3B8"
                             font.pixelSize: 11
                             font.bold: richDiffBtn.isActive
                         }
@@ -179,12 +195,20 @@ Rectangle {
                 Button {
                     id: nextChangeBtn
                     visible: root.changedBlocksCount > 0
-                    Layout.preferredHeight: 24
+                    Layout.preferredHeight: 26
+                    leftPadding: 9
+                    rightPadding: 9
+                    hoverEnabled: true
                     background: Rectangle {
-                        color: nextChangeBtn.hovered ? "#1E293B" : "transparent"
-                        radius: 4
-                        border.color: "#30363D"
+                        color: nextChangeBtn.hovered ? "#182334" : "#111824"
+                        radius: 7
+                        border.color: "#243247"
                         border.width: 1
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 110
+                            }
+                        }
                     }
                     contentItem: Text {
                         text: "↓ Prossima modifica"
@@ -207,12 +231,20 @@ Rectangle {
                 // Width Toggle (GitHub Centered vs Full Width)
                 Button {
                     id: widthToggleBtn
-                    Layout.preferredHeight: 24
+                    Layout.preferredHeight: 26
+                    leftPadding: 9
+                    rightPadding: 9
+                    hoverEnabled: true
                     background: Rectangle {
-                        color: widthToggleBtn.hovered ? "#1E293B" : "transparent"
-                        radius: 4
-                        border.color: "#30363D"
+                        color: widthToggleBtn.hovered ? "#182334" : "#111824"
+                        radius: 7
+                        border.color: "#243247"
                         border.width: 1
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 110
+                            }
+                        }
                     }
                     contentItem: Text {
                         text: root.fullWidth ? "↔ Larghezza lettore" : "↔ Espandi pagina"
@@ -224,11 +256,11 @@ Rectangle {
 
                 // Zoom Controls
                 Rectangle {
-                    Layout.preferredHeight: 24
+                    Layout.preferredHeight: 26
                     implicitWidth: zoomRow.implicitWidth + 8
-                    color: "#0D1117"
-                    radius: 4
-                    border.color: "#30363D"
+                    color: "#0A0E15"
+                    radius: 7
+                    border.color: "#222F42"
                     border.width: 1
 
                     RowLayout {

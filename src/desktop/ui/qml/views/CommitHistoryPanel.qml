@@ -823,17 +823,35 @@ Rectangle {
     // Main SplitView: Left Pane (Graph OR Full Diff) vs Right Pane (GitKraken Commit Details & File List)
     SplitView {
         anchors.fill: parent
+        anchors.margins: 6
         orientation: Qt.Horizontal
 
+        handle: Rectangle {
+            implicitWidth: 6
+            color: "transparent"
+
+            Rectangle {
+                anchors.centerIn: parent
+                width: 2
+                height: 36
+                radius: 1
+                color: SplitHandle.hovered || SplitHandle.pressed ? "#38BDF8" : "#1E293B"
+            }
+        }
+
         // ==========================================
-        // 1. LEFT / CENTER MAIN PANE
+        // 1. LEFT / CENTER MAIN PANE (Floating Island)
         // Shows Commit Graph by default.
         // Replaced by full-size Diff View when a modified file is touched!
         // ==========================================
         Rectangle {
             SplitView.fillWidth: true
             SplitView.minimumWidth: 480
-            color: "#11141A"
+            color: "#0D121A"
+            radius: 12
+            border.color: "#1E293B"
+            border.width: 1
+            clip: true
 
             // ------------------------------------------
             // 1A. COMMIT GRAPH & TABLE (Visible when !root.isDiffOpen)
@@ -2025,16 +2043,18 @@ Rectangle {
         }
 
         // ==========================================
-        // 2. RIGHT PANE: GITKRAKEN COMMIT DETAIL PANEL
+        // 2. RIGHT PANE: GITKRAKEN COMMIT DETAIL PANEL (Floating Island)
         // Remains visible on the right, displaying commit info and the full file list!
         // ==========================================
         Rectangle {
             SplitView.preferredWidth: 420
             SplitView.minimumWidth: 350
             SplitView.maximumWidth: 650
-            color: "#161B22"
-            border.color: "#21262D"
+            color: "#101622"
+            radius: 12
+            border.color: "#1E293B"
             border.width: 1
+            clip: true
 
             // Placeholder when no commit is selected
             Rectangle {
@@ -2281,15 +2301,48 @@ Rectangle {
 
                             Button {
                                 text: "Annulla"
-                                flat: true
+                                Layout.preferredHeight: 28
+                                leftPadding: 12
+                                rightPadding: 12
+                                hoverEnabled: true
+                                background: Rectangle {
+                                    color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                                    radius: 7
+                                    border.color: "#28374E"
+                                    border.width: 1
+                                }
+                                contentItem: Text {
+                                    text: parent.text
+                                    color: "#CBD5E1"
+                                    font.pixelSize: 11
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
                                 onClicked: root.cancelMessageEdit()
                             }
 
                             Button {
                                 text: root.selectedIsHead ? "Salva" : "Salva e riscrivi"
+                                Layout.preferredHeight: 28
+                                leftPadding: 12
+                                rightPadding: 12
+                                hoverEnabled: true
                                 enabled: editSubjectField.text.trim().length > 0
                                          && !(root.branchManager && root.branchManager.isBusy)
-                                highlighted: true
+                                background: Rectangle {
+                                    color: parent.enabled ? (parent.hovered ? "#9333EA" : "#7E22CE") : "#161F2E"
+                                    radius: 7
+                                    border.color: parent.enabled ? "#A855F7" : "#222F42"
+                                    border.width: 1
+                                }
+                                contentItem: Text {
+                                    text: parent.text
+                                    color: parent.enabled ? "#FFFFFF" : "#475569"
+                                    font.bold: true
+                                    font.pixelSize: 11
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
                                 onClicked: root.saveMessageEdit()
                             }
                         }
@@ -3557,31 +3610,38 @@ Rectangle {
                 Rectangle {
                     visible: root.isWipSelected
                     Layout.fillWidth: true
-                    Layout.preferredHeight: commitBoxCol.implicitHeight + 16
-                    radius: 6
-                    color: "#0D1117"
-                    border.color: "#30363D"
+                    Layout.preferredHeight: commitBoxCol.implicitHeight + 20
+                    radius: 10
+                    color: "#0B1019"
+                    border.color: "#222F42"
                     border.width: 1
 
                     ColumnLayout {
                         id: commitBoxCol
                         anchors.fill: parent
-                        anchors.margins: 8
-                        spacing: 6
+                        anchors.margins: 10
+                        spacing: 8
 
                         // Commit Title / Summary
                         TextField {
                             id: wipSummaryField
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 30
+                            Layout.preferredHeight: 34
                             placeholderText: "Riepilogo commit (es: feat: nuova funzionalità)"
                             placeholderTextColor: "#64748B"
                             color: "#FFFFFF"
                             font.pixelSize: 11
+                            selectByMouse: true
                             background: Rectangle {
-                                color: "#161B22"
-                                radius: 4
-                                border.color: wipSummaryField.activeFocus ? "#38BDF8" : "#30363D"
+                                color: "#121A27"
+                                radius: 8
+                                border.color: wipSummaryField.activeFocus ? "#38BDF8" : "#243247"
+                                border.width: 1
+                                Behavior on border.color {
+                                    ColorAnimation {
+                                        duration: 120
+                                    }
+                                }
                             }
                         }
 
@@ -3589,16 +3649,23 @@ Rectangle {
                         TextArea {
                             id: wipDescriptionField
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 46
+                            Layout.preferredHeight: 52
                             placeholderText: "Descrizione dettagliata (opzionale)..."
                             placeholderTextColor: "#64748B"
                             color: "#E2E8F0"
                             font.pixelSize: 10
                             wrapMode: Text.Wrap
+                            selectByMouse: true
                             background: Rectangle {
-                                color: "#161B22"
-                                radius: 4
-                                border.color: wipDescriptionField.activeFocus ? "#38BDF8" : "#30363D"
+                                color: "#121A27"
+                                radius: 8
+                                border.color: wipDescriptionField.activeFocus ? "#38BDF8" : "#243247"
+                                border.width: 1
+                                Behavior on border.color {
+                                    ColorAnimation {
+                                        duration: 120
+                                    }
+                                }
                             }
                         }
 
@@ -3606,12 +3673,20 @@ Rectangle {
                         Button {
                             id: wipCommitButton
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 32
+                            Layout.preferredHeight: 34
+                            hoverEnabled: true
                             enabled: wipSummaryField.text.trim().length > 0 && root.totalFilesCount > 0
 
                             background: Rectangle {
-                                color: !wipCommitButton.enabled ? "#1E293B" : (wipCommitButton.hovered ? "#059669" : "#10B981")
-                                radius: 4
+                                color: !wipCommitButton.enabled ? "#161F2E" : (wipCommitButton.hovered ? "#10B981" : "#059669")
+                                radius: 8
+                                border.color: wipCommitButton.enabled ? "#34D399" : "#222F42"
+                                border.width: 1
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 120
+                                    }
+                                }
                             }
 
                             contentItem: RowLayout {

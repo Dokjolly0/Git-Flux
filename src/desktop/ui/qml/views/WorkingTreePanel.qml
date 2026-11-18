@@ -4,7 +4,11 @@ import QtQuick.Layouts
 
 Rectangle {
     id: root
-    color: "#161B22"
+    color: "#0F141C"
+    radius: 10
+    border.color: "#1E293B"
+    border.width: 1
+    clip: true
 
     property var sessionVm: null
     property string activeRepoPath: sessionVm ? sessionVm.activeRepoPath : ""
@@ -24,8 +28,15 @@ Rectangle {
         // Working Tree Header with Branch and Status
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 40
-            color: "#0D1117"
+            Layout.preferredHeight: 42
+            color: "#131A26"
+
+            Rectangle {
+                anchors.bottom: parent.bottom
+                width: parent.width
+                height: 1
+                color: "#1E293B"
+            }
 
             RowLayout {
                 anchors.fill: parent
@@ -51,7 +62,9 @@ Rectangle {
                     Layout.preferredHeight: 22
                     implicitWidth: branchText.implicitWidth + 14
                     radius: 11
-                    color: "#1E293B"
+                    color: "#0F2942"
+                    border.color: "#1E4066"
+                    border.width: 1
 
                     Text {
                         id: branchText
@@ -65,15 +78,21 @@ Rectangle {
 
                 // Refresh Button
                 Button {
-                    Layout.preferredHeight: 24
-                    Layout.preferredWidth: 24
+                    Layout.preferredHeight: 26
+                    Layout.preferredWidth: 26
+                    hoverEnabled: true
                     background: Rectangle {
-                        color: parent.hovered ? "#334155" : "transparent"
-                        radius: 4
+                        color: parent.hovered ? "#222F42" : "transparent"
+                        radius: 7
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 110
+                            }
+                        }
                     }
                     contentItem: Text {
                         text: "↻"
-                        color: "#CBD5E1"
+                        color: parent.hovered ? "#F8FAFC" : "#CBD5E1"
                         font.pixelSize: 14
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
@@ -98,15 +117,24 @@ Rectangle {
 
             ColumnLayout {
                 width: root.width
-                spacing: 4
+                spacing: 6
+
+                Item {
+                    Layout.preferredHeight: 2
+                }
 
                 // ==========================================
                 // 0. CONFLICTED FILES SECTION
                 // ==========================================
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 28
-                    color: "#7F1D1D"
+                    Layout.leftMargin: 6
+                    Layout.rightMargin: 6
+                    Layout.preferredHeight: 30
+                    radius: 8
+                    color: "#3B1219"
+                    border.color: "#7F1D1D"
+                    border.width: 1
                     visible: workingTree ? workingTree.conflictedCount > 0 : false
 
                     RowLayout {
@@ -148,16 +176,25 @@ Rectangle {
                     Layout.fillWidth: true
                     implicitHeight: contentHeight
                     interactive: false
+                    spacing: 2
                     visible: workingTree ? workingTree.conflictedCount > 0 : false
                     model: workingTree ? workingTree.conflictedModel : null
                     delegate: Rectangle {
-                        width: root.width
-                        height: 28
+                        width: root.width - 12
+                        x: 6
+                        height: 30
+                        radius: 7
                         color: mouseAreaConflicted.containsMouse ? "#371B1B" : "transparent"
+
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 100
+                            }
+                        }
 
                         RowLayout {
                             anchors.fill: parent
-                            anchors.leftMargin: 12
+                            anchors.leftMargin: 10
                             anchors.rightMargin: 8
                             spacing: 8
 
@@ -180,9 +217,12 @@ Rectangle {
                             Button {
                                 text: "⚔ Risolvi"
                                 Layout.preferredHeight: 22
+                                leftPadding: 8
+                                rightPadding: 8
+                                hoverEnabled: true
                                 background: Rectangle {
                                     color: parent.hovered ? "#DC2626" : "#B91C1C"
-                                    radius: 3
+                                    radius: 6
                                 }
                                 contentItem: Text {
                                     text: parent.text
@@ -220,8 +260,13 @@ Rectangle {
                 // ==========================================
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 28
-                    color: "#1E293B"
+                    Layout.leftMargin: 6
+                    Layout.rightMargin: 6
+                    Layout.preferredHeight: 30
+                    radius: 8
+                    color: "#151F2E"
+                    border.color: "#222F42"
+                    border.width: 1
 
                     RowLayout {
                         anchors.fill: parent
@@ -261,15 +306,24 @@ Rectangle {
                         Button {
                             text: "Unstage All"
                             visible: workingTree ? workingTree.stagedCount > 0 : false
-                            Layout.preferredHeight: 20
+                            Layout.preferredHeight: 22
+                            leftPadding: 8
+                            rightPadding: 8
+                            hoverEnabled: true
                             background: Rectangle {
-                                color: parent.hovered ? "#475569" : "transparent"
-                                radius: 3
+                                color: parent.hovered ? "#243247" : "transparent"
+                                radius: 6
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
                             }
                             contentItem: Text {
                                 text: parent.text
-                                color: "#94A3B8"
+                                color: parent.hovered ? "#E2E8F0" : "#94A3B8"
                                 font.pixelSize: 10
+                                font.bold: true
                             }
                             onClicked: {
                                 if (workingTree) workingTree.unstageAll(root.activeRepoPath);
@@ -282,15 +336,24 @@ Rectangle {
                     Layout.fillWidth: true
                     implicitHeight: contentHeight
                     interactive: false
+                    spacing: 2
                     model: workingTree ? workingTree.stagedModel : null
                     delegate: Rectangle {
-                        width: root.width
-                        height: 26
-                        color: mouseAreaStaged.containsMouse ? "#212836" : "transparent"
+                        width: root.width - 12
+                        x: 6
+                        height: 28
+                        radius: 7
+                        color: mouseAreaStaged.containsMouse ? "#1A2538" : "transparent"
+
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 100
+                            }
+                        }
 
                         RowLayout {
                             anchors.fill: parent
-                            anchors.leftMargin: 12
+                            anchors.leftMargin: 10
                             anchors.rightMargin: 8
                             spacing: 8
 
@@ -311,12 +374,18 @@ Rectangle {
 
                             Button {
                                 text: "−"
-                                Layout.preferredWidth: 20
-                                Layout.preferredHeight: 20
+                                Layout.preferredWidth: 22
+                                Layout.preferredHeight: 22
                                 visible: mouseAreaStaged.containsMouse
+                                hoverEnabled: true
                                 background: Rectangle {
-                                    color: parent.hovered ? "#EF4444" : "#334155"
-                                    radius: 3
+                                    color: parent.hovered ? "#EF4444" : "#26354A"
+                                    radius: 6
+                                    Behavior on color {
+                                        ColorAnimation {
+                                            duration: 100
+                                        }
+                                    }
                                 }
                                 contentItem: Text {
                                     text: "−"
@@ -350,8 +419,13 @@ Rectangle {
                 // ==========================================
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 28
-                    color: "#1E293B"
+                    Layout.leftMargin: 6
+                    Layout.rightMargin: 6
+                    Layout.preferredHeight: 30
+                    radius: 8
+                    color: "#151F2E"
+                    border.color: "#222F42"
+                    border.width: 1
 
                     RowLayout {
                         anchors.fill: parent
@@ -390,10 +464,18 @@ Rectangle {
                         Button {
                             text: "Stage All"
                             visible: workingTree ? (workingTree.unstagedCount > 0 || workingTree.untrackedCount > 0) : false
-                            Layout.preferredHeight: 20
+                            Layout.preferredHeight: 22
+                            leftPadding: 8
+                            rightPadding: 8
+                            hoverEnabled: true
                             background: Rectangle {
-                                color: parent.hovered ? "#475569" : "transparent"
-                                radius: 3
+                                color: parent.hovered ? "#064E3B" : "transparent"
+                                radius: 6
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
                             }
                             contentItem: Text {
                                 text: parent.text
@@ -412,15 +494,24 @@ Rectangle {
                     Layout.fillWidth: true
                     implicitHeight: contentHeight
                     interactive: false
+                    spacing: 2
                     model: workingTree ? workingTree.unstagedModel : null
                     delegate: Rectangle {
-                        width: root.width
-                        height: 26
-                        color: mouseAreaUnstaged.containsMouse ? "#212836" : "transparent"
+                        width: root.width - 12
+                        x: 6
+                        height: 28
+                        radius: 7
+                        color: mouseAreaUnstaged.containsMouse ? "#1A2538" : "transparent"
+
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 100
+                            }
+                        }
 
                         RowLayout {
                             anchors.fill: parent
-                            anchors.leftMargin: 12
+                            anchors.leftMargin: 10
                             anchors.rightMargin: 8
                             spacing: 8
 
@@ -442,12 +533,18 @@ Rectangle {
                             // Discard button
                             Button {
                                 text: "↺"
-                                Layout.preferredWidth: 20
-                                Layout.preferredHeight: 20
+                                Layout.preferredWidth: 22
+                                Layout.preferredHeight: 22
                                 visible: mouseAreaUnstaged.containsMouse
+                                hoverEnabled: true
                                 background: Rectangle {
-                                    color: parent.hovered ? "#EF4444" : "#334155"
-                                    radius: 3
+                                    color: parent.hovered ? "#EF4444" : "#26354A"
+                                    radius: 6
+                                    Behavior on color {
+                                        ColorAnimation {
+                                            duration: 100
+                                        }
+                                    }
                                 }
                                 contentItem: Text {
                                     text: "↺"
@@ -464,12 +561,18 @@ Rectangle {
                             // Stage button
                             Button {
                                 text: "+"
-                                Layout.preferredWidth: 20
-                                Layout.preferredHeight: 20
+                                Layout.preferredWidth: 22
+                                Layout.preferredHeight: 22
                                 visible: mouseAreaUnstaged.containsMouse
+                                hoverEnabled: true
                                 background: Rectangle {
-                                    color: parent.hovered ? "#10B981" : "#334155"
-                                    radius: 3
+                                    color: parent.hovered ? "#10B981" : "#26354A"
+                                    radius: 6
+                                    Behavior on color {
+                                        ColorAnimation {
+                                            duration: 100
+                                        }
+                                    }
                                 }
                                 contentItem: Text {
                                     text: "+"
@@ -503,8 +606,13 @@ Rectangle {
                 // ==========================================
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 28
-                    color: "#1E293B"
+                    Layout.leftMargin: 6
+                    Layout.rightMargin: 6
+                    Layout.preferredHeight: 30
+                    radius: 8
+                    color: "#151F2E"
+                    border.color: "#222F42"
+                    border.width: 1
                     visible: workingTree ? workingTree.untrackedCount > 0 : false
 
                     RowLayout {
@@ -546,16 +654,25 @@ Rectangle {
                     Layout.fillWidth: true
                     implicitHeight: contentHeight
                     interactive: false
+                    spacing: 2
                     visible: workingTree ? workingTree.untrackedCount > 0 : false
                     model: workingTree ? workingTree.untrackedModel : null
                     delegate: Rectangle {
-                        width: root.width
-                        height: 26
-                        color: mouseAreaUntracked.containsMouse ? "#212836" : "transparent"
+                        width: root.width - 12
+                        x: 6
+                        height: 28
+                        radius: 7
+                        color: mouseAreaUntracked.containsMouse ? "#1A2538" : "transparent"
+
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 100
+                            }
+                        }
 
                         RowLayout {
                             anchors.fill: parent
-                            anchors.leftMargin: 12
+                            anchors.leftMargin: 10
                             anchors.rightMargin: 8
                             spacing: 8
 
@@ -577,12 +694,18 @@ Rectangle {
                             // Discard untracked
                             Button {
                                 text: "🗑"
-                                Layout.preferredWidth: 20
-                                Layout.preferredHeight: 20
+                                Layout.preferredWidth: 22
+                                Layout.preferredHeight: 22
                                 visible: mouseAreaUntracked.containsMouse
+                                hoverEnabled: true
                                 background: Rectangle {
-                                    color: parent.hovered ? "#EF4444" : "#334155"
-                                    radius: 3
+                                    color: parent.hovered ? "#EF4444" : "#26354A"
+                                    radius: 6
+                                    Behavior on color {
+                                        ColorAnimation {
+                                            duration: 100
+                                        }
+                                    }
                                 }
                                 contentItem: Text {
                                     text: "🗑"
@@ -598,12 +721,18 @@ Rectangle {
                             // Stage untracked
                             Button {
                                 text: "+"
-                                Layout.preferredWidth: 20
-                                Layout.preferredHeight: 20
+                                Layout.preferredWidth: 22
+                                Layout.preferredHeight: 22
                                 visible: mouseAreaUntracked.containsMouse
+                                hoverEnabled: true
                                 background: Rectangle {
-                                    color: parent.hovered ? "#10B981" : "#334155"
-                                    radius: 3
+                                    color: parent.hovered ? "#10B981" : "#26354A"
+                                    radius: 6
+                                    Behavior on color {
+                                        ColorAnimation {
+                                            duration: 100
+                                        }
+                                    }
                                 }
                                 contentItem: Text {
                                     text: "+"
@@ -635,13 +764,13 @@ Rectangle {
                 // Empty placeholder if clean
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 70
+                    Layout.preferredHeight: 76
                     visible: workingTree ? workingTree.isClean : false
                     color: "transparent"
 
                     ColumnLayout {
                         anchors.centerIn: parent
-                        spacing: 6
+                        spacing: 8
 
                         Text {
                             text: "✨ Working tree pulito (nessuna modifica locale)"
@@ -652,17 +781,29 @@ Rectangle {
 
                         Button {
                             Layout.alignment: Qt.AlignHCenter
+                            Layout.preferredHeight: 28
+                            leftPadding: 12
+                            rightPadding: 12
+                            hoverEnabled: true
                             text: "📜 Vedi cronologia commit"
                             contentItem: Text {
                                 text: "📜 Vedi cronologia commit"
                                 color: "#38BDF8"
                                 font.pixelSize: 11
                                 font.bold: true
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
                             }
                             background: Rectangle {
-                                color: parent.hovered ? "#1E293B" : "#0F172A"
-                                radius: 4
-                                border.color: "#334155"
+                                color: parent.hovered ? "#182334" : "#111824"
+                                radius: 8
+                                border.color: "#28374E"
+                                border.width: 1
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
                             }
                             onClicked: root.viewHistoryRequested()
                         }

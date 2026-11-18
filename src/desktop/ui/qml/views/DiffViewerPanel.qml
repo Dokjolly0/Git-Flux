@@ -206,12 +206,18 @@ Rectangle {
         visible: root.diffViewer && !root.diffViewer.isFullContext
 
         Rectangle {
-            height: 18
-            width: plus15Text.implicitWidth + 10
-            radius: 4
-            color: plus15Mouse.containsMouse ? "#1E3A5F" : "#162436"
-            border.color: plus15Mouse.containsMouse ? "#38BDF8" : "#334155"
+            height: 20
+            width: plus15Text.implicitWidth + 14
+            radius: 6
+            color: plus15Mouse.containsMouse ? "#1E3A5F" : "#132235"
+            border.color: plus15Mouse.containsMouse ? "#38BDF8" : "#283B54"
             border.width: 1
+
+            Behavior on color {
+                ColorAnimation {
+                    duration: 110
+                }
+            }
 
             Text {
                 id: plus15Text
@@ -231,12 +237,18 @@ Rectangle {
         }
 
         Rectangle {
-            height: 18
-            width: fullCtxText.implicitWidth + 10
-            radius: 4
-            color: fullCtxMouse.containsMouse ? "#1E3A5F" : "#162436"
-            border.color: fullCtxMouse.containsMouse ? "#38BDF8" : "#334155"
+            height: 20
+            width: fullCtxText.implicitWidth + 14
+            radius: 6
+            color: fullCtxMouse.containsMouse ? "#1E3A5F" : "#132235"
+            border.color: fullCtxMouse.containsMouse ? "#38BDF8" : "#283B54"
             border.width: 1
+
+            Behavior on color {
+                ColorAnimation {
+                    duration: 110
+                }
+            }
 
             Text {
                 id: fullCtxText
@@ -270,9 +282,9 @@ Rectangle {
         // ==========================================
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 44
-            color: "#161B22"
-            border.color: "#21262D"
+            Layout.preferredHeight: 46
+            color: "#111722"
+            border.color: "#1E293B"
             border.width: 1
 
             RowLayout {
@@ -284,12 +296,20 @@ Rectangle {
                 // Back Button (shown when diff view replaces the graph in GitKraken mode)
                 Button {
                     visible: root.showBackButton
-                    Layout.preferredHeight: 28
+                    Layout.preferredHeight: 30
+                    leftPadding: 11
+                    rightPadding: 11
+                    hoverEnabled: true
                     background: Rectangle {
-                        color: parent.hovered ? "#334155" : "#1E293B"
-                        radius: 4
-                        border.color: "#475569"
+                        color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                        radius: 8
+                        border.color: parent.hovered ? "#38BDF8" : "#28374E"
                         border.width: 1
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
                     }
                     contentItem: RowLayout {
                         spacing: 6
@@ -322,9 +342,9 @@ Rectangle {
                 // Type Badge (NEW, DELETED, RENAMED, BINARY, MODIFIED)
                 Rectangle {
                     visible: root.diffViewer && !root.diffViewer.isEmpty
-                    Layout.preferredHeight: 20
-                    implicitWidth: typeText.implicitWidth + 10
-                    radius: 3
+                    Layout.preferredHeight: 22
+                    implicitWidth: typeText.implicitWidth + 14
+                    radius: 6
                     color: {
                         if (!root.diffViewer) return "transparent";
                         if (root.diffViewer.isNewFile) return "#065F46";
@@ -354,11 +374,11 @@ Rectangle {
                 // Language Badge
                 Rectangle {
                     visible: root.diffViewer && !root.diffViewer.isEmpty && root.diffViewer.languageName && root.diffViewer.languageName.length > 0
-                    Layout.preferredHeight: 20
-                    implicitWidth: langRow.implicitWidth + 12
-                    radius: 3
-                    color: "#1E293B"
-                    border.color: "#334155"
+                    Layout.preferredHeight: 22
+                    implicitWidth: langRow.implicitWidth + 14
+                    radius: 6
+                    color: "#151F2E"
+                    border.color: "#26354A"
                     border.width: 1
 
                     RowLayout {
@@ -381,27 +401,35 @@ Rectangle {
                 // Markdown Segmented Switch: Diff <> vs Anteprima 👁
                 Rectangle {
                     visible: root.isMarkdown && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary
-                    Layout.preferredHeight: 26
-                    implicitWidth: mdToggleRow.implicitWidth + 4
-                    color: "#0D1117"
-                    radius: 5
-                    border.color: "#30363D"
+                    Layout.preferredHeight: 28
+                    implicitWidth: mdToggleRow.implicitWidth + 6
+                    color: "#0A0E15"
+                    radius: 8
+                    border.color: "#222F42"
                     border.width: 1
 
                     RowLayout {
                         id: mdToggleRow
                         anchors.centerIn: parent
-                        spacing: 2
+                        spacing: 3
 
                         Button {
                             id: mdDiffSourceBtn
                             Layout.preferredHeight: 22
+                            leftPadding: 9
+                            rightPadding: 9
+                            hoverEnabled: true
                             readonly property bool active: !root.showingMarkdownPreview
                             background: Rectangle {
-                                color: mdDiffSourceBtn.active ? "#1E293B" : (mdDiffSourceBtn.hovered ? "#161B22" : "transparent")
-                                radius: 4
+                                color: mdDiffSourceBtn.active ? "#152336" : (mdDiffSourceBtn.hovered ? "#141D2B" : "transparent")
+                                radius: 6
                                 border.color: mdDiffSourceBtn.active ? "#38BDF8" : "transparent"
                                 border.width: 1
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
                             }
                             contentItem: Text {
                                 text: "<> Diff"
@@ -415,16 +443,24 @@ Rectangle {
                         Button {
                             id: mdPreviewBtn
                             Layout.preferredHeight: 22
+                            leftPadding: 9
+                            rightPadding: 9
+                            hoverEnabled: true
                             readonly property bool active: root.showingMarkdownPreview
                             background: Rectangle {
-                                color: mdPreviewBtn.active ? "#1E293B" : (mdPreviewBtn.hovered ? "#161B22" : "transparent")
-                                radius: 4
-                                border.color: mdPreviewBtn.active ? "#3FB950" : "transparent"
+                                color: mdPreviewBtn.active ? "#063B2C" : (mdPreviewBtn.hovered ? "#141D2B" : "transparent")
+                                radius: 6
+                                border.color: mdPreviewBtn.active ? "#34D399" : "transparent"
                                 border.width: 1
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
                             }
                             contentItem: Text {
                                 text: "👁 Anteprima"
-                                color: mdPreviewBtn.active ? "#7EE787" : "#94A3B8"
+                                color: mdPreviewBtn.active ? "#6EE7B7" : "#94A3B8"
                                 font.pixelSize: 11
                                 font.bold: mdPreviewBtn.active
                             }
@@ -438,12 +474,20 @@ Rectangle {
                     id: contextBtn
                     visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary &&
                         !root.showingMarkdownPreview && root.diffViewer.viewMode !== "blame"
-                    Layout.preferredHeight: 26
+                    Layout.preferredHeight: 28
+                    leftPadding: 10
+                    rightPadding: 10
+                    hoverEnabled: true
                     background: Rectangle {
-                        color: (root.diffViewer && root.diffViewer.isFullContext) ? "#172536" : (contextBtn.hovered ? "#1E293B" : "transparent")
-                        radius: 4
-                        border.color: (root.diffViewer && root.diffViewer.isFullContext) ? "#38BDF8" : "#334155"
+                        color: (root.diffViewer && root.diffViewer.isFullContext) ? "#152336" : (contextBtn.hovered ? "#192436" : "#111824")
+                        radius: 7
+                        border.color: (root.diffViewer && root.diffViewer.isFullContext) ? "#38BDF8" : "#243247"
                         border.width: 1
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 110
+                            }
+                        }
                     }
                     contentItem: RowLayout {
                         spacing: 4
@@ -515,12 +559,20 @@ Rectangle {
                     id: wrapBtn
                     visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary &&
                         !root.showingMarkdownPreview && root.diffViewer.viewMode !== "blame"
-                    Layout.preferredHeight: 26
+                    Layout.preferredHeight: 28
+                    leftPadding: 10
+                    rightPadding: 10
+                    hoverEnabled: true
                     background: Rectangle {
-                        color: root.effectiveWrap ? "#1E293B" : (wrapBtn.hovered ? "#161B22" : "transparent")
-                        radius: 4
-                        border.color: root.effectiveWrap ? "#38BDF8" : "#334155"
+                        color: root.effectiveWrap ? "#152336" : (wrapBtn.hovered ? "#192436" : "#111824")
+                        radius: 7
+                        border.color: root.effectiveWrap ? "#38BDF8" : "#243247"
                         border.width: 1
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 110
+                            }
+                        }
                     }
                     contentItem: Text {
                         text: "↩ A capo"
@@ -538,119 +590,162 @@ Rectangle {
                 }
 
                 // View Mode Switcher Buttons (Inline, Split, Hunk, Blame)
-                RowLayout {
+                Rectangle {
                     visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && !root.showingMarkdownPreview
-                    spacing: 4
+                    Layout.preferredHeight: 28
+                    implicitWidth: viewModeRow.implicitWidth + 6
+                    radius: 8
+                    color: "#0A0E15"
+                    border.color: "#222F42"
+                    border.width: 1
 
-                    // 1. Inline View
-                    Button {
-                        id: inlineBtn
-                        Layout.preferredHeight: 26
-                        readonly property bool isCurrent: root.diffViewer ? root.diffViewer.viewMode === "inline" : false
-                        background: Rectangle {
-                            color: inlineBtn.isCurrent ? "#1E293B" : (inlineBtn.hovered ? "#161B22" : "transparent")
-                            radius: 4
-                            border.color: inlineBtn.isCurrent ? "#38BDF8" : "#334155"
-                            border.width: 1
-                        }
-                        contentItem: RowLayout {
-                            spacing: 4
-                            Text {
-                                text: "📄"; font.pixelSize: 10
-                            }
-                            Text {
-                                text: "Inline"
-                                color: inlineBtn.isCurrent ? "#38BDF8" : "#94A3B8"
-                                font.pixelSize: 11
-                                font.bold: inlineBtn.isCurrent
-                            }
-                        }
-                        onClicked: {
-                            if (root.diffViewer) root.diffViewer.setViewMode("inline");
-                        }
-                    }
+                    RowLayout {
+                        id: viewModeRow
+                        anchors.centerIn: parent
+                        spacing: 2
 
-                    // 2. Split View (Side-by-side)
-                    Button {
-                        id: splitBtn
-                        Layout.preferredHeight: 26
-                        readonly property bool isCurrent: root.diffViewer ? (root.diffViewer.viewMode === "split" || root.diffViewer.viewMode === "") : true
-                        background: Rectangle {
-                            color: splitBtn.isCurrent ? "#1E293B" : (splitBtn.hovered ? "#161B22" : "transparent")
-                            radius: 4
-                            border.color: splitBtn.isCurrent ? "#38BDF8" : "#334155"
-                            border.width: 1
-                        }
-                        contentItem: RowLayout {
-                            spacing: 4
-                            Text {
-                                text: "📑"; font.pixelSize: 10
+                        // 1. Inline View
+                        Button {
+                            id: inlineBtn
+                            Layout.preferredHeight: 22
+                            leftPadding: 9
+                            rightPadding: 9
+                            hoverEnabled: true
+                            readonly property bool isCurrent: root.diffViewer ? root.diffViewer.viewMode === "inline" : false
+                            background: Rectangle {
+                                color: inlineBtn.isCurrent ? "#152336" : (inlineBtn.hovered ? "#141D2B" : "transparent")
+                                radius: 6
+                                border.color: inlineBtn.isCurrent ? "#38BDF8" : "transparent"
+                                border.width: 1
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
                             }
-                            Text {
-                                text: "Split"
-                                color: splitBtn.isCurrent ? "#38BDF8" : "#94A3B8"
-                                font.pixelSize: 11
-                                font.bold: splitBtn.isCurrent
+                            contentItem: RowLayout {
+                                spacing: 4
+                                Text {
+                                    text: "📄"; font.pixelSize: 10
+                                }
+                                Text {
+                                    text: "Inline"
+                                    color: inlineBtn.isCurrent ? "#38BDF8" : "#94A3B8"
+                                    font.pixelSize: 11
+                                    font.bold: inlineBtn.isCurrent
+                                }
+                            }
+                            onClicked: {
+                                if (root.diffViewer) root.diffViewer.setViewMode("inline");
                             }
                         }
-                        onClicked: {
-                            if (root.diffViewer) root.diffViewer.setViewMode("split");
-                        }
-                    }
 
-                    // 3. Hunk View
-                    Button {
-                        id: hunkBtn
-                        Layout.preferredHeight: 26
-                        readonly property bool isCurrent: root.diffViewer ? root.diffViewer.viewMode === "hunk" : false
-                        background: Rectangle {
-                            color: hunkBtn.isCurrent ? "#1E293B" : (hunkBtn.hovered ? "#161B22" : "transparent")
-                            radius: 4
-                            border.color: hunkBtn.isCurrent ? "#38BDF8" : "#334155"
-                            border.width: 1
-                        }
-                        contentItem: RowLayout {
-                            spacing: 4
-                            Text {
-                                text: "🔍"; font.pixelSize: 10
+                        // 2. Split View (Side-by-side)
+                        Button {
+                            id: splitBtn
+                            Layout.preferredHeight: 22
+                            leftPadding: 9
+                            rightPadding: 9
+                            hoverEnabled: true
+                            readonly property bool isCurrent: root.diffViewer ? (root.diffViewer.viewMode === "split" || root.diffViewer.viewMode === "") : true
+                            background: Rectangle {
+                                color: splitBtn.isCurrent ? "#152336" : (splitBtn.hovered ? "#141D2B" : "transparent")
+                                radius: 6
+                                border.color: splitBtn.isCurrent ? "#38BDF8" : "transparent"
+                                border.width: 1
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
                             }
-                            Text {
-                                text: "Hunk"
-                                color: hunkBtn.isCurrent ? "#38BDF8" : "#94A3B8"
-                                font.pixelSize: 11
-                                font.bold: hunkBtn.isCurrent
+                            contentItem: RowLayout {
+                                spacing: 4
+                                Text {
+                                    text: "📑"; font.pixelSize: 10
+                                }
+                                Text {
+                                    text: "Split"
+                                    color: splitBtn.isCurrent ? "#38BDF8" : "#94A3B8"
+                                    font.pixelSize: 11
+                                    font.bold: splitBtn.isCurrent
+                                }
+                            }
+                            onClicked: {
+                                if (root.diffViewer) root.diffViewer.setViewMode("split");
                             }
                         }
-                        onClicked: {
-                            if (root.diffViewer) root.diffViewer.setViewMode("hunk");
-                        }
-                    }
 
-                    // 4. Blame View
-                    Button {
-                        id: blameBtn
-                        Layout.preferredHeight: 26
-                        readonly property bool isCurrent: root.diffViewer ? root.diffViewer.viewMode === "blame" : false
-                        background: Rectangle {
-                            color: blameBtn.isCurrent ? "#1E293B" : (blameBtn.hovered ? "#161B22" : "transparent")
-                            radius: 4
-                            border.color: blameBtn.isCurrent ? "#38BDF8" : "#334155"
-                            border.width: 1
-                        }
-                        contentItem: RowLayout {
-                            spacing: 4
-                            Text {
-                                text: "👤"; font.pixelSize: 10
+                        // 3. Hunk View
+                        Button {
+                            id: hunkBtn
+                            Layout.preferredHeight: 22
+                            leftPadding: 9
+                            rightPadding: 9
+                            hoverEnabled: true
+                            readonly property bool isCurrent: root.diffViewer ? root.diffViewer.viewMode === "hunk" : false
+                            background: Rectangle {
+                                color: hunkBtn.isCurrent ? "#152336" : (hunkBtn.hovered ? "#141D2B" : "transparent")
+                                radius: 6
+                                border.color: hunkBtn.isCurrent ? "#38BDF8" : "transparent"
+                                border.width: 1
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
                             }
-                            Text {
-                                text: "Blame"
-                                color: blameBtn.isCurrent ? "#38BDF8" : "#94A3B8"
-                                font.pixelSize: 11
-                                font.bold: blameBtn.isCurrent
+                            contentItem: RowLayout {
+                                spacing: 4
+                                Text {
+                                    text: "🔍"; font.pixelSize: 10
+                                }
+                                Text {
+                                    text: "Hunk"
+                                    color: hunkBtn.isCurrent ? "#38BDF8" : "#94A3B8"
+                                    font.pixelSize: 11
+                                    font.bold: hunkBtn.isCurrent
+                                }
+                            }
+                            onClicked: {
+                                if (root.diffViewer) root.diffViewer.setViewMode("hunk");
                             }
                         }
-                        onClicked: {
-                            if (root.diffViewer) root.diffViewer.setViewMode("blame");
+
+                        // 4. Blame View
+                        Button {
+                            id: blameBtn
+                            Layout.preferredHeight: 22
+                            leftPadding: 9
+                            rightPadding: 9
+                            hoverEnabled: true
+                            readonly property bool isCurrent: root.diffViewer ? root.diffViewer.viewMode === "blame" : false
+                            background: Rectangle {
+                                color: blameBtn.isCurrent ? "#152336" : (blameBtn.hovered ? "#141D2B" : "transparent")
+                                radius: 6
+                                border.color: blameBtn.isCurrent ? "#38BDF8" : "transparent"
+                                border.width: 1
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
+                            }
+                            contentItem: RowLayout {
+                                spacing: 4
+                                Text {
+                                    text: "👤"; font.pixelSize: 10
+                                }
+                                Text {
+                                    text: "Blame"
+                                    color: blameBtn.isCurrent ? "#38BDF8" : "#94A3B8"
+                                    font.pixelSize: 11
+                                    font.bold: blameBtn.isCurrent
+                                }
+                            }
+                            onClicked: {
+                                if (root.diffViewer) root.diffViewer.setViewMode("blame");
+                            }
                         }
                     }
                 }

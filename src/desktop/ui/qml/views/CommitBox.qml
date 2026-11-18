@@ -4,7 +4,10 @@ import QtQuick.Layouts
 
 Rectangle {
     id: root
-    color: "#0F172A"
+    color: "#0F141C"
+    radius: 10
+    border.color: "#1E293B"
+    border.width: 1
 
     property var sessionVm: null
     property string activeRepoPath: sessionVm ? sessionVm.activeRepoPath : ""
@@ -13,8 +16,8 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 10
-        spacing: 8
+        anchors.margins: 12
+        spacing: 9
 
         // Commit Box Header
         RowLayout {
@@ -34,19 +37,13 @@ Rectangle {
             }
 
             // Amend Checkbox
-            CheckBox {
+            FluxCheckBox {
                 id: amendCheck
                 text: "Amend"
                 checked: commitBox ? commitBox.isAmend : false
+                checkedTextColor: "#38BDF8"
                 onToggled: {
                     if (commitBox) commitBox.isAmend = checked;
-                }
-                contentItem: Text {
-                    text: parent.text
-                    color: parent.checked ? "#38BDF8" : "#64748B"
-                    font.pixelSize: 11
-                    leftPadding: 20
-                    verticalAlignment: Text.AlignVCenter
                 }
             }
         }
@@ -55,15 +52,21 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            color: "#1E293B"
-            radius: 6
-            border.color: commitMessageArea.activeFocus ? "#3B82F6" : "#334155"
+            color: "#0A0E15"
+            radius: 9
+            border.color: commitMessageArea.activeFocus ? "#38BDF8" : "#222F42"
             border.width: 1
+
+            Behavior on border.color {
+                ColorAnimation {
+                    duration: 120
+                }
+            }
 
             ScrollView {
                 SmoothWheelScroller {}
                 anchors.fill: parent
-                anchors.margins: 6
+                anchors.margins: 7
                 clip: true
 
                 TextArea {
@@ -75,6 +78,7 @@ Rectangle {
                     font.family: "monospace"
                     wrapMode: TextEdit.Wrap
                     selectByMouse: true
+                    background: null
                     text: commitBox ? commitBox.commitMessage : ""
                     onTextChanged: {
                         if (commitBox && commitBox.commitMessage !== text) {
@@ -108,19 +112,28 @@ Rectangle {
         Button {
             id: commitBtn
             Layout.fillWidth: true
-            Layout.preferredHeight: 32
+            Layout.preferredHeight: 34
             enabled: commitBox ? commitBox.canCommit : false
+            hoverEnabled: true
             ToolTip.visible: hovered
             ToolTip.text: "Esegui Commit (Ctrl+Invio)"
 
             background: Rectangle {
                 color: {
-                    if (!commitBtn.enabled) return "#1E293B";
+                    if (!commitBtn.enabled) return "#161F2E";
                     if (commitBtn.pressed) return "#047857";
-                    if (commitBtn.hovered) return "#059669";
-                    return "#10B981";
+                    if (commitBtn.hovered) return "#10B981";
+                    return "#059669";
                 }
-                radius: 6
+                radius: 8
+                border.color: commitBtn.enabled ? "#34D399" : "#222F42"
+                border.width: 1
+
+                Behavior on color {
+                    ColorAnimation {
+                        duration: 120
+                    }
+                }
             }
 
             contentItem: RowLayout {
@@ -129,7 +142,7 @@ Rectangle {
 
                 Text {
                     text: "✓"
-                    color: commitBtn.enabled ? "#FFFFFF" : "#64748B"
+                    color: commitBtn.enabled ? "#FFFFFF" : "#475569"
                     font.bold: true
                     font.pixelSize: 13
                 }
@@ -141,7 +154,7 @@ Rectangle {
                         if (amendCheck.checked) return "Amend Commit" + b;
                         return "Commit " + (count > 0 ? ("(" + count + ")") : "") + b;
                     }
-                    color: commitBtn.enabled ? "#FFFFFF" : "#64748B"
+                    color: commitBtn.enabled ? "#FFFFFF" : "#475569"
                     font.bold: true
                     font.pixelSize: 12
                 }
