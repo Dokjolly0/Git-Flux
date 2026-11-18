@@ -286,7 +286,7 @@ namespace gf::desktop
         // 2. Commit history
         if (snapshot.commits)
         {
-            m_commitHistoryModel.setCommits(std::move(*snapshot.commits));
+            m_commitHistoryModel.setCommits(std::move(*snapshot.commits), m_fileHistoryPath.isEmpty());
             snapshot.commits.reset();
 
             // A filtered history (file history mode) may not contain HEAD: keep the last known one
@@ -1587,7 +1587,7 @@ namespace gf::desktop
                                         ++m_generation; // drop background reloads computed with the previous filter
                                         m_fileHistoryPath = cleanPath;
                                         m_commitHistoryModel.setWip(false, 0);
-                                        m_commitHistoryModel.setCommits(std::move(*logRes));
+                                        m_commitHistoryModel.setCommits(std::move(*logRes), false);
                                         emit fileHistoryPathChanged();
                                     }
                                     else

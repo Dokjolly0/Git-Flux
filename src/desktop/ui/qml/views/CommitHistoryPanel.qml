@@ -394,7 +394,7 @@ Rectangle {
 
     property int maxGraphLanes: (root.branchManager && root.branchManager.commitHistory) ? root.branchManager.commitHistory.maxLanes : 1
     property int graphColWidth: Math.max(50, Math.min(260, 24 + root.maxGraphLanes * 22))
-    property int branchTagColWidth: 180
+    property int branchTagColWidth: 230
 
     // Keyboard navigation and shortcuts
     focus: true
@@ -1193,9 +1193,9 @@ Rectangle {
                                 onPositionChanged: function (mouse) {
                                     if (!pressed) return;
                                     var dx = mapToItem(root, mouse.x, 0).x - pressX;
-                                    root.branchTagColWidth = Math.max(100, Math.min(480, Math.round(startWidth + dx)));
+                                    root.branchTagColWidth = Math.max(100, Math.min(520, Math.round(startWidth + dx)));
                                 }
-                                onDoubleClicked: root.branchTagColWidth = 180
+                                onDoubleClicked: root.branchTagColWidth = 230
 
                                 Rectangle {
                                     anchors.right: parent.right
@@ -1345,6 +1345,7 @@ Rectangle {
                         required property bool isOrphan
                         required property bool isStash
                         required property string stashSelector
+                        required property int branchCommitCount
                         required property int index
 
                         width: commitTableListView.width
@@ -1456,7 +1457,8 @@ Rectangle {
                                             height: 22
                                             width: Math.max(24, Math.min(
                                                 branchTagCol.width - 6 - branchTagCol.minConnectorWidth
-                                                    - (moreChip.visible ? moreChip.width + badgeRow.spacing : 0),
+                                                    - (moreChip.visible ? moreChip.width + badgeRow.spacing : 0)
+                                                    - (commitCountBadge.visible ? commitCountBadge.width + countRightConnector.width + 6 : 0),
                                                 decText.implicitWidth + 14))
 
                                             ToolTip.visible: badgeMouse.containsMouse && decText.truncated && !badgeMouse.isDraggingBadge
@@ -1759,16 +1761,63 @@ Rectangle {
                                     }
                                 }
 
-                                // Horizontal connecting line from the badges to the graph column:
+                                // Horizontal connecting line from the badges to the commit count pill (or graph column):
                                 // fills only the space left, so it never pushes badges off-screen.
                                 Rectangle {
                                     anchors.left: badgeRow.right
                                     anchors.leftMargin: 2
-                                    anchors.right: parent.right
+                                    anchors.right: commitCountBadge.visible ? commitCountBadge.left : parent.right
+                                    anchors.rightMargin: commitCountBadge.visible ? 2 : 0
                                     anchors.verticalCenter: parent.verticalCenter
                                     height: 2
                                     color: commitRow.isStash ? "#F59E0B" : (commitRow.graphColor || "#06B6D4")
                                     visible: branchTagCol.allDecs.length > 0
+                                }
+
+                                // Commit count pill ("x commit") inline along the connector before the graph
+                                Rectangle {
+                                    id: commitCountBadge
+                                    visible: commitRow.branchCommitCount > 0 && branchTagCol.allDecs.length > 0 && branchTagCol.width >= 165
+                                    anchors.right: countRightConnector.left
+                                    anchors.rightMargin: 2
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    height: 18
+                                    width: visible ? (commitCountText.implicitWidth + 12) : 0
+                                    radius: 9
+                                    color: "#161B22"
+                                    border.color: commitRow.graphColor || "#06B6D4"
+                                    border.width: 1
+                                    z: 5
+
+                                    Text {
+                                        id: commitCountText
+                                        anchors.centerIn: parent
+                                        text: commitRow.branchCommitCount + " commit"
+                                        color: "#CBD5E1"
+                                        font.pixelSize: 10
+                                        font.weight: Font.Medium
+                                    }
+
+                                    HoverHandler {
+                                        id: commitCountHover
+                                    }
+
+                                    ToolTip.visible: commitCountHover.hovered
+                                    ToolTip.delay: 400
+                                    ToolTip.text: commitRow.branchCommitCount === 1
+                                        ? "1 commit totale su questo branch (rev-list --count)"
+                                        : (commitRow.branchCommitCount + " commit totali su questo branch (rev-list --count)")
+                                }
+
+                                // Short connecting segment between the commit count pill and the graph column
+                                Rectangle {
+                                    id: countRightConnector
+                                    anchors.right: parent.right
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 10
+                                    height: 2
+                                    color: commitRow.isStash ? "#F59E0B" : (commitRow.graphColor || "#06B6D4")
+                                    visible: commitCountBadge.visible
                                 }
                             }
 

@@ -16,6 +16,8 @@
 #include <QRegularExpression>
 #include <QVariantMap>
 #include <algorithm>
+#include <cstdint>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -257,6 +259,25 @@ namespace gf::desktop
         {
             return std::any_of(c.refDecorations.begin(), c.refDecorations.end(),
                                [](const std::string& d) { return isStashDecoration(d); });
+        }
+
+        bool hasBranchDecoration(const std::vector<std::string>& rawDecorations)
+        {
+            for (const auto& decStd : rawDecorations)
+            {
+                const QString dec = QString::fromStdString(decStd).trimmed();
+                if (dec.isEmpty() ||
+                    dec == QLatin1String("origin/HEAD") ||
+                    dec.endsWith(QLatin1String("/HEAD")) ||
+                    dec == QLatin1String("HEAD") ||
+                    isStashDecoration(decStd) ||
+                    dec.startsWith(QLatin1String("tag: ")))
+                {
+                    continue;
+                }
+                return true;
+            }
+            return false;
         }
 
         QVariantMap makeGraphRoute(int fromLane, int toLane, const QString& color, int type, bool dashed = false)
@@ -602,6 +623,8 @@ namespace gf::desktop
             return (idx < m_graphItems.size()) ? m_graphItems[idx].isStash : isStashCommit(c);
         case StashSelectorRole:
             return (idx < m_graphItems.size()) ? m_graphItems[idx].stashSelector : extractStashSelector(c.refDecorations);
+        case BranchCommitCountRole:
+            return branchCommitCountForCommit(c);
         default:
             return {};
         }
@@ -636,7 +659,8 @@ namespace gf::desktop
             {IsWipRole, "isWip"},
             {IsOrphanRole, "isOrphan"},
             {IsStashRole, "isStash"},
-            {StashSelectorRole, "stashSelector"}
+            {StashSelectorRole, "stashSelector"},
+            {BranchCommitCountRole, "branchCommitCount"}
         };
     }
 
@@ -699,6 +723,7 @@ namespace gf::desktop
         }
         map[QStringLiteral("isMerge")] = (!isStash && c.parents.size() > 1);
         map[QStringLiteral("isWip")] = (c.sha == "WIP");
+        map[QStringLiteral("branchCommitCount")] = branchCommitCountForCommit(c);
         if (c.sha == "WIP")
         {
             QVariantMap wipDec;
@@ -1510,11 +1535,110 @@ namespace gf::desktop
         }
     }
 
-    void CommitHistoryListModel::setCommits(std::vector<gf::git::bo::GitCommitLogItem> commits)
+    void CommitHistoryListModel::computeBranchCommitCounts()
+    {
+        m_branchCommitCounts.clear();
+        if (!m_isFullDag || m_rawCommits.empty())
+        {
+            return;
+        }
+
+        const std::size_t n = m_rawCommits.size();
+        std::unordered_map<std::string_view, int> shaToIdx;
+        shaToIdx.reserve(n);
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            const auto& c = m_rawCommits[i];
+            if (!c.sha.empty() && c.sha != "WIP")
+            {
+                shaToIdx.try_emplace(c.sha, static_cast<int>(i));
+            }
+        }
+
+        std::vector<std::vector<int>> parentsIdx(n);
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            const auto& parents = m_rawCommits[i].parents;
+            parentsIdx[i].reserve(parents.size());
+            for (const auto& p : parents)
+            {
+                if (auto it = shaToIdx.find(p); it != shaToIdx.end())
+                {
+                    parentsIdx[i].push_back(it->second);
+                }
+            }
+        }
+
+        // Reuse a single stamp array + DFS stack across all branch tips to avoid per-branch allocations.
+        std::vector<std::uint32_t> visitStamp(n, 0);
+        std::uint32_t currentStamp = 0;
+        std::vector<int> stack;
+        stack.reserve(std::min<std::size_t>(n, 256));
+
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            const auto& c = m_rawCommits[i];
+            if (c.sha.empty() || c.sha == "WIP" || isStashCommit(c) || !hasBranchDecoration(c.refDecorations))
+            {
+                continue;
+            }
+            if (m_branchCommitCounts.contains(c.sha))
+            {
+                continue;
+            }
+
+            ++currentStamp;
+            if (currentStamp == 0)
+            {
+                std::fill(visitStamp.begin(), visitStamp.end(), 0);
+                currentStamp = 1;
+            }
+
+            const int rootIdx = static_cast<int>(i);
+            visitStamp[rootIdx] = currentStamp;
+            stack.clear();
+            stack.push_back(rootIdx);
+            int count = 1;
+
+            while (!stack.empty())
+            {
+                const int u = stack.back();
+                stack.pop_back();
+                for (const int pIdx : parentsIdx[u])
+                {
+                    if (visitStamp[pIdx] != currentStamp)
+                    {
+                        visitStamp[pIdx] = currentStamp;
+                        ++count;
+                        stack.push_back(pIdx);
+                    }
+                }
+            }
+
+            m_branchCommitCounts.emplace(c.sha, count);
+        }
+    }
+
+    int CommitHistoryListModel::branchCommitCountForCommit(const git::bo::GitCommitLogItem& commit) const noexcept
+    {
+        if (!m_isFullDag || commit.sha.empty() || commit.sha == "WIP" || isStashCommit(commit))
+        {
+            return 0;
+        }
+        if (auto it = m_branchCommitCounts.find(commit.sha); it != m_branchCommitCounts.end())
+        {
+            return it->second;
+        }
+        return 0;
+    }
+
+    void CommitHistoryListModel::setCommits(std::vector<gf::git::bo::GitCommitLogItem> commits, bool isFullDag)
     {
         beginResetModel();
+        m_isFullDag = isFullDag;
         m_rawCommits = std::move(commits);
         m_headSha = findHeadSha(m_rawCommits);
+        computeBranchCommitCounts();
         applyWipAndRebuild();
         endResetModel();
         indexAvatarsFromCommits();

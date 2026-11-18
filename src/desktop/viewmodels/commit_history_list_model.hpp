@@ -6,6 +6,8 @@
 #include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 #ifndef Q_MOC_RUN
@@ -57,7 +59,8 @@ namespace gf::desktop
             IsWipRole,
             IsOrphanRole,
             IsStashRole,
-            StashSelectorRole
+            StashSelectorRole,
+            BranchCommitCountRole
         };
 
         explicit CommitHistoryListModel(QObject* parent = nullptr);
@@ -67,7 +70,7 @@ namespace gf::desktop
         [[nodiscard]] QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
         [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
 
-        void setCommits(std::vector<git::bo::GitCommitLogItem> commits);
+        void setCommits(std::vector<git::bo::GitCommitLogItem> commits, bool isFullDag = true);
         void setWip(bool hasWip, int changedFilesCount = 0);
         [[nodiscard]] bool hasWip() const noexcept { return m_hasWip; }
         [[nodiscard]] const std::vector<git::bo::GitCommitLogItem>& commits() const noexcept { return m_commits; }
@@ -106,14 +109,18 @@ namespace gf::desktop
         void resolveMissingAvatarsFromGitHub();
         void applyWipAndRebuild();
         void rebuildGraph();
+        void computeBranchCommitCounts();
+        [[nodiscard]] int branchCommitCountForCommit(const git::bo::GitCommitLogItem& commit) const noexcept;
 
         QString m_searchFilter;
         std::vector<git::bo::GitCommitLogItem> m_rawCommits;
         std::vector<git::bo::GitCommitLogItem> m_commits;
         std::vector<GraphItem> m_graphItems;
+        std::unordered_map<std::string, int> m_branchCommitCounts;
         QNetworkAccessManager m_networkManager;
         QSet<QString> m_queriedEmails;
         QString m_headSha;
+        bool m_isFullDag = true;
         bool m_hasWip = false;
         int m_wipCount = 0;
         int m_maxLanes = 1;

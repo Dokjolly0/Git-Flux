@@ -1863,6 +1863,92 @@ TEST_CASE (
         CHECK(model.data(model.index(0), CommitHistoryListModel::ShaRole).toString() == "WIP");
         CHECK(model.data(model.index(0), CommitHistoryListModel::ParentsRole).toStringList() == QStringList{"base_sha"});
     }
+
+    SECTION("CommitHistoryListModel computes reachable commit counts for branch tips in-memory") {
+        CommitHistoryListModel model;
+
+        // DAG:
+        //   c0 (root) <- c1 (tag: v1.0) <- c3 <- c4 (HEAD -> main, origin/main)
+        //             <- c2 (feature/x)  <-/
+        //   g0 <- g1 (gh-pages)
+        //   stash0 -> base c4
+        std::vector<gf::git::bo::GitCommitLogItem> commits = {
+            gf::git::bo::GitCommitLogItem{
+                .sha = "stash0",
+                .parents = {"c4"},
+                .subject = "WIP on main",
+                .refDecorations = {"refs/stash"}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "c4",
+                .parents = {"c3"},
+                .subject = "release prep",
+                .refDecorations = {"HEAD -> main", "origin/main"}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "c3",
+                .parents = {"c1", "c2"},
+                .subject = "merge feature/x",
+                .refDecorations = {}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "c2",
+                .parents = {"c0"},
+                .subject = "feature work",
+                .refDecorations = {"feature/x"}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "c1",
+                .parents = {"c0"},
+                .subject = "tagged commit",
+                .refDecorations = {"tag: v1.0"}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "c0",
+                .parents = {},
+                .subject = "initial",
+                .refDecorations = {}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "g1",
+                .parents = {"g0"},
+                .subject = "publish docs",
+                .refDecorations = {"gh-pages"}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "g0",
+                .parents = {},
+                .subject = "init gh-pages",
+                .refDecorations = {}
+            }
+        };
+
+        model.setCommits(commits);
+        model.setWip(true, 1);
+
+        CHECK(model.data(model.index(0), CommitHistoryListModel::BranchCommitCountRole).toInt() == 0); // WIP
+        CHECK(model.data(model.index(model.indexOfSha("stash0")), CommitHistoryListModel::BranchCommitCountRole).toInt() == 0);
+        CHECK(model.data(model.index(model.indexOfSha("c4")), CommitHistoryListModel::BranchCommitCountRole).toInt() == 5);
+        CHECK(model.data(model.index(model.indexOfSha("c3")), CommitHistoryListModel::BranchCommitCountRole).toInt() == 0);
+        CHECK(model.data(model.index(model.indexOfSha("c2")), CommitHistoryListModel::BranchCommitCountRole).toInt() == 2);
+        CHECK(model.data(model.index(model.indexOfSha("c1")), CommitHistoryListModel::BranchCommitCountRole).toInt() == 0);
+        CHECK(model.data(model.index(model.indexOfSha("c0")), CommitHistoryListModel::BranchCommitCountRole).toInt() == 0);
+        CHECK(model.data(model.index(model.indexOfSha("g1")), CommitHistoryListModel::BranchCommitCountRole).toInt() == 2);
+
+        CHECK(model.getCommit(model.indexOfSha("c4"))["branchCommitCount"].toInt() == 5);
+
+        // Filtering rows preserves the true full-DAG branch commit count
+        model.setSearchFilter("feature work");
+        REQUIRE(model.rowCount() == 1);
+        CHECK(model.data(model.index(0), CommitHistoryListModel::ShaRole).toString() == "c2");
+        CHECK(model.data(model.index(0), CommitHistoryListModel::BranchCommitCountRole).toInt() == 2);
+        model.setSearchFilter("");
+
+        // Partial DAG (e.g. file history mode) suppresses branch commit counts
+        model.setCommits(commits, false);
+        CHECK(model.data(model.index(model.indexOfSha("c4")), CommitHistoryListModel::BranchCommitCountRole).toInt() == 0);
+        CHECK(model.data(model.index(model.indexOfSha("c2")), CommitHistoryListModel::BranchCommitCountRole).toInt() == 0);
+    }
 }
 
 TEST_CASE (
