@@ -8,6 +8,7 @@ Dialog {
     title: "Clona Repository"
     modal: true
     width: 820
+    header: null
     anchors.centerIn: Overlay.overlay
     padding: 0
     topPadding: 0
@@ -131,10 +132,27 @@ Dialog {
     }
 
     background: Rectangle {
-        color: "#0B1120"
-        radius: 8
-        border.color: "#334155"
+        color: "#0E1420"
+        radius: 14
+        border.color: "#28374E"
         border.width: 1
+
+        Rectangle {
+            z: -2
+            anchors.fill: parent
+            anchors.margins: -8
+            radius: 20
+            color: "#000000"
+            opacity: 0.30
+        }
+        Rectangle {
+            z: -1
+            anchors.fill: parent
+            anchors.margins: -2
+            radius: 16
+            color: "#000000"
+            opacity: 0.42
+        }
     }
 
     contentItem: ColumnLayout {
@@ -147,23 +165,30 @@ Dialog {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 48
-            color: "#1E293B"
-            radius: 8
+            color: "#161F2E"
+            radius: 14
 
             Rectangle {
                 anchors.bottom: parent.bottom
                 width: parent.width
-                height: 8
-                color: "#1E293B"
+                height: 14
+                color: "#161F2E"
+            }
+
+            Rectangle {
+                anchors.bottom: parent.bottom
+                width: parent.width
+                height: 1
+                color: "#222F42"
             }
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
+                anchors.leftMargin: 18
+                anchors.rightMargin: 14
 
                 Text {
-                    text: "⬇ Clona Repository (Stile GitKraken)"
+                    text: "⬇ Clona Repository"
                     color: "#F8FAFC"
                     font.pixelSize: 15
                     font.bold: true
@@ -175,6 +200,7 @@ Dialog {
                     flat: true
                     Layout.preferredWidth: 28
                     Layout.preferredHeight: 28
+                    hoverEnabled: true
                     enabled: !(root.effectiveHubVm && root.effectiveHubVm.isCloning)
                     onClicked: {
                         root.resetFormAndCache();
@@ -182,13 +208,15 @@ Dialog {
                     }
                     contentItem: Text {
                         text: "✕"
-                        color: parent.hovered ? "#EF4444" : "#94A3B8"
-                        font.pixelSize: 14
+                        color: parent.hovered ? "#F8FAFC" : "#94A3B8"
+                        font.pixelSize: 13
                         font.bold: true
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
-                    background: Item {
+                    background: Rectangle {
+                        radius: 7
+                        color: parent.hovered ? "#243247" : "transparent"
                     }
                 }
             }
@@ -238,21 +266,35 @@ Dialog {
                         Layout.fillHeight: true
                         clip: true
                         interactive: false
+                        spacing: 3
                         model: root.profilesVm ? root.profilesVm.profiles : []
 
                         delegate: Rectangle {
                             id: providerItem
-                            width: providerListView.width
-                            height: 42
+                            width: providerListView.width - 12
+                            x: 6
+                            height: 40
+                            radius: 8
 
                             readonly property bool isSelected: root.profilesVm && (root.profilesVm.activeProfileId === modelData.id)
 
-                            color: isSelected ? "#1E293B" : (providerMouse.containsMouse ? "#111827" : "transparent")
+                            color: isSelected ? "#16253A" : (providerMouse.containsMouse ? "#111A29" : "transparent")
+                            border.color: isSelected ? "#244369" : (providerMouse.containsMouse ? "#1D2A3F" : "transparent")
+                            border.width: 1
 
-                            // Active Left Indicator Bar
+                            Behavior on color {
+                                ColorAnimation {
+                                    duration: 110
+                                }
+                            }
+
+                            // Active Left Indicator Pill
                             Rectangle {
+                                x: 3
+                                anchors.verticalCenter: parent.verticalCenter
                                 width: 3
-                                height: parent.height
+                                height: 18
+                                radius: 1.5
                                 color: "#38BDF8"
                                 visible: providerItem.isSelected
                             }
@@ -1594,21 +1636,28 @@ Dialog {
         // ==========================================
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 52
-            color: "#1E293B"
-            radius: 8
+            Layout.preferredHeight: 54
+            color: "#161F2E"
+            radius: 14
 
             Rectangle {
                 anchors.top: parent.top
                 width: parent.width
-                height: 8
-                color: "#1E293B"
+                height: 14
+                color: "#161F2E"
+            }
+
+            Rectangle {
+                anchors.top: parent.top
+                width: parent.width
+                height: 1
+                color: "#222F42"
             }
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
+                anchors.leftMargin: 18
+                anchors.rightMargin: 18
                 spacing: 10
 
                 Item {
@@ -1617,7 +1666,10 @@ Dialog {
 
                 Button {
                     text: "Annulla"
-                    Layout.preferredHeight: 34
+                    Layout.preferredHeight: 36
+                    leftPadding: 16
+                    rightPadding: 16
+                    hoverEnabled: true
                     enabled: !(root.effectiveHubVm && root.effectiveHubVm.isCloning)
                     onClicked: {
                         root.resetFormAndCache();
@@ -1625,20 +1677,32 @@ Dialog {
                     }
                     contentItem: Text {
                         text: "Annulla"
-                        color: "#94A3B8"
-                        font.pixelSize: 13
+                        color: "#CBD5E1"
+                        font.pixelSize: 12
+                        font.bold: true
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
                     background: Rectangle {
-                        color: parent.hovered ? "#334155" : "transparent"
-                        radius: 6
+                        color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                        radius: 8
+                        border.color: "#28374E"
+                        border.width: 1
+
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
                     }
                 }
 
                 Button {
                     id: cloneButton
                     Layout.preferredHeight: 36
+                    leftPadding: 18
+                    rightPadding: 18
+                    hoverEnabled: true
                     enabled: !(root.effectiveHubVm && root.effectiveHubVm.isCloning)
                     onClicked: {
                         console.log("[CloneModal] Avvia Clonazione cliccato. URL=" + urlField.text + " DestFolder=" + destFolderField.text + " Dir=" + dirNameField.text);
@@ -1688,7 +1752,7 @@ Dialog {
                         color: (root.effectiveHubVm && root.effectiveHubVm.isCloning)
                             ? "#38BDF8"
                             : (urlField.text.trim().length > 0 ? "#FFFFFF" : "#94A3B8")
-                        font.pixelSize: 13
+                        font.pixelSize: 12
                         font.bold: true
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
@@ -1697,13 +1761,19 @@ Dialog {
                         color: (root.effectiveHubVm && root.effectiveHubVm.isCloning)
                             ? "#0C4A6E"
                             : (urlField.text.trim().length > 0
-                                ? (cloneButton.hovered ? "#0284C7" : "#0369A1")
-                                : (cloneButton.hovered ? "#1E293B" : "#0F172A"))
-                        radius: 6
+                                ? (cloneButton.hovered ? "#0EA5E9" : "#0284C7")
+                                : (cloneButton.hovered ? "#1E2B3E" : "#151E2C"))
+                        radius: 8
                         border.color: (root.effectiveHubVm && root.effectiveHubVm.isCloning)
                             ? "#38BDF8"
-                            : (urlField.text.trim().length > 0 ? "#38BDF8" : "#334155")
+                            : (urlField.text.trim().length > 0 ? "#38BDF8" : "#28374E")
                         border.width: 1
+
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
                     }
                 }
             }

@@ -7,14 +7,33 @@ Dialog {
     title: batchOperationsVm ? batchOperationsVm.currentOperationName : "Operazione Batch"
     modal: true
     width: 620
-    height: 480
+    height: 490
+    padding: 18
+    header: null
     anchors.centerIn: Overlay.overlay
 
     background: Rectangle {
-        color: "#0F172A"
-        radius: 8
-        border.color: "#334155"
+        color: "#111824"
+        radius: 14
+        border.color: "#28374E"
         border.width: 1
+
+        Rectangle {
+            z: -2
+            anchors.fill: parent
+            anchors.margins: -8
+            radius: 20
+            color: "#000000"
+            opacity: 0.30
+        }
+        Rectangle {
+            z: -1
+            anchors.fill: parent
+            anchors.margins: -2
+            radius: 16
+            color: "#000000"
+            opacity: 0.40
+        }
     }
 
     contentItem: ColumnLayout {
@@ -25,13 +44,13 @@ Dialog {
         // =====================================================================
         RowLayout {
             Layout.fillWidth: true
-            spacing: 10
+            spacing: 12
 
             Rectangle {
-                width: 36
-                height: 36
-                radius: 18
-                color: batchOperationsVm && batchOperationsVm.isRunning ? "#1E293B" : (batchOperationsVm && batchOperationsVm.failedCount > 0 ? "#450A0A" : "#064E3B")
+                width: 38
+                height: 38
+                radius: 12
+                color: batchOperationsVm && batchOperationsVm.isRunning ? "#152336" : (batchOperationsVm && batchOperationsVm.failedCount > 0 ? "#3B1219" : "#064E3B")
                 border.color: batchOperationsVm && batchOperationsVm.isRunning ? "#38BDF8" : (batchOperationsVm && batchOperationsVm.failedCount > 0 ? "#EF4444" : "#10B981")
 
                 Text {
@@ -59,6 +78,25 @@ Dialog {
                     elide: Text.ElideRight
                     Layout.fillWidth: true
                 }
+            }
+
+            Button {
+                text: "✕"
+                Layout.preferredWidth: 28
+                Layout.preferredHeight: 28
+                hoverEnabled: true
+                background: Rectangle {
+                    radius: 8
+                    color: parent.hovered ? "#243247" : "transparent"
+                }
+                contentItem: Text {
+                    text: "✕"
+                    color: parent.hovered ? "#F8FAFC" : "#94A3B8"
+                    font.bold: true
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+                onClicked: root.close()
             }
         }
 
@@ -97,7 +135,7 @@ Dialog {
 
                 background: Rectangle {
                     implicitHeight: 8
-                    color: "#1E293B"
+                    color: "#182334"
                     radius: 4
                 }
 
@@ -113,7 +151,7 @@ Dialog {
                                 position: 0.0; color: "#00E5FF"
                             }
                             GradientStop {
-                                position: 1.0; color: "#3B82F6"
+                                position: 1.0; color: "#0284C7"
                             }
                         }
                     }
@@ -127,9 +165,9 @@ Dialog {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            color: "#1E293B"
-            radius: 6
-            border.color: "#334155"
+            color: "#0D131D"
+            radius: 10
+            border.color: "#222F42"
             border.width: 1
             clip: true
 
@@ -148,16 +186,16 @@ Dialog {
 
                 delegate: Rectangle {
                     width: resultsList.width
-                    height: 40
-                    color: modelData.isFailed ? "#2D1515" : "#0F172A"
-                    radius: 4
-                    border.color: modelData.isFailed ? "#7F1D1D" : "#334155"
+                    height: 42
+                    color: modelData.isFailed ? "#2D1519" : "#131C2A"
+                    radius: 8
+                    border.color: modelData.isFailed ? "#7F1D1D" : "#222F42"
                     border.width: 1
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.leftMargin: 10
-                        anchors.rightMargin: 10
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
                         spacing: 10
 
                         Text {
@@ -214,14 +252,23 @@ Dialog {
             Button {
                 visible: batchOperationsVm && batchOperationsVm.isRunning
                 text: "Annulla"
+                Layout.preferredHeight: 34
+                leftPadding: 14
+                rightPadding: 14
+                hoverEnabled: true
                 onClicked: {
                     if (batchOperationsVm) {
                         batchOperationsVm.cancelCurrentOperation()
                     }
                 }
                 background: Rectangle {
-                    color: parent.hovered ? "#7F1D1D" : "#991B1B"
-                    radius: 4
+                    color: parent.hovered ? "#B91C1C" : "#991B1B"
+                    radius: 8
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: 120
+                        }
+                    }
                 }
                 contentItem: Text {
                     text: parent.text
@@ -236,16 +283,27 @@ Dialog {
             Button {
                 visible: !batchOperationsVm || !batchOperationsVm.isRunning
                 text: "Chiudi"
+                Layout.preferredHeight: 34
+                leftPadding: 16
+                rightPadding: 16
+                hoverEnabled: true
                 onClicked: root.close()
                 background: Rectangle {
-                    color: parent.hovered ? "#334155" : "#1E293B"
-                    radius: 4
-                    border.color: "#475569"
+                    color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                    radius: 8
+                    border.color: "#28374E"
+                    border.width: 1
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: 120
+                        }
+                    }
                 }
                 contentItem: Text {
                     text: parent.text
                     color: "#F8FAFC"
                     font.pixelSize: 12
+                    font.bold: true
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                 }

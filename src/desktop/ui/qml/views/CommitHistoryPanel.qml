@@ -4057,8 +4057,11 @@ Rectangle {
         id: renameBranchModal
         title: "Rinomina Branch"
         modal: true
-        width: 380
-        height: 180
+        width: 400
+        height: 205
+        padding: 16
+        topPadding: 14
+        bottomPadding: 14
         anchors.centerIn: Overlay.overlay
 
         property string targetBranch: ""
@@ -4072,16 +4075,48 @@ Rectangle {
         }
 
         background: Rectangle {
-            color: "#0F172A"
-            radius: 8
-            border.color: "#334155"
+            color: "#111824"
+            radius: 14
+            border.color: "#28374E"
             border.width: 1
+
+            Rectangle {
+                z: -2
+                anchors.fill: parent
+                anchors.margins: -8
+                radius: 20
+                color: "#000000"
+                opacity: 0.30
+            }
+            Rectangle {
+                z: -1
+                anchors.fill: parent
+                anchors.margins: -2
+                radius: 16
+                color: "#000000"
+                opacity: 0.40
+            }
         }
 
         header: Rectangle {
-            color: "#1E293B"
-            height: 38
-            radius: 8
+            color: "#161F2E"
+            height: 44
+            radius: 14
+
+            Rectangle {
+                anchors.bottom: parent.bottom
+                width: parent.width
+                height: 14
+                color: "#161F2E"
+            }
+
+            Rectangle {
+                anchors.bottom: parent.bottom
+                width: parent.width
+                height: 1
+                color: "#222F42"
+            }
+
             Text {
                 anchors.centerIn: parent
                 text: "✏ Rinomina Branch: " + renameBranchModal.targetBranch
@@ -4096,11 +4131,15 @@ Rectangle {
             TextField {
                 id: newBranchNameField
                 Layout.fillWidth: true
-                Layout.preferredHeight: 32
+                Layout.preferredHeight: 36
                 color: "#F8FAFC"
                 font.pixelSize: 12
+                selectByMouse: true
                 background: Rectangle {
-                    color: "#020617"; radius: 4; border.color: "#334155"
+                    color: "#0A0E15"
+                    radius: 8
+                    border.color: newBranchNameField.activeFocus ? "#38BDF8" : "#222F42"
+                    border.width: 1
                 }
                 onAccepted: confirmRenameBtn.clicked()
             }
@@ -4113,23 +4152,73 @@ Rectangle {
         }
 
         footer: Rectangle {
-            color: "#1E293B"
-            height: 44
-            radius: 8
+            color: "#161F2E"
+            height: 50
+            radius: 14
+
+            Rectangle {
+                anchors.top: parent.top
+                width: parent.width
+                height: 14
+                color: "#161F2E"
+            }
+
+            Rectangle {
+                anchors.top: parent.top
+                width: parent.width
+                height: 1
+                color: "#222F42"
+            }
+
             RowLayout {
                 anchors.fill: parent
-                anchors.rightMargin: 12
+                anchors.rightMargin: 14
                 spacing: 8
                 Item {
                     Layout.fillWidth: true
                 }
                 Button {
                     text: "Annulla"
+                    Layout.preferredHeight: 32
+                    leftPadding: 14
+                    rightPadding: 14
+                    hoverEnabled: true
+                    background: Rectangle {
+                        color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                        radius: 8
+                        border.color: "#28374E"
+                        border.width: 1
+                    }
+                    contentItem: Text {
+                        text: "Annulla"
+                        color: "#CBD5E1"
+                        font.pixelSize: 11
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
                     onClicked: renameBranchModal.close()
                 }
                 Button {
                     id: confirmRenameBtn
-                    text: "Rinomina"
+                    text: "✓ Rinomina"
+                    Layout.preferredHeight: 32
+                    leftPadding: 16
+                    rightPadding: 16
+                    hoverEnabled: true
+                    background: Rectangle {
+                        color: parent.hovered ? "#0EA5E9" : "#0284C7"
+                        radius: 8
+                        border.color: "#38BDF8"
+                        border.width: 1
+                    }
+                    contentItem: Text {
+                        text: "✓ Rinomina"
+                        color: "#FFFFFF"
+                        font.bold: true
+                        font.pixelSize: 11
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
                     onClicked: {
                         var newName = newBranchNameField.text.trim();
                         if (!newName || newName === renameBranchModal.targetBranch) {
@@ -4157,8 +4246,11 @@ Rectangle {
         id: deleteBranchConfirmDialog
         title: "Conferma Eliminazione Branch"
         modal: true
-        width: 380
-        height: 180
+        width: 400
+        height: 195
+        padding: 16
+        topPadding: 14
+        bottomPadding: 14
         anchors.centerIn: Overlay.overlay
 
         property string targetBranch: ""
@@ -4169,12 +4261,16 @@ Rectangle {
         }
 
         background: Rectangle {
-            color: "#0F172A"; radius: 8; border.color: "#334155"; border.width: 1
+            color: "#111824"; radius: 14; border.color: "#28374E"; border.width: 1
+            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
+            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
         }
         header: Rectangle {
-            color: "#1E293B"; height: 38; radius: 8
+            color: "#161F2E"; height: 44; radius: 14
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
             Text {
-                anchors.centerIn: parent; text: "🗑 Elimina Branch"; color: "#EF4444"; font.bold: true; font.pixelSize: 12
+                anchors.centerIn: parent; text: "🗑 Elimina Branch"; color: "#F87171"; font.bold: true; font.pixelSize: 12
             }
         }
         contentItem: Text {
@@ -4182,19 +4278,45 @@ Rectangle {
             color: "#F8FAFC"; font.pixelSize: 12; wrapMode: Text.WordWrap
         }
         footer: Rectangle {
-            color: "#1E293B"; height: 44; radius: 8
+            color: "#161F2E"; height: 50; radius: 14
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
             RowLayout {
-                anchors.fill: parent; anchors.rightMargin: 12; spacing: 8
+                anchors.fill: parent; anchors.rightMargin: 14; spacing: 8
                 Item {
                     Layout.fillWidth: true
                 }
                 Button {
-                    text: "Annulla"; onClicked: deleteBranchConfirmDialog.close()
+                    text: "Annulla"
+                    Layout.preferredHeight: 32
+                    leftPadding: 14
+                    rightPadding: 14
+                    hoverEnabled: true
+                    background: Rectangle {
+                        color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                        radius: 8
+                        border.color: "#28374E"
+                        border.width: 1
+                    }
+                    contentItem: Text {
+                        text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: deleteBranchConfirmDialog.close()
                 }
                 Button {
                     text: "Elimina"
+                    Layout.preferredHeight: 32
+                    leftPadding: 16
+                    rightPadding: 16
+                    hoverEnabled: true
+                    background: Rectangle {
+                        color: parent.hovered ? "#DC2626" : "#991B1B"
+                        radius: 8
+                        border.color: "#EF4444"
+                        border.width: 1
+                    }
                     contentItem: Text {
-                        text: "Elimina"; color: "#EF4444"; font.bold: true; horizontalAlignment: Text.AlignHCenter
+                        text: "🗑 Elimina"; color: "#FFFFFF"; font.bold: true; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                     }
                     onClicked: {
                         if (root.branchManager) root.branchManager.deleteBranch(deleteBranchConfirmDialog.targetBranch, false);
@@ -4212,8 +4334,11 @@ Rectangle {
         id: deleteTagConfirmDialog
         title: "Conferma Eliminazione Tag"
         modal: true
-        width: 380
-        height: 180
+        width: 400
+        height: 195
+        padding: 16
+        topPadding: 14
+        bottomPadding: 14
         anchors.centerIn: Overlay.overlay
 
         property string targetTag: ""
@@ -4224,12 +4349,16 @@ Rectangle {
         }
 
         background: Rectangle {
-            color: "#0F172A"; radius: 8; border.color: "#334155"; border.width: 1
+            color: "#111824"; radius: 14; border.color: "#28374E"; border.width: 1
+            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
+            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
         }
         header: Rectangle {
-            color: "#1E293B"; height: 38; radius: 8
+            color: "#161F2E"; height: 44; radius: 14
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
             Text {
-                anchors.centerIn: parent; text: "🗑 Elimina Tag"; color: "#EF4444"; font.bold: true; font.pixelSize: 12
+                anchors.centerIn: parent; text: "🗑 Elimina Tag"; color: "#F87171"; font.bold: true; font.pixelSize: 12
             }
         }
         contentItem: Text {
@@ -4237,19 +4366,45 @@ Rectangle {
             color: "#F8FAFC"; font.pixelSize: 12; wrapMode: Text.WordWrap
         }
         footer: Rectangle {
-            color: "#1E293B"; height: 44; radius: 8
+            color: "#161F2E"; height: 50; radius: 14
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
             RowLayout {
-                anchors.fill: parent; anchors.rightMargin: 12; spacing: 8
+                anchors.fill: parent; anchors.rightMargin: 14; spacing: 8
                 Item {
                     Layout.fillWidth: true
                 }
                 Button {
-                    text: "Annulla"; onClicked: deleteTagConfirmDialog.close()
+                    text: "Annulla"
+                    Layout.preferredHeight: 32
+                    leftPadding: 14
+                    rightPadding: 14
+                    hoverEnabled: true
+                    background: Rectangle {
+                        color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                        radius: 8
+                        border.color: "#28374E"
+                        border.width: 1
+                    }
+                    contentItem: Text {
+                        text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: deleteTagConfirmDialog.close()
                 }
                 Button {
                     text: "Elimina"
+                    Layout.preferredHeight: 32
+                    leftPadding: 16
+                    rightPadding: 16
+                    hoverEnabled: true
+                    background: Rectangle {
+                        color: parent.hovered ? "#DC2626" : "#991B1B"
+                        radius: 8
+                        border.color: "#EF4444"
+                        border.width: 1
+                    }
                     contentItem: Text {
-                        text: "Elimina"; color: "#EF4444"; font.bold: true; horizontalAlignment: Text.AlignHCenter
+                        text: "🗑 Elimina"; color: "#FFFFFF"; font.bold: true; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                     }
                     onClicked: {
                         if (root.branchManager) root.branchManager.deleteTag(deleteTagConfirmDialog.targetTag);
@@ -4357,21 +4512,25 @@ Rectangle {
         }
 
         background: Rectangle {
-            color: "#0F172A"
-            radius: 8
-            border.color: "#334155"
+            color: "#111824"
+            radius: 14
+            border.color: "#28374E"
             border.width: 1
+            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
+            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
         }
 
         header: Rectangle {
-            color: "#1E293B"
-            height: 42
-            radius: 8
+            color: "#161F2E"
+            height: 44
+            radius: 14
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 14
-                anchors.rightMargin: 14
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
 
                 Text {
                     text: "📄 Cronologia File (File History)"
@@ -4381,11 +4540,11 @@ Rectangle {
                 }
 
                 Rectangle {
-                    color: "#0F172A"
-                    radius: 3
+                    color: "#0F2942"
+                    radius: 6
                     border.color: "#38BDF8"
                     border.width: 1
-                    implicitWidth: 50
+                    implicitWidth: 52
                     implicitHeight: 20
                     Text {
                         anchors.centerIn: parent
@@ -4585,14 +4744,16 @@ Rectangle {
         }
 
         footer: Rectangle {
-            color: "#1E293B"
-            height: 48
-            radius: 8
+            color: "#161F2E"
+            height: 52
+            radius: 14
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 14
-                anchors.rightMargin: 14
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
                 spacing: 10
 
                 Text {
@@ -4607,18 +4768,47 @@ Rectangle {
 
                 Button {
                     text: "Annulla"
+                    Layout.preferredHeight: 32
+                    leftPadding: 14
+                    rightPadding: 14
+                    hoverEnabled: true
+                    background: Rectangle {
+                        color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                        radius: 8
+                        border.color: "#28374E"
+                        border.width: 1
+                    }
+                    contentItem: Text {
+                        text: "Annulla"
+                        color: "#CBD5E1"
+                        font.pixelSize: 11
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
                     onClicked: fileHistoryModal.close()
                 }
 
                 Button {
                     text: "Mostra Cronologia"
+                    Layout.preferredHeight: 32
+                    leftPadding: 16
+                    rightPadding: 16
+                    hoverEnabled: true
                     enabled: (fileHistoryResultsList.currentIndex >= 0 && fileHistoryResultsList.currentIndex < fileHistoryModal.filteredRepoFiles.length) || fileHistorySearchField.text.trim().length > 0
                     onClicked: fileHistoryModal.confirmSelection()
+                    background: Rectangle {
+                        color: parent.enabled ? (parent.hovered ? "#0EA5E9" : "#0284C7") : "#161F2E"
+                        radius: 8
+                        border.color: parent.enabled ? "#38BDF8" : "#222F42"
+                        border.width: 1
+                    }
                     contentItem: Text {
-                        text: "Mostra Cronologia"
-                        color: parent.enabled ? "#38BDF8" : "#64748B"
+                        text: "📄 Mostra Cronologia"
+                        color: parent.enabled ? "#FFFFFF" : "#475569"
                         font.bold: true
+                        font.pixelSize: 11
                         horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
                     }
                 }
             }

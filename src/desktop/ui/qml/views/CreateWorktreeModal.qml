@@ -8,7 +8,10 @@ Dialog {
     title: "Crea Git Worktree"
     modal: true
     width: 500
-    height: 320
+    height: 335
+    padding: 18
+    topPadding: 14
+    bottomPadding: 14
     anchors.centerIn: Overlay.overlay
 
     property var branchManager: null
@@ -54,28 +57,52 @@ Dialog {
     }
 
     background: Rectangle {
-        color: "#0F172A"
-        radius: 8
-        border.color: "#334155"
+        color: "#111824"
+        radius: 14
+        border.color: "#28374E"
         border.width: 1
+
+        Rectangle {
+            z: -2
+            anchors.fill: parent
+            anchors.margins: -8
+            radius: 20
+            color: "#000000"
+            opacity: 0.30
+        }
+        Rectangle {
+            z: -1
+            anchors.fill: parent
+            anchors.margins: -2
+            radius: 16
+            color: "#000000"
+            opacity: 0.40
+        }
     }
 
     header: Rectangle {
-        color: "#1E293B"
-        height: 44
-        radius: 8
+        color: "#161F2E"
+        height: 46
+        radius: 14
 
         Rectangle {
             anchors.bottom: parent.bottom
             width: parent.width
-            height: 8
-            color: "#1E293B"
+            height: 14
+            color: "#161F2E"
+        }
+
+        Rectangle {
+            anchors.bottom: parent.bottom
+            width: parent.width
+            height: 1
+            color: "#222F42"
         }
 
         RowLayout {
             anchors.fill: parent
             anchors.leftMargin: 16
-            anchors.rightMargin: 16
+            anchors.rightMargin: 14
 
             Text {
                 text: "📁 Crea Git Worktree"
@@ -90,13 +117,19 @@ Dialog {
 
             Button {
                 text: "✕"
-                Layout.preferredWidth: 24
-                Layout.preferredHeight: 24
+                Layout.preferredWidth: 26
+                Layout.preferredHeight: 26
+                hoverEnabled: true
                 background: Rectangle {
-                    color: "transparent"
+                    radius: 7
+                    color: parent.hovered ? "#243247" : "transparent"
                 }
                 contentItem: Text {
-                    text: "✕"; color: "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter
+                    text: "✕"
+                    color: parent.hovered ? "#F8FAFC" : "#94A3B8"
+                    font.bold: true
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
                 }
                 onClicked: root.close()
             }
@@ -109,15 +142,16 @@ Dialog {
         // Commit or branch target indicator
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 34
-            color: "#161B22"
-            radius: 4
-            border.color: "#30363D"
+            Layout.preferredHeight: 36
+            color: "#0D131D"
+            radius: 9
+            border.color: "#222F42"
+            border.width: 1
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 10
-                anchors.rightMargin: 10
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
                 spacing: 8
 
                 Text {
@@ -141,11 +175,11 @@ Dialog {
         // Worktree directory path
         ColumnLayout {
             Layout.fillWidth: true
-            spacing: 4
+            spacing: 5
 
             Text {
                 text: "Percorso cartella del Worktree:"
-                color: "#94A3B8"
+                color: "#CBD5E1"
                 font.pixelSize: 11
                 font.bold: true
             }
@@ -157,18 +191,24 @@ Dialog {
                 TextField {
                     id: pathField
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 34
+                    Layout.preferredHeight: 36
                     color: "#F8FAFC"
                     font.pixelSize: 12
                     placeholderText: "/percorso/nuovo-worktree..."
-                    placeholderTextColor: "#475569"
+                    placeholderTextColor: "#64748B"
                     selectByMouse: true
 
                     background: Rectangle {
-                        color: "#020617"
-                        radius: 4
-                        border.color: pathField.activeFocus ? "#38BDF8" : "#334155"
+                        color: "#0A0E15"
+                        radius: 8
+                        border.color: pathField.activeFocus ? "#38BDF8" : "#222F42"
                         border.width: 1
+
+                        Behavior on border.color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
                     }
 
                     onAccepted: createBtn.clicked()
@@ -176,17 +216,26 @@ Dialog {
 
                 Button {
                     text: "📂 Sfoglia..."
-                    Layout.preferredHeight: 34
-                    Layout.preferredWidth: 90
+                    Layout.preferredHeight: 36
+                    Layout.preferredWidth: 96
+                    hoverEnabled: true
                     background: Rectangle {
-                        color: parent.hovered ? "#334155" : "#1E293B"
-                        radius: 4
-                        border.color: "#475569"
+                        color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                        radius: 8
+                        border.color: "#28374E"
+                        border.width: 1
+
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
                     }
                     contentItem: Text {
                         text: "📂 Sfoglia"
                         color: "#E2E8F0"
                         font.pixelSize: 11
+                        font.bold: true
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
@@ -214,21 +263,28 @@ Dialog {
     }
 
     footer: Rectangle {
-        color: "#1E293B"
-        height: 52
-        radius: 8
+        color: "#161F2E"
+        height: 54
+        radius: 14
 
         Rectangle {
             anchors.top: parent.top
             width: parent.width
-            height: 8
-            color: "#1E293B"
+            height: 14
+            color: "#161F2E"
+        }
+
+        Rectangle {
+            anchors.top: parent.top
+            width: parent.width
+            height: 1
+            color: "#222F42"
         }
 
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 16
+            anchors.leftMargin: 18
+            anchors.rightMargin: 18
             spacing: 10
 
             Item {
@@ -237,16 +293,25 @@ Dialog {
 
             Button {
                 text: "Annulla"
-                Layout.preferredHeight: 32
+                Layout.preferredHeight: 34
+                leftPadding: 14
+                rightPadding: 14
+                hoverEnabled: true
                 background: Rectangle {
-                    color: parent.hovered ? "#334155" : "transparent"
-                    radius: 4
-                    border.color: "#475569"
+                    color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                    radius: 8
+                    border.color: "#28374E"
                     border.width: 1
+
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: 120
+                        }
+                    }
                 }
                 contentItem: Text {
                     text: "Annulla"
-                    color: "#94A3B8"
+                    color: "#CBD5E1"
                     font.pixelSize: 12
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
@@ -257,17 +322,26 @@ Dialog {
             Button {
                 id: createBtn
                 text: "📁 Crea Worktree"
-                Layout.preferredHeight: 32
-                Layout.preferredWidth: 140
+                Layout.preferredHeight: 34
+                Layout.preferredWidth: 146
                 enabled: pathField.text.trim().length > 0
+                hoverEnabled: true
 
                 background: Rectangle {
-                    color: createBtn.enabled ? (createBtn.hovered ? "#0284C7" : "#0369A1") : "#334155"
-                    radius: 4
+                    color: createBtn.enabled ? (createBtn.hovered ? "#0EA5E9" : "#0284C7") : "#161F2E"
+                    radius: 8
+                    border.color: createBtn.enabled ? "#38BDF8" : "#222F42"
+                    border.width: 1
+
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: 120
+                        }
+                    }
                 }
                 contentItem: Text {
                     text: "📁 Crea Worktree"
-                    color: createBtn.enabled ? "#FFFFFF" : "#64748B"
+                    color: createBtn.enabled ? "#FFFFFF" : "#475569"
                     font.pixelSize: 12
                     font.bold: true
                     horizontalAlignment: Text.AlignHCenter

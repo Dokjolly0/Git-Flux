@@ -6,17 +6,93 @@ Dialog {
     id: root
     title: "Gestione Branch & Sincronizzazione Remota"
     modal: true
-    width: 640
-    height: 480
+    width: 660
+    height: 520
+    padding: 18
+    topPadding: 14
+    bottomPadding: 14
     anchors.centerIn: Overlay.overlay
 
     property var branchManager: null
 
     background: Rectangle {
-        color: "#0F172A"
-        radius: 8
-        border.color: "#334155"
+        color: "#111824"
+        radius: 14
+        border.color: "#28374E"
         border.width: 1
+
+        Rectangle {
+            z: -2
+            anchors.fill: parent
+            anchors.margins: -8
+            radius: 20
+            color: "#000000"
+            opacity: 0.30
+        }
+        Rectangle {
+            z: -1
+            anchors.fill: parent
+            anchors.margins: -2
+            radius: 16
+            color: "#000000"
+            opacity: 0.40
+        }
+    }
+
+    header: Rectangle {
+        color: "#161F2E"
+        height: 46
+        radius: 14
+
+        Rectangle {
+            anchors.bottom: parent.bottom
+            width: parent.width
+            height: 14
+            color: "#161F2E"
+        }
+
+        Rectangle {
+            anchors.bottom: parent.bottom
+            width: parent.width
+            height: 1
+            color: "#222F42"
+        }
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 16
+            anchors.rightMargin: 14
+
+            Text {
+                text: "⚙ Gestione Branch & Sincronizzazione Remota"
+                color: "#F8FAFC"
+                font.bold: true
+                font.pixelSize: 13
+            }
+
+            Item {
+                Layout.fillWidth: true
+            }
+
+            Button {
+                text: "✕"
+                Layout.preferredWidth: 26
+                Layout.preferredHeight: 26
+                hoverEnabled: true
+                background: Rectangle {
+                    radius: 7
+                    color: parent.hovered ? "#243247" : "transparent"
+                }
+                contentItem: Text {
+                    text: "✕"
+                    color: parent.hovered ? "#F8FAFC" : "#94A3B8"
+                    font.bold: true
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+                onClicked: root.close()
+            }
+        }
     }
 
     contentItem: ColumnLayout {
@@ -25,13 +101,16 @@ Dialog {
         // Top Bar: Quick Remote Actions (Fetch, Pull, Push)
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 40
-            color: "#1E293B"
-            radius: 6
+            Layout.preferredHeight: 46
+            color: "#0D131D"
+            radius: 10
+            border.color: "#222F42"
+            border.width: 1
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: 6
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
                 spacing: 8
 
                 Text {
@@ -40,15 +119,37 @@ Dialog {
                     font.bold: true
                     font.pixelSize: 11
                     elide: Text.ElideMiddle
-                    Layout.maximumWidth: 260
+                    Layout.maximumWidth: 250
                 }
 
                 Button {
                     visible: root.branchManager && root.branchManager.remoteUrl && root.branchManager.remoteUrl.startsWith("http")
                     text: "🔑 Passa a SSH"
-                    Layout.preferredHeight: 28
+                    Layout.preferredHeight: 30
+                    leftPadding: 10
+                    rightPadding: 10
+                    hoverEnabled: true
                     ToolTip.text: "Converti l'URL in formato SSH (git@...) per autenticarti senza prompt di password"
                     ToolTip.visible: hovered
+                    background: Rectangle {
+                        color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                        radius: 8
+                        border.color: parent.hovered ? "#38BDF8" : "#28374E"
+                        border.width: 1
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
+                    }
+                    contentItem: Text {
+                        text: parent.text
+                        color: "#38BDF8"
+                        font.pixelSize: 11
+                        font.bold: true
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
                     onClicked: {
                         if (root.branchManager) root.branchManager.convertRemoteToSsh("origin");
                     }
@@ -56,7 +157,29 @@ Dialog {
 
                 Button {
                     text: "⬇ Fetch"
-                    Layout.preferredHeight: 28
+                    Layout.preferredHeight: 30
+                    leftPadding: 12
+                    rightPadding: 12
+                    hoverEnabled: true
+                    background: Rectangle {
+                        color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                        radius: 8
+                        border.color: parent.hovered ? "#344966" : "#28374E"
+                        border.width: 1
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
+                    }
+                    contentItem: Text {
+                        text: parent.text
+                        color: "#E2E8F0"
+                        font.pixelSize: 11
+                        font.bold: true
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
                     onClicked: {
                         if (root.branchManager) root.branchManager.fetchRemote("origin");
                     }
@@ -64,7 +187,29 @@ Dialog {
 
                 Button {
                     text: "⬇ Pull"
-                    Layout.preferredHeight: 28
+                    Layout.preferredHeight: 30
+                    leftPadding: 12
+                    rightPadding: 12
+                    hoverEnabled: true
+                    background: Rectangle {
+                        color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                        radius: 8
+                        border.color: parent.hovered ? "#344966" : "#28374E"
+                        border.width: 1
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
+                    }
+                    contentItem: Text {
+                        text: parent.text
+                        color: "#E2E8F0"
+                        font.pixelSize: 11
+                        font.bold: true
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
                     onClicked: {
                         if (root.branchManager) root.branchManager.pullRemote("origin");
                     }
@@ -72,7 +217,29 @@ Dialog {
 
                 Button {
                     text: "⬆ Push"
-                    Layout.preferredHeight: 28
+                    Layout.preferredHeight: 30
+                    leftPadding: 12
+                    rightPadding: 12
+                    hoverEnabled: true
+                    background: Rectangle {
+                        color: parent.hovered ? "#0EA5E9" : "#0284C7"
+                        radius: 8
+                        border.color: "#38BDF8"
+                        border.width: 1
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
+                    }
+                    contentItem: Text {
+                        text: parent.text
+                        color: "#FFFFFF"
+                        font.pixelSize: 11
+                        font.bold: true
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
                     onClicked: {
                         if (root.branchManager) root.branchManager.pushRemote("origin", false);
                     }
@@ -86,10 +253,18 @@ Dialog {
                 Button {
                     visible: root.branchManager && root.branchManager.hasConflicts
                     text: "⚠ Annulla Merge (Abort)"
-                    Layout.preferredHeight: 28
+                    Layout.preferredHeight: 30
+                    leftPadding: 12
+                    rightPadding: 12
+                    hoverEnabled: true
                     background: Rectangle {
-                        color: "#DC2626"
-                        radius: 4
+                        color: parent.hovered ? "#EF4444" : "#DC2626"
+                        radius: 8
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
                     }
                     contentItem: Text {
                         text: parent.text
@@ -110,9 +285,9 @@ Dialog {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            color: "#161B22"
-            radius: 6
-            border.color: "#334155"
+            color: "#0D131D"
+            radius: 10
+            border.color: "#222F42"
             border.width: 1
             clip: true
 
@@ -120,6 +295,8 @@ Dialog {
                 id: branchList
                 SmoothWheelScroller {}
                 anchors.fill: parent
+                anchors.margins: 6
+                spacing: 4
                 model: root.branchManager ? root.branchManager.branchList : null
                 boundsBehavior: Flickable.StopAtBounds
                 maximumFlickVelocity: 6000
@@ -129,22 +306,41 @@ Dialog {
 
                 delegate: Rectangle {
                     width: branchList.width
-                    height: 44
-                    color: model.isCurrent ? "#1E293B" : (listMouse.containsMouse ? "#243248" : "transparent")
-                    border.color: "#1E293B"
+                    height: 46
+                    radius: 8
+                    color: model.isCurrent
+                        ? "#13263B"
+                        : (listMouse.containsMouse ? "#172233" : "#101723")
+                    border.color: model.isCurrent
+                        ? "#1E4066"
+                        : (listMouse.containsMouse ? "#283952" : "#1B2536")
                     border.width: 1
+
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: 110
+                        }
+                    }
 
                     RowLayout {
                         anchors.fill: parent
                         anchors.leftMargin: 12
                         anchors.rightMargin: 12
-                        spacing: 8
+                        spacing: 10
 
-                        Text {
-                            text: model.isCurrent ? "✓" : " "
-                            color: "#10B981"
-                            font.bold: true
-                            font.pixelSize: 14
+                        Rectangle {
+                            Layout.preferredWidth: 22
+                            Layout.preferredHeight: 22
+                            radius: 7
+                            color: model.isCurrent ? "#064E3B" : "#182232"
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: model.isCurrent ? "✓" : "⎇"
+                                color: model.isCurrent ? "#34D399" : "#94A3B8"
+                                font.bold: true
+                                font.pixelSize: 12
+                            }
                         }
 
                         ColumnLayout {
@@ -153,9 +349,11 @@ Dialog {
 
                             Text {
                                 text: model.shortName
-                                color: model.isCurrent ? "#60A5FA" : "#F8FAFC"
+                                color: model.isCurrent ? "#38BDF8" : "#F8FAFC"
                                 font.bold: model.isCurrent
                                 font.pixelSize: 12
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
                             }
 
                             Text {
@@ -171,7 +369,29 @@ Dialog {
                         Button {
                             visible: !model.isCurrent
                             text: "Switch"
-                            Layout.preferredHeight: 24
+                            Layout.preferredHeight: 26
+                            leftPadding: 10
+                            rightPadding: 10
+                            hoverEnabled: true
+                            background: Rectangle {
+                                color: parent.hovered ? "#0284C7" : "#182334"
+                                radius: 7
+                                border.color: parent.hovered ? "#38BDF8" : "#29384D"
+                                border.width: 1
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
+                            }
+                            contentItem: Text {
+                                text: parent.text
+                                color: parent.hovered ? "#FFFFFF" : "#E2E8F0"
+                                font.pixelSize: 11
+                                font.bold: true
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
                             onClicked: {
                                 if (root.branchManager) root.branchManager.checkoutBranch(model.name);
                             }
@@ -181,7 +401,29 @@ Dialog {
                         Button {
                             visible: !model.isCurrent
                             text: "Merge"
-                            Layout.preferredHeight: 24
+                            Layout.preferredHeight: 26
+                            leftPadding: 10
+                            rightPadding: 10
+                            hoverEnabled: true
+                            background: Rectangle {
+                                color: parent.hovered ? "#10B981" : "#182334"
+                                radius: 7
+                                border.color: parent.hovered ? "#34D399" : "#29384D"
+                                border.width: 1
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
+                            }
+                            contentItem: Text {
+                                text: parent.text
+                                color: parent.hovered ? "#FFFFFF" : "#E2E8F0"
+                                font.pixelSize: 11
+                                font.bold: true
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
                             onClicked: {
                                 if (root.branchManager) root.branchManager.mergeBranch(model.name, false);
                             }
@@ -191,7 +433,26 @@ Dialog {
                         Button {
                             visible: !model.isCurrent
                             text: "🗑"
-                            Layout.preferredHeight: 24
+                            Layout.preferredHeight: 26
+                            Layout.preferredWidth: 28
+                            hoverEnabled: true
+                            background: Rectangle {
+                                color: parent.hovered ? "#3B1219" : "#182334"
+                                radius: 7
+                                border.color: parent.hovered ? "#EF4444" : "#29384D"
+                                border.width: 1
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
+                            }
+                            contentItem: Text {
+                                text: parent.text
+                                font.pixelSize: 11
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
                             onClicked: {
                                 if (root.branchManager) root.branchManager.deleteBranch(model.name, false);
                             }
@@ -208,13 +469,46 @@ Dialog {
             }
         }
 
-        // Bottom status bar
-        Text {
+        // Bottom status bar & Close button
+        RowLayout {
             Layout.fillWidth: true
-            text: root.branchManager ? root.branchManager.statusMessage : ""
-            color: "#94A3B8"
-            font.pixelSize: 11
-            elide: Text.ElideRight
+            spacing: 10
+
+            Text {
+                Layout.fillWidth: true
+                text: root.branchManager ? root.branchManager.statusMessage : ""
+                color: "#94A3B8"
+                font.pixelSize: 11
+                elide: Text.ElideRight
+            }
+
+            Button {
+                text: "Chiudi"
+                Layout.preferredHeight: 32
+                leftPadding: 16
+                rightPadding: 16
+                hoverEnabled: true
+                background: Rectangle {
+                    color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                    radius: 8
+                    border.color: "#28374E"
+                    border.width: 1
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: 120
+                        }
+                    }
+                }
+                contentItem: Text {
+                    text: parent.text
+                    color: "#E2E8F0"
+                    font.pixelSize: 11
+                    font.bold: true
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+                onClicked: root.close()
+            }
         }
     }
 }

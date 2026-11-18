@@ -6,8 +6,11 @@ Dialog {
     id: root
     title: "Crea Pull Request"
     modal: true
-    width: 540
-    height: 460
+    width: 550
+    height: 470
+    padding: 18
+    topPadding: 14
+    bottomPadding: 14
     anchors.centerIn: Overlay.overlay
 
     property var branchManager: null
@@ -36,28 +39,52 @@ Dialog {
     }
 
     background: Rectangle {
-        color: "#0F172A"
-        radius: 8
-        border.color: "#334155"
+        color: "#111824"
+        radius: 14
+        border.color: "#28374E"
         border.width: 1
+
+        Rectangle {
+            z: -2
+            anchors.fill: parent
+            anchors.margins: -8
+            radius: 20
+            color: "#000000"
+            opacity: 0.30
+        }
+        Rectangle {
+            z: -1
+            anchors.fill: parent
+            anchors.margins: -2
+            radius: 16
+            color: "#000000"
+            opacity: 0.40
+        }
     }
 
     header: Rectangle {
-        color: "#1E293B"
-        height: 44
-        radius: 8
+        color: "#161F2E"
+        height: 46
+        radius: 14
 
         Rectangle {
             anchors.bottom: parent.bottom
             width: parent.width
-            height: 8
-            color: "#1E293B"
+            height: 14
+            color: "#161F2E"
+        }
+
+        Rectangle {
+            anchors.bottom: parent.bottom
+            width: parent.width
+            height: 1
+            color: "#222F42"
         }
 
         RowLayout {
             anchors.fill: parent
             anchors.leftMargin: 16
-            anchors.rightMargin: 16
+            anchors.rightMargin: 14
 
             Text {
                 text: "🚀 Crea Pull Request"
@@ -72,13 +99,19 @@ Dialog {
 
             Button {
                 text: "✕"
-                Layout.preferredWidth: 24
-                Layout.preferredHeight: 24
+                Layout.preferredWidth: 26
+                Layout.preferredHeight: 26
+                hoverEnabled: true
                 background: Rectangle {
-                    color: "transparent"
+                    radius: 7
+                    color: parent.hovered ? "#243247" : "transparent"
                 }
                 contentItem: Text {
-                    text: "✕"; color: "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter
+                    text: "✕"
+                    color: parent.hovered ? "#F8FAFC" : "#94A3B8"
+                    font.bold: true
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
                 }
                 onClicked: root.close()
             }
@@ -91,10 +124,11 @@ Dialog {
         // Branch comparison banner
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 40
-            color: "#161B22"
-            radius: 6
-            border.color: "#30363D"
+            Layout.preferredHeight: 42
+            color: "#0D131D"
+            radius: 10
+            border.color: "#222F42"
+            border.width: 1
 
             RowLayout {
                 anchors.fill: parent
@@ -104,9 +138,9 @@ Dialog {
 
                 Rectangle {
                     color: "#0E7490"
-                    radius: 4
-                    Layout.preferredHeight: 22
-                    Layout.preferredWidth: Math.min(180, srcText.implicitWidth + 14)
+                    radius: 7
+                    Layout.preferredHeight: 24
+                    Layout.preferredWidth: Math.min(180, srcText.implicitWidth + 16)
                     Text {
                         id: srcText
                         anchors.centerIn: parent
@@ -126,12 +160,12 @@ Dialog {
                 }
 
                 Rectangle {
-                    color: "#1E293B"
-                    radius: 4
+                    color: "#152336"
+                    radius: 7
                     border.color: "#38BDF8"
                     border.width: 1
-                    Layout.preferredHeight: 22
-                    Layout.preferredWidth: Math.min(180, tgtText.implicitWidth + 14)
+                    Layout.preferredHeight: 24
+                    Layout.preferredWidth: Math.min(180, tgtText.implicitWidth + 16)
                     Text {
                         id: tgtText
                         anchors.centerIn: parent
@@ -158,11 +192,11 @@ Dialog {
         // Title
         ColumnLayout {
             Layout.fillWidth: true
-            spacing: 4
+            spacing: 5
 
             Text {
                 text: "Titolo della Pull Request:"
-                color: "#94A3B8"
+                color: "#CBD5E1"
                 font.pixelSize: 11
                 font.bold: true
             }
@@ -170,18 +204,24 @@ Dialog {
             TextField {
                 id: titleField
                 Layout.fillWidth: true
-                Layout.preferredHeight: 34
+                Layout.preferredHeight: 36
                 color: "#F8FAFC"
                 font.pixelSize: 12
                 placeholderText: "Inserisci titolo della Pull Request..."
-                placeholderTextColor: "#475569"
+                placeholderTextColor: "#64748B"
                 selectByMouse: true
 
                 background: Rectangle {
-                    color: "#020617"
-                    radius: 4
-                    border.color: titleField.activeFocus ? "#38BDF8" : "#334155"
+                    color: "#0A0E15"
+                    radius: 8
+                    border.color: titleField.activeFocus ? "#38BDF8" : "#222F42"
                     border.width: 1
+
+                    Behavior on border.color {
+                        ColorAnimation {
+                            duration: 120
+                        }
+                    }
                 }
             }
         }
@@ -190,11 +230,11 @@ Dialog {
         ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: 4
+            spacing: 5
 
             Text {
                 text: "Descrizione / Note (opzionale):"
-                color: "#94A3B8"
+                color: "#CBD5E1"
                 font.pixelSize: 11
                 font.bold: true
             }
@@ -208,17 +248,23 @@ Dialog {
                 TextArea {
                     id: descField
                     color: "#F8FAFC"
-                    font.pixelSize: 11
+                    font.pixelSize: 12
                     placeholderText: "Descrivi le modifiche incluse in questa Pull Request..."
-                    placeholderTextColor: "#475569"
+                    placeholderTextColor: "#64748B"
                     selectByMouse: true
                     wrapMode: TextEdit.Wrap
 
                     background: Rectangle {
-                        color: "#020617"
-                        radius: 4
-                        border.color: descField.activeFocus ? "#38BDF8" : "#334155"
+                        color: "#0A0E15"
+                        radius: 8
+                        border.color: descField.activeFocus ? "#38BDF8" : "#222F42"
                         border.width: 1
+
+                        Behavior on border.color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
                     }
                 }
             }
@@ -227,16 +273,17 @@ Dialog {
         // URL Preview
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 28
-            color: "#0D1117"
-            radius: 4
-            border.color: "#21262D"
+            Layout.preferredHeight: 30
+            color: "#0D131D"
+            radius: 8
+            border.color: "#1E293B"
+            border.width: 1
             visible: root.calculatedPrUrl.length > 0
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 8
-                anchors.rightMargin: 8
+                anchors.leftMargin: 10
+                anchors.rightMargin: 10
                 spacing: 6
 
                 Text {
@@ -267,21 +314,28 @@ Dialog {
     }
 
     footer: Rectangle {
-        color: "#1E293B"
-        height: 52
-        radius: 8
+        color: "#161F2E"
+        height: 54
+        radius: 14
 
         Rectangle {
             anchors.top: parent.top
             width: parent.width
-            height: 8
-            color: "#1E293B"
+            height: 14
+            color: "#161F2E"
+        }
+
+        Rectangle {
+            anchors.top: parent.top
+            width: parent.width
+            height: 1
+            color: "#222F42"
         }
 
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 16
+            anchors.leftMargin: 18
+            anchors.rightMargin: 18
             spacing: 10
 
             Item {
@@ -290,16 +344,25 @@ Dialog {
 
             Button {
                 text: "Annulla"
-                Layout.preferredHeight: 32
+                Layout.preferredHeight: 34
+                leftPadding: 14
+                rightPadding: 14
+                hoverEnabled: true
                 background: Rectangle {
-                    color: parent.hovered ? "#334155" : "transparent"
-                    radius: 4
-                    border.color: "#475569"
+                    color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                    radius: 8
+                    border.color: "#28374E"
                     border.width: 1
+
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: 120
+                        }
+                    }
                 }
                 contentItem: Text {
                     text: "Annulla"
-                    color: "#94A3B8"
+                    color: "#CBD5E1"
                     font.pixelSize: 12
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
@@ -310,17 +373,26 @@ Dialog {
             Button {
                 id: openBrowserBtn
                 text: "🌐 Apri nel Browser"
-                Layout.preferredHeight: 32
-                Layout.preferredWidth: 150
+                Layout.preferredHeight: 34
+                Layout.preferredWidth: 160
                 enabled: root.calculatedPrUrl.length > 0
+                hoverEnabled: true
 
                 background: Rectangle {
-                    color: openBrowserBtn.enabled ? (openBrowserBtn.hovered ? "#0284C7" : "#0284C7") : "#334155"
-                    radius: 4
+                    color: openBrowserBtn.enabled ? (openBrowserBtn.hovered ? "#0EA5E9" : "#0284C7") : "#161F2E"
+                    radius: 8
+                    border.color: openBrowserBtn.enabled ? "#38BDF8" : "#222F42"
+                    border.width: 1
+
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: 120
+                        }
+                    }
                 }
                 contentItem: Text {
                     text: "🌐 Apri nel Browser"
-                    color: openBrowserBtn.enabled ? "#FFFFFF" : "#64748B"
+                    color: openBrowserBtn.enabled ? "#FFFFFF" : "#475569"
                     font.pixelSize: 12
                     font.bold: true
                     horizontalAlignment: Text.AlignHCenter

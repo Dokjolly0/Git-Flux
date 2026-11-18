@@ -24,7 +24,7 @@ Item {
     Rectangle {
         anchors.fill: parent
         color: "#000000"
-        opacity: 0.65
+        opacity: 0.68
 
         MouseArea {
             anchors.fill: parent
@@ -35,13 +35,31 @@ Item {
     // Modal container
     Rectangle {
         id: modalContainer
-        width: Math.min(parent.width - 64, 820)
-        height: Math.min(parent.height - 64, 560)
+        width: Math.min(parent.width - 64, 840)
+        height: Math.min(parent.height - 64, 570)
         anchors.centerIn: parent
-        color: "#161B22"
-        radius: 12
-        border.color: "#30363D"
+        color: "#111824"
+        radius: 16
+        border.color: "#28374E"
         border.width: 1
+
+        // Soft ambient drop shadow
+        Rectangle {
+            z: -2
+            anchors.fill: parent
+            anchors.margins: -10
+            radius: 24
+            color: "#000000"
+            opacity: 0.30
+        }
+        Rectangle {
+            z: -1
+            anchors.fill: parent
+            anchors.margins: -3
+            radius: 18
+            color: "#000000"
+            opacity: 0.45
+        }
 
         MouseArea {
             // Prevent inside clicks from closing the modal
@@ -50,7 +68,7 @@ Item {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 20
+            anchors.margins: 22
             spacing: 16
 
             // Modal Header
@@ -59,17 +77,27 @@ Item {
 
                 ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: 2
+                    spacing: 3
 
                     RowLayout {
-                        spacing: 8
-                        Text {
-                            text: "⚡"
-                            font.pixelSize: 18
+                        spacing: 10
+                        Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 9
+                            color: "#0F2942"
+                            border.color: "#1E4066"
+                            border.width: 1
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "⚡"
+                                font.pixelSize: 16
+                            }
                         }
                         Text {
                             text: "Apertura Rapida Multi-Gruppo"
-                            color: "#F0F6FC"
+                            color: "#F8FAFC"
                             font.pixelSize: 17
                             font.bold: true
                         }
@@ -77,7 +105,7 @@ Item {
 
                     Text {
                         text: "Seleziona uno o più gruppi: i repository condivisi vengono uniti senza duplicati in una sessione volatile."
-                        color: "#8B949E"
+                        color: "#94A3B8"
                         font.pixelSize: 12
                     }
                 }
@@ -85,17 +113,21 @@ Item {
                 Button {
                     text: "✕"
                     flat: true
+                    Layout.preferredWidth: 30
+                    Layout.preferredHeight: 30
+                    hoverEnabled: true
                     onClicked: root.close()
                     contentItem: Text {
                         text: "✕"
-                        color: "#8B949E"
-                        font.pixelSize: 16
+                        color: parent.hovered ? "#F8FAFC" : "#94A3B8"
+                        font.pixelSize: 14
+                        font.bold: true
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
                     background: Rectangle {
-                        color: parent.hovered ? "#21262D" : "transparent"
-                        radius: 6
+                        color: parent.hovered ? "#243247" : "transparent"
+                        radius: 8
                     }
                 }
             }
@@ -103,7 +135,7 @@ Item {
             Rectangle {
                 Layout.fillWidth: true
                 height: 1
-                color: "#30363D"
+                color: "#222F42"
             }
 
             // Two-column body: Left Groups, Right Deduplicated Preview
@@ -115,21 +147,22 @@ Item {
                 // LEFT COLUMN: Group Selection
                 Rectangle {
                     Layout.fillHeight: true
-                    Layout.preferredWidth: 320
-                    color: "#0E1117"
-                    radius: 8
-                    border.color: "#30363D"
+                    Layout.preferredWidth: 325
+                    color: "#0D131D"
+                    radius: 12
+                    border.color: "#222F42"
+                    border.width: 1
 
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: 12
+                        anchors.margins: 14
                         spacing: 10
 
                         RowLayout {
                             Layout.fillWidth: true
                             Text {
                                 text: "Gruppi Catalogo"
-                                color: "#F0F6FC"
+                                color: "#F8FAFC"
                                 font.pixelSize: 13
                                 font.bold: true
                                 Layout.fillWidth: true
@@ -137,29 +170,42 @@ Item {
 
                             Button {
                                 text: "Tutti"
-                                flat: true
+                                Layout.preferredHeight: 24
+                                leftPadding: 8
+                                rightPadding: 8
+                                hoverEnabled: true
                                 onClicked: quickOpenVm.selectAllGroups()
                                 contentItem: Text {
                                     text: "Tutti"
-                                    color: "#00E5FF"
+                                    color: "#38BDF8"
                                     font.pixelSize: 11
+                                    font.bold: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
                                 }
                                 background: Rectangle {
-                                    color: "transparent"
+                                    color: parent.hovered ? "#152336" : "transparent"
+                                    radius: 6
                                 }
                             }
 
                             Button {
                                 text: "Nessuno"
-                                flat: true
+                                Layout.preferredHeight: 24
+                                leftPadding: 8
+                                rightPadding: 8
+                                hoverEnabled: true
                                 onClicked: quickOpenVm.clearSelection()
                                 contentItem: Text {
                                     text: "Nessuno"
-                                    color: "#8B949E"
+                                    color: "#94A3B8"
                                     font.pixelSize: 11
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
                                 }
                                 background: Rectangle {
-                                    color: "transparent"
+                                    color: parent.hovered ? "#182232" : "transparent"
+                                    radius: 6
                                 }
                             }
                         }
@@ -180,39 +226,52 @@ Item {
 
                             delegate: Rectangle {
                                 width: groupSelectListView.width
-                                height: 42
-                                radius: 6
-                                color: isSelected ? "#21262D" : (mouseArea.containsMouse ? "#1A202C" : "#13171F")
-                                border.color: isSelected ? "#00E5FF" : "#30363D"
-                                border.width: isSelected ? 1 : 1
+                                height: 44
+                                radius: 9
+                                color: isSelected ? "#15263B" : (mouseArea.containsMouse ? "#172233" : "#111926")
+                                border.color: isSelected ? "#38BDF8" : (mouseArea.containsMouse ? "#283952" : "#1D283A")
+                                border.width: 1
 
                                 readonly property bool isSelected: quickOpenVm.selectedGroupIds.indexOf(model.id) !== -1
+
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
 
                                 MouseArea {
                                     id: mouseArea
                                     anchors.fill: parent
                                     hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
                                     onClicked: quickOpenVm.toggleGroup(model.id)
                                 }
 
                                 RowLayout {
                                     anchors.fill: parent
-                                    anchors.leftMargin: 10
-                                    anchors.rightMargin: 10
-                                    spacing: 8
+                                    anchors.leftMargin: 12
+                                    anchors.rightMargin: 12
+                                    spacing: 10
 
                                     Rectangle {
-                                        width: 16
-                                        height: 16
-                                        radius: 4
-                                        color: isSelected ? "#00E5FF" : "transparent"
-                                        border.color: isSelected ? "#00E5FF" : "#8B949E"
+                                        width: 18
+                                        height: 18
+                                        radius: 6
+                                        color: isSelected ? "#0284C7" : "#0A0E15"
+                                        border.color: isSelected ? "#38BDF8" : "#334155"
                                         border.width: 1
+
+                                        Behavior on color {
+                                            ColorAnimation {
+                                                duration: 110
+                                            }
+                                        }
 
                                         Text {
                                             anchors.centerIn: parent
                                             text: "✓"
-                                            color: "#0E1117"
+                                            color: "#FFFFFF"
                                             font.pixelSize: 11
                                             font.bold: true
                                             visible: isSelected
@@ -221,7 +280,7 @@ Item {
 
                                     Text {
                                         text: model.name
-                                        color: "#F0F6FC"
+                                        color: "#F8FAFC"
                                         font.pixelSize: 13
                                         font.bold: isSelected
                                         Layout.fillWidth: true
@@ -230,17 +289,19 @@ Item {
 
                                     Rectangle {
                                         height: 20
-                                        width: countText.implicitWidth + 12
+                                        width: countText.implicitWidth + 14
                                         radius: 10
-                                        color: "#21262D"
-                                        border.color: "#30363D"
+                                        color: "#182334"
+                                        border.color: "#28374E"
+                                        border.width: 1
 
                                         Text {
                                             id: countText
                                             anchors.centerIn: parent
                                             text: model.repositoryCount + " repo"
-                                            color: "#8B949E"
+                                            color: "#94A3B8"
                                             font.pixelSize: 10
+                                            font.bold: true
                                         }
                                     }
                                 }
@@ -253,13 +314,14 @@ Item {
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    color: "#0E1117"
-                    radius: 8
-                    border.color: "#30363D"
+                    color: "#0D131D"
+                    radius: 12
+                    border.color: "#222F42"
+                    border.width: 1
 
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: 12
+                        anchors.margins: 14
                         spacing: 10
 
                         RowLayout {
@@ -268,7 +330,7 @@ Item {
 
                             Text {
                                 text: "Repository Risultanti"
-                                color: "#F0F6FC"
+                                color: "#F8FAFC"
                                 font.pixelSize: 13
                                 font.bold: true
                             }
@@ -277,14 +339,15 @@ Item {
                                 height: 22
                                 width: uniqueCountLabel.implicitWidth + 14
                                 radius: 11
-                                color: "#161B22"
-                                border.color: "#00E5FF"
+                                color: "#0F2942"
+                                border.color: "#38BDF8"
+                                border.width: 1
 
                                 Text {
                                     id: uniqueCountLabel
                                     anchors.centerIn: parent
                                     text: quickOpenVm.resolvedRepositoriesCount + " unici"
-                                    color: "#00E5FF"
+                                    color: "#38BDF8"
                                     font.pixelSize: 11
                                     font.bold: true
                                 }
@@ -295,15 +358,16 @@ Item {
                                 height: 22
                                 width: dedupLabel.implicitWidth + 14
                                 radius: 11
-                                color: "#2B1A4A"
+                                color: "#221248"
                                 border.color: "#7C4DFF"
+                                border.width: 1
                                 visible: quickOpenVm.deduplicatedCount > 0
 
                                 Text {
                                     id: dedupLabel
                                     anchors.centerIn: parent
                                     text: "⚡ " + quickOpenVm.deduplicatedCount + " duplicati uniti"
-                                    color: "#D6B4FC"
+                                    color: "#E9D5FF"
                                     font.pixelSize: 11
                                     font.bold: true
                                 }
@@ -331,16 +395,17 @@ Item {
 
                             delegate: Rectangle {
                                 width: previewListView.width
-                                height: 46
-                                radius: 6
-                                color: "#161B22"
-                                border.color: "#30363D"
+                                height: 48
+                                radius: 9
+                                color: "#131C2A"
+                                border.color: "#222F42"
+                                border.width: 1
 
                                 RowLayout {
                                     anchors.fill: parent
                                     anchors.leftMargin: 12
                                     anchors.rightMargin: 12
-                                    spacing: 8
+                                    spacing: 10
 
                                     Text {
                                         text: "📁"
@@ -353,7 +418,7 @@ Item {
 
                                         Text {
                                             text: modelData.displayName
-                                            color: "#F0F6FC"
+                                            color: "#F8FAFC"
                                             font.pixelSize: 13
                                             font.bold: true
                                             elide: Text.ElideRight
@@ -361,7 +426,7 @@ Item {
 
                                         Text {
                                             text: modelData.localPath
-                                            color: "#8B949E"
+                                            color: "#94A3B8"
                                             font.pixelSize: 11
                                             elide: Text.ElideMiddle
                                             Layout.fillWidth: true
@@ -370,17 +435,19 @@ Item {
 
                                     Rectangle {
                                         visible: modelData.isMissing
-                                        height: 18
-                                        width: 58
-                                        radius: 4
-                                        color: "#3A1B1F"
-                                        border.color: "#F85149"
+                                        height: 20
+                                        width: 62
+                                        radius: 6
+                                        color: "#3B1219"
+                                        border.color: "#EF4444"
+                                        border.width: 1
 
                                         Text {
                                             anchors.centerIn: parent
                                             text: "Mancante"
-                                            color: "#F85149"
+                                            color: "#FCA5A5"
                                             font.pixelSize: 10
+                                            font.bold: true
                                         }
                                     }
                                 }
@@ -399,7 +466,7 @@ Item {
 
                                     Text {
                                         text: "Nessun gruppo selezionato"
-                                        color: "#8B949E"
+                                        color: "#94A3B8"
                                         font.pixelSize: 13
                                         font.bold: true
                                         Layout.alignment: Qt.AlignHCenter
@@ -407,7 +474,7 @@ Item {
 
                                     Text {
                                         text: "Seleziona uno o più gruppi a sinistra per generare il contesto multi-repo volatile."
-                                        color: "#6E7681"
+                                        color: "#64748B"
                                         font.pixelSize: 11
                                         wrapMode: Text.WordWrap
                                         Layout.maximumWidth: 260
@@ -428,45 +495,71 @@ Item {
                 Text {
                     id: footerTip
                     text: "Le sessioni rapide non modificano i file di configurazione del workspace."
-                    color: "#6E7681"
+                    color: "#64748B"
                     font.pixelSize: 11
                     Layout.fillWidth: true
                 }
 
                 Button {
                     text: "Annulla"
+                    Layout.preferredHeight: 36
+                    leftPadding: 16
+                    rightPadding: 16
+                    hoverEnabled: true
                     onClicked: root.close()
                     contentItem: Text {
                         text: "Annulla"
-                        color: "#F0F6FC"
-                        font.pixelSize: 13
+                        color: "#CBD5E1"
+                        font.pixelSize: 12
+                        font.bold: true
                         horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
                     }
                     background: Rectangle {
-                        color: parent.hovered ? "#30363D" : "#21262D"
-                        radius: 6
-                        border.color: "#30363D"
+                        color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                        radius: 8
+                        border.color: "#28374E"
+                        border.width: 1
+
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
                     }
                 }
 
                 Button {
                     enabled: quickOpenVm.resolvedRepositoriesCount > 0
                     text: "Apri Sessione Rapida (" + quickOpenVm.resolvedRepositoriesCount + " Repo)"
+                    Layout.preferredHeight: 36
+                    leftPadding: 18
+                    rightPadding: 18
+                    hoverEnabled: true
                     onClicked: {
                         if (quickOpenVm.openQuickSession()) {
                             root.close();
                         }
                     }
                     contentItem: Text {
-                        text: "Apri Sessione Rapida (" + quickOpenVm.resolvedRepositoriesCount + " Repo)"
-                        color: parent.enabled ? "#0E1117" : "#484F58"
-                        font.pixelSize: 13
+                        text: "⚡ Apri Sessione Rapida (" + quickOpenVm.resolvedRepositoriesCount + " Repo)"
+                        color: parent.enabled ? "#FFFFFF" : "#475569"
+                        font.pixelSize: 12
                         font.bold: true
                         horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
                     }
                     background: Rectangle {
-                        color: parent.enabled ? (parent.hovered ? "#33ECFF" : "#00E5FF") : "#21262D"
-                        radius: 6
+                        color: parent.enabled ? (parent.hovered ? "#0EA5E9" : "#0284C7") : "#161F2E"
+                        radius: 8
+                        border.color: parent.enabled ? "#38BDF8" : "#222F42"
+                        border.width: 1
+
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
                     }
                 }
             }

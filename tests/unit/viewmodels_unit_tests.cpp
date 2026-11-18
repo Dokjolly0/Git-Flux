@@ -3822,4 +3822,14 @@ TEST_CASE("Flux UI Kit QML components load and instantiate cleanly", "[qml][ui]"
 
     auto branchSwitcherObj = requireValidComponent(qmlBaseDir / "views" / "BranchSwitcherDropdown.qml");
     CHECK(branchSwitcherObj->property("implicitHeight").toInt() == 32);
+
+    requireValidComponent(qmlBaseDir / "views" / "CreateBranchModal.qml");
+    requireValidComponent(qmlBaseDir / "views" / "CreateTagModal.qml");
+    requireValidComponent(qmlBaseDir / "views" / "CreateWorktreeModal.qml");
+    requireValidComponent(qmlBaseDir / "views" / "PullRequestModal.qml");
+    requireValidComponent(qmlBaseDir / "views" / "BranchManagerModal.qml");
+    requireValidComponent(qmlBaseDir / "views" / "StashManagerModal.qml");
+    requireValidComponent(qmlBaseDir / "views" / "BatchProgressModal.qml");
+    requireValidComponent(qmlBaseDir / "views" / "ConflictResolverModal.qml");
+    requireValidComponent(qmlBaseDir / "views" / "CloneRepositoryModal.qml");
 }

@@ -6,8 +6,10 @@ Dialog {
     id: root
     title: "Risolutore Conflitti a 3 Vie"
     modal: true
-    width: 900
-    height: 640
+    width: 920
+    height: 650
+    padding: 16
+    header: null
     anchors.centerIn: Overlay.overlay
 
     property var conflictResolver: null
@@ -21,29 +23,46 @@ Dialog {
     }
 
     background: Rectangle {
-        color: "#0F172A"
-        radius: 8
-        border.color: "#334155"
+        color: "#111824"
+        radius: 14
+        border.color: "#28374E"
         border.width: 1
+
+        Rectangle {
+            z: -2
+            anchors.fill: parent
+            anchors.margins: -8
+            radius: 20
+            color: "#000000"
+            opacity: 0.30
+        }
+        Rectangle {
+            z: -1
+            anchors.fill: parent
+            anchors.margins: -2
+            radius: 16
+            color: "#000000"
+            opacity: 0.40
+        }
     }
 
     contentItem: ColumnLayout {
-        spacing: 10
+        spacing: 12
 
         // ==========================================
         // 1. MODAL HEADER: FILE NAME & PROGRESS
         // ==========================================
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 44
-            color: "#1E293B"
-            radius: 6
-            border.color: "#334155"
+            Layout.preferredHeight: 46
+            color: "#161F2E"
+            radius: 10
+            border.color: "#243247"
             border.width: 1
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 12
+                anchors.leftMargin: 14
                 anchors.rightMargin: 12
                 spacing: 10
 
@@ -67,9 +86,11 @@ Dialog {
                 // Hunk Progress
                 Rectangle {
                     Layout.preferredHeight: 24
-                    implicitWidth: hunkProgressText.implicitWidth + 14
+                    implicitWidth: hunkProgressText.implicitWidth + 16
                     radius: 12
-                    color: (root.conflictResolver && root.conflictResolver.allResolved) ? "#065F46" : "#7C2D12"
+                    color: (root.conflictResolver && root.conflictResolver.allResolved) ? "#064E3B" : "#451A03"
+                    border.color: (root.conflictResolver && root.conflictResolver.allResolved) ? "#10B981" : "#F59E0B"
+                    border.width: 1
 
                     Text {
                         id: hunkProgressText
@@ -83,6 +104,25 @@ Dialog {
                         font.pixelSize: 11
                     }
                 }
+
+                Button {
+                    text: "✕"
+                    Layout.preferredWidth: 26
+                    Layout.preferredHeight: 26
+                    hoverEnabled: true
+                    background: Rectangle {
+                        radius: 7
+                        color: parent.hovered ? "#243247" : "transparent"
+                    }
+                    contentItem: Text {
+                        text: "✕"
+                        color: parent.hovered ? "#F8FAFC" : "#94A3B8"
+                        font.bold: true
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: root.close()
+                }
             }
         }
 
@@ -92,9 +132,9 @@ Dialog {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            color: "#161B22"
-            radius: 6
-            border.color: "#334155"
+            color: "#0D131D"
+            radius: 10
+            border.color: "#222F42"
             border.width: 1
             clip: true
 
@@ -102,7 +142,7 @@ Dialog {
                 id: hunksListView
                 SmoothWheelScroller {}
                 anchors.fill: parent
-                anchors.margins: 6
+                anchors.margins: 8
                 spacing: 12
                 clip: true
                 model: root.conflictResolver ? root.conflictResolver.hunksModel : null
@@ -114,10 +154,10 @@ Dialog {
 
                 delegate: Rectangle {
                     id: hunkCard
-                    width: hunksListView.width - 12
-                    implicitHeight: cardLayout.implicitHeight + 20
-                    color: "#0F172A"
-                    radius: 6
+                    width: hunksListView.width - 16
+                    implicitHeight: cardLayout.implicitHeight + 22
+                    color: "#121A27"
+                    radius: 10
                     border.color: model.isResolved ? "#059669" : "#DC2626"
                     border.width: 1
 
@@ -126,7 +166,7 @@ Dialog {
                         anchors.top: parent.top
                         anchors.left: parent.left
                         anchors.right: parent.right
-                        anchors.margins: 10
+                        anchors.margins: 11
                         spacing: 8
 
                         // Hunk Header
@@ -142,10 +182,12 @@ Dialog {
                             }
 
                             Rectangle {
-                                Layout.preferredHeight: 18
-                                implicitWidth: statusHunkText.implicitWidth + 8
-                                radius: 4
-                                color: model.isResolved ? "#065F46" : "#7F1D1D"
+                                Layout.preferredHeight: 20
+                                implicitWidth: statusHunkText.implicitWidth + 12
+                                radius: 6
+                                color: model.isResolved ? "#064E3B" : "#3B1219"
+                                border.color: model.isResolved ? "#10B981" : "#EF4444"
+                                border.width: 1
 
                                 Text {
                                     id: statusHunkText
@@ -177,20 +219,20 @@ Dialog {
                         // Two-Column Comparison: Ours vs Theirs
                         RowLayout {
                             Layout.fillWidth: true
-                            spacing: 8
+                            spacing: 10
 
                             // OURS Box (Current local changes)
                             Rectangle {
                                 Layout.fillWidth: true
-                                implicitHeight: 120
-                                color: model.chosenSide === 1 ? "#064E3B" : "#1E293B"
-                                radius: 4
-                                border.color: model.chosenSide === 1 ? "#10B981" : "#334155"
+                                implicitHeight: 130
+                                color: model.chosenSide === 1 ? "#063B2C" : "#162030"
+                                radius: 8
+                                border.color: model.chosenSide === 1 ? "#10B981" : "#243247"
                                 border.width: model.chosenSide === 1 ? 2 : 1
 
                                 ColumnLayout {
                                     anchors.fill: parent
-                                    anchors.margins: 6
+                                    anchors.margins: 8
                                     spacing: 4
 
                                     RowLayout {
@@ -206,7 +248,29 @@ Dialog {
                                         }
                                         Button {
                                             text: "Scegli Ours"
-                                            Layout.preferredHeight: 22
+                                            Layout.preferredHeight: 24
+                                            leftPadding: 10
+                                            rightPadding: 10
+                                            hoverEnabled: true
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#10B981" : "#065F46"
+                                                radius: 6
+                                                border.color: "#34D399"
+                                                border.width: 1
+                                                Behavior on color {
+                                                    ColorAnimation {
+                                                        duration: 110
+                                                    }
+                                                }
+                                            }
+                                            contentItem: Text {
+                                                text: parent.text
+                                                color: "#FFFFFF"
+                                                font.pixelSize: 10
+                                                font.bold: true
+                                                horizontalAlignment: Text.AlignHCenter
+                                                verticalAlignment: Text.AlignVCenter
+                                            }
                                             onClicked: {
                                                 if (root.conflictResolver) {
                                                     root.conflictResolver.resolveHunk(model.hunkIndex, 1);
@@ -235,15 +299,15 @@ Dialog {
                             // THEIRS Box (Incoming changes)
                             Rectangle {
                                 Layout.fillWidth: true
-                                implicitHeight: 120
-                                color: model.chosenSide === 2 ? "#1E1B4B" : "#1E293B"
-                                radius: 4
-                                border.color: model.chosenSide === 2 ? "#818CF8" : "#334155"
+                                implicitHeight: 130
+                                color: model.chosenSide === 2 ? "#1E1B4B" : "#162030"
+                                radius: 8
+                                border.color: model.chosenSide === 2 ? "#818CF8" : "#243247"
                                 border.width: model.chosenSide === 2 ? 2 : 1
 
                                 ColumnLayout {
                                     anchors.fill: parent
-                                    anchors.margins: 6
+                                    anchors.margins: 8
                                     spacing: 4
 
                                     RowLayout {
@@ -259,7 +323,29 @@ Dialog {
                                         }
                                         Button {
                                             text: "Scegli Theirs"
-                                            Layout.preferredHeight: 22
+                                            Layout.preferredHeight: 24
+                                            leftPadding: 10
+                                            rightPadding: 10
+                                            hoverEnabled: true
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#6366F1" : "#3730A3"
+                                                radius: 6
+                                                border.color: "#818CF8"
+                                                border.width: 1
+                                                Behavior on color {
+                                                    ColorAnimation {
+                                                        duration: 110
+                                                    }
+                                                }
+                                            }
+                                            contentItem: Text {
+                                                text: parent.text
+                                                color: "#FFFFFF"
+                                                font.pixelSize: 10
+                                                font.bold: true
+                                                horizontalAlignment: Text.AlignHCenter
+                                                verticalAlignment: Text.AlignVCenter
+                                            }
                                             onClicked: {
                                                 if (root.conflictResolver) {
                                                     root.conflictResolver.resolveHunk(model.hunkIndex, 2);
@@ -289,30 +375,23 @@ Dialog {
                         // Custom Box / Manual Resolution
                         Rectangle {
                             Layout.fillWidth: true
-                            implicitHeight: customExpandCheck.checked ? 100 : 28
-                            color: model.chosenSide === 3 ? "#431407" : "#161B22"
-                            radius: 4
-                            border.color: model.chosenSide === 3 ? "#F97316" : "#334155"
+                            implicitHeight: customExpandCheck.checked ? 110 : 32
+                            color: model.chosenSide === 3 ? "#431407" : "#0F1623"
+                            radius: 8
+                            border.color: model.chosenSide === 3 ? "#F97316" : "#222F42"
                             border.width: model.chosenSide === 3 ? 2 : 1
 
                             ColumnLayout {
                                 anchors.fill: parent
-                                anchors.margins: 4
+                                anchors.margins: 6
                                 spacing: 4
 
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    CheckBox {
+                                    FluxCheckBox {
                                         id: customExpandCheck
                                         text: "Modifica manuale personalizzata"
                                         checked: model.chosenSide === 3
-                                        contentItem: Text {
-                                            text: customExpandCheck.text
-                                            color: "#F8FAFC"
-                                            font.pixelSize: 11
-                                            leftPadding: customExpandCheck.indicator.width + 4
-                                            verticalAlignment: Text.AlignVCenter
-                                        }
                                     }
 
                                     Item {
@@ -322,7 +401,24 @@ Dialog {
                                     Button {
                                         visible: customExpandCheck.checked
                                         text: "Salva come Risoluzione Personalizzata"
-                                        Layout.preferredHeight: 22
+                                        Layout.preferredHeight: 24
+                                        leftPadding: 10
+                                        rightPadding: 10
+                                        hoverEnabled: true
+                                        background: Rectangle {
+                                            color: parent.hovered ? "#EA580C" : "#C2410C"
+                                            radius: 6
+                                            border.color: "#FB923C"
+                                            border.width: 1
+                                        }
+                                        contentItem: Text {
+                                            text: parent.text
+                                            color: "#FFFFFF"
+                                            font.pixelSize: 10
+                                            font.bold: true
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
                                         onClicked: {
                                             if (root.conflictResolver) {
                                                 root.conflictResolver.resolveHunk(model.hunkIndex, 3, customInput.text);
@@ -345,8 +441,8 @@ Dialog {
                                         font.family: (typeof gfMonoFont !== "undefined" && gfMonoFont) ? gfMonoFont : "Consolas"
                                         font.pixelSize: 11
                                         background: Rectangle {
-                                            color: "#0F172A"
-                                            radius: 3
+                                            color: "#0A0E15"
+                                            radius: 6
                                         }
                                     }
                                 }
@@ -364,17 +460,10 @@ Dialog {
             Layout.fillWidth: true
             spacing: 10
 
-            CheckBox {
+            FluxCheckBox {
                 id: autoStageCheck
                 text: "Esegui Stage automatico (git add) dopo il salvataggio"
                 checked: true
-                contentItem: Text {
-                    text: autoStageCheck.text
-                    color: "#CBD5E1"
-                    font.pixelSize: 11
-                    leftPadding: autoStageCheck.indicator.width + 6
-                    verticalAlignment: Text.AlignVCenter
-                }
             }
 
             Text {
@@ -387,16 +476,24 @@ Dialog {
 
             Button {
                 text: "Annulla"
-                Layout.preferredHeight: 32
+                Layout.preferredHeight: 34
+                leftPadding: 14
+                rightPadding: 14
+                hoverEnabled: true
                 background: Rectangle {
-                    color: parent.hovered ? "#334155" : "#1E293B"
-                    radius: 4
-                    border.color: "#475569"
+                    color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                    radius: 8
+                    border.color: "#28374E"
                     border.width: 1
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: 120
+                        }
+                    }
                 }
                 contentItem: Text {
                     text: parent.text
-                    color: "#E2E8F0"
+                    color: "#CBD5E1"
                     font.pixelSize: 11
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
@@ -407,15 +504,25 @@ Dialog {
             Button {
                 id: applyBtn
                 text: "✓ Applica Risoluzione e Salva"
-                Layout.preferredHeight: 32
+                Layout.preferredHeight: 34
+                leftPadding: 16
+                rightPadding: 16
                 enabled: root.conflictResolver && root.conflictResolver.allResolved
+                hoverEnabled: true
                 background: Rectangle {
-                    color: applyBtn.enabled ? (applyBtn.hovered ? "#059669" : "#10B981") : "#334155"
-                    radius: 4
+                    color: applyBtn.enabled ? (applyBtn.hovered ? "#10B981" : "#059669") : "#161F2E"
+                    radius: 8
+                    border.color: applyBtn.enabled ? "#34D399" : "#222F42"
+                    border.width: 1
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: 120
+                        }
+                    }
                 }
                 contentItem: Text {
                     text: parent.text
-                    color: applyBtn.enabled ? "#FFFFFF" : "#94A3B8"
+                    color: applyBtn.enabled ? "#FFFFFF" : "#475569"
                     font.bold: true
                     font.pixelSize: 11
                     horizontalAlignment: Text.AlignHCenter
