@@ -22,6 +22,7 @@
 #include "desktop/viewmodels/conflict_resolver_viewmodel.hpp"
 #include "desktop/viewmodels/workspace_session_viewmodel.hpp"
 #include "desktop/viewmodels/batch_operations_viewmodel.hpp"
+#include "desktop/bootstrap/app_bootstrap.hpp"
 #include "core/modules/git/ports/repository_git_ops.hpp"
 #include "core/modules/git/ports/fs_watcher_port.hpp"
 #include "core/modules/git/bl/git_working_tree_service.hpp"
@@ -54,6 +55,7 @@
 #include "core/modules/workspaces/bl/workspace_service.hpp"
 
 #include <QGuiApplication>
+#include <QQmlApplicationEngine>
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QQuickStyle>
@@ -3837,4 +3839,24 @@ TEST_CASE("Flux UI Kit QML components load and instantiate cleanly", "[qml][ui]"
     requireValidComponent(qmlBaseDir / "views" / "DiffViewerPanel.qml");
     requireValidComponent(qmlBaseDir / "views" / "MarkdownPreviewView.qml");
     requireValidComponent(qmlBaseDir / "views" / "CommitHistoryPanel.qml");
+    requireValidComponent(qmlBaseDir / "views" / "WorkspaceSessionView.qml");
+
+    gf::desktop::AppBootstrap bootstrap(":memory:");
+    bootstrap.initialize();
+    QQmlApplicationEngine appEngine;
+    bootstrap.registerWithQml(appEngine);
+    {
+        QQmlComponent hubComp(&appEngine, QUrl::fromLocalFile(QString::fromStdString((qmlBaseDir / "views" / "HomeHubView.qml").string())));
+        INFO("QML component errors for HomeHubView.qml: " << hubComp.errorString().toStdString());
+        REQUIRE(hubComp.isReady());
+        std::unique_ptr<QObject> hubObj(hubComp.create());
+        REQUIRE(hubObj != nullptr);
+    }
+    {
+        QQmlComponent quickOpenComp(&appEngine, QUrl::fromLocalFile(QString::fromStdString((qmlBaseDir / "views" / "QuickOpenModal.qml").string())));
+        INFO("QML component errors for QuickOpenModal.qml: " << quickOpenComp.errorString().toStdString());
+        REQUIRE(quickOpenComp.isReady());
+        std::unique_ptr<QObject> quickOpenObj(quickOpenComp.create());
+        REQUIRE(quickOpenObj != nullptr);
+    }
 }

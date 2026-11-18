@@ -158,9 +158,9 @@ Item {
         // =====================================================================
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 56
-            color: "#161B22"
-            border.color: "#30363D"
+            Layout.preferredHeight: 58
+            color: "#0D131D"
+            border.color: "#1B2535"
             border.width: 1
 
             RowLayout {
@@ -186,7 +186,7 @@ Item {
 
                     Text {
                         text: "Git Flux"
-                        color: "#F0F6FC"
+                        color: "#F8FAFC"
                         font.pixelSize: 16
                         font.bold: true
                     }
@@ -196,31 +196,38 @@ Item {
                     Layout.preferredWidth: 20
                 }
 
-                // Reactive Quick Search Field
+                // Reactive Quick Search Field Capsule
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.maximumWidth: 420
-                    height: 34
-                    radius: 6
-                    color: "#0B0E14"
-                    border.color: searchInput.activeFocus ? "#58A6FF" : "#30363D"
+                    Layout.maximumWidth: 430
+                    height: 36
+                    radius: 10
+                    color: "#080B10"
+                    border.color: searchInput.activeFocus ? "#38BDF8" : "#222F42"
+                    border.width: 1
+
+                    Behavior on border.color {
+                        ColorAnimation {
+                            duration: 120
+                        }
+                    }
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.leftMargin: 10
+                        anchors.leftMargin: 12
                         anchors.rightMargin: 8
-                        spacing: 6
+                        spacing: 8
 
                         Text {
                             text: "🔍"
                             font.pixelSize: 12
-                            color: "#8B949E"
+                            color: searchInput.activeFocus ? "#38BDF8" : "#64748B"
                         }
 
                         TextInput {
                             id: searchInput
                             Layout.fillWidth: true
-                            color: "#F0F6FC"
+                            color: "#F8FAFC"
                             font.pixelSize: 13
                             selectByMouse: true
                             clip: true
@@ -228,7 +235,7 @@ Item {
 
                             Text {
                                 text: "Filtra repository, gruppi o workspace..."
-                                color: "#6E7681"
+                                color: "#64748B"
                                 font.pixelSize: 13
                                 visible: !searchInput.text && !searchInput.activeFocus
                             }
@@ -238,14 +245,20 @@ Item {
                             visible: searchInput.text.length > 0
                             text: "✕"
                             flat: true
+                            Layout.preferredWidth: 22
+                            Layout.preferredHeight: 22
+                            hoverEnabled: true
                             onClicked: searchInput.text = ""
                             contentItem: Text {
                                 text: "✕"
-                                color: "#8B949E"
+                                color: parent.hovered ? "#F8FAFC" : "#94A3B8"
                                 font.pixelSize: 11
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
                             }
                             background: Rectangle {
-                                color: "transparent"
+                                radius: 6
+                                color: parent.hovered ? "#1E293B" : "transparent"
                             }
                         }
                     }
@@ -259,27 +272,34 @@ Item {
                 RowLayout {
                     spacing: 10
 
-                    // Section View Switcher Pills
+                    // Section View Switcher Pills (Segmented Control)
                     Rectangle {
-                        height: 32
-                        implicitWidth: sectionPillsLayout.implicitWidth + 16
-                        radius: 6
-                        color: "#161B22"
-                        border.color: "#30363D"
+                        height: 36
+                        implicitWidth: sectionPillsLayout.implicitWidth + 10
+                        radius: 10
+                        color: "#080B10"
+                        border.color: "#222F42"
+                        border.width: 1
 
                         RowLayout {
                             id: sectionPillsLayout
                             anchors.centerIn: parent
-                            spacing: 6
+                            spacing: 4
 
                             // Toggle Repositories
                             Rectangle {
-                                height: 24
+                                height: 28
                                 implicitWidth: repoPillInnerRow.implicitWidth + 18
-                                radius: 4
-                                color: (homeHubVm && homeHubVm.showRepositories) ? "#0F2634" : "transparent"
+                                radius: 7
+                                color: (homeHubVm && homeHubVm.showRepositories) ? "#0F2942" : (repoPillMouse.containsMouse ? "#121A27" : "transparent")
                                 border.color: (homeHubVm && homeHubVm.showRepositories) ? "#0284C7" : "transparent"
                                 border.width: 1
+
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
 
                                 RowLayout {
                                     id: repoPillInnerRow
@@ -292,13 +312,14 @@ Item {
                                     Text {
                                         id: repoPillText
                                         text: "Repository"
-                                        color: (homeHubVm && homeHubVm.showRepositories) ? "#38BDF8" : "#8B949E"
+                                        color: (homeHubVm && homeHubVm.showRepositories) ? "#38BDF8" : "#94A3B8"
                                         font.pixelSize: 11
                                         font.bold: Boolean(homeHubVm && homeHubVm.showRepositories)
                                     }
                                 }
 
                                 MouseArea {
+                                    id: repoPillMouse
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
                                     hoverEnabled: true
@@ -310,12 +331,18 @@ Item {
 
                             // Toggle Gruppi
                             Rectangle {
-                                height: 24
+                                height: 28
                                 implicitWidth: grpPillInnerRow.implicitWidth + 18
-                                radius: 4
-                                color: (homeHubVm && homeHubVm.showGroups) ? "#2E1065" : "transparent"
+                                radius: 7
+                                color: (homeHubVm && homeHubVm.showGroups) ? "#23124A" : (grpPillMouse.containsMouse ? "#121A27" : "transparent")
                                 border.color: (homeHubVm && homeHubVm.showGroups) ? "#7C4DFF" : "transparent"
                                 border.width: 1
+
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
 
                                 RowLayout {
                                     id: grpPillInnerRow
@@ -328,13 +355,14 @@ Item {
                                     Text {
                                         id: grpPillText
                                         text: "Gruppi"
-                                        color: (homeHubVm && homeHubVm.showGroups) ? "#E9D5FF" : "#8B949E"
+                                        color: (homeHubVm && homeHubVm.showGroups) ? "#E9D5FF" : "#94A3B8"
                                         font.pixelSize: 11
                                         font.bold: Boolean(homeHubVm && homeHubVm.showGroups)
                                     }
                                 }
 
                                 MouseArea {
+                                    id: grpPillMouse
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
                                     hoverEnabled: true
@@ -346,12 +374,18 @@ Item {
 
                             // Toggle Workspace
                             Rectangle {
-                                height: 24
+                                height: 28
                                 implicitWidth: wsPillInnerRow.implicitWidth + 18
-                                radius: 4
-                                color: (homeHubVm && homeHubVm.showWorkspaces) ? "#1B2F23" : "transparent"
-                                border.color: (homeHubVm && homeHubVm.showWorkspaces) ? "#3FB950" : "transparent"
+                                radius: 7
+                                color: (homeHubVm && homeHubVm.showWorkspaces) ? "#063B2C" : (wsPillMouse.containsMouse ? "#121A27" : "transparent")
+                                border.color: (homeHubVm && homeHubVm.showWorkspaces) ? "#10B981" : "transparent"
                                 border.width: 1
+
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
 
                                 RowLayout {
                                     id: wsPillInnerRow
@@ -364,13 +398,14 @@ Item {
                                     Text {
                                         id: wsPillText
                                         text: "Workspace"
-                                        color: (homeHubVm && homeHubVm.showWorkspaces) ? "#3FB950" : "#8B949E"
+                                        color: (homeHubVm && homeHubVm.showWorkspaces) ? "#34D399" : "#94A3B8"
                                         font.pixelSize: 11
                                         font.bold: Boolean(homeHubVm && homeHubVm.showWorkspaces)
                                     }
                                 }
 
                                 MouseArea {
+                                    id: wsPillMouse
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
                                     hoverEnabled: true
@@ -385,10 +420,13 @@ Item {
                     // Clone Repository Action
                     Button {
                         text: "⬇ Clona"
-                        Layout.preferredHeight: 32
+                        Layout.preferredHeight: 36
+                        leftPadding: 14
+                        rightPadding: 14
+                        hoverEnabled: true
                         onClicked: cloneRepoModal.openWithDefaultFolder("")
                         contentItem: RowLayout {
-                            spacing: 5
+                            spacing: 6
                             Text {
                                 text: "⬇"
                                 color: "#38BDF8"
@@ -396,40 +434,63 @@ Item {
                             }
                             Text {
                                 text: "Clona"
-                                color: "#F0F6FC"
+                                color: "#F8FAFC"
                                 font.pixelSize: 12
                                 font.bold: true
                             }
                         }
                         background: Rectangle {
-                            color: parent.hovered ? "#30363D" : "#21262D"
-                            radius: 6
-                            border.color: parent.hovered ? "#38BDF8" : "#30363D"
+                            color: parent.hovered ? "#1E2B3E" : "#141D2B"
+                            radius: 9
+                            border.color: parent.hovered ? "#38BDF8" : "#26354A"
+                            border.width: 1
+
+                            Behavior on color {
+                                ColorAnimation {
+                                    duration: 120
+                                }
+                            }
+                            Behavior on border.color {
+                                ColorAnimation {
+                                    duration: 120
+                                }
+                            }
                         }
                     }
 
                     // Quick Open Action
                     Button {
                         text: "⚡ Quick Open"
-                        Layout.preferredHeight: 32
+                        Layout.preferredHeight: 36
+                        leftPadding: 14
+                        rightPadding: 14
+                        hoverEnabled: true
                         onClicked: root.quickOpenRequested()
                         contentItem: RowLayout {
-                            spacing: 5
+                            spacing: 6
                             Text {
                                 text: "⚡"
                                 font.pixelSize: 12
-                                color: "#0E1117"
+                                color: "#FFFFFF"
                             }
                             Text {
                                 text: "Quick Open"
-                                color: "#0E1117"
+                                color: "#FFFFFF"
                                 font.pixelSize: 12
                                 font.bold: true
                             }
                         }
                         background: Rectangle {
-                            color: parent.hovered ? "#33ECFF" : "#00E5FF"
-                            radius: 6
+                            color: parent.hovered ? "#0EA5E9" : "#0284C7"
+                            radius: 9
+                            border.color: "#38BDF8"
+                            border.width: 1
+
+                            Behavior on color {
+                                ColorAnimation {
+                                    duration: 120
+                                }
+                            }
                         }
                     }
                 }
@@ -527,17 +588,30 @@ Item {
         }
 
         // =====================================================================
-        // MAIN BODY: 3-Column Layout (Repositories, Groups, Workspaces)
+        // MAIN BODY: 3-Column Floating Island Layout (Repositories, Groups, Workspaces)
         // =====================================================================
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            color: "#0E1117"
+            color: "#080B10"
 
             SplitView {
                 anchors.fill: parent
-                anchors.margins: 16
+                anchors.margins: 14
                 orientation: Qt.Horizontal
+
+                handle: Rectangle {
+                    implicitWidth: 10
+                    color: "transparent"
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 2
+                        height: 44
+                        radius: 1
+                        color: SplitHandle.hovered || SplitHandle.pressed ? "#38BDF8" : "#1E293B"
+                    }
+                }
 
                 // -------------------------------------------------------------
                 // COLUMN 1: REPOSITORIES
@@ -548,13 +622,14 @@ Item {
                     SplitView.preferredWidth: parent.width / root.visibleColumnCount
                     SplitView.minimumWidth: 260
                     SplitView.fillWidth: (root.visibleColumnCount === 1) || Boolean(homeHubVm && !homeHubVm.showGroups && !homeHubVm.showWorkspaces)
-                    color: "#161B22"
-                    radius: 8
-                    border.color: "#30363D"
+                    color: "#0F141C"
+                    radius: 14
+                    border.color: "#1E293B"
+                    border.width: 1
 
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: 14
+                        anchors.margins: 16
                         spacing: 12
 
                         // Col Header
@@ -562,21 +637,22 @@ Item {
                             Layout.fillWidth: true
                             Text {
                                 text: "Repositories"
-                                color: "#F0F6FC"
+                                color: "#F8FAFC"
                                 font.pixelSize: 15
                                 font.bold: true
                             }
                             Rectangle {
-                                height: 20
-                                width: repoCountText.implicitWidth + 12
-                                radius: 10
-                                color: "#21262D"
-                                border.color: "#30363D"
+                                height: 22
+                                width: repoCountText.implicitWidth + 14
+                                radius: 11
+                                color: "#0F2942"
+                                border.color: "#1E4066"
+                                border.width: 1
                                 Text {
                                     id: repoCountText
                                     anchors.centerIn: parent
                                     text: homeHubVm.repositoriesCount
-                                    color: "#00E5FF"
+                                    color: "#38BDF8"
                                     font.pixelSize: 11
                                     font.bold: true
                                 }
@@ -586,13 +662,28 @@ Item {
                             }
                             Button {
                                 text: "+"
-                                flat: true
+                                Layout.preferredWidth: 28
+                                Layout.preferredHeight: 28
+                                hoverEnabled: true
                                 onClicked: repoFolderDialog.open()
                                 contentItem: Text {
-                                    text: "+"; color: "#8B949E"; font.pixelSize: 15
+                                    text: "+"
+                                    color: parent.hovered ? "#F8FAFC" : "#94A3B8"
+                                    font.pixelSize: 15
+                                    font.bold: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
                                 }
                                 background: Rectangle {
-                                    color: "transparent"
+                                    color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                                    radius: 8
+                                    border.color: parent.hovered ? "#38BDF8" : "#243247"
+                                    border.width: 1
+                                    Behavior on color {
+                                        ColorAnimation {
+                                            duration: 110
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -624,16 +715,27 @@ Item {
                                 required property string branch
 
                                 width: repoListView.width
-                                implicitHeight: repoColLayout.implicitHeight + 16
-                                radius: 6
-                                color: repoCardRect.isMissing ? "#22161A" : (repoHover.containsMouse ? "#21262D" : "#191E27")
-                                border.color: repoCardRect.isMissing ? "#F85149" : (repoHover.containsMouse ? "#58A6FF" : "#30363D")
+                                implicitHeight: repoColLayout.implicitHeight + 18
+                                radius: 10
+                                color: repoCardRect.isMissing ? "#261318" : (repoHover.containsMouse ? "#182334" : "#121A27")
+                                border.color: repoCardRect.isMissing ? "#EF4444" : (repoHover.containsMouse ? "#38BDF8" : "#1F2C3F")
                                 border.width: 1
+
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
+                                Behavior on border.color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
 
                                 ColumnLayout {
                                     id: repoColLayout
                                     anchors.fill: parent
-                                    anchors.margins: 8
+                                    anchors.margins: 10
                                     spacing: 6
 
                                     // Top Row: Title, Branch, Open button
@@ -715,20 +817,31 @@ Item {
                                         Button {
                                             visible: repoCardRect.isMissing
                                             Layout.preferredHeight: 26
+                                            leftPadding: 10
+                                            rightPadding: 10
+                                            hoverEnabled: true
                                             onClicked: {
                                                 reconnectFolderDialog.targetRepoId = repoCardRect.id;
                                                 reconnectFolderDialog.open();
                                             }
                                             contentItem: Text {
                                                 text: "Ricollega"
-                                                color: "#00E5FF"
+                                                color: "#38BDF8"
                                                 font.pixelSize: 11
                                                 font.bold: true
+                                                horizontalAlignment: Text.AlignHCenter
+                                                verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#30363D" : "#21262D"
-                                                radius: 4
-                                                border.color: "#00E5FF"
+                                                color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                                                radius: 7
+                                                border.color: "#38BDF8"
+                                                border.width: 1
+                                                Behavior on color {
+                                                    ColorAnimation {
+                                                        duration: 110
+                                                    }
+                                                }
                                             }
                                         }
 
@@ -736,6 +849,9 @@ Item {
                                         Button {
                                             visible: !repoCardRect.isMissing
                                             Layout.preferredHeight: 26
+                                            leftPadding: 10
+                                            rightPadding: 10
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Apri progetto in una scheda della sessione"
                                             onClicked: homeHubVm.openRepository(repoCardRect.id)
@@ -744,18 +860,25 @@ Item {
                                                 Text {
                                                     text: "▶"
                                                     font.pixelSize: 9
-                                                    color: "#0E1117"
+                                                    color: "#FFFFFF"
                                                 }
                                                 Text {
                                                     text: "Apri"
-                                                    color: "#0E1117"
+                                                    color: "#FFFFFF"
                                                     font.pixelSize: 11
                                                     font.bold: true
                                                 }
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#33ECFF" : "#00E5FF"
-                                                radius: 4
+                                                color: parent.hovered ? "#0EA5E9" : "#0284C7"
+                                                radius: 7
+                                                border.color: "#38BDF8"
+                                                border.width: 1
+                                                Behavior on color {
+                                                    ColorAnimation {
+                                                        duration: 110
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -775,55 +898,59 @@ Item {
 
                                         // File Manager Button
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             visible: !repoCardRect.isMissing
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Apri nel gestore file"
                                             onClicked: homeHubVm.openInFileManager(repoCardRect.localPath)
                                             contentItem: Text {
-                                                text: "📂"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter
+                                                text: "📂"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
                                             }
                                         }
 
                                         // Terminal Button
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             visible: !repoCardRect.isMissing
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Apri nel terminale"
                                             onClicked: homeHubVm.openInTerminal(repoCardRect.localPath)
                                             contentItem: Text {
-                                                text: "💻"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter
+                                                text: "💻"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
                                             }
                                         }
 
                                         // Copy Path Button
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Copia percorso negli appunti"
                                             onClicked: homeHubVm.copyToClipboard(repoCardRect.localPath)
                                             contentItem: Text {
-                                                text: "📋"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter
+                                                text: "📋"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
                                             }
                                         }
 
                                         // Rename Button
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Rinomina nome visualizzato"
                                             onClicked: {
@@ -832,17 +959,18 @@ Item {
                                                 renameRepoDialog.open();
                                             }
                                             contentItem: Text {
-                                                text: "✏️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter
+                                                text: "✏️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
                                             }
                                         }
 
                                         // Add to Group Button
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             visible: !repoCardRect.isMissing
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Aggiungi a un gruppo"
@@ -853,25 +981,26 @@ Item {
                                                 addToGroupDialog.open();
                                             }
                                             contentItem: Text {
-                                                text: "🗂️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter
+                                                text: "🗂️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
                                             }
                                         }
 
                                         // Remove Button
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Rimuovi dal catalogo"
                                             onClicked: homeHubVm.removeRepository(repoCardRect.id)
                                             contentItem: Text {
-                                                text: "✕"; color: parent.hovered ? "#EF4444" : "#8B949E"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter
+                                                text: "✕"; color: parent.hovered ? "#EF4444" : "#8B949E"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                                color: parent.hovered ? "#3B1219" : "transparent"; radius: 7
                                             }
                                         }
                                     }
@@ -1001,13 +1130,14 @@ Item {
                     SplitView.preferredWidth: parent.width / root.visibleColumnCount
                     SplitView.minimumWidth: 260
                     SplitView.fillWidth: (root.visibleColumnCount === 1) || Boolean(homeHubVm && !homeHubVm.showWorkspaces)
-                    color: "#161B22"
-                    radius: 8
-                    border.color: "#30363D"
+                    color: "#0F141C"
+                    radius: 14
+                    border.color: "#1E293B"
+                    border.width: 1
 
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: 14
+                        anchors.margins: 16
                         spacing: 12
 
                         // Col Header
@@ -1015,21 +1145,22 @@ Item {
                             Layout.fillWidth: true
                             Text {
                                 text: "Gruppi"
-                                color: "#F0F6FC"
+                                color: "#F8FAFC"
                                 font.pixelSize: 15
                                 font.bold: true
                             }
                             Rectangle {
-                                height: 20
-                                width: groupCountText.implicitWidth + 12
-                                radius: 10
-                                color: "#21262D"
-                                border.color: "#30363D"
+                                height: 22
+                                width: groupCountText.implicitWidth + 14
+                                radius: 11
+                                color: "#23124A"
+                                border.color: "#5B21B6"
+                                border.width: 1
                                 Text {
                                     id: groupCountText
                                     anchors.centerIn: parent
                                     text: homeHubVm.groupsCount
-                                    color: "#7C4DFF"
+                                    color: "#C084FC"
                                     font.pixelSize: 11
                                     font.bold: true
                                 }
@@ -1039,13 +1170,28 @@ Item {
                             }
                             Button {
                                 text: "+"
-                                flat: true
+                                Layout.preferredWidth: 28
+                                Layout.preferredHeight: 28
+                                hoverEnabled: true
                                 onClicked: addGroupDialog.open()
                                 contentItem: Text {
-                                    text: "+"; color: "#8B949E"; font.pixelSize: 15
+                                    text: "+"
+                                    color: parent.hovered ? "#F8FAFC" : "#94A3B8"
+                                    font.pixelSize: 15
+                                    font.bold: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
                                 }
                                 background: Rectangle {
-                                    color: "transparent"
+                                    color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                                    radius: 8
+                                    border.color: parent.hovered ? "#A855F7" : "#243247"
+                                    border.width: 1
+                                    Behavior on color {
+                                        ColorAnimation {
+                                            duration: 110
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1079,10 +1225,10 @@ Item {
                                 readonly property bool isDropTarget: root.isDraggingRepo && (root.hoveredGroupId === grpCardRect.id)
 
                                 width: groupListView.width
-                                implicitHeight: grpColLayout.implicitHeight + 16
-                                radius: 6
-                                color: isDropTarget ? "#2E1065" : (grpHover.containsMouse ? "#21262D" : "#191E27")
-                                border.color: isDropTarget ? "#C084FC" : (grpHover.containsMouse ? "#7C4DFF" : "#30363D")
+                                implicitHeight: grpColLayout.implicitHeight + 18
+                                radius: 10
+                                color: isDropTarget ? "#2E1065" : (grpHover.containsMouse ? "#182334" : "#121A27")
+                                border.color: isDropTarget ? "#C084FC" : (grpHover.containsMouse ? "#7C4DFF" : "#1F2C3F")
                                 border.width: isDropTarget ? 2 : 1
                                 scale: isDropTarget ? 1.02 : 1.0
                                 Behavior on scale {
@@ -1090,11 +1236,21 @@ Item {
                                         duration: 100
                                     }
                                 }
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
+                                Behavior on border.color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
 
                                 ColumnLayout {
                                     id: grpColLayout
                                     anchors.fill: parent
-                                    anchors.margins: 8
+                                    anchors.margins: 10
                                     spacing: 6
 
                                     // Top Row: Group name, count badge, Open Group button, action icons
@@ -1148,6 +1304,9 @@ Item {
                                         // Open Group button (Batch opens all repos in group into tabs!)
                                         Button {
                                             Layout.preferredHeight: 26
+                                            leftPadding: 10
+                                            rightPadding: 10
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Apri tutti i progetti del gruppo (un progetto per scheda)"
                                             onClicked: homeHubVm.openGroup(grpCardRect.id)
@@ -1167,14 +1326,22 @@ Item {
                                             }
                                             background: Rectangle {
                                                 color: parent.hovered ? "#9061F9" : "#7C4DFF"
-                                                radius: 4
+                                                radius: 7
+                                                border.color: "#A855F7"
+                                                border.width: 1
+                                                Behavior on color {
+                                                    ColorAnimation {
+                                                        duration: 110
+                                                    }
+                                                }
                                             }
                                         }
 
                                         // Add Repo to Group Button
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Associa un repository a questo gruppo"
                                             onClicked: {
@@ -1185,17 +1352,18 @@ Item {
                                                 addRepoToGroupDialog.open();
                                             }
                                             contentItem: Text {
-                                                text: "➕"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter
+                                                text: "➕"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
                                             }
                                         }
 
                                         // Rename Group Button
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Rinomina gruppo"
                                             onClicked: {
@@ -1204,17 +1372,18 @@ Item {
                                                 renameGroupDialog.open();
                                             }
                                             contentItem: Text {
-                                                text: "✏️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter
+                                                text: "✏️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
                                             }
                                         }
 
                                         // Fetch Group Button
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             visible: grpCardRect.repositoryCount > 0
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Esegui Fetch per tutti i repository del gruppo"
@@ -1223,25 +1392,26 @@ Item {
                                                 batchProgressModal.open();
                                             }
                                             contentItem: Text {
-                                                text: "⬇"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; color: "#58A6FF"
+                                                text: "⬇"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter; color: "#38BDF8"
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
                                             }
                                         }
 
                                         // Remove Group Button
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Elimina gruppo"
                                             onClicked: homeHubVm.removeGroup(grpCardRect.id)
                                             contentItem: Text {
-                                                text: "✕"; color: parent.hovered ? "#EF4444" : "#8B949E"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter
+                                                text: "✕"; color: parent.hovered ? "#EF4444" : "#8B949E"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                                color: parent.hovered ? "#3B1219" : "transparent"; radius: 7
                                             }
                                         }
                                     }
@@ -1407,13 +1577,14 @@ Item {
                     SplitView.preferredWidth: parent.width / root.visibleColumnCount
                     SplitView.minimumWidth: 260
                     SplitView.fillWidth: true
-                    color: "#161B22"
-                    radius: 8
-                    border.color: "#30363D"
+                    color: "#0F141C"
+                    radius: 14
+                    border.color: "#1E293B"
+                    border.width: 1
 
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: 14
+                        anchors.margins: 16
                         spacing: 12
 
                         // Col Header
@@ -1421,21 +1592,22 @@ Item {
                             Layout.fillWidth: true
                             Text {
                                 text: "Workspace"
-                                color: "#F0F6FC"
+                                color: "#F8FAFC"
                                 font.pixelSize: 15
                                 font.bold: true
                             }
                             Rectangle {
-                                height: 20
-                                width: wsCountText.implicitWidth + 12
-                                radius: 10
-                                color: "#21262D"
-                                border.color: "#30363D"
+                                height: 22
+                                width: wsCountText.implicitWidth + 14
+                                radius: 11
+                                color: "#063B2C"
+                                border.color: "#059669"
+                                border.width: 1
                                 Text {
                                     id: wsCountText
                                     anchors.centerIn: parent
                                     text: homeHubVm.workspacesCount
-                                    color: "#3FB950"
+                                    color: "#34D399"
                                     font.pixelSize: 11
                                     font.bold: true
                                 }
@@ -1445,13 +1617,28 @@ Item {
                             }
                             Button {
                                 text: "+"
-                                flat: true
+                                Layout.preferredWidth: 28
+                                Layout.preferredHeight: 28
+                                hoverEnabled: true
                                 onClicked: addWorkspaceDialog.open()
                                 contentItem: Text {
-                                    text: "+"; color: "#8B949E"; font.pixelSize: 15
+                                    text: "+"
+                                    color: parent.hovered ? "#F8FAFC" : "#94A3B8"
+                                    font.pixelSize: 15
+                                    font.bold: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
                                 }
                                 background: Rectangle {
-                                    color: "transparent"
+                                    color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                                    radius: 8
+                                    border.color: parent.hovered ? "#10B981" : "#243247"
+                                    border.width: 1
+                                    Behavior on color {
+                                        ColorAnimation {
+                                            duration: 110
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1491,10 +1678,10 @@ Item {
                                 readonly property bool isDropTarget: isDropTargetRepo || isDropTargetGroup
 
                                 width: wsListView.width
-                                implicitHeight: wsColLayout.implicitHeight + 16
-                                radius: 6
-                                color: isDropTarget ? (root.isDraggingGroup ? "#2E1065" : "#143823") : (wsHover.containsMouse ? "#21262D" : "#191E27")
-                                border.color: isDropTarget ? (root.isDraggingGroup ? "#C084FC" : "#4ADE80") : (wsHover.containsMouse ? "#3FB950" : "#30363D")
+                                implicitHeight: wsColLayout.implicitHeight + 18
+                                radius: 10
+                                color: isDropTarget ? (root.isDraggingGroup ? "#2E1065" : "#063B2C") : (wsHover.containsMouse ? "#182334" : "#121A27")
+                                border.color: isDropTarget ? (root.isDraggingGroup ? "#C084FC" : "#34D399") : (wsHover.containsMouse ? "#10B981" : "#1F2C3F")
                                 border.width: isDropTarget ? 2 : 1
                                 scale: isDropTarget ? 1.02 : 1.0
                                 Behavior on scale {
@@ -1502,11 +1689,21 @@ Item {
                                         duration: 100
                                     }
                                 }
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
+                                Behavior on border.color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
 
                                 ColumnLayout {
                                     id: wsColLayout
                                     anchors.fill: parent
-                                    anchors.margins: 8
+                                    anchors.margins: 10
                                     spacing: 6
 
                                     RowLayout {
@@ -1548,6 +1745,9 @@ Item {
                                         // Open Workspace Button
                                         Button {
                                             Layout.preferredHeight: 26
+                                            leftPadding: 10
+                                            rightPadding: 10
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Apri tutti i progetti di questo workspace"
                                             onClicked: homeHubVm.openWorkspace(wsCardRect.id)
@@ -1566,15 +1766,23 @@ Item {
                                                 }
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#2EA043" : "#238636"
-                                                radius: 4
+                                                color: parent.hovered ? "#10B981" : "#059669"
+                                                radius: 7
+                                                border.color: "#34D399"
+                                                border.width: 1
+                                                Behavior on color {
+                                                    ColorAnimation {
+                                                        duration: 110
+                                                    }
+                                                }
                                             }
                                         }
 
                                         // Add Repo to Workspace Button
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Associa un repository a questo workspace"
                                             onClicked: {
@@ -1585,17 +1793,18 @@ Item {
                                                 addRepoToWsDialog.open();
                                             }
                                             contentItem: Text {
-                                                text: "➕"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter
+                                                text: "➕"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
                                             }
                                         }
 
                                         // Add Group to Workspace Button
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Associa un gruppo a questo workspace"
                                             onClicked: {
@@ -1606,16 +1815,17 @@ Item {
                                                 addGrpToWsDialog.open();
                                             }
                                             contentItem: Text {
-                                                text: "🗂️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter
+                                                text: "🗂️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
                                             }
                                         }
 
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Esegui Fetch per tutti i repo del workspace"
                                             onClicked: {
@@ -1623,24 +1833,25 @@ Item {
                                                 batchProgressModal.open();
                                             }
                                             contentItem: Text {
-                                                text: "⬇"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; color: "#3FB950"
+                                                text: "⬇"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter; color: "#34D399"
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
                                             }
                                         }
 
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Elimina workspace"
                                             onClicked: homeHubVm.removeWorkspace(wsCardRect.id)
                                             contentItem: Text {
-                                                text: "✕"; color: parent.hovered ? "#EF4444" : "#8B949E"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter
+                                                text: "✕"; color: parent.hovered ? "#EF4444" : "#8B949E"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#30363D" : "transparent"; radius: 4
+                                                color: parent.hovered ? "#3B1219" : "transparent"; radius: 7
                                             }
                                         }
                                     }
@@ -1814,8 +2025,8 @@ Item {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 30
-            color: "#161B22"
-            border.color: "#30363D"
+            color: "#0D131D"
+            border.color: "#1B2535"
 
             RowLayout {
                 anchors.fill: parent
@@ -1825,7 +2036,7 @@ Item {
 
                 Text {
                     text: homeHubVm.statusMessage.length > 0 ? homeHubVm.statusMessage : "Pronto"
-                    color: "#8B949E"
+                    color: "#94A3B8"
                     font.pixelSize: 11
                     Layout.fillWidth: true
                     elide: Text.ElideRight
@@ -1833,7 +2044,7 @@ Item {
 
                 Text {
                     text: "Git Flux v0.1.0 • Architettura C++23 Local-First"
-                    color: "#6E7681"
+                    color: "#64748B"
                     font.pixelSize: 11
                 }
             }
@@ -1866,47 +2077,88 @@ Item {
     // Dialog: Create Group (with project checklist selection)
     Dialog {
         id: addGroupDialog
-        anchors.centerIn: parent
-        width: 420
+        anchors.centerIn: Overlay.overlay
+        modal: true
+        width: 440
+        padding: 18
+        topPadding: 14
+        bottomPadding: 14
         title: "Crea Nuovo Gruppo"
-        standardButtons: Dialog.Ok | Dialog.Cancel
 
         property var selectedRepoIds: []
 
         background: Rectangle {
-            color: "#161B22"
-            radius: 8
-            border.color: "#30363D"
+            color: "#111824"
+            radius: 14
+            border.color: "#28374E"
+            border.width: 1
+            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
+            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
         }
 
-        ColumnLayout {
-            anchors.fill: parent
+        header: Rectangle {
+            color: "#161F2E"
+            height: 46
+            radius: 14
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 14
+                Text {
+                    text: "🗂️ Crea Nuovo Gruppo"
+                    color: "#F8FAFC"
+                    font.bold: true
+                    font.pixelSize: 13
+                }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "✕"
+                    Layout.preferredWidth: 26
+                    Layout.preferredHeight: 26
+                    hoverEnabled: true
+                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
+                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addGroupDialog.reject()
+                }
+            }
+        }
+
+        contentItem: ColumnLayout {
             spacing: 12
 
             Text {
                 text: "Nome del gruppo:"
-                color: "#F0F6FC"
+                color: "#CBD5E1"
+                font.bold: true
                 font.pixelSize: 12
             }
 
             Rectangle {
                 Layout.fillWidth: true
-                height: 34
-                color: "#0B0E14"
-                radius: 4
-                border.color: "#30363D"
+                height: 36
+                color: "#0A0E15"
+                radius: 8
+                border.color: groupNameInput.activeFocus ? "#7C4DFF" : "#222F42"
+                border.width: 1
+                Behavior on border.color { ColorAnimation { duration: 120 } }
                 TextInput {
                     id: groupNameInput
                     anchors.fill: parent
-                    anchors.margins: 6
-                    color: "#F0F6FC"
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    verticalAlignment: TextInput.AlignVCenter
+                    color: "#F8FAFC"
                     font.pixelSize: 13
+                    selectByMouse: true
+                    onAccepted: addGroupDialog.accept()
                 }
             }
 
             Text {
                 text: "Seleziona i progetti da includere nel gruppo:"
-                color: "#8B949E"
+                color: "#94A3B8"
                 font.pixelSize: 11
                 visible: homeHubVm.repositoriesCount > 0
             }
@@ -1915,26 +2167,30 @@ Item {
                 id: newGrpRepoList
                 SmoothWheelScroller {}
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(150, count * 36)
+                Layout.preferredHeight: Math.min(165, count * 38)
                 clip: true
+                spacing: 4
                 visible: homeHubVm.repositoriesCount > 0
                 model: homeHubVm.repositories
+                ScrollBar.vertical: FluxScrollBar {}
 
                 delegate: Rectangle {
                     width: newGrpRepoList.width
-                    height: 32
-                    radius: 4
-                    color: isChecked ? "#1E293B" : "transparent"
+                    height: 34
+                    radius: 8
+                    color: isChecked ? "#1A163A" : "#0D131D"
+                    border.color: isChecked ? "#7C4DFF" : "#1F2C3F"
+                    border.width: 1
 
                     property bool isChecked: addGroupDialog.selectedRepoIds.indexOf(model.id) !== -1
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.leftMargin: 4
-                        anchors.rightMargin: 8
+                        anchors.leftMargin: 8
+                        anchors.rightMargin: 10
                         spacing: 8
 
-                        CheckBox {
+                        FluxCheckBox {
                             checked: isChecked
                             onToggled: {
                                 var copy = addGroupDialog.selectedRepoIds.slice();
@@ -1950,8 +2206,9 @@ Item {
 
                         Text {
                             text: model.displayName
-                            color: "#F0F6FC"
+                            color: "#F8FAFC"
                             font.pixelSize: 12
+                            font.bold: isChecked
                             Layout.fillWidth: true
                             elide: Text.ElideRight
                         }
@@ -1960,9 +2217,44 @@ Item {
                             text: model.branch ? (" " + model.branch) : ""
                             color: "#38BDF8"
                             font.pixelSize: 10
-                            visible: model.branch && model.branch.length > 0
+                            visible: Boolean(model.branch && model.branch.length > 0)
                         }
                     }
+                }
+            }
+        }
+
+        footer: Rectangle {
+            color: "#161F2E"
+            height: 52
+            radius: 14
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 10
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Annulla"
+                    Layout.preferredHeight: 32
+                    leftPadding: 14
+                    rightPadding: 14
+                    hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
+                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addGroupDialog.reject()
+                }
+                Button {
+                    text: "✓ Crea Gruppo"
+                    Layout.preferredHeight: 32
+                    leftPadding: 16
+                    rightPadding: 16
+                    hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#9061F9" : "#7C4DFF"; radius: 8; border.color: "#A855F7"; border.width: 1 }
+                    contentItem: Text { text: parent.text; color: "#FFFFFF"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addGroupDialog.accept()
                 }
             }
         }
@@ -1970,6 +2262,7 @@ Item {
         onAboutToShow: {
             groupNameInput.text = "";
             selectedRepoIds = [];
+            groupNameInput.forceActiveFocus();
         }
 
         onAccepted: {
@@ -1983,42 +2276,102 @@ Item {
     // Dialog: Rename Repository
     Dialog {
         id: renameRepoDialog
-        anchors.centerIn: parent
-        width: 380
+        anchors.centerIn: Overlay.overlay
+        modal: true
+        width: 400
+        padding: 18
+        topPadding: 14
+        bottomPadding: 14
         title: "Rinomina Repository"
-        standardButtons: Dialog.Ok | Dialog.Cancel
 
         property string repoId: ""
         property string initialName: ""
 
         background: Rectangle {
-            color: "#161B22"
-            radius: 8
-            border.color: "#30363D"
+            color: "#111824"
+            radius: 14
+            border.color: "#28374E"
+            border.width: 1
+            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
+            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
         }
 
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: 12
+        header: Rectangle {
+            color: "#161F2E"
+            height: 46
+            radius: 14
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 14
+                Text { text: "✏️ Rinomina Repository"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
+                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
+                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: renameRepoDialog.reject()
+                }
+            }
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 10
 
             Text {
                 text: "Nuovo nome visualizzato:"
-                color: "#F0F6FC"
+                color: "#CBD5E1"
+                font.bold: true
                 font.pixelSize: 12
             }
 
             Rectangle {
                 Layout.fillWidth: true
-                height: 34
-                color: "#0B0E14"
-                radius: 4
-                border.color: "#30363D"
+                height: 36
+                color: "#0A0E15"
+                radius: 8
+                border.color: renameRepoInput.activeFocus ? "#38BDF8" : "#222F42"
+                border.width: 1
+                Behavior on border.color { ColorAnimation { duration: 120 } }
                 TextInput {
                     id: renameRepoInput
                     anchors.fill: parent
-                    anchors.margins: 6
-                    color: "#F0F6FC"
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    verticalAlignment: TextInput.AlignVCenter
+                    color: "#F8FAFC"
                     font.pixelSize: 13
+                    selectByMouse: true
+                    onAccepted: renameRepoDialog.accept()
+                }
+            }
+        }
+
+        footer: Rectangle {
+            color: "#161F2E"
+            height: 52
+            radius: 14
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 10
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Annulla"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
+                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: renameRepoDialog.reject()
+                }
+                Button {
+                    text: "✓ Salva"; Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#0EA5E9" : "#0284C7"; radius: 8; border.color: "#38BDF8"; border.width: 1 }
+                    contentItem: Text { text: parent.text; color: "#FFFFFF"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: renameRepoDialog.accept()
                 }
             }
         }
@@ -2038,42 +2391,102 @@ Item {
     // Dialog: Rename Group
     Dialog {
         id: renameGroupDialog
-        anchors.centerIn: parent
-        width: 380
+        anchors.centerIn: Overlay.overlay
+        modal: true
+        width: 400
+        padding: 18
+        topPadding: 14
+        bottomPadding: 14
         title: "Rinomina Gruppo"
-        standardButtons: Dialog.Ok | Dialog.Cancel
 
         property string groupId: ""
         property string initialName: ""
 
         background: Rectangle {
-            color: "#161B22"
-            radius: 8
-            border.color: "#30363D"
+            color: "#111824"
+            radius: 14
+            border.color: "#28374E"
+            border.width: 1
+            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
+            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
         }
 
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: 12
+        header: Rectangle {
+            color: "#161F2E"
+            height: 46
+            radius: 14
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 14
+                Text { text: "✏️ Rinomina Gruppo"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
+                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
+                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: renameGroupDialog.reject()
+                }
+            }
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 10
 
             Text {
                 text: "Nuovo nome gruppo:"
-                color: "#F0F6FC"
+                color: "#CBD5E1"
+                font.bold: true
                 font.pixelSize: 12
             }
 
             Rectangle {
                 Layout.fillWidth: true
-                height: 34
-                color: "#0B0E14"
-                radius: 4
-                border.color: "#30363D"
+                height: 36
+                color: "#0A0E15"
+                radius: 8
+                border.color: renameGroupInput.activeFocus ? "#7C4DFF" : "#222F42"
+                border.width: 1
+                Behavior on border.color { ColorAnimation { duration: 120 } }
                 TextInput {
                     id: renameGroupInput
                     anchors.fill: parent
-                    anchors.margins: 6
-                    color: "#F0F6FC"
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    verticalAlignment: TextInput.AlignVCenter
+                    color: "#F8FAFC"
                     font.pixelSize: 13
+                    selectByMouse: true
+                    onAccepted: renameGroupDialog.accept()
+                }
+            }
+        }
+
+        footer: Rectangle {
+            color: "#161F2E"
+            height: 52
+            radius: 14
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 10
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Annulla"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
+                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: renameGroupDialog.reject()
+                }
+                Button {
+                    text: "✓ Salva"; Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#9061F9" : "#7C4DFF"; radius: 8; border.color: "#A855F7"; border.width: 1 }
+                    contentItem: Text { text: parent.text; color: "#FFFFFF"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: renameGroupDialog.accept()
                 }
             }
         }
@@ -2093,10 +2506,13 @@ Item {
     // Dialog: Add Repository to Group
     Dialog {
         id: addToGroupDialog
-        anchors.centerIn: parent
-        width: 400
+        anchors.centerIn: Overlay.overlay
+        modal: true
+        width: 420
+        padding: 18
+        topPadding: 14
+        bottomPadding: 14
         title: "Aggiungi a Gruppo"
-        standardButtons: Dialog.Ok | Dialog.Cancel
 
         property string targetRepoId: ""
         property string targetRepoName: ""
@@ -2117,18 +2533,41 @@ Item {
         }
 
         background: Rectangle {
-            color: "#161B22"
-            radius: 8
-            border.color: "#30363D"
+            color: "#111824"
+            radius: 14
+            border.color: "#28374E"
+            border.width: 1
+            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
+            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
         }
 
-        ColumnLayout {
-            anchors.fill: parent
+        header: Rectangle {
+            color: "#161F2E"
+            height: 46
+            radius: 14
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 14
+                Text { text: "🗂️ Aggiungi a Gruppo"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
+                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
+                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addToGroupDialog.reject()
+                }
+            }
+        }
+
+        contentItem: ColumnLayout {
             spacing: 12
 
             Text {
                 text: "Seleziona il gruppo a cui aggiungere '" + addToGroupDialog.targetRepoName + "':"
-                color: "#F0F6FC"
+                color: "#CBD5E1"
                 font.pixelSize: 12
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
@@ -2138,21 +2577,27 @@ Item {
                 id: groupPickList
                 SmoothWheelScroller {}
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(180, count * 36)
+                Layout.preferredHeight: Math.min(190, count * 40)
                 clip: true
+                spacing: 4
                 model: addToGroupDialog.availableGroups
+                ScrollBar.vertical: FluxScrollBar {}
 
                 delegate: Rectangle {
                     width: groupPickList.width
-                    height: 32
-                    radius: 4
-                    color: (addToGroupDialog.selectedGroupId === modelData.id) ? "#2E1065" : (grpPickHover.containsMouse ? "#21262D" : "#0B0E14")
-                    border.color: (addToGroupDialog.selectedGroupId === modelData.id) ? "#7C4DFF" : "#30363D"
+                    height: 36
+                    radius: 8
+                    color: (addToGroupDialog.selectedGroupId === modelData.id) ? "#23124A" : (grpPickHover.containsMouse ? "#172233" : "#0D131D")
+                    border.color: (addToGroupDialog.selectedGroupId === modelData.id) ? "#7C4DFF" : "#222F42"
+                    border.width: 1
+
+                    Behavior on color { ColorAnimation { duration: 110 } }
 
                     MouseArea {
                         id: grpPickHover
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             addToGroupDialog.selectedGroupId = modelData.id;
                         }
@@ -2160,25 +2605,23 @@ Item {
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.leftMargin: 8
-                        anchors.rightMargin: 8
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
                         spacing: 8
 
-                        Text {
-                            text: "🗂️"
-                            font.pixelSize: 12
-                        }
+                        Text { text: "🗂️"; font.pixelSize: 12 }
 
                         Text {
                             text: modelData.name
-                            color: "#F0F6FC"
+                            color: "#F8FAFC"
                             font.pixelSize: 12
+                            font.bold: addToGroupDialog.selectedGroupId === modelData.id
                             Layout.fillWidth: true
                         }
 
                         Text {
-                            text: modelData.repositoryCount + (modelData.repositoryCount === 1 ? " repo" : " repo")
-                            color: "#8B949E"
+                            text: modelData.repositoryCount + " repo"
+                            color: "#94A3B8"
                             font.pixelSize: 11
                         }
                     }
@@ -2190,8 +2633,37 @@ Item {
                 text: (homeHubVm && homeHubVm.groupsCount === 0)
                     ? "Nessun gruppo disponibile. Crea prima un gruppo."
                     : "Questo repository fa già parte di tutti i gruppi esistenti."
-                color: "#8B949E"
+                color: "#94A3B8"
                 font.pixelSize: 12
+            }
+        }
+
+        footer: Rectangle {
+            color: "#161F2E"
+            height: 52
+            radius: 14
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 10
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Annulla"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
+                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addToGroupDialog.reject()
+                }
+                Button {
+                    text: "✓ Aggiungi"
+                    enabled: addToGroupDialog.selectedGroupId.length > 0
+                    Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
+                    background: Rectangle { color: parent.enabled ? (parent.hovered ? "#9061F9" : "#7C4DFF") : "#161F2E"; radius: 8; border.color: parent.enabled ? "#A855F7" : "#222F42"; border.width: 1 }
+                    contentItem: Text { text: parent.text; color: parent.enabled ? "#FFFFFF" : "#475569"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addToGroupDialog.accept()
+                }
             }
         }
 
@@ -2205,10 +2677,13 @@ Item {
     // Dialog: Add Repository into Group (from Group card)
     Dialog {
         id: addRepoToGroupDialog
-        anchors.centerIn: parent
-        width: 420
+        anchors.centerIn: Overlay.overlay
+        modal: true
+        width: 440
+        padding: 18
+        topPadding: 14
+        bottomPadding: 14
         title: "Aggiungi Progetto al Gruppo"
-        standardButtons: Dialog.Ok | Dialog.Cancel
 
         property string targetGroupId: ""
         property string targetGroupName: ""
@@ -2229,18 +2704,41 @@ Item {
         }
 
         background: Rectangle {
-            color: "#161B22"
-            radius: 8
-            border.color: "#30363D"
+            color: "#111824"
+            radius: 14
+            border.color: "#28374E"
+            border.width: 1
+            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
+            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
         }
 
-        ColumnLayout {
-            anchors.fill: parent
+        header: Rectangle {
+            color: "#161F2E"
+            height: 46
+            radius: 14
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 14
+                Text { text: "📁 Aggiungi Progetto al Gruppo"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
+                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
+                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addRepoToGroupDialog.reject()
+                }
+            }
+        }
+
+        contentItem: ColumnLayout {
             spacing: 12
 
             Text {
                 text: "Aggiungi un repository a '" + addRepoToGroupDialog.targetGroupName + "':"
-                color: "#F0F6FC"
+                color: "#CBD5E1"
                 font.pixelSize: 12
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
@@ -2250,21 +2748,27 @@ Item {
                 id: repoPickList
                 SmoothWheelScroller {}
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(200, count * 40)
+                Layout.preferredHeight: Math.min(200, count * 42)
                 clip: true
+                spacing: 4
                 model: addRepoToGroupDialog.availableRepos
+                ScrollBar.vertical: FluxScrollBar {}
 
                 delegate: Rectangle {
                     width: repoPickList.width
-                    height: 36
-                    radius: 4
-                    color: (addRepoToGroupDialog.selectedRepoId === modelData.id) ? "#1E293B" : (repoPickHover.containsMouse ? "#21262D" : "#0B0E14")
-                    border.color: (addRepoToGroupDialog.selectedRepoId === modelData.id) ? "#3B82F6" : "#30363D"
+                    height: 38
+                    radius: 8
+                    color: (addRepoToGroupDialog.selectedRepoId === modelData.id) ? "#152336" : (repoPickHover.containsMouse ? "#172233" : "#0D131D")
+                    border.color: (addRepoToGroupDialog.selectedRepoId === modelData.id) ? "#38BDF8" : "#222F42"
+                    border.width: 1
+
+                    Behavior on color { ColorAnimation { duration: 110 } }
 
                     MouseArea {
                         id: repoPickHover
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             addRepoToGroupDialog.selectedRepoId = modelData.id;
                         }
@@ -2272,18 +2776,15 @@ Item {
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.leftMargin: 8
-                        anchors.rightMargin: 8
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
                         spacing: 8
 
-                        Text {
-                            text: "📁"
-                            font.pixelSize: 12
-                        }
+                        Text { text: "📁"; font.pixelSize: 12 }
 
                         Text {
                             text: modelData.displayName
-                            color: "#F0F6FC"
+                            color: "#F8FAFC"
                             font.pixelSize: 12
                             font.bold: true
                             Layout.fillWidth: true
@@ -2305,8 +2806,37 @@ Item {
                 text: (homeHubVm && homeHubVm.repositoriesCount === 0)
                     ? "Nessun repository registrato."
                     : "Tutti i repository registrati fanno già parte di questo gruppo."
-                color: "#8B949E"
+                color: "#94A3B8"
                 font.pixelSize: 12
+            }
+        }
+
+        footer: Rectangle {
+            color: "#161F2E"
+            height: 52
+            radius: 14
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 10
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Annulla"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
+                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addRepoToGroupDialog.reject()
+                }
+                Button {
+                    text: "✓ Aggiungi"
+                    enabled: addRepoToGroupDialog.selectedRepoId.length > 0
+                    Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
+                    background: Rectangle { color: parent.enabled ? (parent.hovered ? "#0EA5E9" : "#0284C7") : "#161F2E"; radius: 8; border.color: parent.enabled ? "#38BDF8" : "#222F42"; border.width: 1 }
+                    contentItem: Text { text: parent.text; color: parent.enabled ? "#FFFFFF" : "#475569"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addRepoToGroupDialog.accept()
+                }
             }
         }
 
@@ -2320,10 +2850,13 @@ Item {
     // Dialog: Add Repository into Workspace (from Workspace card)
     Dialog {
         id: addRepoToWsDialog
-        anchors.centerIn: parent
-        width: 420
+        anchors.centerIn: Overlay.overlay
+        modal: true
+        width: 440
+        padding: 18
+        topPadding: 14
+        bottomPadding: 14
         title: "Aggiungi Progetto al Workspace"
-        standardButtons: Dialog.Ok | Dialog.Cancel
 
         property string targetWorkspaceId: ""
         property string targetWorkspaceName: ""
@@ -2344,18 +2877,41 @@ Item {
         }
 
         background: Rectangle {
-            color: "#161B22"
-            radius: 8
-            border.color: "#30363D"
+            color: "#111824"
+            radius: 14
+            border.color: "#28374E"
+            border.width: 1
+            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
+            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
         }
 
-        ColumnLayout {
-            anchors.fill: parent
+        header: Rectangle {
+            color: "#161F2E"
+            height: 46
+            radius: 14
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 14
+                Text { text: "💼 Aggiungi Progetto al Workspace"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
+                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
+                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addRepoToWsDialog.reject()
+                }
+            }
+        }
+
+        contentItem: ColumnLayout {
             spacing: 12
 
             Text {
                 text: "Aggiungi un repository a '" + addRepoToWsDialog.targetWorkspaceName + "':"
-                color: "#F0F6FC"
+                color: "#CBD5E1"
                 font.pixelSize: 12
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
@@ -2365,21 +2921,27 @@ Item {
                 id: wsRepoPickList
                 SmoothWheelScroller {}
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(200, count * 40)
+                Layout.preferredHeight: Math.min(200, count * 42)
                 clip: true
+                spacing: 4
                 model: addRepoToWsDialog.availableRepos
+                ScrollBar.vertical: FluxScrollBar {}
 
                 delegate: Rectangle {
                     width: wsRepoPickList.width
-                    height: 36
-                    radius: 4
-                    color: (addRepoToWsDialog.selectedRepoId === modelData.id) ? "#143823" : (wsRepoPickHover.containsMouse ? "#21262D" : "#0B0E14")
-                    border.color: (addRepoToWsDialog.selectedRepoId === modelData.id) ? "#22C55E" : "#30363D"
+                    height: 38
+                    radius: 8
+                    color: (addRepoToWsDialog.selectedRepoId === modelData.id) ? "#063B2C" : (wsRepoPickHover.containsMouse ? "#172233" : "#0D131D")
+                    border.color: (addRepoToWsDialog.selectedRepoId === modelData.id) ? "#10B981" : "#222F42"
+                    border.width: 1
+
+                    Behavior on color { ColorAnimation { duration: 110 } }
 
                     MouseArea {
                         id: wsRepoPickHover
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             addRepoToWsDialog.selectedRepoId = modelData.id;
                         }
@@ -2387,18 +2949,15 @@ Item {
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.leftMargin: 8
-                        anchors.rightMargin: 8
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
                         spacing: 8
 
-                        Text {
-                            text: "📁"
-                            font.pixelSize: 12
-                        }
+                        Text { text: "📁"; font.pixelSize: 12 }
 
                         Text {
                             text: modelData.displayName
-                            color: "#F0F6FC"
+                            color: "#F8FAFC"
                             font.pixelSize: 12
                             font.bold: true
                             Layout.fillWidth: true
@@ -2420,8 +2979,37 @@ Item {
                 text: (homeHubVm && homeHubVm.repositoriesCount === 0)
                     ? "Nessun repository registrato."
                     : "Tutti i repository registrati fanno già parte di questo workspace."
-                color: "#8B949E"
+                color: "#94A3B8"
                 font.pixelSize: 12
+            }
+        }
+
+        footer: Rectangle {
+            color: "#161F2E"
+            height: 52
+            radius: 14
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 10
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Annulla"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
+                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addRepoToWsDialog.reject()
+                }
+                Button {
+                    text: "✓ Aggiungi"
+                    enabled: addRepoToWsDialog.selectedRepoId.length > 0
+                    Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
+                    background: Rectangle { color: parent.enabled ? (parent.hovered ? "#10B981" : "#059669") : "#161F2E"; radius: 8; border.color: parent.enabled ? "#34D399" : "#222F42"; border.width: 1 }
+                    contentItem: Text { text: parent.text; color: parent.enabled ? "#FFFFFF" : "#475569"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addRepoToWsDialog.accept()
+                }
             }
         }
 
@@ -2435,10 +3023,13 @@ Item {
     // Dialog: Add Group into Workspace (from Workspace card)
     Dialog {
         id: addGrpToWsDialog
-        anchors.centerIn: parent
-        width: 420
+        anchors.centerIn: Overlay.overlay
+        modal: true
+        width: 440
+        padding: 18
+        topPadding: 14
+        bottomPadding: 14
         title: "Aggiungi Gruppo al Workspace"
-        standardButtons: Dialog.Ok | Dialog.Cancel
 
         property string targetWorkspaceId: ""
         property string targetWorkspaceName: ""
@@ -2459,18 +3050,41 @@ Item {
         }
 
         background: Rectangle {
-            color: "#161B22"
-            radius: 8
-            border.color: "#30363D"
+            color: "#111824"
+            radius: 14
+            border.color: "#28374E"
+            border.width: 1
+            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
+            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
         }
 
-        ColumnLayout {
-            anchors.fill: parent
+        header: Rectangle {
+            color: "#161F2E"
+            height: 46
+            radius: 14
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 14
+                Text { text: "🗂️ Aggiungi Gruppo al Workspace"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
+                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
+                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addGrpToWsDialog.reject()
+                }
+            }
+        }
+
+        contentItem: ColumnLayout {
             spacing: 12
 
             Text {
                 text: "Aggiungi un gruppo a '" + addGrpToWsDialog.targetWorkspaceName + "':"
-                color: "#F0F6FC"
+                color: "#CBD5E1"
                 font.pixelSize: 12
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
@@ -2480,21 +3094,27 @@ Item {
                 id: wsGrpPickList
                 SmoothWheelScroller {}
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(200, count * 40)
+                Layout.preferredHeight: Math.min(200, count * 42)
                 clip: true
+                spacing: 4
                 model: addGrpToWsDialog.availableGroups
+                ScrollBar.vertical: FluxScrollBar {}
 
                 delegate: Rectangle {
                     width: wsGrpPickList.width
-                    height: 36
-                    radius: 4
-                    color: (addGrpToWsDialog.selectedGroupId === modelData.id) ? "#2E1065" : (wsGrpPickHover.containsMouse ? "#21262D" : "#0B0E14")
-                    border.color: (addGrpToWsDialog.selectedGroupId === modelData.id) ? "#7C4DFF" : "#30363D"
+                    height: 38
+                    radius: 8
+                    color: (addGrpToWsDialog.selectedGroupId === modelData.id) ? "#23124A" : (wsGrpPickHover.containsMouse ? "#172233" : "#0D131D")
+                    border.color: (addGrpToWsDialog.selectedGroupId === modelData.id) ? "#7C4DFF" : "#222F42"
+                    border.width: 1
+
+                    Behavior on color { ColorAnimation { duration: 110 } }
 
                     MouseArea {
                         id: wsGrpPickHover
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             addGrpToWsDialog.selectedGroupId = modelData.id;
                         }
@@ -2502,18 +3122,15 @@ Item {
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.leftMargin: 8
-                        anchors.rightMargin: 8
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
                         spacing: 8
 
-                        Text {
-                            text: "🗂️"
-                            font.pixelSize: 12
-                        }
+                        Text { text: "🗂️"; font.pixelSize: 12 }
 
                         Text {
                             text: modelData.name
-                            color: "#F0F6FC"
+                            color: "#F8FAFC"
                             font.pixelSize: 12
                             font.bold: true
                             Layout.fillWidth: true
@@ -2535,8 +3152,37 @@ Item {
                 text: (homeHubVm && homeHubVm.groupsCount === 0)
                     ? "Nessun gruppo disponibile. Crea prima un gruppo."
                     : "Tutti i gruppi esistenti fanno già parte di questo workspace."
-                color: "#8B949E"
+                color: "#94A3B8"
                 font.pixelSize: 12
+            }
+        }
+
+        footer: Rectangle {
+            color: "#161F2E"
+            height: 52
+            radius: 14
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 10
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Annulla"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
+                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addGrpToWsDialog.reject()
+                }
+                Button {
+                    text: "✓ Aggiungi"
+                    enabled: addGrpToWsDialog.selectedGroupId.length > 0
+                    Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
+                    background: Rectangle { color: parent.enabled ? (parent.hovered ? "#9061F9" : "#7C4DFF") : "#161F2E"; radius: 8; border.color: parent.enabled ? "#A855F7" : "#222F42"; border.width: 1 }
+                    contentItem: Text { text: parent.text; color: parent.enabled ? "#FFFFFF" : "#475569"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addGrpToWsDialog.accept()
+                }
             }
         }
 
@@ -2550,41 +3196,106 @@ Item {
     // Dialog: Create Workspace
     Dialog {
         id: addWorkspaceDialog
-        anchors.centerIn: parent
-        width: 380
+        anchors.centerIn: Overlay.overlay
+        modal: true
+        width: 400
+        padding: 18
+        topPadding: 14
+        bottomPadding: 14
         title: "Crea Nuovo Workspace"
-        standardButtons: Dialog.Ok | Dialog.Cancel
 
         background: Rectangle {
-            color: "#161B22"
-            radius: 8
-            border.color: "#30363D"
+            color: "#111824"
+            radius: 14
+            border.color: "#28374E"
+            border.width: 1
+            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
+            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
         }
 
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: 12
+        header: Rectangle {
+            color: "#161F2E"
+            height: 46
+            radius: 14
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 14
+                Text { text: "💼 Crea Nuovo Workspace"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
+                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
+                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addWorkspaceDialog.reject()
+                }
+            }
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 10
 
             Text {
                 text: "Nome del workspace:"
-                color: "#F0F6FC"
+                color: "#CBD5E1"
+                font.bold: true
                 font.pixelSize: 12
             }
 
             Rectangle {
                 Layout.fillWidth: true
-                height: 34
-                color: "#0B0E14"
-                radius: 4
-                border.color: "#30363D"
+                height: 36
+                color: "#0A0E15"
+                radius: 8
+                border.color: wsNameInput.activeFocus ? "#10B981" : "#222F42"
+                border.width: 1
+                Behavior on border.color { ColorAnimation { duration: 120 } }
                 TextInput {
                     id: wsNameInput
                     anchors.fill: parent
-                    anchors.margins: 6
-                    color: "#F0F6FC"
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    verticalAlignment: TextInput.AlignVCenter
+                    color: "#F8FAFC"
                     font.pixelSize: 13
+                    selectByMouse: true
+                    onAccepted: addWorkspaceDialog.accept()
                 }
             }
+        }
+
+        footer: Rectangle {
+            color: "#161F2E"
+            height: 52
+            radius: 14
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 10
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Annulla"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
+                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addWorkspaceDialog.reject()
+                }
+                Button {
+                    text: "✓ Crea Workspace"; Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#10B981" : "#059669"; radius: 8; border.color: "#34D399"; border.width: 1 }
+                    contentItem: Text { text: parent.text; color: "#FFFFFF"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addWorkspaceDialog.accept()
+                }
+            }
+        }
+
+        onAboutToShow: {
+            wsNameInput.text = "";
+            wsNameInput.forceActiveFocus();
         }
 
         onAccepted: {
@@ -2610,40 +3321,51 @@ Item {
     // Modal Error Feedback Dialog
     Dialog {
         id: errorFeedbackDialog
-        anchors.centerIn: parent
+        anchors.centerIn: Overlay.overlay
+        modal: true
         width: 480
+        padding: 18
+        topPadding: 14
+        bottomPadding: 14
         title: "Attenzione — Errore Operazione"
-        standardButtons: Dialog.Ok
         property string errorMessage: ""
 
         background: Rectangle {
-            color: "#161B22"
-            radius: 8
-            border.color: "#F85149"
+            color: "#111824"
+            radius: 14
+            border.color: "#EF4444"
             border.width: 1
+            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
+            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
         }
 
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: 12
-
+        header: Rectangle {
+            color: "#2A1217"
+            height: 46
+            radius: 14
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#2A1217" }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#7F1D1D" }
             RowLayout {
-                spacing: 10
-                Text {
-                    text: "⚠️"
-                    font.pixelSize: 22
-                }
-                Text {
-                    text: "Impossibile completare l'operazione"
-                    color: "#F85149"
-                    font.pixelSize: 14
-                    font.bold: true
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 14
+                Text { text: "⚠️ Impossibile completare l'operazione"; color: "#FCA5A5"; font.bold: true; font.pixelSize: 13 }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
+                    background: Rectangle { radius: 7; color: parent.hovered ? "#4C151E" : "transparent" }
+                    contentItem: Text { text: "✕"; color: parent.hovered ? "#FFFFFF" : "#FCA5A5"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: errorFeedbackDialog.close()
                 }
             }
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 12
 
             Text {
                 text: errorFeedbackDialog.errorMessage
-                color: "#F0F6FC"
+                color: "#F8FAFC"
                 font.pixelSize: 13
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
@@ -2651,10 +3373,30 @@ Item {
 
             Text {
                 text: "Suggerimento: Seleziona la cartella radice del progetto Git oppure la cartella '.git' al suo interno tramite il selettore cartelle."
-                color: "#8B949E"
+                color: "#94A3B8"
                 font.pixelSize: 11
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
+            }
+        }
+
+        footer: Rectangle {
+            color: "#161F2E"
+            height: 52
+            radius: 14
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Chiudi"; Layout.preferredHeight: 32; leftPadding: 18; rightPadding: 18; hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#DC2626" : "#B91C1C"; radius: 8; border.color: "#EF4444"; border.width: 1 }
+                    contentItem: Text { text: "Chiudi"; color: "#FFFFFF"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: errorFeedbackDialog.close()
+                }
             }
         }
     }
@@ -2667,8 +3409,8 @@ Item {
         visible: root.isDraggingRepo
         width: 220
         height: 38
-        radius: 6
-        color: "#1E293B"
+        radius: 9
+        color: "#152336"
         border.color: "#38BDF8"
         border.width: 1.5
         z: 99999
@@ -2684,7 +3426,7 @@ Item {
             }
             Text {
                 text: root.draggedRepoName
-                color: "#F0F6FC"
+                color: "#F8FAFC"
                 font.pixelSize: 12
                 font.bold: true
                 elide: Text.ElideRight
@@ -2698,7 +3440,7 @@ Item {
         visible: root.isDraggingGroup
         width: 220
         height: 38
-        radius: 6
+        radius: 9
         color: "#2E1065"
         border.color: "#A855F7"
         border.width: 1.5
@@ -2715,7 +3457,7 @@ Item {
             }
             Text {
                 text: root.draggedGroupName
-                color: "#F0F6FC"
+                color: "#F8FAFC"
                 font.pixelSize: 12
                 font.bold: true
                 elide: Text.ElideRight
