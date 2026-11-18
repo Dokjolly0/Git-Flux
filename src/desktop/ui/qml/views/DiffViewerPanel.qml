@@ -256,22 +256,9 @@ Rectangle {
         }
     }
 
-    component ContextOptionItem: MenuItem {
+    component ContextOptionItem: FluxMenuItem {
         id: optItem
-        property bool selected: false
-        implicitHeight: 28
-        background: Rectangle {
-            color: optItem.highlighted ? "#1E293B" : "transparent"
-            radius: 4
-        }
-        contentItem: Text {
-            text: optItem.text
-            color: optItem.enabled ? (optItem.selected ? "#38BDF8" : "#E2E8F0") : "#64748B"
-            font.pixelSize: 11
-            font.bold: optItem.selected
-            verticalAlignment: Text.AlignVCenter
-            leftPadding: 8
-        }
+        font.pixelSize: 11
     }
 
     ColumnLayout {
@@ -484,17 +471,9 @@ Rectangle {
                     }
                     onClicked: contextMenu.open()
 
-                    Menu {
+                    FluxMenu {
                         id: contextMenu
                         y: contextBtn.height + 4
-
-                        background: Rectangle {
-                            implicitWidth: 205
-                            color: "#161B22"
-                            border.color: "#30363D"
-                            border.width: 1
-                            radius: 6
-                        }
 
                         ContextOptionItem {
                             text: "3 righe (compatto)"
@@ -516,11 +495,7 @@ Rectangle {
                             selected: root.diffViewer && root.diffViewer.contextLines === 50
                             onTriggered: if (root.diffViewer) root.diffViewer.setContextLines(50)
                         }
-                        MenuSeparator {
-                            contentItem: Rectangle {
-                                implicitHeight: 1
-                                color: "#21262D"
-                            }
+                        FluxMenuSeparator {
                         }
                         ContextOptionItem {
                             text: "+15 righe extra"

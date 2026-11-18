@@ -6,6 +6,7 @@ MenuItem {
     id: control
 
     property bool destructive: false
+    property bool selected: false
     readonly property bool isDestructive: destructive
         || text.indexOf("🗑") !== -1
         || text.indexOf("🔴") !== -1
@@ -23,6 +24,18 @@ MenuItem {
     hoverEnabled: true
 
     font.pixelSize: 12
+    font.bold: control.selected
+
+    onImplicitWidthChanged: {
+        if (control.menu && typeof control.menu.updateContentWidth === "function") {
+            control.menu.updateContentWidth();
+        }
+    }
+    onVisibleChanged: {
+        if (control.menu && typeof control.menu.updateContentWidth === "function") {
+            control.menu.updateContentWidth();
+        }
+    }
 
     indicator: Item {}
     arrow: Item {}
@@ -37,11 +50,14 @@ MenuItem {
             if (!control.enabled) return "transparent";
             if (control.down) return control.isDestructive ? "#4C151E" : "#243652";
             if (control.isActive) return control.isDestructive ? "#38121A" : "#1C2A40";
+            if (control.selected) return "#13263B";
             return "transparent";
         }
         border.color: {
-            if (!control.enabled || !control.isActive) return "transparent";
-            return control.isDestructive ? "#7F1D1D" : "#2D4263";
+            if (!control.enabled) return "transparent";
+            if (control.isActive) return control.isDestructive ? "#7F1D1D" : "#2D4263";
+            if (control.selected) return "#1E4066";
+            return "transparent";
         }
         border.width: 1
 
@@ -74,6 +90,7 @@ MenuItem {
                 if (control.isDestructive) {
                     return control.isActive ? "#FCA5A5" : "#F87171";
                 }
+                if (control.selected) return "#38BDF8";
                 return control.isActive ? "#F8FAFC" : "#CBD5E1";
             }
             elide: Text.ElideRight

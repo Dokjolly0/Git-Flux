@@ -4,7 +4,7 @@ import QtQuick.Layouts
 
 Rectangle {
     id: root
-    color: "#0E1117"
+    color: "#080B10"
 
     property var sessionVm: null
     // Network operation in progress ("fetch", "pull", "push" or ""): runs in the background, the
@@ -24,21 +24,44 @@ Rectangle {
         // ==========================================
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 38
-            color: "#090D13"
+            Layout.preferredHeight: 42
+            color: "#0A0E15"
+
+            Rectangle {
+                anchors.bottom: parent.bottom
+                width: parent.width
+                height: 1
+                color: "#1A2434"
+            }
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 8
-                anchors.rightMargin: 8
+                anchors.leftMargin: 10
+                anchors.rightMargin: 10
                 spacing: 8
 
                 // Back to Home Hub button
                 Button {
-                    Layout.preferredHeight: 28
+                    Layout.preferredHeight: 30
+                    leftPadding: 10
+                    rightPadding: 10
+                    hoverEnabled: true
                     background: Rectangle {
-                        color: parent.hovered ? "#1E293B" : "transparent"
-                        radius: 5
+                        color: parent.down ? "#1E2D42" : (parent.hovered ? "#182334" : "#101722")
+                        radius: 8
+                        border.color: parent.hovered ? "#2B3D56" : "#1C2636"
+                        border.width: 1
+
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
+                        Behavior on border.color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
                     }
                     contentItem: RowLayout {
                         spacing: 6
@@ -55,7 +78,7 @@ Rectangle {
                         }
                         Text {
                             text: "Home"
-                            color: "#CBD5E1"
+                            color: "#E2E8F0"
                             font.bold: true
                             font.pixelSize: 11
                         }
@@ -68,17 +91,17 @@ Rectangle {
                 // Active Group Indicator Badge
                 Rectangle {
                     visible: root.sessionVm && root.sessionVm.currentGroupName && root.sessionVm.currentGroupName.length > 0
-                    Layout.preferredHeight: 26
-                    implicitWidth: groupBadgeRow.implicitWidth + 14
-                    radius: 13
-                    color: "#2E1065"
+                    Layout.preferredHeight: 28
+                    implicitWidth: groupBadgeRow.implicitWidth + 16
+                    radius: 14
+                    color: "#221248"
                     border.color: "#7C4DFF"
                     border.width: 1
 
                     RowLayout {
                         id: groupBadgeRow
                         anchors.centerIn: parent
-                        spacing: 5
+                        spacing: 6
 
                         Text {
                             text: "🗂️"
@@ -93,10 +116,15 @@ Rectangle {
                         }
 
                         MouseArea {
-                            width: 16
-                            height: 16
+                            width: 18
+                            height: 18
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: 9
+                                color: parent.containsMouse ? "#3B1219" : "transparent"
+                            }
                             Text {
                                 anchors.centerIn: parent
                                 text: "×"
@@ -120,7 +148,7 @@ Rectangle {
                 Rectangle {
                     Layout.preferredWidth: 1
                     Layout.preferredHeight: 20
-                    color: "#21262D"
+                    color: "#1E293B"
                 }
 
                 // Scrollable Tab Bar for Open Repositories
@@ -131,19 +159,46 @@ Rectangle {
                     clip: true
 
                     RowLayout {
-                        spacing: 4
+                        spacing: 6
 
                         Repeater {
                             model: root.sessionVm ? root.sessionVm.tabs : null
 
                             delegate: Rectangle {
                                 id: tabRect
+                                readonly property bool isActiveTab: Boolean(root.sessionVm && root.sessionVm.activeTabIndex === index)
                                 Layout.preferredHeight: 30
-                                implicitWidth: tabRow.implicitWidth + 20
-                                radius: 5
-                                color: (root.sessionVm && root.sessionVm.activeTabIndex === index) ? "#1E293B" : (tabMouseArea.containsMouse ? "#161B22" : "transparent")
-                                border.color: (root.sessionVm && root.sessionVm.activeTabIndex === index) ? "#3B82F6" : "transparent"
+                                implicitWidth: tabRow.implicitWidth + 22
+                                radius: 8
+                                color: isActiveTab
+                                    ? "#152336"
+                                    : (tabMouseArea.containsMouse ? "#111927" : "transparent")
+                                border.color: isActiveTab
+                                    ? "#2A4B73"
+                                    : (tabMouseArea.containsMouse ? "#1F2C3F" : "transparent")
                                 border.width: 1
+
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 120
+                                    }
+                                }
+                                Behavior on border.color {
+                                    ColorAnimation {
+                                        duration: 120
+                                    }
+                                }
+
+                                // Subtle active bottom pill accent
+                                Rectangle {
+                                    visible: tabRect.isActiveTab
+                                    anchors.bottom: parent.bottom
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    width: Math.max(16, parent.width - 20)
+                                    height: 2
+                                    radius: 1
+                                    color: "#38BDF8"
+                                }
 
                                 MouseArea {
                                     id: tabMouseArea
@@ -160,7 +215,7 @@ Rectangle {
                                 RowLayout {
                                     id: tabRow
                                     anchors.centerIn: parent
-                                    spacing: 6
+                                    spacing: 7
 
                                     // Dirty Indicator
                                     Rectangle {
@@ -178,23 +233,34 @@ Rectangle {
 
                                     Text {
                                         text: modelData.name
-                                        color: (root.sessionVm && root.sessionVm.activeTabIndex === index) ? "#FFFFFF" : "#94A3B8"
-                                        font.bold: (root.sessionVm && root.sessionVm.activeTabIndex === index)
+                                        color: tabRect.isActiveTab ? "#F8FAFC" : "#94A3B8"
+                                        font.bold: tabRect.isActiveTab
                                         font.pixelSize: 11
                                     }
 
                                     MouseArea {
                                         id: closeTabBtn
                                         z: 2
-                                        width: 16
-                                        height: 16
+                                        width: 18
+                                        height: 18
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
+
+                                        Rectangle {
+                                            anchors.fill: parent
+                                            radius: 5
+                                            color: closeTabBtn.containsMouse ? "#3B1219" : "transparent"
+                                            Behavior on color {
+                                                ColorAnimation {
+                                                    duration: 100
+                                                }
+                                            }
+                                        }
 
                                         Text {
                                             anchors.centerIn: parent
                                             text: "×"
-                                            color: parent.containsMouse ? "#EF4444" : "#64748B"
+                                            color: parent.containsMouse ? "#F87171" : "#64748B"
                                             font.pixelSize: 13
                                             font.bold: true
                                         }
@@ -216,16 +282,24 @@ Rectangle {
 
                         // Add Tab Button
                         Button {
-                            Layout.preferredHeight: 26
-                            Layout.preferredWidth: 26
+                            Layout.preferredHeight: 28
+                            Layout.preferredWidth: 28
+                            hoverEnabled: true
                             background: Rectangle {
-                                color: parent.hovered ? "#1E293B" : "#161B22"
-                                radius: 5
-                                border.color: "#30363D"
+                                color: parent.hovered ? "#1A2639" : "#111824"
+                                radius: 8
+                                border.color: parent.hovered ? "#2E4260" : "#1F2C3F"
+                                border.width: 1
+
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 120
+                                    }
+                                }
                             }
                             contentItem: Text {
                                 text: "+"
-                                color: "#94A3B8"
+                                color: parent.hovered ? "#F8FAFC" : "#94A3B8"
                                 font.pixelSize: 14
                                 font.bold: true
                                 horizontalAlignment: Text.AlignHCenter
@@ -243,14 +317,19 @@ Rectangle {
         }
 
         // ==========================================
-        // 1.1 MAIN GIT ACTIONS TOOLBAR (GitKraken style: Center-aligned actions)
+        // 1.1 MAIN GIT ACTIONS TOOLBAR (Modern Floating Capsule Controls)
         // ==========================================
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 44
-            color: "#0D1117"
-            border.color: "#21262D"
-            border.width: 1
+            Layout.preferredHeight: 48
+            color: "#0D131D"
+
+            Rectangle {
+                anchors.bottom: parent.bottom
+                width: parent.width
+                height: 1
+                color: "#1B2535"
+            }
 
             // LEFT SIDE: Branch Selector Dropdown
             RowLayout {
@@ -260,7 +339,7 @@ Rectangle {
                 spacing: 8
 
                 BranchSwitcherDropdown {
-                    Layout.preferredHeight: 30
+                    Layout.preferredHeight: 32
                     branchManager: (root.sessionVm && root.sessionVm.branchManager) ? root.sessionVm.branchManager : null
                 }
             }
@@ -268,112 +347,129 @@ Rectangle {
             // CENTER: Git Operations Block (Pull, Push, Branch, Stash, Pop)
             RowLayout {
                 anchors.centerIn: parent
-                spacing: 6
+                spacing: 8
 
-                // 1. PULL BUTTON (Split button with dropdown menu)
-                RowLayout {
-                    spacing: 0
+                // 1. PULL CAPSULE SPLIT BUTTON
+                Rectangle {
+                    Layout.preferredHeight: 32
+                    implicitWidth: pullSplitRow.implicitWidth + 2
+                    radius: 9
+                    color: "#121A27"
+                    border.color: (pullMainBtn.hovered || pullMenuBtn.hovered || pullMenu.opened) ? "#334968" : "#222F42"
+                    border.width: 1
 
-                    Button {
-                        id: pullMainBtn
-                        text: root.remoteOperation === "pull" ? "⏳ Pull..." : (root.remoteOperation === "fetch" ? "⏳ Fetch..." : "⬇ Pull")
-                        enabled: root.remoteOperation === ""
-                        Layout.preferredHeight: 30
-                        background: Rectangle {
-                            color: parent.hovered ? "#1E293B" : "#161B22"
-                            radius: 4
-                            border.color: "#30363D"
-                            border.width: 1
-
-                            Rectangle {
-                                anchors.right: parent.right
-                                anchors.top: parent.top
-                                anchors.bottom: parent.bottom
-                                width: 4
-                                color: parent.color
-                            }
-                        }
-                        contentItem: Text {
-                            text: parent.text
-                            color: parent.enabled ? "#F1F5F9" : "#64748B"
-                            font.pixelSize: 11
-                            font.bold: true
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                        onClicked: {
-                            if (root.sessionVm && root.sessionVm.branchManager) {
-                                root.sessionVm.branchManager.pullRemote("origin", "default");
-                            }
+                    Behavior on border.color {
+                        ColorAnimation {
+                            duration: 120
                         }
                     }
 
-                    Button {
-                        id: pullMenuBtn
-                        Layout.preferredHeight: 30
-                        Layout.preferredWidth: 20
-                        background: Rectangle {
-                            color: parent.hovered ? "#334155" : "#161B22"
-                            radius: 4
-                            border.color: "#30363D"
-                            border.width: 1
+                    RowLayout {
+                        id: pullSplitRow
+                        anchors.centerIn: parent
+                        spacing: 0
 
-                            Rectangle {
-                                anchors.left: parent.left
-                                anchors.top: parent.top
-                                anchors.bottom: parent.bottom
-                                width: 4
-                                color: parent.color
+                        Button {
+                            id: pullMainBtn
+                            text: root.remoteOperation === "pull" ? "⏳ Pull..." : (root.remoteOperation === "fetch" ? "⏳ Fetch..." : "⬇ Pull")
+                            enabled: root.remoteOperation === ""
+                            Layout.preferredHeight: 30
+                            leftPadding: 12
+                            rightPadding: 10
+                            hoverEnabled: true
+                            background: Rectangle {
+                                color: parent.down ? "#1E2D42" : (parent.hovered ? "#1A2639" : "transparent")
+                                radius: 8
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
+                            }
+                            contentItem: Text {
+                                text: parent.text
+                                color: parent.enabled ? "#F1F5F9" : "#64748B"
+                                font.pixelSize: 11
+                                font.bold: true
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            onClicked: {
+                                if (root.sessionVm && root.sessionVm.branchManager) {
+                                    root.sessionVm.branchManager.pullRemote("origin", "default");
+                                }
                             }
                         }
-                        contentItem: Text {
-                            text: "▾"
-                            color: "#94A3B8"
-                            font.pixelSize: 9
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
+
+                        Rectangle {
+                            Layout.preferredWidth: 1
+                            Layout.preferredHeight: 16
+                            color: "#243247"
                         }
-                        onClicked: pullMenu.open()
 
-                        Menu {
-                            id: pullMenu
-                            y: pullMenuBtn.height
+                        Button {
+                            id: pullMenuBtn
+                            Layout.preferredHeight: 30
+                            Layout.preferredWidth: 24
+                            hoverEnabled: true
+                            background: Rectangle {
+                                color: (parent.down || pullMenu.opened) ? "#1E2D42" : (parent.hovered ? "#1A2639" : "transparent")
+                                radius: 8
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
+                            }
+                            contentItem: Text {
+                                text: "▾"
+                                color: pullMenu.opened ? "#38BDF8" : "#94A3B8"
+                                font.pixelSize: 9
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            onClicked: pullMenu.open()
 
-                            MenuItem {
-                                text: "⬇ Pull (Default: Fast-Forward)"
-                                font.pixelSize: 11
-                                onClicked: {
-                                    if (root.sessionVm && root.sessionVm.branchManager) {
-                                        root.sessionVm.branchManager.pullRemote("origin", "default");
+                            FluxMenu {
+                                id: pullMenu
+                                y: pullMenuBtn.height + 4
+
+                                FluxMenuItem {
+                                    text: "⬇ Pull (Default: Fast-Forward)"
+                                    font.pixelSize: 11
+                                    onClicked: {
+                                        if (root.sessionVm && root.sessionVm.branchManager) {
+                                            root.sessionVm.branchManager.pullRemote("origin", "default");
+                                        }
                                     }
                                 }
-                            }
-                            MenuItem {
-                                text: "⬇ Pull con Rebase (--rebase)"
-                                font.pixelSize: 11
-                                onClicked: {
-                                    if (root.sessionVm && root.sessionVm.branchManager) {
-                                        root.sessionVm.branchManager.pullRemote("origin", "rebase");
+                                FluxMenuItem {
+                                    text: "⬇ Pull con Rebase (--rebase)"
+                                    font.pixelSize: 11
+                                    onClicked: {
+                                        if (root.sessionVm && root.sessionVm.branchManager) {
+                                            root.sessionVm.branchManager.pullRemote("origin", "rebase");
+                                        }
                                     }
                                 }
-                            }
-                            MenuItem {
-                                text: "⬇ Pull Solo Fast-Forward (--ff-only)"
-                                font.pixelSize: 11
-                                onClicked: {
-                                    if (root.sessionVm && root.sessionVm.branchManager) {
-                                        root.sessionVm.branchManager.pullRemote("origin", "ff-only");
+                                FluxMenuItem {
+                                    text: "⬇ Pull Solo Fast-Forward (--ff-only)"
+                                    font.pixelSize: 11
+                                    onClicked: {
+                                        if (root.sessionVm && root.sessionVm.branchManager) {
+                                            root.sessionVm.branchManager.pullRemote("origin", "ff-only");
+                                        }
                                     }
                                 }
-                            }
-                            MenuSeparator {
-                            }
-                            MenuItem {
-                                text: "⬇ Fetch da tutti i remote (--all)"
-                                font.pixelSize: 11
-                                onClicked: {
-                                    if (root.sessionVm && root.sessionVm.branchManager) {
-                                        root.sessionVm.branchManager.fetchRemote("origin", true);
+                                FluxMenuSeparator {
+                                }
+                                FluxMenuItem {
+                                    text: "⬇ Fetch da tutti i remote (--all)"
+                                    font.pixelSize: 11
+                                    onClicked: {
+                                        if (root.sessionVm && root.sessionVm.branchManager) {
+                                            root.sessionVm.branchManager.fetchRemote("origin", true);
+                                        }
                                     }
                                 }
                             }
@@ -381,108 +477,125 @@ Rectangle {
                     }
                 }
 
-                // 2. PUSH BUTTON (Split button with dropdown menu)
-                RowLayout {
-                    spacing: 0
+                // 2. PUSH CAPSULE SPLIT BUTTON
+                Rectangle {
+                    Layout.preferredHeight: 32
+                    implicitWidth: pushSplitRow.implicitWidth + 2
+                    radius: 9
+                    color: "#121A27"
+                    border.color: (pushMainBtn.hovered || pushMenuBtn.hovered || pushMenu.opened) ? "#334968" : "#222F42"
+                    border.width: 1
 
-                    Button {
-                        id: pushMainBtn
-                        text: root.remoteOperation === "push" ? "⏳ Push..." : "⬆ Push"
-                        enabled: root.remoteOperation === ""
-                        Layout.preferredHeight: 30
-                        background: Rectangle {
-                            color: parent.hovered ? "#1E293B" : "#161B22"
-                            radius: 4
-                            border.color: "#30363D"
-                            border.width: 1
-
-                            Rectangle {
-                                anchors.right: parent.right
-                                anchors.top: parent.top
-                                anchors.bottom: parent.bottom
-                                width: 4
-                                color: parent.color
-                            }
-                        }
-                        contentItem: Text {
-                            text: parent.text
-                            color: parent.enabled ? "#F1F5F9" : "#64748B"
-                            font.pixelSize: 11
-                            font.bold: true
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                        onClicked: {
-                            if (root.sessionVm && root.sessionVm.branchManager) {
-                                root.sessionVm.branchManager.pushRemote("origin", false, false, false);
-                            }
+                    Behavior on border.color {
+                        ColorAnimation {
+                            duration: 120
                         }
                     }
 
-                    Button {
-                        id: pushMenuBtn
-                        Layout.preferredHeight: 30
-                        Layout.preferredWidth: 20
-                        background: Rectangle {
-                            color: parent.hovered ? "#334155" : "#161B22"
-                            radius: 4
-                            border.color: "#30363D"
-                            border.width: 1
+                    RowLayout {
+                        id: pushSplitRow
+                        anchors.centerIn: parent
+                        spacing: 0
 
-                            Rectangle {
-                                anchors.left: parent.left
-                                anchors.top: parent.top
-                                anchors.bottom: parent.bottom
-                                width: 4
-                                color: parent.color
+                        Button {
+                            id: pushMainBtn
+                            text: root.remoteOperation === "push" ? "⏳ Push..." : "⬆ Push"
+                            enabled: root.remoteOperation === ""
+                            Layout.preferredHeight: 30
+                            leftPadding: 12
+                            rightPadding: 10
+                            hoverEnabled: true
+                            background: Rectangle {
+                                color: parent.down ? "#1E2D42" : (parent.hovered ? "#1A2639" : "transparent")
+                                radius: 8
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
+                            }
+                            contentItem: Text {
+                                text: parent.text
+                                color: parent.enabled ? "#F1F5F9" : "#64748B"
+                                font.pixelSize: 11
+                                font.bold: true
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            onClicked: {
+                                if (root.sessionVm && root.sessionVm.branchManager) {
+                                    root.sessionVm.branchManager.pushRemote("origin", false, false, false);
+                                }
                             }
                         }
-                        contentItem: Text {
-                            text: "▾"
-                            color: "#94A3B8"
-                            font.pixelSize: 9
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
+
+                        Rectangle {
+                            Layout.preferredWidth: 1
+                            Layout.preferredHeight: 16
+                            color: "#243247"
                         }
-                        onClicked: pushMenu.open()
 
-                        Menu {
-                            id: pushMenu
-                            y: pushMenuBtn.height
+                        Button {
+                            id: pushMenuBtn
+                            Layout.preferredHeight: 30
+                            Layout.preferredWidth: 24
+                            hoverEnabled: true
+                            background: Rectangle {
+                                color: (parent.down || pushMenu.opened) ? "#1E2D42" : (parent.hovered ? "#1A2639" : "transparent")
+                                radius: 8
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
+                            }
+                            contentItem: Text {
+                                text: "▾"
+                                color: pushMenu.opened ? "#38BDF8" : "#94A3B8"
+                                font.pixelSize: 9
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            onClicked: pushMenu.open()
 
-                            MenuItem {
-                                text: "⬆ Push (Default)"
-                                font.pixelSize: 11
-                                onClicked: {
-                                    if (root.sessionVm && root.sessionVm.branchManager) {
-                                        root.sessionVm.branchManager.pushRemote("origin", false, false, false);
+                            FluxMenu {
+                                id: pushMenu
+                                y: pushMenuBtn.height + 4
+
+                                FluxMenuItem {
+                                    text: "⬆ Push (Default)"
+                                    font.pixelSize: 11
+                                    onClicked: {
+                                        if (root.sessionVm && root.sessionVm.branchManager) {
+                                            root.sessionVm.branchManager.pushRemote("origin", false, false, false);
+                                        }
                                     }
                                 }
-                            }
-                            MenuItem {
-                                text: "⬆ Push & Imposta Upstream (-u)"
-                                font.pixelSize: 11
-                                onClicked: {
-                                    if (root.sessionVm && root.sessionVm.branchManager) {
-                                        root.sessionVm.branchManager.pushRemote("origin", true, false, false);
+                                FluxMenuItem {
+                                    text: "⬆ Push & Imposta Upstream (-u)"
+                                    font.pixelSize: 11
+                                    onClicked: {
+                                        if (root.sessionVm && root.sessionVm.branchManager) {
+                                            root.sessionVm.branchManager.pushRemote("origin", true, false, false);
+                                        }
                                     }
                                 }
-                            }
-                            MenuItem {
-                                text: "⬆ Push Sicuro con Force-With-Lease"
-                                font.pixelSize: 11
-                                onClicked: {
-                                    if (root.sessionVm && root.sessionVm.branchManager) {
-                                        root.sessionVm.branchManager.pushRemote("origin", false, true, false);
+                                FluxMenuItem {
+                                    text: "⬆ Push Sicuro con Force-With-Lease"
+                                    font.pixelSize: 11
+                                    onClicked: {
+                                        if (root.sessionVm && root.sessionVm.branchManager) {
+                                            root.sessionVm.branchManager.pushRemote("origin", false, true, false);
+                                        }
                                     }
                                 }
-                            }
-                            MenuItem {
-                                text: "⬆ Push con Tutti i Tag (--tags)"
-                                font.pixelSize: 11
-                                onClicked: {
-                                    if (root.sessionVm && root.sessionVm.branchManager) {
-                                        root.sessionVm.branchManager.pushRemote("origin", false, false, true);
+                                FluxMenuItem {
+                                    text: "⬆ Push con Tutti i Tag (--tags)"
+                                    font.pixelSize: 11
+                                    onClicked: {
+                                        if (root.sessionVm && root.sessionVm.branchManager) {
+                                            root.sessionVm.branchManager.pushRemote("origin", false, false, true);
+                                        }
                                     }
                                 }
                             }
@@ -493,12 +606,26 @@ Rectangle {
                 // 3. BRANCH BUTTON (Creates branch at HEAD)
                 Button {
                     text: "🌿 Branch"
-                    Layout.preferredHeight: 30
+                    Layout.preferredHeight: 32
+                    leftPadding: 12
+                    rightPadding: 12
+                    hoverEnabled: true
                     background: Rectangle {
-                        color: parent.hovered ? "#1E293B" : "#161B22"
-                        radius: 4
-                        border.color: "#30363D"
+                        color: parent.down ? "#1E2D42" : (parent.hovered ? "#1A2639" : "#121A27")
+                        radius: 9
+                        border.color: parent.hovered ? "#334968" : "#222F42"
                         border.width: 1
+
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
+                        Behavior on border.color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
                     }
                     contentItem: Text {
                         text: parent.text
@@ -515,103 +642,121 @@ Rectangle {
                     }
                 }
 
-                // 4. STASH BUTTON (with options menu)
-                RowLayout {
-                    spacing: 0
+                // 4. STASH CAPSULE SPLIT BUTTON
+                Rectangle {
+                    Layout.preferredHeight: 32
+                    implicitWidth: stashSplitRow.implicitWidth + 2
+                    radius: 9
+                    color: "#121A27"
+                    border.color: (stashMainBtn.hovered || stashMenuBtn.hovered || stashMenu.opened) ? "#334968" : "#222F42"
+                    border.width: 1
 
-                    Button {
-                        text: "📦 Stash"
-                        Layout.preferredHeight: 30
-                        background: Rectangle {
-                            color: parent.hovered ? "#1E293B" : "#161B22"
-                            radius: 4
-                            border.color: "#30363D"
-                            border.width: 1
-
-                            Rectangle {
-                                anchors.right: parent.right
-                                anchors.top: parent.top
-                                anchors.bottom: parent.bottom
-                                width: 4
-                                color: parent.color
-                            }
-                        }
-                        contentItem: Text {
-                            text: parent.text
-                            color: "#E2E8F0"
-                            font.pixelSize: 11
-                            font.bold: true
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                        onClicked: {
-                            if (root.sessionVm && root.sessionVm.stashManager) {
-                                root.sessionVm.stashManager.refresh();
-                            }
-                            stashModal.open();
+                    Behavior on border.color {
+                        ColorAnimation {
+                            duration: 120
                         }
                     }
 
-                    Button {
-                        id: stashMenuBtn
-                        Layout.preferredHeight: 30
-                        Layout.preferredWidth: 20
-                        background: Rectangle {
-                            color: parent.hovered ? "#334155" : "#161B22"
-                            radius: 4
-                            border.color: "#30363D"
-                            border.width: 1
+                    RowLayout {
+                        id: stashSplitRow
+                        anchors.centerIn: parent
+                        spacing: 0
 
-                            Rectangle {
-                                anchors.left: parent.left
-                                anchors.top: parent.top
-                                anchors.bottom: parent.bottom
-                                width: 4
-                                color: parent.color
-                            }
-                        }
-                        contentItem: Text {
-                            text: "▾"
-                            color: "#94A3B8"
-                            font.pixelSize: 9
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                        onClicked: stashMenu.open()
-
-                        Menu {
-                            id: stashMenu
-                            y: stashMenuBtn.height
-
-                            MenuItem {
-                                text: "📦 Nuovo Stash modifiche correnti..."
-                                font.pixelSize: 11
-                                onClicked: {
-                                    if (root.sessionVm && root.sessionVm.stashManager) {
-                                        root.sessionVm.stashManager.refresh();
-                                    }
-                                    stashModal.open();
-                                }
-                            }
-                            MenuItem {
-                                text: "↩ Pop ultimo stash (stash@{0})"
-                                font.pixelSize: 11
-                                onClicked: {
-                                    if (root.sessionVm && root.sessionVm.stashManager) {
-                                        root.sessionVm.stashManager.pop(0);
+                        Button {
+                            id: stashMainBtn
+                            text: "📦 Stash"
+                            Layout.preferredHeight: 30
+                            leftPadding: 12
+                            rightPadding: 10
+                            hoverEnabled: true
+                            background: Rectangle {
+                                color: parent.down ? "#1E2D42" : (parent.hovered ? "#1A2639" : "transparent")
+                                radius: 8
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
                                     }
                                 }
                             }
-                            MenuSeparator {
-                            }
-                            MenuItem {
-                                text: "⚙ Gestione completa Stash..."
+                            contentItem: Text {
+                                text: parent.text
+                                color: "#E2E8F0"
                                 font.pixelSize: 11
-                                onClicked: {
-                                    if (root.sessionVm && root.sessionVm.stashManager) {
-                                        root.sessionVm.stashManager.refresh();
+                                font.bold: true
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            onClicked: {
+                                if (root.sessionVm && root.sessionVm.stashManager) {
+                                    root.sessionVm.stashManager.refresh();
+                                }
+                                stashModal.open();
+                            }
+                        }
+
+                        Rectangle {
+                            Layout.preferredWidth: 1
+                            Layout.preferredHeight: 16
+                            color: "#243247"
+                        }
+
+                        Button {
+                            id: stashMenuBtn
+                            Layout.preferredHeight: 30
+                            Layout.preferredWidth: 24
+                            hoverEnabled: true
+                            background: Rectangle {
+                                color: (parent.down || stashMenu.opened) ? "#1E2D42" : (parent.hovered ? "#1A2639" : "transparent")
+                                radius: 8
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
                                     }
-                                    stashModal.open();
+                                }
+                            }
+                            contentItem: Text {
+                                text: "▾"
+                                color: stashMenu.opened ? "#38BDF8" : "#94A3B8"
+                                font.pixelSize: 9
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            onClicked: stashMenu.open()
+
+                            FluxMenu {
+                                id: stashMenu
+                                y: stashMenuBtn.height + 4
+
+                                FluxMenuItem {
+                                    text: "📦 Nuovo Stash modifiche correnti..."
+                                    font.pixelSize: 11
+                                    onClicked: {
+                                        if (root.sessionVm && root.sessionVm.stashManager) {
+                                            root.sessionVm.stashManager.refresh();
+                                        }
+                                        stashModal.open();
+                                    }
+                                }
+                                FluxMenuItem {
+                                    text: "↩ Pop ultimo stash (stash@{0})"
+                                    font.pixelSize: 11
+                                    onClicked: {
+                                        if (root.sessionVm && root.sessionVm.stashManager) {
+                                            root.sessionVm.stashManager.pop(0);
+                                        }
+                                    }
+                                }
+                                FluxMenuSeparator {
+                                }
+                                FluxMenuItem {
+                                    text: "⚙ Gestione completa Stash..."
+                                    font.pixelSize: 11
+                                    onClicked: {
+                                        if (root.sessionVm && root.sessionVm.stashManager) {
+                                            root.sessionVm.stashManager.refresh();
+                                        }
+                                        stashModal.open();
+                                    }
                                 }
                             }
                         }
@@ -621,17 +766,32 @@ Rectangle {
                 // 5. QUICK POP BUTTON
                 Button {
                     text: "↩ Pop"
-                    Layout.preferredHeight: 30
+                    Layout.preferredHeight: 32
+                    leftPadding: 12
+                    rightPadding: 12
+                    hoverEnabled: true
                     background: Rectangle {
-                        color: parent.hovered ? "#1E293B" : "#161B22"
-                        radius: 4
-                        border.color: "#30363D"
+                        color: parent.down ? "#1E2D42" : (parent.hovered ? "#1A2639" : "#121A27")
+                        radius: 9
+                        border.color: parent.hovered ? "#334968" : "#222F42"
                         border.width: 1
+
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
+                        Behavior on border.color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
                     }
                     contentItem: Text {
                         text: parent.text
-                        color: "#94A3B8"
+                        color: parent.hovered ? "#E2E8F0" : "#94A3B8"
                         font.pixelSize: 11
+                        font.bold: true
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
@@ -654,17 +814,32 @@ Rectangle {
 
                 Button {
                     text: "⚙ Branch & Sync..."
-                    Layout.preferredHeight: 30
+                    Layout.preferredHeight: 32
+                    leftPadding: 12
+                    rightPadding: 12
+                    hoverEnabled: true
                     background: Rectangle {
-                        color: parent.hovered ? "#1E293B" : "#161B22"
-                        radius: 4
-                        border.color: "#30363D"
+                        color: parent.down ? "#1E2D42" : (parent.hovered ? "#1A2639" : "#121A27")
+                        radius: 9
+                        border.color: parent.hovered ? "#334968" : "#222F42"
                         border.width: 1
+
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
+                        Behavior on border.color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
                     }
                     contentItem: Text {
                         text: parent.text
                         color: "#CBD5E1"
                         font.pixelSize: 11
+                        font.bold: true
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
@@ -676,9 +851,9 @@ Rectangle {
                 // Background Activity / Batch Runner Indicator
                 Rectangle {
                     visible: batchOperationsVm && batchOperationsVm.isRunning
-                    Layout.preferredHeight: 28
-                    Layout.preferredWidth: batchIndicatorRow.implicitWidth + 16
-                    radius: 14
+                    Layout.preferredHeight: 30
+                    Layout.preferredWidth: batchIndicatorRow.implicitWidth + 18
+                    radius: 15
                     color: "#0F2B48"
                     border.color: "#38BDF8"
                     border.width: 1
@@ -716,9 +891,13 @@ Rectangle {
         Rectangle {
             id: notificationBanner
             Layout.fillWidth: true
-            Layout.preferredHeight: visible ? 34 : 0
+            Layout.leftMargin: visible ? 8 : 0
+            Layout.rightMargin: visible ? 8 : 0
+            Layout.topMargin: visible ? 6 : 0
+            Layout.preferredHeight: visible ? 36 : 0
             visible: bannerText.text !== ""
-            color: bannerIsError ? "#7F1D1D" : "#064E3B"
+            radius: 10
+            color: bannerIsError ? "#3B1219" : "#064E3B"
             border.color: bannerIsError ? "#EF4444" : "#10B981"
             border.width: 1
             clip: true
@@ -727,8 +906,8 @@ Rectangle {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
+                anchors.leftMargin: 14
+                anchors.rightMargin: 10
                 spacing: 8
 
                 Text {
@@ -750,11 +929,13 @@ Rectangle {
                     text: "✕"
                     Layout.preferredWidth: 24
                     Layout.preferredHeight: 24
+                    hoverEnabled: true
                     background: Rectangle {
-                        color: "transparent"
+                        radius: 6
+                        color: parent.hovered ? "#FFFFFF22" : "transparent"
                     }
                     contentItem: Text {
-                        text: "✕"; color: "#FFFFFF"; font.bold: true; horizontalAlignment: Text.AlignHCenter
+                        text: "✕"; color: "#FFFFFF"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                     }
                     onClicked: bannerText.text = ""
                 }
@@ -782,9 +963,15 @@ Rectangle {
         // ==========================================
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: (root.sessionVm && root.sessionVm.isRebaseInProgress) ? 40 : 0
+            Layout.leftMargin: visible ? 8 : 0
+            Layout.rightMargin: visible ? 8 : 0
+            Layout.topMargin: visible ? 6 : 0
+            Layout.preferredHeight: (root.sessionVm && root.sessionVm.isRebaseInProgress) ? 42 : 0
             visible: root.sessionVm && root.sessionVm.isRebaseInProgress
-            color: "#B45309"
+            radius: 10
+            color: "#451A03"
+            border.color: "#F59E0B"
+            border.width: 1
             clip: true
 
             RowLayout {
@@ -809,10 +996,18 @@ Rectangle {
 
                 Button {
                     text: "✓ Continua Rebase"
-                    Layout.preferredHeight: 26
+                    Layout.preferredHeight: 28
+                    leftPadding: 10
+                    rightPadding: 10
+                    hoverEnabled: true
                     background: Rectangle {
                         color: parent.hovered ? "#047857" : "#059669"
-                        radius: 4
+                        radius: 7
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 110
+                            }
+                        }
                     }
                     contentItem: Text {
                         text: parent.text
@@ -829,10 +1024,18 @@ Rectangle {
 
                 Button {
                     text: "⏭ Salta Commit"
-                    Layout.preferredHeight: 26
+                    Layout.preferredHeight: 28
+                    leftPadding: 10
+                    rightPadding: 10
+                    hoverEnabled: true
                     background: Rectangle {
                         color: parent.hovered ? "#475569" : "#334155"
-                        radius: 4
+                        radius: 7
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 110
+                            }
+                        }
                     }
                     contentItem: Text {
                         text: parent.text
@@ -848,10 +1051,18 @@ Rectangle {
 
                 Button {
                     text: "✕ Annulla (Abort)"
-                    Layout.preferredHeight: 26
+                    Layout.preferredHeight: 28
+                    leftPadding: 10
+                    rightPadding: 10
+                    hoverEnabled: true
                     background: Rectangle {
                         color: parent.hovered ? "#B91C1C" : "#991B1B"
-                        radius: 4
+                        radius: 7
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 110
+                            }
+                        }
                     }
                     contentItem: Text {
                         text: parent.text

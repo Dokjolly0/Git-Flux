@@ -3819,4 +3819,7 @@ TEST_CASE("Flux UI Kit QML components load and instantiate cleanly", "[qml][ui]"
 
     auto checkBoxObj = requireValidComponent(qmlBaseDir / "views" / "FluxCheckBox.qml");
     CHECK(checkBoxObj->property("fontSize").toInt() == 11);
+
+    auto branchSwitcherObj = requireValidComponent(qmlBaseDir / "views" / "BranchSwitcherDropdown.qml");
+    CHECK(branchSwitcherObj->property("implicitHeight").toInt() == 32);
 }

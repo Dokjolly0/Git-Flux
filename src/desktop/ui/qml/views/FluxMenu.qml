@@ -18,8 +18,12 @@ T.Menu {
 
     property real calculatedContentWidth: 220
 
-    onAboutToShow: {
+    function updateContentWidth() {
         calculatedContentWidth = computeMaxItemWidth();
+    }
+
+    onAboutToShow: {
+        updateContentWidth();
     }
 
     implicitWidth: Math.max(implicitBackgroundWidth + leftInset + rightInset,

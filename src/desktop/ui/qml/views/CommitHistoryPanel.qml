@@ -3703,12 +3703,12 @@ Rectangle {
     // ==========================================
     // COMMIT CONTEXT MENU
     // ==========================================
-    Menu {
+    FluxMenu {
         id: commitContextMenu
         property string targetSha: ""
         property string targetSubject: ""
 
-        MenuItem {
+        FluxMenuItem {
             text: "📌 Checkout commit (" + (commitContextMenu.targetSha ? commitContextMenu.targetSha.substring(0, 7) : "") + ")"
             font.pixelSize: 11
             onClicked: {
@@ -3716,7 +3716,7 @@ Rectangle {
             }
         }
 
-        MenuItem {
+        FluxMenuItem {
             text: "✏ Modifica messaggio del commit..."
             font.pixelSize: 11
             onClicked: {
@@ -3725,7 +3725,7 @@ Rectangle {
             }
         }
 
-        MenuItem {
+        FluxMenuItem {
             text: "🌿 Crea branch a questo commit..."
             font.pixelSize: 11
             onClicked: {
@@ -3733,7 +3733,7 @@ Rectangle {
             }
         }
 
-        MenuItem {
+        FluxMenuItem {
             text: "🏷 Crea tag a questo commit..."
             font.pixelSize: 11
             onClicked: {
@@ -3741,27 +3741,27 @@ Rectangle {
             }
         }
 
-        MenuSeparator {
+        FluxMenuSeparator {
         }
 
-        Menu {
+        FluxMenu {
             title: "🔄 Reset branch corrente a questo commit"
 
-            MenuItem {
+            FluxMenuItem {
                 text: "🟡 Soft (--soft): mantieni file modificati in staging"
                 font.pixelSize: 11
                 onClicked: {
                     if (root.branchManager) root.branchManager.resetCommit(commitContextMenu.targetSha, "soft");
                 }
             }
-            MenuItem {
+            FluxMenuItem {
                 text: "🔵 Misto (--mixed): mantieni file nell'albero di lavoro"
                 font.pixelSize: 11
                 onClicked: {
                     if (root.branchManager) root.branchManager.resetCommit(commitContextMenu.targetSha, "mixed");
                 }
             }
-            MenuItem {
+            FluxMenuItem {
                 text: "🔴 Hard (--hard): scarta tutte le modifiche"
                 font.pixelSize: 11
                 onClicked: {
@@ -3770,10 +3770,10 @@ Rectangle {
             }
         }
 
-        MenuSeparator {
+        FluxMenuSeparator {
         }
 
-        MenuItem {
+        FluxMenuItem {
             text: "🍒 Cherry-pick di questo commit"
             font.pixelSize: 11
             onClicked: {
@@ -3781,7 +3781,7 @@ Rectangle {
             }
         }
 
-        MenuItem {
+        FluxMenuItem {
             text: "⏪ Revert di questo commit"
             font.pixelSize: 11
             onClicked: {
@@ -3789,7 +3789,7 @@ Rectangle {
             }
         }
 
-        MenuItem {
+        FluxMenuItem {
             text: "📁 Crea Git Worktree a questo commit..."
             font.pixelSize: 11
             onClicked: {
@@ -3797,10 +3797,10 @@ Rectangle {
             }
         }
 
-        MenuSeparator {
+        FluxMenuSeparator {
         }
 
-        MenuItem {
+        FluxMenuItem {
             text: "📋 Copia SHA (" + (commitContextMenu.targetSha ? commitContextMenu.targetSha.substring(0, 7) : "") + ")"
             font.pixelSize: 11
             onClicked: {
@@ -3808,7 +3808,7 @@ Rectangle {
             }
         }
 
-        MenuItem {
+        FluxMenuItem {
             text: "📋 Copia messaggio del commit"
             font.pixelSize: 11
             onClicked: {
@@ -3820,10 +3820,10 @@ Rectangle {
     // ==========================================
     // WIP ROW CONTEXT MENU
     // ==========================================
-    Menu {
+    FluxMenu {
         id: wipContextMenu
 
-        MenuItem {
+        FluxMenuItem {
             text: "🧹 Scarta tutte le modifiche locali"
             font.pixelSize: 11
             onClicked: {
@@ -3831,7 +3831,7 @@ Rectangle {
             }
         }
 
-        MenuItem {
+        FluxMenuItem {
             text: "📦 Salva modifiche in Stash..."
             font.pixelSize: 11
             onClicked: {
@@ -3843,14 +3843,14 @@ Rectangle {
     // ==========================================
     // BRANCH BADGE CONTEXT MENU
     // ==========================================
-    Menu {
+    FluxMenu {
         id: badgeContextMenu
         property string targetName: ""
         property string badgeType: "local"
         property bool isCurrentHead: false
         property string targetCommitSha: ""
 
-        MenuItem {
+        FluxMenuItem {
             // Remote badges are checked out as their local branch (created with tracking if missing)
             text: "📌 Checkout branch (" + (badgeContextMenu.badgeType === "remote"
                 ? badgeContextMenu.targetName.replace(/^[^\/]+\//, "")
@@ -3862,7 +3862,7 @@ Rectangle {
             }
         }
 
-        MenuItem {
+        FluxMenuItem {
             text: "📌 Checkout tag (" + badgeContextMenu.targetName + ")"
             visible: badgeContextMenu.badgeType === "tag"
             font.pixelSize: 11
@@ -3871,7 +3871,7 @@ Rectangle {
             }
         }
 
-        MenuItem {
+        FluxMenuItem {
             text: "🔀 Merge '" + badgeContextMenu.targetName + "' nel branch corrente"
             visible: badgeContextMenu.badgeType !== "tag" && !badgeContextMenu.isCurrentHead
             font.pixelSize: 11
@@ -3880,7 +3880,7 @@ Rectangle {
             }
         }
 
-        MenuItem {
+        FluxMenuItem {
             text: "🔄 Rebase del branch corrente su '" + badgeContextMenu.targetName + "'"
             visible: badgeContextMenu.badgeType !== "tag" && !badgeContextMenu.isCurrentHead
             font.pixelSize: 11
@@ -3889,7 +3889,7 @@ Rectangle {
             }
         }
 
-        MenuItem {
+        FluxMenuItem {
             text: "🚀 Crea Pull Request..."
             visible: badgeContextMenu.badgeType !== "tag"
             font.pixelSize: 11
@@ -3900,11 +3900,11 @@ Rectangle {
             }
         }
 
-        MenuSeparator {
+        FluxMenuSeparator {
             visible: badgeContextMenu.badgeType !== "tag"
         }
 
-        MenuItem {
+        FluxMenuItem {
             text: "🌿 Crea branch da qui..."
             font.pixelSize: 11
             onClicked: {
@@ -3912,7 +3912,7 @@ Rectangle {
             }
         }
 
-        MenuItem {
+        FluxMenuItem {
             text: "🏷 Crea tag da qui..."
             font.pixelSize: 11
             onClicked: {
@@ -3920,7 +3920,7 @@ Rectangle {
             }
         }
 
-        MenuItem {
+        FluxMenuItem {
             text: "📁 Crea Git Worktree..."
             font.pixelSize: 11
             onClicked: {
@@ -3928,10 +3928,10 @@ Rectangle {
             }
         }
 
-        MenuSeparator {
+        FluxMenuSeparator {
         }
 
-        MenuItem {
+        FluxMenuItem {
             text: "✏ Rinomina branch..."
             visible: badgeContextMenu.badgeType === "local"
             font.pixelSize: 11
@@ -3940,7 +3940,7 @@ Rectangle {
             }
         }
 
-        MenuItem {
+        FluxMenuItem {
             text: "🗑 Elimina branch..."
             visible: badgeContextMenu.badgeType === "local" && !badgeContextMenu.isCurrentHead
             font.pixelSize: 11
@@ -3949,7 +3949,7 @@ Rectangle {
             }
         }
 
-        MenuItem {
+        FluxMenuItem {
             text: "🗑 Elimina tag..."
             visible: badgeContextMenu.badgeType === "tag"
             font.pixelSize: 11
@@ -3958,7 +3958,7 @@ Rectangle {
             }
         }
 
-        MenuItem {
+        FluxMenuItem {
             text: "📋 Copia nome"
             font.pixelSize: 11
             onClicked: {
@@ -3970,7 +3970,7 @@ Rectangle {
     // ==========================================
     // BRANCH DROP ACTION MENU (Drag & Drop Targhetta)
     // ==========================================
-    Menu {
+    FluxMenu {
         id: branchDropMenu
         property string sourceBranch: ""
         property string targetBranch: ""
@@ -3999,7 +3999,7 @@ Rectangle {
             }
         }
 
-        MenuItem {
+        FluxMenuItem {
             enabled: branchDropMenu.canFastForward
             text: branchDropMenu.fastForwardChecking
                 ? "⏳ Verifica fast-forward..."
@@ -4015,10 +4015,10 @@ Rectangle {
             }
         }
 
-        MenuSeparator {
+        FluxMenuSeparator {
         }
 
-        MenuItem {
+        FluxMenuItem {
             text: "🔀 Merge '" + branchDropMenu.sourceBranch + "' in '" + branchDropMenu.targetBranch + "'"
             font.pixelSize: 11
             font.bold: true
@@ -4029,7 +4029,7 @@ Rectangle {
             }
         }
 
-        MenuItem {
+        FluxMenuItem {
             text: "🔄 Rebase '" + branchDropMenu.sourceBranch + "' su '" + branchDropMenu.targetBranch + "'"
             font.pixelSize: 11
             font.bold: true
@@ -4040,7 +4040,7 @@ Rectangle {
             }
         }
 
-        MenuItem {
+        FluxMenuItem {
             text: "🚀 Crea Pull Request ('" + branchDropMenu.sourceBranch + "' ➔ '" + branchDropMenu.targetBranch + "')..."
             font.pixelSize: 11
             font.bold: true
@@ -4263,11 +4263,11 @@ Rectangle {
     // ==========================================
     // CHANGED FILE CONTEXT MENU
     // ==========================================
-    Menu {
+    FluxMenu {
         id: changedFileContextMenu
         property string targetPath: ""
 
-        MenuItem {
+        FluxMenuItem {
             text: "📄 Cronologia file (Ctrl+H)"
             font.pixelSize: 11
             font.bold: true
@@ -4278,7 +4278,7 @@ Rectangle {
             }
         }
 
-        MenuItem {
+        FluxMenuItem {
             text: "📋 Copia percorso file"
             font.pixelSize: 11
             onClicked: {
