@@ -32,10 +32,10 @@ Rectangle {
     readonly property int maxLineLength: (root.diffViewer && root.diffViewer.maxLineLength > 0) ? root.diffViewer.maxLineLength : 0
     readonly property real maxCodeWidth: maxLineLength > 0 ? (maxLineLength * charWidth + 80) : 0
 
-    readonly property real inlineAvailWidth: Math.max(100, root.width - 108)
+    readonly property real inlineAvailWidth: Math.max(100, root.width - 108 - inlineOverviewBar.width)
     readonly property real inlineMaxScroll: root.effectiveWrap ? 0 : Math.max(0, maxCodeWidth - inlineAvailWidth)
 
-    readonly property real splitAvailWidth: Math.max(100, Math.floor(root.width / 2) - 44)
+    readonly property real splitAvailWidth: Math.max(100, Math.floor((root.width - splitOverviewBar.width) / 2) - 44)
     readonly property real splitMaxScroll: root.effectiveWrap ? 0 : Math.max(0, maxCodeWidth - splitAvailWidth)
 
     readonly property real blameAvailWidth: Math.max(100, root.width - 320)
@@ -820,15 +820,16 @@ Rectangle {
                 ListView {
                     id: inlineListView
                     SmoothWheelScroller {}
-                    anchors.fill: parent
+                    anchors.left: parent.left
+                    anchors.right: inlineOverviewBar.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
                     anchors.bottomMargin: inlineHScrollBar.visible ? 12 : 0
                     focus: true
                     model: (!root.showingMarkdownPreview && root.diffViewer && root.diffViewer.viewMode === "inline") ? root.diffViewer.linesModel : null
                     boundsBehavior: Flickable.StopAtBounds
                     maximumFlickVelocity: 6000
                     flickDeceleration: 1000
-                    ScrollBar.vertical: FluxScrollBar {
-                    }
 
                     Keys.onLeftPressed: (event) => {
                         if (root.inlineMaxScroll > 0) {
@@ -1004,8 +1005,8 @@ Rectangle {
                     id: inlineHScrollBar
                     anchors.left: parent.left
                     anchors.leftMargin: 108
-                    anchors.right: parent.right
-                    anchors.rightMargin: 10
+                    anchors.right: inlineOverviewBar.left
+                    anchors.rightMargin: 8
                     anchors.bottom: parent.bottom
                     contentWidth: root.effectiveWrap ? 0 : root.maxCodeWidth
                     viewWidth: root.inlineAvailWidth
@@ -1013,6 +1014,16 @@ Rectangle {
                     onScrollRequested: (val) => {
                         root.horizontalScrollX = val;
                     }
+                }
+
+                // Diff Overview ScrollBar (Left half = before commit/red, Right half = new version/green)
+                DiffOverviewScrollBar {
+                    id: inlineOverviewBar
+                    anchors.top: parent.top
+                    anchors.bottom: inlineListView.bottom
+                    anchors.right: parent.right
+                    flickable: inlineListView
+                    markers: root.diffViewer ? root.diffViewer.inlineOverviewMarkers : []
                 }
             }
 
@@ -1067,6 +1078,51 @@ Rectangle {
                                 font.bold: true
                             }
                         }
+
+                        // Overview ScrollBar header cap (- | +) keeping Split columns aligned
+                        Rectangle {
+                            Layout.preferredWidth: splitOverviewBar.width
+                            Layout.fillHeight: true
+                            color: "#090D14"
+
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: 1
+                                color: "#1E293B"
+                            }
+
+                            Rectangle {
+                                x: Math.floor(parent.width / 2)
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: 1
+                                color: "#1E293B"
+                            }
+
+                            Text {
+                                x: 1
+                                width: Math.floor(parent.width / 2) - 1
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "-"
+                                color: "#EF4444"
+                                font.pixelSize: 10
+                                font.bold: true
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+
+                            Text {
+                                x: Math.floor(parent.width / 2) + 1
+                                width: parent.width - x
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "+"
+                                color: "#10B981"
+                                font.pixelSize: 10
+                                font.bold: true
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+                        }
                     }
                 }
 
@@ -1078,15 +1134,16 @@ Rectangle {
                     ListView {
                         id: splitListView
                         SmoothWheelScroller {}
-                        anchors.fill: parent
+                        anchors.left: parent.left
+                        anchors.right: splitOverviewBar.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
                         anchors.bottomMargin: splitHScrollBar.visible ? 12 : 0
                         focus: true
                         model: (!root.showingMarkdownPreview && root.diffViewer && (root.diffViewer.viewMode === "split" || root.diffViewer.viewMode === "")) ? root.diffViewer.splitLines : null
                         boundsBehavior: Flickable.StopAtBounds
                         maximumFlickVelocity: 6000
                         flickDeceleration: 1000
-                        ScrollBar.vertical: FluxScrollBar {
-                        }
 
                         Keys.onLeftPressed: (event) => {
                             if (root.splitMaxScroll > 0) {
@@ -1305,8 +1362,8 @@ Rectangle {
                         id: splitHScrollBar
                         anchors.left: parent.left
                         anchors.leftMargin: 40
-                        anchors.right: parent.right
-                        anchors.rightMargin: 10
+                        anchors.right: splitOverviewBar.left
+                        anchors.rightMargin: 8
                         anchors.bottom: parent.bottom
                         contentWidth: root.effectiveWrap ? 0 : root.maxCodeWidth
                         viewWidth: root.splitAvailWidth
@@ -1315,22 +1372,42 @@ Rectangle {
                             root.horizontalScrollX = val;
                         }
                     }
+
+                    // Diff Overview ScrollBar (Left half = before commit/red, Right half = new version/green)
+                    DiffOverviewScrollBar {
+                        id: splitOverviewBar
+                        anchors.top: parent.top
+                        anchors.bottom: splitListView.bottom
+                        anchors.right: parent.right
+                        flickable: splitListView
+                        markers: root.diffViewer ? root.diffViewer.splitOverviewMarkers : []
+                    }
                 }
             }
 
             // ------------------------------------------
             // 3. HUNK VIEW (Cards per Hunk)
             // ------------------------------------------
-            ScrollView {
-                id: hunkScrollView
+            Item {
                 anchors.fill: parent
                 visible: !root.showingMarkdownPreview && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "hunk"
                 clip: true
-                ScrollBar.vertical: FluxScrollBar {
-                }
-                ScrollBar.horizontal: FluxScrollBar {
-                    visible: !root.effectiveWrap
-                }
+
+                ScrollView {
+                    id: hunkScrollView
+                    anchors.left: parent.left
+                    anchors.right: hunkOverviewBar.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    clip: true
+                    ScrollBar.vertical: ScrollBar {
+                        policy: ScrollBar.AlwaysOff
+                        visible: false
+                        width: 0
+                    }
+                    ScrollBar.horizontal: FluxScrollBar {
+                        visible: !root.effectiveWrap
+                    }
 
                 ListView {
                     id: hunkListView
@@ -1454,6 +1531,17 @@ Rectangle {
                             }
                         }
                     }
+                }
+                }
+
+                // Diff Overview ScrollBar for Hunk View
+                DiffOverviewScrollBar {
+                    id: hunkOverviewBar
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    anchors.right: parent.right
+                    flickable: hunkListView
+                    markers: root.diffViewer ? root.diffViewer.hunkOverviewMarkers : []
                 }
             }
 

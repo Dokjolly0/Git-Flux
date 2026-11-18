@@ -2879,6 +2879,112 @@ TEST_CASE (
     CHECK(diffVm.maxLineLength() == 0);
 }
 
+TEST_CASE("DiffViewModel - Overview scrollbar markers for split, inline, and hunk modes", "[desktop][viewmodels]")
+{
+    ensureQtApp();
+    MockFullGitOps mockOps;
+    gf::git::bl::GitDiffService diffService(mockOps);
+    DiffViewModel diffVm(diffService);
+
+    CHECK(diffVm.splitOverviewMarkers().isEmpty());
+    CHECK(diffVm.inlineOverviewMarkers().isEmpty());
+    CHECK(diffVm.hunkOverviewMarkers().isEmpty());
+
+    const QString repoPath = QString::fromStdString(std::filesystem::temp_directory_path().string());
+
+    // 1. Mixed modification: header (28) + 2 context (40) + 2 deletions + 3 additions (split: 60, inline: 100) + 2 context (40)
+    gf::git::bo::DiffHunk hunk;
+    hunk.header = "@@ -1,6 +1,7 @@";
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Context, .oldLineNumber = 1, .newLineNumber = 1, .content = "c1"});
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Context, .oldLineNumber = 2, .newLineNumber = 2, .content = "c2"});
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Deletion, .oldLineNumber = 3, .content = "d1"});
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Deletion, .oldLineNumber = 4, .content = "d2"});
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Addition, .newLineNumber = 3, .content = "a1"});
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Addition, .newLineNumber = 4, .content = "a2"});
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Addition, .newLineNumber = 5, .content = "a3"});
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Context, .oldLineNumber = 5, .newLineNumber = 6, .content = "c3"});
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Context, .oldLineNumber = 6, .newLineNumber = 7, .content = "c4"});
+
+    mockOps.diffToReturn = gf::git::bo::FileDiff{};
+    mockOps.diffToReturn.oldPath = "file.cpp";
+    mockOps.diffToReturn.newPath = "file.cpp";
+    mockOps.diffToReturn.hunks = {hunk};
+
+    REQUIRE(diffVm.loadDiff(repoPath, "file.cpp", "unstaged"));
+    REQUIRE(diffVm.waitForIdle());
+
+    // Split mode: total height = 28 + 20*2 + 20*3 + 20*2 = 168
+    // Old (deletions): [68/168, 108/168], New (additions): [68/168, 128/168]
+    const auto splitMarkers = diffVm.splitOverviewMarkers();
+    REQUIRE(splitMarkers.size() == 2);
+    const auto splitOld = splitMarkers[0].toMap();
+    const auto splitNew = splitMarkers[1].toMap();
+    CHECK(splitOld["side"].toString() == "old");
+    CHECK(splitOld["start"].toDouble() > 0.39);
+    CHECK(splitOld["start"].toDouble() < 0.42);
+    CHECK(splitOld["end"].toDouble() > 0.63);
+    CHECK(splitOld["end"].toDouble() < 0.66);
+    CHECK(splitNew["side"].toString() == "new");
+    CHECK(splitNew["start"].toDouble() > 0.39);
+    CHECK(splitNew["end"].toDouble() > 0.75);
+    CHECK(splitNew["end"].toDouble() < 0.78);
+
+    // Inline mode: deletions come before additions (merged separately)
+    const auto inlineMarkers = diffVm.inlineOverviewMarkers();
+    REQUIRE(inlineMarkers.size() == 2);
+    const auto inlineOld = inlineMarkers[0].toMap();
+    const auto inlineNew = inlineMarkers[1].toMap();
+    CHECK(inlineOld["side"].toString() == "old");
+    CHECK(inlineNew["side"].toString() == "new");
+    CHECK(inlineOld["end"].toDouble() <= inlineNew["start"].toDouble() + 1e-6);
+
+    // Hunk mode: contiguous deletions and contiguous additions each merge across the 4px card spacing
+    const auto hunkMarkers = diffVm.hunkOverviewMarkers();
+    REQUIRE(hunkMarkers.size() == 2);
+    CHECK(hunkMarkers[0].toMap()["side"].toString() == "old");
+    CHECK(hunkMarkers[1].toMap()["side"].toString() == "new");
+
+    // 2. New file (only additions -> only "new" side markers)
+    gf::git::bo::DiffHunk newHunk;
+    newHunk.header = "@@ -0,0 +1,2 @@";
+    newHunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Addition, .newLineNumber = 1, .content = "n1"});
+    newHunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Addition, .newLineNumber = 2, .content = "n2"});
+    mockOps.diffToReturn = gf::git::bo::FileDiff{};
+    mockOps.diffToReturn.newPath = "added.cpp";
+    mockOps.diffToReturn.isNewFile = true;
+    mockOps.diffToReturn.hunks = {newHunk};
+
+    REQUIRE(diffVm.loadDiff(repoPath, "added.cpp", "unstaged"));
+    REQUIRE(diffVm.waitForIdle());
+    REQUIRE(diffVm.splitOverviewMarkers().size() == 1);
+    CHECK(diffVm.splitOverviewMarkers()[0].toMap()["side"].toString() == "new");
+    REQUIRE(diffVm.inlineOverviewMarkers().size() == 1);
+    CHECK(diffVm.inlineOverviewMarkers()[0].toMap()["side"].toString() == "new");
+
+    // 3. Deleted file (only deletions -> only "old" side markers)
+    gf::git::bo::DiffHunk delHunk;
+    delHunk.header = "@@ -1,2 +0,0 @@";
+    delHunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Deletion, .oldLineNumber = 1, .content = "o1"});
+    delHunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Deletion, .oldLineNumber = 2, .content = "o2"});
+    mockOps.diffToReturn = gf::git::bo::FileDiff{};
+    mockOps.diffToReturn.oldPath = "removed.cpp";
+    mockOps.diffToReturn.isDeletedFile = true;
+    mockOps.diffToReturn.hunks = {delHunk};
+
+    REQUIRE(diffVm.loadDiff(repoPath, "removed.cpp", "unstaged"));
+    REQUIRE(diffVm.waitForIdle());
+    REQUIRE(diffVm.splitOverviewMarkers().size() == 1);
+    CHECK(diffVm.splitOverviewMarkers()[0].toMap()["side"].toString() == "old");
+    REQUIRE(diffVm.inlineOverviewMarkers().size() == 1);
+    CHECK(diffVm.inlineOverviewMarkers()[0].toMap()["side"].toString() == "old");
+
+    // 4. Clear resets all overview marker lists
+    diffVm.clear();
+    CHECK(diffVm.splitOverviewMarkers().isEmpty());
+    CHECK(diffVm.inlineOverviewMarkers().isEmpty());
+    CHECK(diffVm.hunkOverviewMarkers().isEmpty());
+}
+
 #include "desktop/viewmodels/remote_repo_list_model.hpp"
 
 TEST_CASE (
@@ -3836,6 +3942,7 @@ TEST_CASE("Flux UI Kit QML components load and instantiate cleanly", "[qml][ui]"
     requireValidComponent(qmlBaseDir / "views" / "CloneRepositoryModal.qml");
     requireValidComponent(qmlBaseDir / "views" / "CommitBox.qml");
     requireValidComponent(qmlBaseDir / "views" / "WorkingTreePanel.qml");
+    requireValidComponent(qmlBaseDir / "views" / "DiffOverviewScrollBar.qml");
     requireValidComponent(qmlBaseDir / "views" / "DiffViewerPanel.qml");
     requireValidComponent(qmlBaseDir / "views" / "MarkdownPreviewView.qml");
     requireValidComponent(qmlBaseDir / "views" / "CommitHistoryPanel.qml");
@@ -3960,5 +4067,50 @@ TEST_CASE("Flux UI Kit QML components load and instantiate cleanly", "[qml][ui]"
         CHECK(sessionViewObj->property("hasStashes").toBool());
         CHECK(stashBtn->property("visible").toBool());
         CHECK(popBtn->property("visible").toBool());
+    }
+
+    SECTION("DiffOverviewScrollBar computes thumb geometry and scrolls attached Flickable")
+    {
+        QQmlComponent flickComp(&engine);
+        flickComp.setData(
+            "import QtQuick\n"
+            "Flickable {\n"
+            "    width: 300\n"
+            "    height: 200\n"
+            "    contentWidth: 300\n"
+            "    contentHeight: 2000\n"
+            "}\n",
+            QUrl()
+        );
+        REQUIRE(flickComp.isReady());
+        std::unique_ptr<QObject> flickObj(flickComp.create());
+        REQUIRE(flickObj != nullptr);
+
+        auto barObj = requireValidComponent(qmlBaseDir / "views" / "DiffOverviewScrollBar.qml");
+        CHECK(barObj->property("implicitWidth").toInt() == 28);
+        barObj->setProperty("width", 28);
+        barObj->setProperty("height", 200);
+        barObj->setProperty("flickable", QVariant::fromValue(flickObj.get()));
+
+        QVariantList markers;
+        markers.append(QVariantMap{{"start", 0.1}, {"end", 0.2}, {"side", "old"}});
+        markers.append(QVariantMap{{"start", 0.5}, {"end", 0.6}, {"side", "new"}});
+        barObj->setProperty("markers", markers);
+
+        CHECK(barObj->property("scrollable").toBool());
+        CHECK(barObj->property("maxScroll").toReal() == 1800.0);
+        CHECK(barObj->property("thumbY").toReal() == 0.0);
+
+        const double maxThumbY = barObj->property("maxThumbY").toReal();
+        REQUIRE(maxThumbY > 0.0);
+
+        // Scroll to the midpoint of the track
+        QMetaObject::invokeMethod(barObj.get(), "scrollToThumbY", Q_ARG(QVariant, maxThumbY * 0.5));
+        CHECK(flickObj->property("contentY").toReal() == 900.0);
+        CHECK(barObj->property("thumbY").toReal() == maxThumbY * 0.5);
+
+        // Scroll to the bottom of the track
+        QMetaObject::invokeMethod(barObj.get(), "scrollToThumbY", Q_ARG(QVariant, maxThumbY));
+        CHECK(flickObj->property("contentY").toReal() == 1800.0);
     }
 }

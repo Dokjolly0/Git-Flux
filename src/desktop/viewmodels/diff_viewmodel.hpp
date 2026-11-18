@@ -43,6 +43,9 @@ namespace gf::desktop
         Q_PROPERTY(QString viewMode READ viewMode WRITE setViewMode NOTIFY viewModeChanged)
         Q_PROPERTY(QVariantList splitLines READ splitLines NOTIFY diffLoaded)
         Q_PROPERTY(QVariantList hunks READ hunks NOTIFY diffLoaded)
+        Q_PROPERTY(QVariantList splitOverviewMarkers READ splitOverviewMarkers NOTIFY diffLoaded)
+        Q_PROPERTY(QVariantList inlineOverviewMarkers READ inlineOverviewMarkers NOTIFY diffLoaded)
+        Q_PROPERTY(QVariantList hunkOverviewMarkers READ hunkOverviewMarkers NOTIFY diffLoaded)
         Q_PROPERTY(QVariantList blameLines READ blameLines NOTIFY blameLoaded)
         Q_PROPERTY(bool isBlameLoading READ isBlameLoading NOTIFY blameLoaded)
         // A diff requested by loadDiff / loadCommitFileDiff is being read (the previous one stays
@@ -86,6 +89,9 @@ namespace gf::desktop
         [[nodiscard]] QString viewMode() const noexcept { return m_viewMode; }
         [[nodiscard]] QVariantList splitLines() const noexcept { return m_splitLines; }
         [[nodiscard]] QVariantList hunks() const noexcept { return m_hunks; }
+        [[nodiscard]] QVariantList splitOverviewMarkers() const noexcept { return m_splitOverviewMarkers; }
+        [[nodiscard]] QVariantList inlineOverviewMarkers() const noexcept { return m_inlineOverviewMarkers; }
+        [[nodiscard]] QVariantList hunkOverviewMarkers() const noexcept { return m_hunkOverviewMarkers; }
         [[nodiscard]] QVariantList blameLines() const noexcept { return m_blameLines; }
         [[nodiscard]] bool isBlameLoading() const noexcept { return m_isBlameLoading; }
         [[nodiscard]] bool isLoading() const noexcept { return m_isLoading; }
@@ -194,6 +200,9 @@ namespace gf::desktop
 
         QVariantList m_splitLines;
         QVariantList m_hunks;
+        QVariantList m_splitOverviewMarkers;
+        QVariantList m_inlineOverviewMarkers;
+        QVariantList m_hunkOverviewMarkers;
         QVariantList m_blameLines;
         QVariantList m_markdownBlocks;
         QVariantList m_markdownToc;

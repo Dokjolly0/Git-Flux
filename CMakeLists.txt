@@ -314,6 +314,7 @@ if (GF_BUILD_DESKTOP)
             src/desktop/ui/qml/views/WorkingTreePanel.qml
             src/desktop/ui/qml/views/CommitBox.qml
             src/desktop/ui/qml/views/DiffViewerPanel.qml
+            src/desktop/ui/qml/views/DiffOverviewScrollBar.qml
             src/desktop/ui/qml/views/MarkdownPreviewView.qml
             src/desktop/ui/qml/views/BranchSwitcherDropdown.qml
             src/desktop/ui/qml/views/BranchManagerModal.qml

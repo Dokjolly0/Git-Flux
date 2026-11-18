@@ -17,6 +17,7 @@
 #include <QStringList>
 #include <QVariantMap>
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <memory>
 
@@ -168,6 +169,54 @@ namespace gf::desktop
             QString content;
             QString richContent;
         };
+
+        struct OverviewSpan
+        {
+            double startPx = 0.0;
+            double endPx = 0.0;
+        };
+
+        void appendOverviewSpan(std::vector<OverviewSpan>& spans, double startPx, double endPx, double mergeGapPx = 0.01)
+        {
+            if (endPx <= startPx)
+            {
+                return;
+            }
+            if (!spans.empty() && (startPx - spans.back().endPx) <= mergeGapPx)
+            {
+                spans.back().endPx = endPx;
+            }
+            else
+            {
+                spans.push_back(OverviewSpan{startPx, endPx});
+            }
+        }
+
+        QVariantList buildOverviewMarkers(const std::vector<OverviewSpan>& oldSpans,
+                                          const std::vector<OverviewSpan>& newSpans,
+                                          double totalHeightPx)
+        {
+            QVariantList result;
+            if (totalHeightPx <= 0.0)
+            {
+                return result;
+            }
+            result.reserve(static_cast<qsizetype>(oldSpans.size() + newSpans.size()));
+            auto appendSide = [&](const std::vector<OverviewSpan>& spans, const QString& side)
+            {
+                for (const auto& s : spans)
+                {
+                    QVariantMap m;
+                    m[QStringLiteral("start")] = std::clamp(s.startPx / totalHeightPx, 0.0, 1.0);
+                    m[QStringLiteral("end")] = std::clamp(s.endPx / totalHeightPx, 0.0, 1.0);
+                    m[QStringLiteral("side")] = side;
+                    result.append(m);
+                }
+            };
+            appendSide(oldSpans, QStringLiteral("old"));
+            appendSide(newSpans, QStringLiteral("new"));
+            return result;
+        }
     } // namespace
 
     /// Diff read on the worker: the diff itself and, for Markdown files, the full file content
@@ -183,6 +232,9 @@ namespace gf::desktop
         int maxLineLength = 0;
         QVariantList hunks;
         QVariantList splitLines;
+        QVariantList splitOverviewMarkers;
+        QVariantList inlineOverviewMarkers;
+        QVariantList hunkOverviewMarkers;
         std::vector<gf::git::bo::DiffLine> modelLines;
         std::vector<QString> modelRich;
 
@@ -509,8 +561,24 @@ namespace gf::desktop
         out.isMarkdown = isMd;
         out.prepared = true;
 
+        constexpr double kDiffRowHeight = 20.0;
+        constexpr double kDiffHeaderHeight = 28.0;
+        constexpr double kHunkCardPadding = 8.0;
+        constexpr double kHunkCardHeaderHeight = 30.0;
+        constexpr double kHunkCardColSpacing = 4.0;
+        constexpr double kHunkCardListSpacing = 12.0;
+        constexpr std::size_t kMaxHunkCardLines = 300;
+
         std::size_t totalProcessedLines = 0;
         bool truncated = false;
+
+        std::vector<OverviewSpan> splitOldSpans;
+        std::vector<OverviewSpan> splitNewSpans;
+        double splitY = 0.0;
+
+        std::vector<OverviewSpan> hunkOldSpans;
+        std::vector<OverviewSpan> hunkNewSpans;
+        double hunkY = 0.0;
 
         for (const auto& hunk : diff.hunks)
         {
@@ -628,6 +696,12 @@ namespace gf::desktop
 
             QVariantList hLines;
             hLines.reserve(static_cast<qsizetype>(preparedLines.size()));
+            if (!out.hunks.isEmpty())
+            {
+                hunkY += kHunkCardListSpacing;
+            }
+            hunkY += kHunkCardPadding + kHunkCardHeaderHeight;
+            std::size_t hunkCardLineCount = 0;
             for (const auto& prep : preparedLines)
             {
                 const auto& line = *prep.raw;
@@ -658,6 +732,21 @@ namespace gf::desktop
                     break;
                 }
 
+                if (hunkCardLineCount < kMaxHunkCardLines)
+                {
+                    hunkY += kHunkCardColSpacing;
+                    if (line.kind == gf::git::bo::DiffLineKind::Deletion)
+                    {
+                        appendOverviewSpan(hunkOldSpans, hunkY, hunkY + kDiffRowHeight, kHunkCardColSpacing + 0.01);
+                    }
+                    else if (line.kind == gf::git::bo::DiffLineKind::Addition)
+                    {
+                        appendOverviewSpan(hunkNewSpans, hunkY, hunkY + kDiffRowHeight, kHunkCardColSpacing + 0.01);
+                    }
+                    hunkY += kDiffRowHeight;
+                    ++hunkCardLineCount;
+                }
+
                 lMap[QStringLiteral("kind")] = kindStr;
                 lMap[QStringLiteral("oldLineNumber")] = line.oldLineNumber.has_value()
                                                             ? QString::number(*line.oldLineNumber)
@@ -671,6 +760,7 @@ namespace gf::desktop
                 lMap[QStringLiteral("fgColor")] = fgCol;
                 hLines.append(lMap);
             }
+            hunkY += kHunkCardPadding;
             hMap[QStringLiteral("lines")] = hLines;
             out.hunks.append(hMap);
 
@@ -679,11 +769,12 @@ namespace gf::desktop
             headerRow[QStringLiteral("isHunkHeader")] = true;
             headerRow[QStringLiteral("hunkHeader")] = hunkHeaderStr;
             out.splitLines.append(headerRow);
+            splitY += kDiffHeaderHeight;
 
             std::vector<const HighlightedDiffLine*> pendingDeletions;
             std::vector<const HighlightedDiffLine*> pendingAdditions;
 
-            auto flushPending = [&out, &pendingDeletions, &pendingAdditions]()
+            auto flushPending = [&]()
             {
                 std::size_t maxLen = std::max(pendingDeletions.size(), pendingAdditions.size());
                 for (std::size_t i = 0; i < maxLen; ++i)
@@ -702,6 +793,7 @@ namespace gf::desktop
                         row[QStringLiteral("leftKind")] = QStringLiteral("deletion");
                         row[QStringLiteral("leftBgColor")] = QStringLiteral("#3B181E");
                         row[QStringLiteral("leftFgColor")] = QStringLiteral("#FFA198");
+                        appendOverviewSpan(splitOldSpans, splitY, splitY + kDiffRowHeight);
                     }
                     else
                     {
@@ -724,6 +816,7 @@ namespace gf::desktop
                         row[QStringLiteral("rightKind")] = QStringLiteral("addition");
                         row[QStringLiteral("rightBgColor")] = QStringLiteral("#143220");
                         row[QStringLiteral("rightFgColor")] = QStringLiteral("#7EE787");
+                        appendOverviewSpan(splitNewSpans, splitY, splitY + kDiffRowHeight);
                     }
                     else
                     {
@@ -735,6 +828,7 @@ namespace gf::desktop
                         row[QStringLiteral("rightFgColor")] = QStringLiteral("#484F58");
                     }
                     out.splitLines.append(row);
+                    splitY += kDiffRowHeight;
                 }
                 pendingDeletions.clear();
                 pendingAdditions.clear();
@@ -774,6 +868,7 @@ namespace gf::desktop
                     row[QStringLiteral("rightBgColor")] = QStringLiteral("transparent");
                     row[QStringLiteral("rightFgColor")] = QStringLiteral("#E6EDF3");
                     out.splitLines.append(row);
+                    splitY += kDiffRowHeight;
                 }
             }
             flushPending();
@@ -787,6 +882,7 @@ namespace gf::desktop
             noticeRow[QStringLiteral("isHunkHeader")] = true;
             noticeRow[QStringLiteral("hunkHeader")] = QString::fromStdString(notice);
             out.splitLines.append(noticeRow);
+            splitY += kDiffHeaderHeight;
 
             out.modelLines.push_back(gf::git::bo::DiffLine{
                 .kind = gf::git::bo::DiffLineKind::Header,
@@ -796,6 +892,27 @@ namespace gf::desktop
             });
             out.modelRich.push_back(QString::fromStdString(gf::core::syntax::SyntaxHighlighter::escapeHtml(notice)));
         }
+
+        std::vector<OverviewSpan> inlineOldSpans;
+        std::vector<OverviewSpan> inlineNewSpans;
+        double inlineY = 0.0;
+        for (const auto& line : out.modelLines)
+        {
+            const double rowH = (line.kind == gf::git::bo::DiffLineKind::Header) ? kDiffHeaderHeight : kDiffRowHeight;
+            if (line.kind == gf::git::bo::DiffLineKind::Deletion)
+            {
+                appendOverviewSpan(inlineOldSpans, inlineY, inlineY + rowH);
+            }
+            else if (line.kind == gf::git::bo::DiffLineKind::Addition)
+            {
+                appendOverviewSpan(inlineNewSpans, inlineY, inlineY + rowH);
+            }
+            inlineY += rowH;
+        }
+
+        out.splitOverviewMarkers = buildOverviewMarkers(splitOldSpans, splitNewSpans, splitY);
+        out.inlineOverviewMarkers = buildOverviewMarkers(inlineOldSpans, inlineNewSpans, inlineY);
+        out.hunkOverviewMarkers = buildOverviewMarkers(hunkOldSpans, hunkNewSpans, hunkY);
     }
 
     void DiffViewModel::applyPreparedDiff(const gf::git::bo::FileDiff& diff, PreparedDiff& prepared)
@@ -839,6 +956,9 @@ namespace gf::desktop
         m_maxLineLength = prepared.maxLineLength;
         m_hunks = std::move(prepared.hunks);
         m_splitLines = std::move(prepared.splitLines);
+        m_splitOverviewMarkers = std::move(prepared.splitOverviewMarkers);
+        m_inlineOverviewMarkers = std::move(prepared.inlineOverviewMarkers);
+        m_hunkOverviewMarkers = std::move(prepared.hunkOverviewMarkers);
 
         emit diffLoaded();
         if (wasMarkdown != m_isMarkdown)
@@ -1181,6 +1301,9 @@ namespace gf::desktop
         m_linesModel.clear();
         m_splitLines.clear();
         m_hunks.clear();
+        m_splitOverviewMarkers.clear();
+        m_inlineOverviewMarkers.clear();
+        m_hunkOverviewMarkers.clear();
         m_blameLines.clear();
         m_markdownBlocks.clear();
         m_markdownToc.clear();
