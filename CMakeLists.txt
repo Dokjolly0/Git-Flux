@@ -322,6 +322,10 @@ if (GF_BUILD_DESKTOP)
             src/desktop/ui/qml/views/ConflictResolverModal.qml
             src/desktop/ui/qml/views/CommitHistoryPanel.qml
             src/desktop/ui/qml/views/FluxScrollBar.qml
+            src/desktop/ui/qml/views/FluxMenu.qml
+            src/desktop/ui/qml/views/FluxMenuItem.qml
+            src/desktop/ui/qml/views/FluxMenuSeparator.qml
+            src/desktop/ui/qml/views/FluxCheckBox.qml
             src/desktop/ui/qml/views/SmoothWheelScroller.qml
             src/desktop/ui/qml/views/SmoothScrollRegistry.js
             src/desktop/ui/qml/views/CloneRepositoryModal.qml

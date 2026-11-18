@@ -13,10 +13,32 @@ ApplicationWindow {
     minimumWidth: 900
     minimumHeight: 600
     title: "Git Flux"
-    color: "#0E1117"
+    color: fluxTheme.canvas
 
     FluxTheme {
         id: fluxTheme
+    }
+
+    Item {
+        id: tooltipInitializer
+        visible: false
+        Component.onCompleted: {
+            if (ToolTip.toolTip) {
+                ToolTip.toolTip.topPadding = 7;
+                ToolTip.toolTip.bottomPadding = 7;
+                ToolTip.toolTip.leftPadding = 11;
+                ToolTip.toolTip.rightPadding = 11;
+                ToolTip.toolTip.font.pixelSize = 11;
+                if (ToolTip.toolTip.background) {
+                    ToolTip.toolTip.background.radius = 8;
+                    ToolTip.toolTip.background.color = "#111824";
+                    ToolTip.toolTip.background.border.color = "#28374E";
+                }
+                if (ToolTip.toolTip.contentItem) {
+                    ToolTip.toolTip.contentItem.color = "#F8FAFC";
+                }
+            }
+        }
     }
 
     property string currentView: "home" // "home" or "session"

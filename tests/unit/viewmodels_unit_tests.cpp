@@ -54,6 +54,9 @@
 #include "core/modules/workspaces/bl/workspace_service.hpp"
 
 #include <QGuiApplication>
+#include <QQmlComponent>
+#include <QQmlEngine>
+#include <QQuickStyle>
 #include <QSignalSpy>
 #include <QElapsedTimer>
 #include <QTest>
@@ -3776,4 +3779,44 @@ TEST_CASE (
 
     std::error_code ec;
     std::filesystem::remove_all(repo, ec);
+}
+
+TEST_CASE("Flux UI Kit QML components load and instantiate cleanly", "[qml][ui]")
+{
+    ensureQtApp();
+    QQuickStyle::setStyle(QStringLiteral("Basic"));
+
+    QQmlEngine engine;
+    const auto qmlBaseDir = std::filesystem::path(__FILE__).parent_path().parent_path().parent_path()
+        / "src" / "desktop" / "ui" / "qml";
+
+    auto requireValidComponent = [&](const std::filesystem::path& filePath) -> std::unique_ptr<QObject>
+    {
+        QQmlComponent component(&engine, QUrl::fromLocalFile(QString::fromStdString(filePath.string())));
+        INFO("QML component errors for " << filePath.string() << ": " << component.errorString().toStdString());
+        REQUIRE(component.isReady());
+        std::unique_ptr<QObject> obj(component.create());
+        REQUIRE(obj != nullptr);
+        return obj;
+    };
+
+    auto themeObj = requireValidComponent(qmlBaseDir / "themes" / "FluxTheme.qml");
+    CHECK(themeObj->property("radiusSm").toInt() == 8);
+    CHECK(themeObj->property("radiusMd").toInt() == 10);
+    CHECK(themeObj->property("radiusLg").toInt() == 14);
+    CHECK(themeObj->property("animFast").toInt() == 120);
+
+    auto menuObj = requireValidComponent(qmlBaseDir / "views" / "FluxMenu.qml");
+    CHECK(menuObj->property("topPadding").toReal() == 6.0);
+
+    auto menuItemObj = requireValidComponent(qmlBaseDir / "views" / "FluxMenuItem.qml");
+    CHECK_FALSE(menuItemObj->property("isDestructive").toBool());
+    menuItemObj->setProperty("text", QStringLiteral("🗑 Elimina branch..."));
+    CHECK(menuItemObj->property("isDestructive").toBool());
+
+    auto separatorObj = requireValidComponent(qmlBaseDir / "views" / "FluxMenuSeparator.qml");
+    CHECK(separatorObj->property("implicitHeight").toReal() == 9.0);
+
+    auto checkBoxObj = requireValidComponent(qmlBaseDir / "views" / "FluxCheckBox.qml");
+    CHECK(checkBoxObj->property("fontSize").toInt() == 11);
 }
