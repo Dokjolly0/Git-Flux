@@ -217,6 +217,72 @@ namespace gf::desktop
             appendSide(newSpans, QStringLiteral("new"));
             return result;
         }
+
+        QString expandTabsForCopy(const QString& text)
+        {
+            if (!text.contains(QLatin1Char('\t')))
+            {
+                return text;
+            }
+            QString out = text;
+            out.replace(QLatin1Char('\t'), QStringLiteral("    "));
+            return out;
+        }
+
+        template <typename RowLookupFn>
+        QString extractRangeText(int rowCount, int startRow, int startCol, int endRow, int endCol, RowLookupFn&& lookup)
+        {
+            if (rowCount <= 0)
+            {
+                return {};
+            }
+            if (startRow > endRow || (startRow == endRow && startCol > endCol))
+            {
+                std::swap(startRow, endRow);
+                std::swap(startCol, endCol);
+            }
+            startRow = std::clamp(startRow, 0, rowCount - 1);
+            endRow = std::clamp(endRow, 0, rowCount - 1);
+
+            if (startRow == endRow)
+            {
+                const auto textOpt = lookup(startRow);
+                if (!textOpt.has_value())
+                {
+                    return {};
+                }
+                const QString expanded = expandTabsForCopy(*textOpt);
+                const int len = static_cast<int>(expanded.size());
+                const int s = std::clamp(startCol, 0, len);
+                const int e = std::clamp(endCol, s, len);
+                return expanded.mid(s, e - s);
+            }
+
+            QStringList lines;
+            for (int r = startRow; r <= endRow; ++r)
+            {
+                const auto textOpt = lookup(r);
+                if (!textOpt.has_value())
+                {
+                    continue;
+                }
+                const QString expanded = expandTabsForCopy(*textOpt);
+                const int len = static_cast<int>(expanded.size());
+                if (r == startRow)
+                {
+                    lines.append(expanded.mid(std::clamp(startCol, 0, len)));
+                }
+                else if (r == endRow)
+                {
+                    lines.append(expanded.left(std::clamp(endCol, 0, len)));
+                }
+                else
+                {
+                    lines.append(expanded);
+                }
+            }
+            return lines.join(QLatin1Char('\n'));
+        }
     } // namespace
 
     /// Diff read on the worker: the diff itself and, for Markdown files, the full file content
@@ -418,6 +484,72 @@ namespace gf::desktop
                 cb->setText(text);
             }
         }
+    }
+
+    QString DiffViewModel::extractSelectedText(const QString& target,
+                                               int startRow, int startCol,
+                                               int endRow, int endCol,
+                                               int hunkIndex) const
+    {
+        if (target == QStringLiteral("inline"))
+        {
+            const auto& flat = m_linesModel.flatLines();
+            return extractRangeText(static_cast<int>(flat.size()), startRow, startCol, endRow, endCol,
+                                    [&flat](int r) -> std::optional<QString>
+                                    {
+                                        const auto& line = flat[static_cast<std::size_t>(r)];
+                                        if (line.kind == gf::git::bo::DiffLineKind::Header)
+                                        {
+                                            return std::nullopt;
+                                        }
+                                        return QString::fromStdString(line.content);
+                                    });
+        }
+        if (target == QStringLiteral("split-left") || target == QStringLiteral("split-right"))
+        {
+            const bool isLeft = (target == QStringLiteral("split-left"));
+            const QString kindKey = isLeft ? QStringLiteral("leftKind") : QStringLiteral("rightKind");
+            const QString contentKey = isLeft ? QStringLiteral("leftContent") : QStringLiteral("rightContent");
+            return extractRangeText(static_cast<int>(m_splitLines.size()), startRow, startCol, endRow, endCol,
+                                    [this, &kindKey, &contentKey](int r) -> std::optional<QString>
+                                    {
+                                        const QVariantMap row = m_splitLines[r].toMap();
+                                        if (row.value(QStringLiteral("isHunkHeader")).toBool() ||
+                                            row.value(kindKey).toString() == QStringLiteral("empty"))
+                                        {
+                                            return std::nullopt;
+                                        }
+                                        return row.value(contentKey).toString();
+                                    });
+        }
+        if (target == QStringLiteral("hunk"))
+        {
+            if (hunkIndex < 0 || hunkIndex >= m_hunks.size())
+            {
+                return {};
+            }
+            const QVariantList lines = m_hunks[hunkIndex].toMap().value(QStringLiteral("lines")).toList();
+            const int cappedCount = std::min(static_cast<int>(lines.size()), 300);
+            return extractRangeText(cappedCount, startRow, startCol, endRow, endCol,
+                                    [&lines](int r) -> std::optional<QString>
+                                    {
+                                        const QVariantMap row = lines[r].toMap();
+                                        if (row.value(QStringLiteral("kind")).toString() == QStringLiteral("header"))
+                                        {
+                                            return std::nullopt;
+                                        }
+                                        return row.value(QStringLiteral("content")).toString();
+                                    });
+        }
+        if (target == QStringLiteral("blame"))
+        {
+            return extractRangeText(static_cast<int>(m_blameLines.size()), startRow, startCol, endRow, endCol,
+                                    [this](int r) -> std::optional<QString>
+                                    {
+                                        return m_blameLines[r].toMap().value(QStringLiteral("content")).toString();
+                                    });
+        }
+        return {};
     }
 
     void DiffViewModel::buildMarkdownDocument(const std::string& content, const gf::git::bo::FileDiff& diff,

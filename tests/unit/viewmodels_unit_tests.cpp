@@ -581,6 +581,7 @@ public:
     std::vector<gf::git::bo::GitCommitLogItem> commitLogToReturn{};
     gf::git::bo::RepoWorkingTreeStatus statusToReturn;
     gf::git::bo::FileDiff diffToReturn;
+    std::vector<gf::git::bo::BlameLine> blameToReturn;
     std::string fileContentToReturn;
     int lastContextLinesRequested = -999;
     std::string lastFileContentRevision;
@@ -732,6 +733,12 @@ public:
     getAllDiffs(const std::filesystem::path&, gf::git::bo::DiffScope) override
     {
         return std::vector<gf::git::bo::FileDiff>{diffToReturn};
+    }
+
+    std::expected<std::vector<gf::git::bo::BlameLine>, gf::git::ports::GitOpsError>
+    getFileBlame(const std::filesystem::path&, const std::string&, const std::string&) override
+    {
+        return blameToReturn;
     }
 
     std::expected<std::vector<gf::git::bo::GitBranch>, gf::git::ports::GitOpsError>
@@ -2985,6 +2992,57 @@ TEST_CASE("DiffViewModel - Overview scrollbar markers for split, inline, and hun
     CHECK(diffVm.hunkOverviewMarkers().isEmpty());
 }
 
+TEST_CASE("DiffViewModel - extractSelectedText across inline, split, hunk, and blame", "[desktop][viewmodels]")
+{
+    ensureQtApp();
+    MockFullGitOps mockOps;
+    gf::git::bl::GitDiffService diffService(mockOps);
+    DiffViewModel diffVm(diffService);
+
+    const QString repoPath = QString::fromStdString(std::filesystem::temp_directory_path().string());
+
+    gf::git::bo::DiffHunk hunk1;
+    hunk1.header = "@@ -1,3 +1,4 @@";
+    hunk1.lines.push_back({.kind = gf::git::bo::DiffLineKind::Context, .oldLineNumber = 1, .newLineNumber = 1, .content = "int main() {"});
+    hunk1.lines.push_back({.kind = gf::git::bo::DiffLineKind::Deletion, .oldLineNumber = 2, .content = "\tint oldVal = 1;"});
+    hunk1.lines.push_back({.kind = gf::git::bo::DiffLineKind::Addition, .newLineNumber = 2, .content = "\tint newVal = 2;"});
+    hunk1.lines.push_back({.kind = gf::git::bo::DiffLineKind::Addition, .newLineNumber = 3, .content = "\treturn newVal;"});
+    hunk1.lines.push_back({.kind = gf::git::bo::DiffLineKind::Context, .oldLineNumber = 3, .newLineNumber = 4, .content = "}"});
+
+    mockOps.diffToReturn = gf::git::bo::FileDiff{};
+    mockOps.diffToReturn.oldPath = "main.cpp";
+    mockOps.diffToReturn.newPath = "main.cpp";
+    mockOps.diffToReturn.hunks = {hunk1};
+
+    mockOps.blameToReturn = {
+        gf::git::bo::BlameLine{.commitSha = "1111111", .shortSha = "1111111", .author = "Alice", .authorEmail = "a@b.c", .date = "2026-11-18", .lineNumber = 1, .content = "int main() {"},
+        gf::git::bo::BlameLine{.commitSha = "1111111", .shortSha = "1111111", .author = "Alice", .authorEmail = "a@b.c", .date = "2026-11-18", .lineNumber = 2, .content = "\treturn 2;"}
+    };
+
+    REQUIRE(diffVm.loadDiff(repoPath, "main.cpp", "unstaged"));
+    REQUIRE(diffVm.waitForIdle());
+
+    // Inline: row 0 = header, row 1 = context, row 2 = deletion ("\tint oldVal = 1;" -> "    int oldVal = 1;")
+    CHECK(diffVm.extractSelectedText("inline", 2, 4, 2, 14).toStdString() == "int oldVal");
+    // Multi-line inline including header row 0 skips header cleanly
+    CHECK(diffVm.extractSelectedText("inline", 0, 0, 3, 19).toStdString() == "int main() {\n    int oldVal = 1;\n    int newVal = 2;");
+    // Reversed inline selection works identically
+    CHECK(diffVm.extractSelectedText("inline", 3, 19, 1, 0).toStdString() == "int main() {\n    int oldVal = 1;\n    int newVal = 2;");
+
+    // Split: row 0 = header, row 1 = context, row 2 = (del/add), row 3 = (empty/add), row 4 = context
+    CHECK(diffVm.extractSelectedText("split-right", 2, 4, 3, 18).toStdString() == "int newVal = 2;\n    return newVal;");
+    // Split-left across row 3 (empty filler on left) skips the empty filler row
+    CHECK(diffVm.extractSelectedText("split-left", 1, 0, 4, 1).toStdString() == "int main() {\n    int oldVal = 1;\n}");
+
+    // Hunk: index 0..4 inside hunk 0
+    CHECK(diffVm.extractSelectedText("hunk", 2, 4, 3, 18, 0).toStdString() == "int newVal = 2;\n    return newVal;");
+
+    // Blame
+    REQUIRE(diffVm.loadBlame(repoPath, "", "main.cpp"));
+    REQUIRE(diffVm.waitForIdle());
+    CHECK(diffVm.extractSelectedText("blame", 0, 4, 1, 11).toStdString() == "main() {\n    return ");
+}
+
 #include "desktop/viewmodels/remote_repo_list_model.hpp"
 
 TEST_CASE (
@@ -4112,5 +4170,34 @@ TEST_CASE("Flux UI Kit QML components load and instantiate cleanly", "[qml][ui]"
         // Scroll to the bottom of the track
         QMetaObject::invokeMethod(barObj.get(), "scrollToThumbY", Q_ARG(QVariant, maxThumbY));
         CHECK(flickObj->property("contentY").toReal() == 1800.0);
+    }
+
+    SECTION("DiffViewerPanel selection and copy integration")
+    {
+        MockFullGitOps mockOps;
+        gf::git::bl::GitDiffService diffService(mockOps);
+        DiffViewModel diffVm(diffService);
+
+        gf::git::bo::DiffHunk hunk;
+        hunk.header = "@@ -1,1 +1,2 @@";
+        hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Context, .oldLineNumber = 1, .newLineNumber = 1, .content = "alpha"});
+        hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Addition, .newLineNumber = 2, .content = "beta"});
+        mockOps.diffToReturn.oldPath = "sample.txt";
+        mockOps.diffToReturn.newPath = "sample.txt";
+        mockOps.diffToReturn.hunks = {hunk};
+
+        REQUIRE(diffVm.loadDiff(QString::fromStdString(std::filesystem::temp_directory_path().string()), "sample.txt", "unstaged"));
+        REQUIRE(diffVm.waitForIdle());
+
+        auto panelObj = requireValidComponent(qmlBaseDir / "views" / "DiffViewerPanel.qml");
+        panelObj->setProperty("diffViewer", QVariant::fromValue(static_cast<QObject*>(&diffVm)));
+
+        CHECK_FALSE(panelObj->property("hasSelection").toBool());
+        QMetaObject::invokeMethod(panelObj.get(), "selectAllInActiveView");
+        CHECK(panelObj->property("hasSelection").toBool());
+        CHECK(panelObj->property("selTarget").toString() == "split-right");
+
+        QMetaObject::invokeMethod(panelObj.get(), "clearSelection");
+        CHECK_FALSE(panelObj->property("hasSelection").toBool());
     }
 }

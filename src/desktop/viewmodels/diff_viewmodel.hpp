@@ -115,6 +115,10 @@ namespace gf::desktop
     Q_INVOKABLE void setShowMarkdownRichDiff(bool show);
     Q_INVOKABLE bool reloadCurrentDiff();
     Q_INVOKABLE void copyToClipboard(const QString& text) const;
+    Q_INVOKABLE QString extractSelectedText(const QString& target,
+                                            int startRow, int startCol,
+                                            int endRow, int endCol,
+                                            int hunkIndex = -1) const;
 
         // Asynchronous, "latest wins": git runs on a background thread, only the result of the
         // most recent request is applied (diffLoaded / blameLoaded), failures emit loadFailed.
