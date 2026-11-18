@@ -10,6 +10,9 @@ Rectangle {
     // Network operation in progress ("fetch", "pull", "push" or ""): runs in the background, the
     // window stays usable; the buttons only wait for it (not for local operations or reloads).
     readonly property string remoteOperation: (sessionVm && sessionVm.branchManager) ? sessionVm.branchManager.remoteOperation : ""
+    readonly property bool hasWipChanges: Boolean(sessionVm && sessionVm.workingTree && !sessionVm.workingTree.isClean)
+    readonly property int stashCount: (sessionVm && sessionVm.stashManager) ? sessionVm.stashManager.stashCount : 0
+    readonly property bool hasStashes: stashCount > 0
 
     signal returnToHomeRequested()
 
@@ -642,8 +645,11 @@ Rectangle {
                     }
                 }
 
-                // 4. STASH CAPSULE SPLIT BUTTON
+                // 4. STASH CAPSULE SPLIT BUTTON (Shown only when WIP has local changes)
                 Rectangle {
+                    id: stashCapsule
+                    objectName: "topbarStashButton"
+                    visible: root.hasWipChanges
                     Layout.preferredHeight: 32
                     implicitWidth: stashSplitRow.implicitWidth + 2
                     radius: 9
@@ -686,6 +692,8 @@ Rectangle {
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
                             }
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Salva le modifiche locali (WIP) nello Stash"
                             onClicked: {
                                 if (root.sessionVm && root.sessionVm.stashManager) {
                                     root.sessionVm.stashManager.refresh();
@@ -728,22 +736,22 @@ Rectangle {
                                 y: stashMenuBtn.height + 4
 
                                 FluxMenuItem {
-                                    text: "📦 Nuovo Stash modifiche correnti..."
+                                    text: "📦 Salva modifiche correnti ( inclusi non tracciati )"
+                                    font.pixelSize: 11
+                                    onClicked: {
+                                        if (root.sessionVm && root.sessionVm.stashManager) {
+                                            root.sessionVm.stashManager.push("", true, false);
+                                        }
+                                    }
+                                }
+                                FluxMenuItem {
+                                    text: "📦 Nuovo Stash con messaggio personalizzato..."
                                     font.pixelSize: 11
                                     onClicked: {
                                         if (root.sessionVm && root.sessionVm.stashManager) {
                                             root.sessionVm.stashManager.refresh();
                                         }
                                         stashModal.open();
-                                    }
-                                }
-                                FluxMenuItem {
-                                    text: "↩ Pop ultimo stash (stash@{0})"
-                                    font.pixelSize: 11
-                                    onClicked: {
-                                        if (root.sessionVm && root.sessionVm.stashManager) {
-                                            root.sessionVm.stashManager.pop(0);
-                                        }
                                     }
                                 }
                                 FluxMenuSeparator {
@@ -763,43 +771,126 @@ Rectangle {
                     }
                 }
 
-                // 5. QUICK POP BUTTON
-                Button {
-                    text: "↩ Pop"
+                // 5. QUICK POP CAPSULE SPLIT BUTTON (Shown only when at least one stash exists)
+                Rectangle {
+                    id: popCapsule
+                    objectName: "topbarPopButton"
+                    visible: root.hasStashes
                     Layout.preferredHeight: 32
-                    leftPadding: 12
-                    rightPadding: 12
-                    hoverEnabled: true
-                    background: Rectangle {
-                        color: parent.down ? "#1E2D42" : (parent.hovered ? "#1A2639" : "#121A27")
-                        radius: 9
-                        border.color: parent.hovered ? "#334968" : "#222F42"
-                        border.width: 1
+                    implicitWidth: popSplitRow.implicitWidth + 2
+                    radius: 9
+                    color: "#121A27"
+                    border.color: (popMainBtn.hovered || popMenuBtn.hovered || popMenu.opened) ? "#334968" : "#222F42"
+                    border.width: 1
 
-                        Behavior on color {
-                            ColorAnimation {
-                                duration: 120
-                            }
-                        }
-                        Behavior on border.color {
-                            ColorAnimation {
-                                duration: 120
-                            }
+                    Behavior on border.color {
+                        ColorAnimation {
+                            duration: 120
                         }
                     }
-                    contentItem: Text {
-                        text: parent.text
-                        color: parent.hovered ? "#E2E8F0" : "#94A3B8"
-                        font.pixelSize: 11
-                        font.bold: true
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    ToolTip.visible: hovered
-                    ToolTip.text: "Applica e rimuovi il commit di stash più recente (pop stash@{0})"
-                    onClicked: {
-                        if (root.sessionVm && root.sessionVm.stashManager) {
-                            root.sessionVm.stashManager.pop(0);
+
+                    RowLayout {
+                        id: popSplitRow
+                        anchors.centerIn: parent
+                        spacing: 0
+
+                        Button {
+                            id: popMainBtn
+                            text: root.stashCount > 1 ? ("↩ Pop (" + root.stashCount + ")") : "↩ Pop"
+                            Layout.preferredHeight: 30
+                            leftPadding: 12
+                            rightPadding: 10
+                            hoverEnabled: true
+                            background: Rectangle {
+                                color: parent.down ? "#1E2D42" : (parent.hovered ? "#1A2639" : "transparent")
+                                radius: 8
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
+                            }
+                            contentItem: Text {
+                                text: parent.text
+                                color: "#E2E8F0"
+                                font.pixelSize: 11
+                                font.bold: true
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Applica e rimuovi il commit di stash più recente (pop stash@{0})"
+                            onClicked: {
+                                if (root.sessionVm && root.sessionVm.stashManager) {
+                                    root.sessionVm.stashManager.pop(0);
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            Layout.preferredWidth: 1
+                            Layout.preferredHeight: 16
+                            color: "#243247"
+                        }
+
+                        Button {
+                            id: popMenuBtn
+                            Layout.preferredHeight: 30
+                            Layout.preferredWidth: 24
+                            hoverEnabled: true
+                            background: Rectangle {
+                                color: (parent.down || popMenu.opened) ? "#1E2D42" : (parent.hovered ? "#1A2639" : "transparent")
+                                radius: 8
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
+                            }
+                            contentItem: Text {
+                                text: "▾"
+                                color: popMenu.opened ? "#38BDF8" : "#94A3B8"
+                                font.pixelSize: 9
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            onClicked: popMenu.open()
+
+                            FluxMenu {
+                                id: popMenu
+                                y: popMenuBtn.height + 4
+
+                                FluxMenuItem {
+                                    text: "↩ Pop ultimo stash (stash@{0})"
+                                    font.pixelSize: 11
+                                    onClicked: {
+                                        if (root.sessionVm && root.sessionVm.stashManager) {
+                                            root.sessionVm.stashManager.pop(0);
+                                        }
+                                    }
+                                }
+                                FluxMenuItem {
+                                    text: "📋 Applica ultimo stash senza rimuoverlo (Apply)"
+                                    font.pixelSize: 11
+                                    onClicked: {
+                                        if (root.sessionVm && root.sessionVm.stashManager) {
+                                            root.sessionVm.stashManager.apply(0, false);
+                                        }
+                                    }
+                                }
+                                FluxMenuSeparator {
+                                }
+                                FluxMenuItem {
+                                    text: "⚙ Gestione completa Stash (" + root.stashCount + ")..."
+                                    font.pixelSize: 11
+                                    onClicked: {
+                                        if (root.sessionVm && root.sessionVm.stashManager) {
+                                            root.sessionVm.stashManager.refresh();
+                                        }
+                                        stashModal.open();
+                                    }
+                                }
+                            }
                         }
                     }
                 }

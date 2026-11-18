@@ -20,6 +20,8 @@ namespace gf::desktop
           , m_ownedExecutor(std::make_unique<SerialGitExecutor>())
     {
         m_executor = m_ownedExecutor.get();
+        connect(&m_stashesModel, &StashListModel::countChanged,
+                this, &StashManagerViewModel::stashCountChanged);
     }
 
     StashManagerViewModel::StashManagerViewModel(gf::git::bl::GitStashService& stashService,
@@ -30,6 +32,8 @@ namespace gf::desktop
           , m_stashesModel(this)
           , m_executor(&executor)
     {
+        connect(&m_stashesModel, &StashListModel::countChanged,
+                this, &StashManagerViewModel::stashCountChanged);
     }
 
     StashManagerViewModel::~StashManagerViewModel() = default;

@@ -25,6 +25,8 @@ namespace gf::desktop
         Q_OBJECT
         Q_PROPERTY(QString repoPath READ repoPath WRITE setRepoPath NOTIFY repoPathChanged)
         Q_PROPERTY(StashListModel* stashesModel READ stashesModel CONSTANT)
+        Q_PROPERTY(int stashCount READ stashCount NOTIFY stashCountChanged)
+        Q_PROPERTY(bool hasStashes READ hasStashes NOTIFY stashCountChanged)
         Q_PROPERTY(bool isBusy READ isBusy NOTIFY isBusyChanged)
         Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
         Q_PROPERTY(bool hasError READ hasError NOTIFY hasErrorChanged)
@@ -42,6 +44,8 @@ namespace gf::desktop
         void setRepoPath(const QString& path);
 
         [[nodiscard]] StashListModel* stashesModel() noexcept { return &m_stashesModel; }
+        [[nodiscard]] int stashCount() const noexcept { return m_stashesModel.rowCount(); }
+        [[nodiscard]] bool hasStashes() const noexcept { return m_stashesModel.rowCount() > 0; }
         [[nodiscard]] bool isBusy() const noexcept { return m_isBusy; }
         [[nodiscard]] QString errorMessage() const { return m_errorMessage; }
         [[nodiscard]] bool hasError() const noexcept { return !m_errorMessage.isEmpty(); }
@@ -61,6 +65,7 @@ namespace gf::desktop
         signals :
 
         void repoPathChanged();
+        void stashCountChanged();
         void isBusyChanged();
         void errorMessageChanged();
         void hasErrorChanged();

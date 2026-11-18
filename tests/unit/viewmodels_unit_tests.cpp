@@ -3859,4 +3859,106 @@ TEST_CASE("Flux UI Kit QML components load and instantiate cleanly", "[qml][ui]"
         std::unique_ptr<QObject> quickOpenObj(quickOpenComp.create());
         REQUIRE(quickOpenObj != nullptr);
     }
+
+    SECTION("Topbar Stash and Pop buttons are visible only when WIP changes or stashes exist")
+    {
+        TestContext ctx;
+        auto r1Res = ctx.repoService->registerRepository({
+            .localPath = ctx.repoAPath,
+            .displayName = "Repo 1"
+        });
+        REQUIRE(r1Res.has_value());
+
+        MockFullGitOps mockOps;
+        mockOps.statusToReturn = gf::git::bo::RepoWorkingTreeStatus{}; // clean working tree
+        mockOps.stashesToReturn.clear();                               // 0 stashes
+
+        gf::git::bl::GitWorkingTreeService statusService(mockOps);
+        gf::git::bl::GitStagingService stagingService(mockOps);
+        gf::git::bl::GitDiffService diffService(mockOps);
+        gf::git::bl::GitBranchService branchService(mockOps);
+        gf::git::bl::GitHistoryService historyService(mockOps);
+        gf::git::bl::GitRemoteMergeService remoteMergeService(mockOps);
+        gf::git::bl::GitStashService stashService(mockOps);
+        gf::git::bl::GitRebaseService rebaseService(mockOps);
+        gf::git::bl::GitConflictService conflictService(mockOps);
+
+        WorkspaceSessionViewModel sessionVm(
+            *ctx.repoService,
+            *ctx.workspaceService,
+            statusService,
+            stagingService,
+            diffService,
+            branchService,
+            historyService,
+            remoteMergeService,
+            stashService,
+            rebaseService,
+            conflictService
+        );
+
+        auto sessionViewObj = requireValidComponent(qmlBaseDir / "views" / "WorkspaceSessionView.qml");
+        sessionViewObj->setProperty("sessionVm", QVariant::fromValue(static_cast<QObject*>(&sessionVm)));
+
+        auto* stashBtn = sessionViewObj->findChild<QObject*>(QStringLiteral("topbarStashButton"));
+        auto* popBtn = sessionViewObj->findChild<QObject*>(QStringLiteral("topbarPopButton"));
+        REQUIRE(stashBtn != nullptr);
+        REQUIRE(popBtn != nullptr);
+
+        // 1. Clean working tree and 0 stashes -> neither Stash nor Pop is shown
+        sessionVm.openRepository(
+            QString::fromStdString(r1Res->id.value()),
+            QStringLiteral("Repo 1"),
+            QString::fromStdString(ctx.repoAPath.string())
+        );
+        REQUIRE(sessionVm.waitForIdle());
+        CHECK_FALSE(sessionViewObj->property("hasWipChanges").toBool());
+        CHECK_FALSE(sessionViewObj->property("hasStashes").toBool());
+        CHECK_FALSE(stashBtn->property("visible").toBool());
+        CHECK_FALSE(popBtn->property("visible").toBool());
+
+        // 2. WIP changes present and 0 stashes -> only Stash is shown, Pop is hidden
+        gf::git::bo::WorkingTreeFileItem dirtyFile{
+            .path = "src/main.cpp",
+            .originalPath = {},
+            .kind = gf::git::bo::FileChangeKind::Modified,
+            .statusCode = 'M'
+        };
+        mockOps.statusToReturn.unstagedFiles = {dirtyFile};
+        sessionVm.checkWorkingTreeUpdates();
+        REQUIRE(sessionVm.waitForIdle());
+        CHECK(sessionViewObj->property("hasWipChanges").toBool());
+        CHECK_FALSE(sessionViewObj->property("hasStashes").toBool());
+        CHECK(stashBtn->property("visible").toBool());
+        CHECK_FALSE(popBtn->property("visible").toBool());
+
+        // 3. Stash pushed (clean WIP, 1 stash) -> Stash is hidden, Pop is shown
+        mockOps.statusToReturn.unstagedFiles.clear();
+        mockOps.stashesToReturn = {
+            gf::git::bo::GitStashItem{
+                .index = 0,
+                .selector = "stash@{0}",
+                .commitSha = "abc1234",
+                .dateIso = "2026-11-18",
+                .message = "WIP on main",
+                .branchName = "main"
+            }
+        };
+        REQUIRE(sessionVm.stashManager()->push(QStringLiteral("WIP on main")));
+        REQUIRE(sessionVm.waitForIdle());
+        CHECK_FALSE(sessionViewObj->property("hasWipChanges").toBool());
+        CHECK(sessionViewObj->property("hasStashes").toBool());
+        CHECK(sessionViewObj->property("stashCount").toInt() == 1);
+        CHECK_FALSE(stashBtn->property("visible").toBool());
+        CHECK(popBtn->property("visible").toBool());
+
+        // 4. Both WIP changes and 1 stash present -> both Stash and Pop are shown
+        mockOps.statusToReturn.unstagedFiles = {dirtyFile};
+        sessionVm.checkWorkingTreeUpdates();
+        REQUIRE(sessionVm.waitForIdle());
+        CHECK(sessionViewObj->property("hasWipChanges").toBool());
+        CHECK(sessionViewObj->property("hasStashes").toBool());
+        CHECK(stashBtn->property("visible").toBool());
+        CHECK(popBtn->property("visible").toBool());
+    }
 }

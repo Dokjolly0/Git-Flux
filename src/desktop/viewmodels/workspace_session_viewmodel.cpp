@@ -61,6 +61,19 @@ namespace gf::desktop
         connect(&m_conflictResolver, &ConflictResolverViewModel::resolutionApplied,
                 this, [this](const QString&) { refreshActiveTab(); });
 
+        connect(&m_stashManager, &StashManagerViewModel::operationSucceeded,
+                this, [this](const QString& op)
+                {
+                    if (op == QStringLiteral("push") || op == QStringLiteral("pop") || op == QStringLiteral("apply"))
+                    {
+                        const QString path = activeRepoPath();
+                        if (!path.isEmpty())
+                        {
+                            m_workingTree.refresh(path);
+                        }
+                    }
+                });
+
         if (m_watcherService)
         {
             m_watcherService->setBatchCallback([this](const gf::git::bo::FsDebouncedBatch& batch)
@@ -400,7 +413,14 @@ namespace gf::desktop
         m_diffViewer.clear();
         m_commitDiffViewer.clear();
         m_branchManager.setRepositoryPath(path);
-        m_stashManager.setRepoPath(path);
+        if (m_stashManager.repoPath() == path)
+        {
+            m_stashManager.refresh();
+        }
+        else
+        {
+            m_stashManager.setRepoPath(path);
+        }
         m_conflictResolver.setRepoPath(path);
         checkRebaseStatus();
     }
@@ -624,6 +644,7 @@ namespace gf::desktop
                 if (batch.requiresBranchRefresh())
                 {
                     m_branchManager.setRepositoryPath(currentActive);
+                    m_stashManager.refresh();
                 }
             }
         }, Qt::QueuedConnection);

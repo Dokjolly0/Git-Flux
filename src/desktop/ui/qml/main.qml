@@ -156,7 +156,7 @@ ApplicationWindow {
             if (appWindow.currentView === "home") {
                 if (typeof homeHubVm !== "undefined") homeHubVm.refreshAll();
             } else {
-                if (typeof workspaceSessionVm !== "undefined") workspaceSessionVm.refreshActiveRepository();
+                if (typeof workspaceSessionVm !== "undefined") workspaceSessionVm.refreshActiveTab();
             }
         }
     }
