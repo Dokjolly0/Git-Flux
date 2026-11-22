@@ -197,13 +197,27 @@ Dialog {
 
             Item { Layout.preferredHeight: 4 }
 
-            Text {
+            RowLayout {
                 Layout.leftMargin: 16
                 Layout.rightMargin: 16
-                text: "🖥️ Aggiungi server Git personalizzato"
-                color: "#F8FAFC"
-                font.bold: true
-                font.pixelSize: 14
+                spacing: 8
+
+                Image {
+                    source: "qrc:/qt/qml/GitFlux/Desktop/assets/icons/providers/server.png"
+                    Layout.preferredWidth: 16
+                    Layout.preferredHeight: 16
+                    Layout.alignment: Qt.AlignVCenter
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                    mipmap: true
+                }
+
+                Text {
+                    text: "Aggiungi server Git personalizzato"
+                    color: "#F8FAFC"
+                    font.bold: true
+                    font.pixelSize: 14
+                }
             }
 
             Text {
@@ -539,9 +553,15 @@ Dialog {
                                 anchors.rightMargin: 12
                                 spacing: 10
 
-                                Text {
-                                    text: modelData.icon
-                                    font.pixelSize: 14
+                                Image {
+                                    source: modelData.iconSource ? modelData.iconSource : ""
+                                    Layout.preferredWidth: 18
+                                    Layout.preferredHeight: 18
+                                    Layout.alignment: Qt.AlignVCenter
+                                    fillMode: Image.PreserveAspectFit
+                                    smooth: true
+                                    mipmap: true
+                                    opacity: providerItem.isSelected ? 1.0 : (providerMouse.containsMouse ? 0.95 : 0.85)
                                 }
 
                                 Text {
@@ -646,7 +666,18 @@ Dialog {
                             anchors.rightMargin: 12
                             spacing: 8
 
-                            // Profile Title & Account Name
+                            // Active Provider Icon & Profile Title
+                            Image {
+                                visible: Boolean(root.profilesVm && root.profilesVm.activeProfileIconSource && root.profilesVm.activeProfileIconSource.length > 0)
+                                source: root.profilesVm ? root.profilesVm.activeProfileIconSource : ""
+                                Layout.preferredWidth: 16
+                                Layout.preferredHeight: 16
+                                Layout.alignment: Qt.AlignVCenter
+                                fillMode: Image.PreserveAspectFit
+                                smooth: true
+                                mipmap: true
+                            }
+
                             Text {
                                 text: (root.profilesVm ? root.profilesVm.activeProfileDisplayName : "") +
                                     (root.profilesVm && root.profilesVm.activeProfileUsername.length > 0

@@ -25,6 +25,7 @@ namespace gf::desktop::viewmodels
         Q_PROPERTY(QString activeProfileDisplayName READ activeProfileDisplayName NOTIFY activeProfileChanged)
         Q_PROPERTY(QString activeProfileHost READ activeProfileHost NOTIFY activeProfileChanged)
         Q_PROPERTY(QString activeProfileType READ activeProfileType NOTIFY activeProfileChanged)
+        Q_PROPERTY(QString activeProfileIconSource READ activeProfileIconSource NOTIFY activeProfileChanged)
         Q_PROPERTY(QString activeProfileUsername READ activeProfileUsername NOTIFY activeProfileChanged)
         Q_PROPERTY(bool activeProfileHasSsh READ activeProfileHasSsh NOTIFY activeProfileChanged)
         Q_PROPERTY(QString activeProfileSshKeyPath READ activeProfileSshKeyPath NOTIFY activeProfileChanged)
@@ -52,6 +53,7 @@ namespace gf::desktop::viewmodels
         [[nodiscard]] QString activeProfileDisplayName() const;
         [[nodiscard]] QString activeProfileHost() const;
         [[nodiscard]] QString activeProfileType() const;
+        [[nodiscard]] QString activeProfileIconSource() const;
         [[nodiscard]] QString activeProfileUsername() const;
         [[nodiscard]] bool activeProfileHasSsh() const;
         [[nodiscard]] QString activeProfileSshKeyPath() const;

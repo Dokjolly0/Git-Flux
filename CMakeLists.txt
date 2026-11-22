@@ -336,6 +336,14 @@ if (GF_BUILD_DESKTOP)
             src/desktop/ui/qml/views/CreateWorktreeModal.qml
             RESOURCES
             assets/logo.png
+            assets/icons/providers/github.png
+            assets/icons/providers/bitbucket.png
+            assets/icons/providers/gitlab.png
+            assets/icons/providers/gitea.png
+            assets/icons/providers/forgejo.png
+            assets/icons/providers/codeberg.png
+            assets/icons/providers/server.png
+            assets/icons/providers/url.png
     )
     target_include_directories(git_flux PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/src"

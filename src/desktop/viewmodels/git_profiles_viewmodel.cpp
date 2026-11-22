@@ -289,6 +289,43 @@ namespace gf::desktop::viewmodels
         return nullptr;
     }
 
+    namespace
+    {
+        QString providerIconUrl(const QString& iconName)
+        {
+            return QStringLiteral("qrc:/qt/qml/GitFlux/Desktop/assets/icons/providers/") + iconName +
+                QStringLiteral(".png");
+        }
+
+        QString resolveProviderIconSource(const core::git::bo::GitProviderProfile& p)
+        {
+            switch (p.providerType)
+            {
+            case core::git::bo::GitProviderType::GitHub:
+                return providerIconUrl(QStringLiteral("github"));
+            case core::git::bo::GitProviderType::Bitbucket:
+                return providerIconUrl(QStringLiteral("bitbucket"));
+            case core::git::bo::GitProviderType::GitLab:
+                return providerIconUrl(QStringLiteral("gitlab"));
+            case core::git::bo::GitProviderType::Custom:
+                break;
+            }
+
+            const QString hint = (QString::fromStdString(p.id) + QLatin1Char(' ') +
+                QString::fromStdString(p.host) + QLatin1Char(' ') +
+                QString::fromStdString(p.displayName) + QLatin1Char(' ') +
+                QString::fromStdString(p.customApiUrl)).toLower();
+
+            if (hint.contains(QStringLiteral("gitea"))) return providerIconUrl(QStringLiteral("gitea"));
+            if (hint.contains(QStringLiteral("forgejo"))) return providerIconUrl(QStringLiteral("forgejo"));
+            if (hint.contains(QStringLiteral("codeberg"))) return providerIconUrl(QStringLiteral("codeberg"));
+            if (hint.contains(QStringLiteral("github"))) return providerIconUrl(QStringLiteral("github"));
+            if (hint.contains(QStringLiteral("gitlab"))) return providerIconUrl(QStringLiteral("gitlab"));
+            if (hint.contains(QStringLiteral("bitbucket"))) return providerIconUrl(QStringLiteral("bitbucket"));
+            return providerIconUrl(QStringLiteral("server"));
+        }
+    } // namespace
+
     QVariantList GitProfilesViewModel::profiles() const
     {
         QVariantList list;
@@ -300,6 +337,7 @@ namespace gf::desktop::viewmodels
             urlMap[QStringLiteral("displayName")] = QStringLiteral("URL Diretto");
             urlMap[QStringLiteral("host")] = QStringLiteral("");
             urlMap[QStringLiteral("icon")] = QStringLiteral("🔗");
+            urlMap[QStringLiteral("iconSource")] = providerIconUrl(QStringLiteral("url"));
             urlMap[QStringLiteral("hasSsh")] = false;
             urlMap[QStringLiteral("hasToken")] = false;
             list.push_back(urlMap);
@@ -330,6 +368,7 @@ namespace gf::desktop::viewmodels
                 break;
             }
             map[QStringLiteral("icon")] = icon;
+            map[QStringLiteral("iconSource")] = resolveProviderIconSource(p);
             list.push_back(map);
         }
         return list;
@@ -352,6 +391,13 @@ namespace gf::desktop::viewmodels
     {
         const auto* p = findProfile(m_activeProfileId);
         return p ? QString::fromStdString(core::git::bo::gitProviderTypeToString(p->providerType)) : QStringLiteral("");
+    }
+
+    QString GitProfilesViewModel::activeProfileIconSource() const
+    {
+        if (m_activeProfileId == QStringLiteral("url")) return providerIconUrl(QStringLiteral("url"));
+        const auto* p = findProfile(m_activeProfileId);
+        return p ? resolveProviderIconSource(*p) : QStringLiteral("");
     }
 
     QString GitProfilesViewModel::activeProfileUsername() const

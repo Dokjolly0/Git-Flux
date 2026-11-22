@@ -4033,6 +4033,71 @@ TEST_CASE (
     std::filesystem::remove_all(baseDir, ec);
 }
 
+TEST_CASE (
+"GitProfilesViewModel resolves provider icon sources for built-in and custom providers"
+,
+"[viewmodel][profiles]"
+)
+ {
+    ensureQtApp();
+    using gf::desktop::viewmodels::GitProfilesViewModel;
+
+    const auto baseDir = std::filesystem::temp_directory_path() / "gf-profiles-icons";
+    std::filesystem::remove_all(baseDir);
+    std::filesystem::create_directories(baseDir / "home");
+
+    auto connRes = gf::infra::persistence::sqlite::SqliteConnection::openInMemory();
+    REQUIRE(connRes.has_value());
+    REQUIRE(gf::infra::persistence::sqlite::SchemaMigrator::migrateToLatest(*connRes).has_value());
+    gf::infra::persistence::profiles::SqliteProfileStore store(*connRes);
+    gf::infra::security::CryptoVault vault(baseDir / "vault");
+    gf::infra::git::credentials::SystemCredentialDetector detector(baseDir / "home");
+    QNetworkAccessManager nam;
+    gf::desktop::services::GitProviderApiClient apiClient(&nam);
+    FakeGiteaServer server;
+
+    GitProfilesViewModel vm(store, vault, detector, &apiClient);
+    vm.initialize();
+    REQUIRE(vm.waitForIdle());
+
+    vm.addCustomProfile("gitea.example.com", "My Gitea", QString(), server.url());
+    REQUIRE(vm.waitForIdle());
+    vm.addCustomProfile("forgejo.example.com", "My Forgejo", QString(), server.url());
+    REQUIRE(vm.waitForIdle());
+    vm.addCustomProfile("codeberg.org", "Codeberg", QString(), server.url());
+    REQUIRE(vm.waitForIdle());
+    vm.addCustomProfile("git.internal.lan", "Internal Git", QString(), server.url());
+    REQUIRE(vm.waitForIdle());
+
+    auto findIcon = [&](const QString& id) -> QString
+    {
+        for (const auto& entry : vm.profiles())
+        {
+            const auto map = entry.toMap();
+            if (map.value("id").toString() == id) return map.value("iconSource").toString();
+        }
+        return {};
+    };
+
+    const QString prefix = QStringLiteral("qrc:/qt/qml/GitFlux/Desktop/assets/icons/providers/");
+    CHECK(findIcon("url") == prefix + "url.png");
+    CHECK(findIcon("github") == prefix + "github.png");
+    CHECK(findIcon("bitbucket") == prefix + "bitbucket.png");
+    CHECK(findIcon("gitlab") == prefix + "gitlab.png");
+    CHECK(findIcon("manual_gitea.example.com") == prefix + "gitea.png");
+    CHECK(findIcon("manual_forgejo.example.com") == prefix + "forgejo.png");
+    CHECK(findIcon("manual_codeberg.org") == prefix + "codeberg.png");
+    CHECK(findIcon("manual_git.internal.lan") == prefix + "server.png");
+
+    vm.selectProfile("bitbucket");
+    CHECK(vm.activeProfileIconSource() == prefix + "bitbucket.png");
+    vm.selectProfile("url");
+    CHECK(vm.activeProfileIconSource() == prefix + "url.png");
+
+    std::error_code ec;
+    std::filesystem::remove_all(baseDir, ec);
+}
+
 // ---------------------------------------------------------------------------------------------
 // DiffViewModel: highlighting cost on the GUI thread
 // ---------------------------------------------------------------------------------------------
