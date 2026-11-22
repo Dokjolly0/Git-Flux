@@ -4165,14 +4165,29 @@ TEST_CASE (
     CHECK(hasSettingsLink);
     CHECK(hasRecheck);
 
-    // The user registers the key and checks again.
+    // A failure isn't cached: selecting the provider again checks again.
+    vm.selectProfile("url");
+    vm.selectProfile("github");
+    CHECK(vm.sshCheckState() == "checking");
+    REQUIRE(waitUntil([&] { return vm.sshCheckState() == "sshKeyRejected"; }));
+    CHECK(vm.selectedProtocol() == "https");
+    CHECK(vm.sshAutoSwitchedToHttps());
+
+    // The user registers the key: the background re-check picks it up without "checking" flashes
+    // and goes back to SSH, since it was the app that moved to HTTPS.
     { std::ofstream(modeFile) << "ok"; }
-    vm.setSelectedProtocol("ssh");
-    vm.recheckSsh();
+    vm.recheckSshIfFailing();
+    CHECK(vm.sshCheckState() == "sshKeyRejected");
     REQUIRE(waitUntil([&] { return vm.sshCheckState() == "ok"; }));
     CHECK(vm.sshCheckAccount() == "octocat");
     CHECK(vm.selectedProtocol() == "ssh");
     CHECK_FALSE(vm.sshAutoSwitchedToHttps());
+
+    // Once accepted, it's cached and not checked again.
+    vm.recheckSshIfFailing();
+    vm.selectProfile("url");
+    vm.selectProfile("github");
+    CHECK(vm.sshCheckState() == "ok");
 
     std::error_code ec;
     std::filesystem::remove_all(baseDir, ec);

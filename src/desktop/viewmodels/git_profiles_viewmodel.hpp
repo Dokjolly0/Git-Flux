@@ -14,6 +14,7 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <QHash>
+#include <QSet>
 #include <vector>
 #include <memory>
 
@@ -102,6 +103,9 @@ namespace gf::desktop::viewmodels
 
     // Runs the SSH key check of the active profile again (after the user fixed something).
     Q_INVOKABLE void recheckSsh();
+    // Background re-check, only while the last check failed (no "checking" flash). Called when
+    // the user comes back to the app and periodically while the warning is shown.
+    Q_INVOKABLE void recheckSshIfFailing();
     // Step-by-step fix for a remote access problem, for the profile serving `host` (the active
     // profile when empty). Returns { issue, title, summary, steps: [ { title, detail, command,
     // url, urlLabel, action, actionLabel } ] }; actions: "copyPublicKey", "recheckSsh",
@@ -140,7 +144,8 @@ namespace gf::desktop::viewmodels
             QString account;
             QString output;
         };
-        QHash<QString, SshCheckResult> m_sshChecks; // per profile id, until recheckSsh()
+        QHash<QString, SshCheckResult> m_sshChecks; // successful checks per profile id
+        QSet<QString> m_sshProbesInFlight;
         QString m_sshCheckState;
         QString m_sshCheckAccount;
         QString m_sshCheckOutput;
@@ -150,7 +155,9 @@ namespace gf::desktop::viewmodels
         [[nodiscard]] core::git::bo::GitProviderProfile* findProfileMut(const QString& id);
         void fetchActiveProfileRepos();
         // Starts (or reuses the cached result of) the SSH key check of the active profile.
-        void checkActiveProfileSsh(bool force);
+        void checkActiveProfileSsh(bool force, bool quiet = false);
+        // Re-reads ~/.ssh for the active profile (new key, new config block...).
+        void refreshSshDetection();
         void applySshCheckResult(const QString& profileId, const QString& state, const QString& account,
                                  const QString& output);
         [[nodiscard]] const core::git::bo::GitProviderProfile* findProfileByHost(const QString& host) const;

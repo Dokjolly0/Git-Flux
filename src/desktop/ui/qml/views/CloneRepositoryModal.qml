@@ -309,6 +309,35 @@ Dialog {
         function onSelectedProtocolChanged() {
             root.refreshSelectedRepoUrl();
         }
+        function onSshCheckChanged() {
+            // Key accepted now: an SSH error from the last clone attempt is no longer relevant.
+            if (root.profilesVm.sshCheckState === "ok" && root.effectiveHubVm &&
+                    root.effectiveHubVm.cloneIssue.indexOf("ssh") === 0 && !root.effectiveHubVm.isCloning) {
+                root.effectiveHubVm.resetCloneState();
+            }
+        }
+    }
+
+    // While an SSH problem is shown, check again in the background: the user is likely fixing it
+    // in the browser (adding the key) and shouldn't have to restart the app or press a button.
+    readonly property bool sshIssueShown: Boolean(root.profilesVm && root.profilesVm.activeProfileId !== "url" &&
+        root.profilesVm.sshCheckState.length > 0 && root.profilesVm.sshCheckState !== "checking" &&
+        root.profilesVm.sshCheckState !== "ok")
+
+    Timer {
+        interval: 10000
+        repeat: true
+        running: root.visible && root.sshIssueShown
+        onTriggered: root.profilesVm.recheckSshIfFailing()
+    }
+
+    Connections {
+        target: Qt.application
+        function onStateChanged() {
+            if (Qt.application.state === Qt.ApplicationActive && root.visible && root.sshIssueShown) {
+                root.profilesVm.recheckSshIfFailing();
+            }
+        }
     }
 
     function resetFormAndCache() {

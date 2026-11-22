@@ -95,6 +95,7 @@ namespace gf::desktop::viewmodels
                     [this](const QString& profileId, core::git::bl::RemoteAccessIssue issue, const QString& account,
                            const QString& output)
                     {
+                        m_sshProbesInFlight.remove(profileId);
                         applySshCheckResult(profileId,
                                             QString::fromUtf8(core::git::bl::remoteAccessIssueToString(issue).data()),
                                             account, output);
@@ -615,6 +616,7 @@ namespace gf::desktop::viewmodels
 
     void GitProfilesViewModel::refreshRepositories()
     {
+        recheckSshIfFailing();
         fetchActiveProfileRepos();
     }
 
@@ -859,7 +861,7 @@ namespace gf::desktop::viewmodels
         return req;
     }
 
-    void GitProfilesViewModel::checkActiveProfileSsh(bool force)
+    void GitProfilesViewModel::checkActiveProfileSsh(bool force, bool quiet)
     {
         const auto* p = findProfile(m_activeProfileId);
         if (!p || !p->hasSshKey || !m_sshProbe)
@@ -867,6 +869,8 @@ namespace gf::desktop::viewmodels
             applySshCheckResult(m_activeProfileId, QString(), QString(), QString());
             return;
         }
+        // Only successes are cached: a failure is checked again every time, since the user may
+        // have fixed it in the meantime (added the key on the website, edited ~/.ssh/config...).
         if (!force)
         {
             if (const auto it = m_sshChecks.constFind(m_activeProfileId); it != m_sshChecks.cend())
@@ -876,7 +880,13 @@ namespace gf::desktop::viewmodels
             }
         }
         m_sshChecks.remove(m_activeProfileId);
-        applySshCheckResult(m_activeProfileId, QStringLiteral("checking"), QString(), QString());
+        if (m_sshProbesInFlight.contains(m_activeProfileId)) return; // its result is on the way
+        m_sshProbesInFlight.insert(m_activeProfileId);
+        // A quiet (background) re-check keeps the current message instead of flashing "checking".
+        if (!quiet || m_sshCheckState.isEmpty())
+        {
+            applySshCheckResult(m_activeProfileId, QStringLiteral("checking"), QString(), QString());
+        }
         m_sshProbe->probe(m_activeProfileId, sshRequestFor(*p));
     }
 
@@ -884,7 +894,8 @@ namespace gf::desktop::viewmodels
                                                    const QString& account, const QString& output)
     {
         const bool isFinal = !state.isEmpty() && state != QStringLiteral("checking");
-        if (isFinal)
+        const bool isOk = state == QStringLiteral("ok");
+        if (isOk)
         {
             m_sshChecks.insert(profileId, SshCheckResult{state, account, output});
         }
@@ -895,19 +906,46 @@ namespace gf::desktop::viewmodels
         m_sshCheckAccount = account;
         m_sshCheckOutput = output;
 
-        bool switched = false;
-        if (isFinal && state != QStringLiteral("ok") && m_selectedProtocol == QStringLiteral("ssh"))
+        bool switched = m_sshAutoSwitched;
+        if (isFinal && !isOk && m_selectedProtocol == QStringLiteral("ssh"))
         {
             // Cloning over SSH would fail: fall back to HTTPS, the guide explains how to fix SSH.
             setSelectedProtocol(QStringLiteral("https"));
             switched = true;
+        }
+        else if (isOk)
+        {
+            // Fixed: go back to SSH if it was us who moved away from it.
+            if (m_sshAutoSwitched && m_selectedProtocol == QStringLiteral("https"))
+            {
+                setSelectedProtocol(QStringLiteral("ssh"));
+            }
+            switched = false;
+        }
+        else if (state.isEmpty())
+        {
+            switched = false;
         }
         const bool switchChanged = m_sshAutoSwitched != switched;
         m_sshAutoSwitched = switched;
         if (changed || switchChanged) emit sshCheckChanged();
     }
 
+    void GitProfilesViewModel::recheckSshIfFailing()
+    {
+        const auto& st = m_sshCheckState;
+        if (st.isEmpty() || st == QStringLiteral("ok") || st == QStringLiteral("checking")) return;
+        refreshSshDetection();
+        checkActiveProfileSsh(true, true);
+    }
+
     void GitProfilesViewModel::recheckSsh()
+    {
+        refreshSshDetection();
+        checkActiveProfileSsh(true);
+    }
+
+    void GitProfilesViewModel::refreshSshDetection()
     {
         // Pick up what the user may have just fixed: a new key, a ~/.ssh/config block...
         if (auto* p = findProfileMut(m_activeProfileId))
@@ -934,7 +972,6 @@ namespace gf::desktop::viewmodels
                 }
             }
         }
-        checkActiveProfileSsh(true);
     }
 
     const core::git::bo::GitProviderProfile* GitProfilesViewModel::findProfileByHost(const QString& host) const
