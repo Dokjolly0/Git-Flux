@@ -17,6 +17,10 @@ namespace gf::git::bo
         bool recursiveSubmodules{false};
         std::chrono::milliseconds timeout{180'000};
         std::function<void(int percent, std::string_view statusText)> progressCallback{};
+        /// HTTPS only: provider account + personal access token (resolved by the caller from
+        /// the saved provider profile). Ignored for SSH URLs.
+        std::optional<std::string> httpsUsername{std::nullopt};
+        std::optional<std::string> httpsToken{std::nullopt};
     };
 
     struct CloneRepositoryResult

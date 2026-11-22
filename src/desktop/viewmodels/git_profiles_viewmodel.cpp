@@ -1239,4 +1239,57 @@ namespace gf::desktop::viewmodels
         guide[QStringLiteral("hasPublicKey")] = !pubKey.isEmpty();
         return guide;
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // HTTPS credentials for git (clone...)
+    // ---------------------------------------------------------------------------------------------
+
+    GitProfilesViewModel::HttpsCredentialLoader GitProfilesViewModel::httpsCredentialLoader(
+        const QString& remoteUrl) const
+    {
+        const auto url = remoteUrl.trimmed().toStdString();
+        if (!gf::git::bl::isHttpRemoteUrl(url)) return {};
+        const auto host = QString::fromStdString(core::git::bl::extractRemoteHost(url));
+        const auto* p = findProfileByHost(host);
+        if (!p) return {};
+
+        // The account name git sends with the token. Providers check the token itself; these
+        // are the names each one documents for token authentication.
+        using T = core::git::bo::GitProviderType;
+        std::string username;
+        switch (p->providerType)
+        {
+        case T::GitHub:
+            username = (p->username.empty() || p->username == "git") ? "x-access-token" : p->username;
+            break;
+        case T::GitLab:
+            username = "oauth2";
+            break;
+        case T::Bitbucket:
+            username = "x-bitbucket-api-token-auth"; // Atlassian API tokens (app passwords are retired)
+            break;
+        case T::Custom:
+            username = (p->username.empty() || p->username == "git") ? "oauth2" : p->username;
+            break;
+        }
+
+        if (!p->tokenSecret.empty())
+        {
+            auto& vault = m_vault;
+            return [&vault, secret = p->tokenSecret, username]() -> std::optional<gf::git::bl::HttpsCredential>
+            {
+                auto plain = vault.decrypt(secret);
+                if (!plain || plain->empty()) return std::nullopt;
+                return gf::git::bl::HttpsCredential{.username = username, .password = std::move(*plain)};
+            };
+        }
+        if (auto envToken = environmentToken(p->providerType))
+        {
+            return [token = std::move(*envToken), username]() -> std::optional<gf::git::bl::HttpsCredential>
+            {
+                return gf::git::bl::HttpsCredential{.username = username, .password = token};
+            };
+        }
+        return {};
+    }
 } // namespace gf::desktop::viewmodels

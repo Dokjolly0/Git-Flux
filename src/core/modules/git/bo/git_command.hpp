@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <utility>
 
 namespace gf::git::bo
 {
@@ -26,6 +27,9 @@ namespace gf::git::bo
         std::chrono::milliseconds timeout{30'000};
         std::function<void(std::string_view)> onStderrChunk{};
         std::function<void(std::string_view)> onStdoutChunk{};
+        /// Extra environment variables for this process only (e.g. one-shot credentials read by
+        /// a credential helper, so secrets never appear on the command line).
+        std::vector<std::pair<std::string, std::string>> extraEnvironment{};
     };
 
     struct GitProcessResult

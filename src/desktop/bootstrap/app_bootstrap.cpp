@@ -149,6 +149,10 @@ namespace gf::desktop
             *m_profileStore, *m_cryptoVault, *m_credentialDetector, m_gitApiClient.get(), nullptr, m_sshProbe.get()
         );
         m_gitProfilesVm->initialize();
+        m_homeHubVm->setHttpsCredentialResolver([vm = m_gitProfilesVm.get()](const QString& url)
+        {
+            return vm->httpsCredentialLoader(url);
+        });
     }
 
     void AppBootstrap::registerWithQml(QQmlApplicationEngine& engine)

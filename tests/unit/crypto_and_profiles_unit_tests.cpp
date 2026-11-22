@@ -366,3 +366,17 @@ TEST_CASE (
         CHECK(remoteAccessIssueToString(RemoteAccessIssue::SshKeyRejected) == "sshKeyRejected");
     }
 }
+
+#include "core/modules/git/bl/https_credential.hpp"
+
+TEST_CASE (
+"isHttpRemoteUrl recognises the remotes that can use a token"
+,
+"[git][credentials]"
+)
+ {
+    CHECK(gf::git::bl::isHttpRemoteUrl("https://github.com/a/b.git"));
+    CHECK(gf::git::bl::isHttpRemoteUrl("http://192.168.1.122:3000/a/b.git"));
+    CHECK_FALSE(gf::git::bl::isHttpRemoteUrl("git@github.com:a/b.git"));
+    CHECK_FALSE(gf::git::bl::isHttpRemoteUrl("ssh://git@host/a.git"));
+}

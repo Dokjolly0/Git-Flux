@@ -4,6 +4,10 @@
 #include <QString>
 #include <QStringList>
 #include <memory>
+#include <functional>
+#include <optional>
+
+#include "core/modules/git/bl/https_credential.hpp"
 
 #include "desktop/viewmodels/group_list_model.hpp"
 #include "desktop/viewmodels/repository_list_model.hpp"
@@ -90,6 +94,12 @@ namespace gf::desktop
         [[nodiscard]] QString cloneIssue() const noexcept { return m_cloneIssue; }
         [[nodiscard]] QString cloneIssueHost() const noexcept { return m_cloneIssueHost; }
         [[nodiscard]] QString cloneErrorLog() const noexcept { return m_cloneErrorLog; }
+
+        /// Resolves the HTTPS credential for a clone URL: returns a loader run on the clone
+        /// thread (it may decrypt a saved token), or an empty function when there is none.
+        using HttpsCredentialLoader = std::function<std::optional<gf::git::bl::HttpsCredential>()>;
+        using HttpsCredentialResolver = std::function<HttpsCredentialLoader(const QString& remoteUrl)>;
+        void setHttpsCredentialResolver(HttpsCredentialResolver resolver) { m_httpsCredentialResolver = std::move(resolver); }
         [[nodiscard]] QString lastCloneDestinationPath() const noexcept { return m_lastCloneDestinationPath; }
     Q_INVOKABLE void setLastCloneDestinationPath(const QString& path);
 
@@ -201,6 +211,7 @@ namespace gf::desktop
         QString m_cloneStatusMessage;
         int m_cloneProgressPercent{0};
         QString m_cloneIssue;
+        HttpsCredentialResolver m_httpsCredentialResolver;
         QString m_cloneIssueHost;
         QString m_cloneErrorLog;
         void setCloneDiagnostics(const QString& issue, const QString& host, const QString& log);

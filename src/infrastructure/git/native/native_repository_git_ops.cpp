@@ -1,4 +1,5 @@
 #include "infrastructure/git/native/native_repository_git_ops.hpp"
+#include "core/modules/git/bl/https_credential.hpp"
 #include "core/shared/utf8_path.hpp"
 #include "core/modules/git/bl/commit_log_parser.hpp"
 #include "core/modules/git/bl/conflict_marker_parser.hpp"
@@ -4365,6 +4366,13 @@ namespace gf::infra::git
             .timeout = options.timeout,
             .onStderrChunk = std::move(parseProgressChunk)
         };
+        if (options.httpsToken && !options.httpsToken->empty() && gf::git::bl::isHttpRemoteUrl(options.remoteUrl))
+        {
+            gf::git::bl::applyHttpsCredential(cmd, {
+                                                  .username = options.httpsUsername.value_or("x-access-token"),
+                                                  .password = *options.httpsToken
+                                              });
+        }
 
         auto execResult = m_executor.execute(cmd);
         if (!execResult)

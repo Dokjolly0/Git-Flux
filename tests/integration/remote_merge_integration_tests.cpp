@@ -403,3 +403,72 @@ TEST_CASE (
         CHECK(duplicateRes.error().kind == gf::git::ports::GitOpsError::Kind::DestinationAlreadyExists);
     }
 }
+
+#include "core/modules/git/bl/https_credential.hpp"
+
+#ifndef _WIN32
+#include <cstdio>
+#include <cstdlib>
+
+TEST_CASE (
+"applyHttpsCredential feeds the token to git through a one-shot credential helper"
+,
+"[git][credentials][integration]"
+)
+ {
+    auto gitDiscovery = gf::infra::git::GitDiscovery::discover();
+    REQUIRE(gitDiscovery.has_value());
+    const auto gitExe = gitDiscovery->directBinaryPath.empty()
+                            ? gitDiscovery->discoveredInPath
+                            : gitDiscovery->directBinaryPath;
+
+    gf::git::bo::GitCommand cmd{.args = {"credential", "fill"}};
+    gf::git::bl::applyHttpsCredential(cmd, {.username = "x-access-token", .password = "ghp_secret 'quoted' $HOME"});
+
+    // The token must not be on the command line, only in the child's environment.
+    for (const auto& arg : cmd.args)
+    {
+        CHECK(arg.find("ghp_secret") == std::string::npos);
+    }
+    REQUIRE(cmd.args.size() == 6);
+    CHECK(cmd.args[0] == "-c");
+    CHECK(cmd.args[1] == "credential.helper=");
+    CHECK(cmd.args[4] == "credential");
+
+    // Run exactly these args through the real git, with the extra environment, and ask it for
+    // the credential of an https URL (stdin is the credential protocol).
+    auto shellQuote = [](const std::string& s)
+    {
+        std::string out = "'";
+        for (const char c : s)
+        {
+            if (c == '\'') out += "'\\''";
+            else out += c;
+        }
+        return out + "'";
+    };
+    std::string line = "printf 'protocol=https\\nhost=github.com\\n\\n' | env -u GIT_ASKPASS -u SSH_ASKPASS "
+                       "GIT_TERMINAL_PROMPT=0";
+    for (const auto& [name, value] : cmd.extraEnvironment)
+    {
+        line += " " + name + "=" + shellQuote(value);
+    }
+    line += " " + shellQuote(gitExe.string());
+    for (const auto& arg : cmd.args)
+    {
+        line += " " + shellQuote(arg);
+    }
+    line += " 2>&1";
+
+    std::string output;
+    if (FILE* pipe = ::popen(line.c_str(), "r"))
+    {
+        char buf[256];
+        while (std::fgets(buf, sizeof buf, pipe)) output += buf;
+        CHECK(::pclose(pipe) == 0);
+    }
+    INFO(output);
+    CHECK(output.find("username=x-access-token\n") != std::string::npos);
+    CHECK(output.find("password=ghp_secret 'quoted' $HOME\n") != std::string::npos);
+}
+#endif

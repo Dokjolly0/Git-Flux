@@ -86,7 +86,19 @@ namespace gf::infra::git
         {
             proc.setWorkingDirectory(pathToQString(command.workingDirectory));
         }
-        proc.setProcessEnvironment(noOptLocks ? envNoOptionalLocks_ : envStandard_);
+        if (command.extraEnvironment.empty())
+        {
+            proc.setProcessEnvironment(noOptLocks ? envNoOptionalLocks_ : envStandard_);
+        }
+        else
+        {
+            auto env = noOptLocks ? envNoOptionalLocks_ : envStandard_;
+            for (const auto& [name, value] : command.extraEnvironment)
+            {
+                env.insert(QString::fromStdString(name), QString::fromStdString(value));
+            }
+            proc.setProcessEnvironment(env);
+        }
         proc.setStandardInputFile(QProcess::nullDevice());
 
         proc.start(QIODevice::ReadOnly);

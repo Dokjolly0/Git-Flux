@@ -426,7 +426,15 @@ namespace gf::desktop
         setLastError(QString());
         setCloneDiagnostics(QString(), QString(), QString());
 
+        // Saved provider token for HTTPS URLs (resolved here, decrypted on the clone thread).
+        HttpsCredentialLoader credentialLoader;
+        if (m_httpsCredentialResolver)
+        {
+            credentialLoader = m_httpsCredentialResolver(cleanUrl);
+        }
+
         std::thread([this,
+                credentialLoader = std::move(credentialLoader),
                 cleanUrlStd = cleanUrl.toStdString(),
                 targetPath,
                 dispNameStd = displayName.trimmed().toStdString(),
@@ -456,6 +464,15 @@ namespace gf::desktop
                             }, Qt::QueuedConnection);
                     }
                 };
+
+                if (credentialLoader)
+                {
+                    if (auto credential = credentialLoader())
+                    {
+                        opts.httpsUsername = std::move(credential->username);
+                        opts.httpsToken = std::move(credential->password);
+                    }
+                }
 
                 std::optional<std::string> optDisp;
                 if (!dispNameStd.empty())

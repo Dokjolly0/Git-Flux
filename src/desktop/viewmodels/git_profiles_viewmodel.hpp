@@ -6,6 +6,7 @@
 #include "infrastructure/git/credentials/system_credential_detector.hpp"
 #include "desktop/services/git_provider_api_client.hpp"
 #include "desktop/services/ssh_connection_probe.hpp"
+#include "core/modules/git/bl/https_credential.hpp"
 #include "desktop/services/serial_git_executor.hpp"
 #include "desktop/viewmodels/remote_repo_list_model.hpp"
 
@@ -17,6 +18,8 @@
 #include <QSet>
 #include <vector>
 #include <memory>
+#include <functional>
+#include <optional>
 
 namespace gf::desktop::viewmodels
 {
@@ -83,6 +86,12 @@ namespace gf::desktop::viewmodels
         [[nodiscard]] QString sshCheckAccount() const noexcept { return m_sshCheckAccount; }
         [[nodiscard]] QString sshCheckOutput() const noexcept { return m_sshCheckOutput; }
         [[nodiscard]] bool sshAutoSwitchedToHttps() const noexcept { return m_sshAutoSwitched; }
+
+        /// For an HTTP(S) remote URL, returns a loader of the saved provider token for that host
+        /// (or the provider's environment token, e.g. GITHUB_TOKEN), to be called off the GUI
+        /// thread since decrypting runs the key derivation. Empty when no token is available.
+        using HttpsCredentialLoader = std::function<std::optional<gf::git::bl::HttpsCredential>()>;
+        [[nodiscard]] HttpsCredentialLoader httpsCredentialLoader(const QString& remoteUrl) const;
 
         /// Test helper: processes events until the pending encryptions/decryptions are applied.
         bool waitForIdle(int timeoutMs = 10000);

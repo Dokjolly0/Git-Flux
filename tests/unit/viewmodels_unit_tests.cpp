@@ -4193,6 +4193,64 @@ TEST_CASE (
     std::filesystem::remove_all(baseDir, ec);
 }
 
+TEST_CASE (
+"GitProfilesViewModel provides the saved token for HTTPS clones of the same host"
+,
+"[viewmodel][profiles][https]"
+)
+ {
+    ensureQtApp();
+    using gf::desktop::viewmodels::GitProfilesViewModel;
+
+    const auto baseDir = std::filesystem::temp_directory_path() / "gf-profiles-https-cred";
+    std::filesystem::remove_all(baseDir);
+    std::filesystem::create_directories(baseDir / "home");
+
+    auto connRes = gf::infra::persistence::sqlite::SqliteConnection::openInMemory();
+    REQUIRE(connRes.has_value());
+    REQUIRE(gf::infra::persistence::sqlite::SchemaMigrator::migrateToLatest(*connRes).has_value());
+    gf::infra::persistence::profiles::SqliteProfileStore store(*connRes);
+    gf::infra::security::CryptoVault vault(baseDir / "vault");
+    gf::infra::git::credentials::SystemCredentialDetector detector(baseDir / "home");
+    QNetworkAccessManager nam;
+    gf::desktop::services::GitProviderApiClient apiClient(&nam);
+    FakeGiteaServer server;
+
+    GitProfilesViewModel vm(store, vault, detector, &apiClient);
+    vm.initialize();
+    REQUIRE(vm.waitForIdle());
+
+    vm.saveProfileToken("github", "ghp_saved", "Dokjolly0");
+    vm.addCustomProfile("git.example.dev", "Forgejo", "forgejo-token", server.url(), "alex");
+    REQUIRE(vm.waitForIdle());
+
+    SECTION("GitHub: saved token with the account name") {
+        const auto loader = vm.httpsCredentialLoader("https://github.com/Dokjolly0/RemoteViewer.git");
+        REQUIRE(loader);
+        const auto cred = loader();
+        REQUIRE(cred.has_value());
+        CHECK(cred->username == "Dokjolly0");
+        CHECK(cred->password == "ghp_saved");
+    }
+
+    SECTION("self-hosted server matched by host, even with the API on a LAN address") {
+        const auto loader = vm.httpsCredentialLoader("https://Git.Example.dev/alex/repo.git");
+        REQUIRE(loader);
+        const auto cred = loader();
+        REQUIRE(cred.has_value());
+        CHECK(cred->username == "alex");
+        CHECK(cred->password == "forgejo-token");
+    }
+
+    SECTION("no token for SSH URLs or unknown hosts") {
+        CHECK_FALSE(vm.httpsCredentialLoader("git@github.com:Dokjolly0/RemoteViewer.git"));
+        CHECK_FALSE(vm.httpsCredentialLoader("https://example.org/a/b.git"));
+    }
+
+    std::error_code ec;
+    std::filesystem::remove_all(baseDir, ec);
+}
+
 // ---------------------------------------------------------------------------------------------
 // DiffViewModel: highlighting cost on the GUI thread
 // ---------------------------------------------------------------------------------------------

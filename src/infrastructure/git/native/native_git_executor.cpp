@@ -500,6 +500,16 @@ namespace gf::infra::git
                                              ? std::wstring{}
                                              : command.workingDirectory.wstring();
         std::wstring envBlock = noOptLocks ? envBlockNoLocks_ : envBlockStandard_;
+        if (!command.extraEnvironment.empty())
+        {
+            if (!envBlock.empty()) envBlock.pop_back(); // drop the block terminator
+            for (const auto& [name, value] : command.extraEnvironment)
+            {
+                envBlock.append(utf8ToWide(name + "=" + value));
+                envBlock.push_back(L'\0');
+            }
+            envBlock.push_back(L'\0');
+        }
 
         PROCESS_INFORMATION pi{};
         const DWORD creationFlags = CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT |
@@ -686,6 +696,10 @@ namespace gf::infra::git
         argvPtrs.push_back(nullptr);
 
         std::vector<std::string> envStorage = buildLinuxEnvironment(noOptLocks);
+        for (const auto& [name, value] : command.extraEnvironment)
+        {
+            envStorage.emplace_back(name + "=" + value);
+        }
         std::vector<char*> envPtrs;
         envPtrs.reserve(envStorage.size() + 1);
         for (auto& s : envStorage)
