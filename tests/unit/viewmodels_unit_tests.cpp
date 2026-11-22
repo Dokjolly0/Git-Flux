@@ -4881,6 +4881,56 @@ TEST_CASE("DiffViewModel and DiffFileInspector preview images, archives, and bin
         CHECK(provider.requestImage(diffId, &sz, QSize()).size() == QSize(32, 32));
     }
 
+    SECTION("Switching repeatedly between image files produces unique monotonic image URLs")
+    {
+        MockBlobGitOps mockOps;
+        mockOps.diffToReturn.isBinary = true;
+        mockOps.diffToReturn.isNewFile = true;
+
+        const std::string pngA = makeTestPngBytes(64, 64, QColor(255, 0, 0, 255), false);
+        const std::string pngB = makeTestPngBytes(48, 48, QColor(0, 255, 0, 255), false);
+
+        gf::git::bl::GitDiffService diffService(mockOps);
+        DiffViewModel vm(diffService);
+        gf::desktop::DiffImageProvider provider;
+        const QString repo = QString::fromStdString(std::filesystem::temp_directory_path().string());
+
+        mockOps.diffToReturn.oldPath = "icons/a.png";
+        mockOps.diffToReturn.newPath = "icons/a.png";
+        mockOps.blobsByRev["WORKTREE"] = gf::git::bo::FileBlob{.bytes = pngA, .totalSize = pngA.size()};
+        REQUIRE(vm.loadDiff(repo, QStringLiteral("icons/a.png"), QStringLiteral("untracked")));
+        REQUIRE(vm.waitForIdle());
+        const QString urlA1 = vm.newImageUrl();
+        CHECK(vm.newImageWidth() == 64);
+
+        mockOps.diffToReturn.oldPath = "icons/b.png";
+        mockOps.diffToReturn.newPath = "icons/b.png";
+        mockOps.blobsByRev["WORKTREE"] = gf::git::bo::FileBlob{.bytes = pngB, .totalSize = pngB.size()};
+        REQUIRE(vm.loadDiff(repo, QStringLiteral("icons/b.png"), QStringLiteral("untracked")));
+        REQUIRE(vm.waitForIdle());
+        const QString urlB = vm.newImageUrl();
+        CHECK(vm.newImageWidth() == 48);
+        CHECK(urlB != urlA1);
+
+        QSize sz;
+        const QImage imgB = provider.requestImage(urlB.mid(QStringLiteral("image://diffpreview/").size()), &sz, QSize());
+        REQUIRE(imgB.size() == QSize(48, 48));
+        CHECK(imgB.pixelColor(0, 0).green() == 255);
+
+        // Switching back to a.png must also produce a brand-new URL
+        mockOps.diffToReturn.oldPath = "icons/a.png";
+        mockOps.diffToReturn.newPath = "icons/a.png";
+        mockOps.blobsByRev["WORKTREE"] = gf::git::bo::FileBlob{.bytes = pngA, .totalSize = pngA.size()};
+        REQUIRE(vm.loadDiff(repo, QStringLiteral("icons/a.png"), QStringLiteral("untracked")));
+        REQUIRE(vm.waitForIdle());
+        const QString urlA2 = vm.newImageUrl();
+        CHECK(urlA2 != urlB);
+        CHECK(urlA2 != urlA1);
+        const QImage imgA2 = provider.requestImage(urlA2.mid(QStringLiteral("image://diffpreview/").size()), &sz, QSize());
+        REQUIRE(imgA2.size() == QSize(64, 64));
+        CHECK(imgA2.pixelColor(0, 0).red() == 255);
+    }
+
     SECTION("ZIP archive diff classifies added, removed, modified, and unchanged entries")
     {
         const std::string oldZip = makeTestZipBytes({

@@ -473,33 +473,46 @@ Rectangle {
                                 ImageBackdrop { anchors.fill: parent }
 
                                 Flickable {
+                                    id: oldImgFlick
                                     anchors.fill: parent
-                                    contentWidth: Math.max(width, oldImgItem.width + 24)
-                                    contentHeight: Math.max(height, oldImgItem.height + 24)
+                                    contentWidth: Math.max(width, oldImgWrap.width + 32)
+                                    contentHeight: Math.max(height, oldImgWrap.height + 32)
                                     boundsBehavior: Flickable.StopAtBounds
                                     ScrollBar.vertical: FluxScrollBar {}
                                     ScrollBar.horizontal: FluxScrollBar {}
 
-                                    Image {
-                                        id: oldImgItem
-                                        anchors.centerIn: parent
-                                        source: root.hasOldImg ? root.diffViewer.oldImageUrl : ""
-                                        cache: false
-                                        smooth: root.zoomFactor < 2.0
-                                        mipmap: true
-                                        fillMode: Image.PreserveAspectFit
-                                        readonly property real maxFitW: Math.max(40, parent.width - 24)
-                                        readonly property real maxFitH: Math.max(40, parent.height - 24)
-                                        readonly property real fitScale: (sourceSize.width > 0 && sourceSize.height > 0)
-                                            ? Math.min(1.0, Math.min(maxFitW / sourceSize.width, maxFitH / sourceSize.height))
-                                            : 1.0
+                                    Rectangle {
+                                        id: oldImgWrap
+                                        readonly property real natW: (root.hasViewer && root.diffViewer.oldImageWidth > 0)
+                                            ? root.diffViewer.oldImageWidth
+                                            : (oldImgItem.implicitWidth > 0 ? oldImgItem.implicitWidth : 0)
+                                        readonly property real natH: (root.hasViewer && root.diffViewer.oldImageHeight > 0)
+                                            ? root.diffViewer.oldImageHeight
+                                            : (oldImgItem.implicitHeight > 0 ? oldImgItem.implicitHeight : 0)
+                                        readonly property real maxFitW: Math.max(32, oldImgFlick.width - 32)
+                                        readonly property real maxFitH: Math.max(32, oldImgFlick.height - 32)
                                         readonly property real effScale: root.zoomFactor <= 0
-                                            ? (sourceSize.width > 0 && sourceSize.height > 0
-                                                ? Math.min(maxFitW / sourceSize.width, maxFitH / sourceSize.height)
+                                            ? ((natW > 0 && natH > 0)
+                                                ? Math.min(1.0, maxFitW / natW, maxFitH / natH)
                                                 : 1.0)
                                             : root.zoomFactor
-                                        width: sourceSize.width > 0 ? Math.max(1, sourceSize.width * effScale) : maxFitW
-                                        height: sourceSize.height > 0 ? Math.max(1, sourceSize.height * effScale) : maxFitH
+                                        width: natW > 0 ? Math.max(1, Math.round(natW * effScale)) : 0
+                                        height: natH > 0 ? Math.max(1, Math.round(natH * effScale)) : 0
+                                        x: Math.max(16, Math.round((oldImgFlick.contentWidth - width) / 2))
+                                        y: Math.max(16, Math.round((oldImgFlick.contentHeight - height) / 2))
+                                        color: "transparent"
+                                        border.color: "#334155"
+                                        border.width: width > 0 ? 1 : 0
+
+                                        Image {
+                                            id: oldImgItem
+                                            anchors.fill: parent
+                                            source: root.hasOldImg ? root.diffViewer.oldImageUrl : ""
+                                            cache: false
+                                            smooth: root.zoomFactor < 2.0
+                                            mipmap: true
+                                            fillMode: Image.PreserveAspectFit
+                                        }
                                     }
                                 }
                             }
@@ -575,30 +588,46 @@ Rectangle {
                                 ImageBackdrop { anchors.fill: parent }
 
                                 Flickable {
+                                    id: newImgFlick
                                     anchors.fill: parent
-                                    contentWidth: Math.max(width, newImgItem.width + 24)
-                                    contentHeight: Math.max(height, newImgItem.height + 24)
+                                    contentWidth: Math.max(width, newImgWrap.width + 32)
+                                    contentHeight: Math.max(height, newImgWrap.height + 32)
                                     boundsBehavior: Flickable.StopAtBounds
                                     ScrollBar.vertical: FluxScrollBar {}
                                     ScrollBar.horizontal: FluxScrollBar {}
 
-                                    Image {
-                                        id: newImgItem
-                                        anchors.centerIn: parent
-                                        source: root.hasNewImg ? root.diffViewer.newImageUrl : ""
-                                        cache: false
-                                        smooth: root.zoomFactor < 2.0
-                                        mipmap: true
-                                        fillMode: Image.PreserveAspectFit
-                                        readonly property real maxFitW: Math.max(40, parent.width - 24)
-                                        readonly property real maxFitH: Math.max(40, parent.height - 24)
+                                    Rectangle {
+                                        id: newImgWrap
+                                        readonly property real natW: (root.hasViewer && root.diffViewer.newImageWidth > 0)
+                                            ? root.diffViewer.newImageWidth
+                                            : (newImgItem.implicitWidth > 0 ? newImgItem.implicitWidth : 0)
+                                        readonly property real natH: (root.hasViewer && root.diffViewer.newImageHeight > 0)
+                                            ? root.diffViewer.newImageHeight
+                                            : (newImgItem.implicitHeight > 0 ? newImgItem.implicitHeight : 0)
+                                        readonly property real maxFitW: Math.max(32, newImgFlick.width - 32)
+                                        readonly property real maxFitH: Math.max(32, newImgFlick.height - 32)
                                         readonly property real effScale: root.zoomFactor <= 0
-                                            ? (sourceSize.width > 0 && sourceSize.height > 0
-                                                ? Math.min(maxFitW / sourceSize.width, maxFitH / sourceSize.height)
+                                            ? ((natW > 0 && natH > 0)
+                                                ? Math.min(1.0, maxFitW / natW, maxFitH / natH)
                                                 : 1.0)
                                             : root.zoomFactor
-                                        width: sourceSize.width > 0 ? Math.max(1, sourceSize.width * effScale) : maxFitW
-                                        height: sourceSize.height > 0 ? Math.max(1, sourceSize.height * effScale) : maxFitH
+                                        width: natW > 0 ? Math.max(1, Math.round(natW * effScale)) : 0
+                                        height: natH > 0 ? Math.max(1, Math.round(natH * effScale)) : 0
+                                        x: Math.max(16, Math.round((newImgFlick.contentWidth - width) / 2))
+                                        y: Math.max(16, Math.round((newImgFlick.contentHeight - height) / 2))
+                                        color: "transparent"
+                                        border.color: "#334155"
+                                        border.width: width > 0 ? 1 : 0
+
+                                        Image {
+                                            id: newImgItem
+                                            anchors.fill: parent
+                                            source: root.hasNewImg ? root.diffViewer.newImageUrl : ""
+                                            cache: false
+                                            smooth: root.zoomFactor < 2.0
+                                            mipmap: true
+                                            fillMode: Image.PreserveAspectFit
+                                        }
                                     }
                                 }
                             }
@@ -623,12 +652,18 @@ Rectangle {
 
                         ImageBackdrop { anchors.fill: parent }
 
-                        readonly property real refW: Math.max(swipeAfter.sourceSize.width, swipeBefore.sourceSize.width, 1)
-                        readonly property real refH: Math.max(swipeAfter.sourceSize.height, swipeBefore.sourceSize.height, 1)
-                        readonly property real fitScale: Math.min((width - 48) / refW, (height - 48) / refH)
+                        readonly property real refW: Math.max(
+                            root.hasViewer ? root.diffViewer.oldImageWidth : 0,
+                            root.hasViewer ? root.diffViewer.newImageWidth : 0,
+                            swipeAfter.implicitWidth, swipeBefore.implicitWidth, 1)
+                        readonly property real refH: Math.max(
+                            root.hasViewer ? root.diffViewer.oldImageHeight : 0,
+                            root.hasViewer ? root.diffViewer.newImageHeight : 0,
+                            swipeAfter.implicitHeight, swipeBefore.implicitHeight, 1)
+                        readonly property real fitScale: Math.min(1.0, Math.max(32, width - 48) / refW, Math.max(32, height - 48) / refH)
                         readonly property real effScale: root.zoomFactor <= 0 ? fitScale : root.zoomFactor
-                        readonly property real stageW: Math.max(40, refW * effScale)
-                        readonly property real stageH: Math.max(40, refH * effScale)
+                        readonly property real stageW: Math.max(1, Math.round(refW * effScale))
+                        readonly property real stageH: Math.max(1, Math.round(refH * effScale))
 
                         Item {
                             id: swipeStage
@@ -752,15 +787,21 @@ Rectangle {
 
                         ImageBackdrop { anchors.fill: parent }
 
-                        readonly property real refW: Math.max(onionAfter.sourceSize.width, onionBefore.sourceSize.width, 1)
-                        readonly property real refH: Math.max(onionAfter.sourceSize.height, onionBefore.sourceSize.height, 1)
-                        readonly property real fitScale: Math.min((width - 48) / refW, (height - 48) / refH)
+                        readonly property real refW: Math.max(
+                            root.hasViewer ? root.diffViewer.oldImageWidth : 0,
+                            root.hasViewer ? root.diffViewer.newImageWidth : 0,
+                            onionAfter.implicitWidth, onionBefore.implicitWidth, 1)
+                        readonly property real refH: Math.max(
+                            root.hasViewer ? root.diffViewer.oldImageHeight : 0,
+                            root.hasViewer ? root.diffViewer.newImageHeight : 0,
+                            onionAfter.implicitHeight, onionBefore.implicitHeight, 1)
+                        readonly property real fitScale: Math.min(1.0, Math.max(32, width - 48) / refW, Math.max(32, height - 48) / refH)
                         readonly property real effScale: root.zoomFactor <= 0 ? fitScale : root.zoomFactor
 
                         Item {
                             anchors.centerIn: parent
-                            width: Math.max(40, onionFrame.refW * onionFrame.effScale)
-                            height: Math.max(40, onionFrame.refH * onionFrame.effScale)
+                            width: Math.max(1, Math.round(onionFrame.refW * onionFrame.effScale))
+                            height: Math.max(1, Math.round(onionFrame.refH * onionFrame.effScale))
 
                             Image {
                                 id: onionBefore
@@ -837,30 +878,48 @@ Rectangle {
                         ImageBackdrop { anchors.fill: parent }
 
                         Flickable {
+                            id: diffImgFlick
                             anchors.fill: parent
-                            contentWidth: Math.max(width, diffImgItem.width + 32)
-                            contentHeight: Math.max(height, diffImgItem.height + 32)
+                            contentWidth: Math.max(width, diffImgWrap.width + 32)
+                            contentHeight: Math.max(height, diffImgWrap.height + 32)
                             boundsBehavior: Flickable.StopAtBounds
                             ScrollBar.vertical: FluxScrollBar {}
                             ScrollBar.horizontal: FluxScrollBar {}
 
-                            Image {
-                                id: diffImgItem
-                                anchors.centerIn: parent
-                                source: root.hasDiffImg ? root.diffViewer.diffImageUrl : ""
-                                cache: false
-                                smooth: root.zoomFactor < 2.0
-                                mipmap: true
-                                fillMode: Image.PreserveAspectFit
-                                readonly property real maxFitW: Math.max(40, parent.width - 32)
-                                readonly property real maxFitH: Math.max(40, parent.height - 32)
+                            Rectangle {
+                                id: diffImgWrap
+                                readonly property real natW: diffImgItem.implicitWidth > 0
+                                    ? diffImgItem.implicitWidth
+                                    : Math.max(root.hasViewer ? root.diffViewer.oldImageWidth : 0,
+                                               root.hasViewer ? root.diffViewer.newImageWidth : 0)
+                                readonly property real natH: diffImgItem.implicitHeight > 0
+                                    ? diffImgItem.implicitHeight
+                                    : Math.max(root.hasViewer ? root.diffViewer.oldImageHeight : 0,
+                                               root.hasViewer ? root.diffViewer.newImageHeight : 0)
+                                readonly property real maxFitW: Math.max(32, diffImgFlick.width - 32)
+                                readonly property real maxFitH: Math.max(32, diffImgFlick.height - 32)
                                 readonly property real effScale: root.zoomFactor <= 0
-                                    ? (sourceSize.width > 0 && sourceSize.height > 0
-                                        ? Math.min(maxFitW / sourceSize.width, maxFitH / sourceSize.height)
+                                    ? ((natW > 0 && natH > 0)
+                                        ? Math.min(1.0, maxFitW / natW, maxFitH / natH)
                                         : 1.0)
                                     : root.zoomFactor
-                                width: sourceSize.width > 0 ? Math.max(1, sourceSize.width * effScale) : maxFitW
-                                height: sourceSize.height > 0 ? Math.max(1, sourceSize.height * effScale) : maxFitH
+                                width: natW > 0 ? Math.max(1, Math.round(natW * effScale)) : 0
+                                height: natH > 0 ? Math.max(1, Math.round(natH * effScale)) : 0
+                                x: Math.max(16, Math.round((diffImgFlick.contentWidth - width) / 2))
+                                y: Math.max(16, Math.round((diffImgFlick.contentHeight - height) / 2))
+                                color: "transparent"
+                                border.color: "#334155"
+                                border.width: width > 0 ? 1 : 0
+
+                                Image {
+                                    id: diffImgItem
+                                    anchors.fill: parent
+                                    source: root.hasDiffImg ? root.diffViewer.diffImageUrl : ""
+                                    cache: false
+                                    smooth: root.zoomFactor < 2.0
+                                    mipmap: true
+                                    fillMode: Image.PreserveAspectFit
+                                }
                             }
                         }
 

@@ -20,12 +20,13 @@ namespace gf::desktop
                                             QImage diffImage)
     {
         std::lock_guard lock(m_mutex);
+        const std::uint64_t gen = m_nextGeneration++;
         auto& entry = m_entries[instanceId];
-        entry.generation += 1;
+        entry.generation = gen;
         entry.oldImage = std::move(oldImage);
         entry.newImage = std::move(newImage);
         entry.diffImage = std::move(diffImage);
-        return entry.generation;
+        return gen;
     }
 
     void DiffImageStore::clear(std::uint64_t instanceId)

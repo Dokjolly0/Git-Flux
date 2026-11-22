@@ -38,6 +38,7 @@ namespace gf::desktop
 
         mutable std::mutex m_mutex;
         std::uint64_t m_nextInstanceId = 1;
+        std::uint64_t m_nextGeneration = 1;
         std::unordered_map<std::uint64_t, Entry> m_entries;
     };
 
