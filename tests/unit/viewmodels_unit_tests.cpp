@@ -3926,10 +3926,46 @@ TEST_CASE (
     SECTION("a custom profile with a token is added once the token is encrypted") {
         vm.addCustomProfile("git.example.org", "Example Git", "third-token", server.url());
         REQUIRE(vm.waitForIdle());
-        CHECK(vm.activeProfileId() == "custom_git.example.org");
+        CHECK(vm.activeProfileId() == "manual_git.example.org");
         CHECK(vm.activeProfileHasToken());
         REQUIRE(waitUntil([&] { return !server.authorizations.isEmpty() && !vm.isFetching(); }));
         CHECK(server.authorizations.last() == "token third-token");
+    }
+
+    SECTION("a server added by hand survives a restart even without 'git' in its host") {
+        vm.addCustomProfile("  https://Code.Example.COM/  ", "Code", QString(), server.url(), "alex");
+        REQUIRE(vm.waitForIdle());
+        CHECK(vm.activeProfileId() == "manual_code.example.com");
+        CHECK(vm.activeProfileHost() == "code.example.com");
+        CHECK(vm.activeProfileUsername() == "alex");
+
+        // A second view model over the same store simulates restarting the app.
+        GitProfilesViewModel restarted(store, vault, detector, &apiClient);
+        restarted.initialize();
+        REQUIRE(restarted.waitForIdle());
+        const auto list = restarted.profiles();
+        const auto found = std::find_if(list.begin(), list.end(), [](const QVariant& v)
+        {
+            return v.toMap().value("id").toString() == "manual_code.example.com";
+        });
+        REQUIRE(found != list.end());
+        CHECK(found->toMap().value("removable").toBool());
+    }
+
+    SECTION("a server added by hand can be removed, built-in ones can't") {
+        vm.addCustomProfile("forge.lan", QString(), QString(), server.url());
+        REQUIRE(vm.waitForIdle());
+        REQUIRE(vm.activeProfileId() == "manual_forge.lan");
+
+        vm.removeCustomProfile("manual_forge.lan");
+        CHECK(vm.activeProfileId() == "url");
+        vm.removeCustomProfile("github");
+
+        auto stored = store.getAllProfiles();
+        REQUIRE(stored.has_value());
+        CHECK(std::none_of(stored->begin(), stored->end(),
+                           [](const auto& p) { return p.id == "manual_forge.lan"; }));
+        CHECK(std::any_of(stored->begin(), stored->end(), [](const auto& p) { return p.id == "github"; }));
     }
 
     std::error_code ec;

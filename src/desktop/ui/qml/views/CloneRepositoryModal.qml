@@ -131,6 +131,240 @@ Dialog {
         }
     }
 
+    // True when the selected provider is a self-hosted server added by hand (can be removed).
+    readonly property bool activeProfileRemovable: {
+        if (!root.profilesVm) return false;
+        var list = root.profilesVm.profiles;
+        for (var i = 0; i < list.length; ++i) {
+            if (list[i].id === root.profilesVm.activeProfileId) return list[i].removable === true;
+        }
+        return false;
+    }
+
+    // -------------------------------------------------------------
+    // ADD CUSTOM SERVER POPUP (Gitea / Forgejo / Codeberg / self-hosted)
+    // -------------------------------------------------------------
+    Popup {
+        id: customServerPopup
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: 460
+        modal: true
+        focus: true
+        padding: 0
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        property bool showToken: false
+
+        function openForNew() {
+            customNameField.text = "";
+            customHostField.text = "";
+            customApiField.text = "";
+            customUserField.text = "";
+            customTokenField.text = "";
+            customServerPopup.showToken = false;
+            customServerPopup.open();
+            customHostField.forceActiveFocus();
+        }
+
+        function submit() {
+            if (!root.profilesVm || customHostField.text.trim().length === 0) return;
+            root.profilesVm.addCustomProfile(
+                customHostField.text,
+                customNameField.text,
+                customTokenField.text,
+                customApiField.text,
+                customUserField.text
+            );
+            customTokenField.text = "";
+            customServerPopup.close();
+            root.selectedRepoFullName = "";
+            root.selectedRepoIsPrivate = false;
+            urlField.text = "";
+            root.showTokenConfig = false;
+            root.showRepoPicker = true;
+        }
+
+        background: Rectangle {
+            color: "#0E1420"
+            radius: 12
+            border.color: "#38BDF8"
+            border.width: 1
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 10
+
+            Item { Layout.preferredHeight: 4 }
+
+            Text {
+                Layout.leftMargin: 16
+                Layout.rightMargin: 16
+                text: "🖥️ Aggiungi server Git personalizzato"
+                color: "#F8FAFC"
+                font.bold: true
+                font.pixelSize: 14
+            }
+
+            Text {
+                Layout.leftMargin: 16
+                Layout.rightMargin: 16
+                Layout.fillWidth: true
+                text: "Gitea, Forgejo, Codeberg o qualsiasi istanza compatibile con l'API /api/v1. Il token è opzionale: senza token vengono elencati solo i repository pubblici."
+                color: "#94A3B8"
+                font.pixelSize: 11
+                wrapMode: Text.Wrap
+            }
+
+            GridLayout {
+                Layout.leftMargin: 16
+                Layout.rightMargin: 16
+                Layout.fillWidth: true
+                columns: 2
+                columnSpacing: 10
+                rowSpacing: 8
+
+                Text { text: "Host *"; color: "#CBD5E1"; font.pixelSize: 11; font.bold: true }
+                TextField {
+                    id: customHostField
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 32
+                    placeholderText: "gitea.example.com o https://192.168.1.30:3000"
+                    placeholderTextColor: "#475569"
+                    selectByMouse: true
+                    color: "#F8FAFC"
+                    font.pixelSize: 12
+                    background: Rectangle { color: "#0B1120"; radius: 4; border.color: customHostField.activeFocus ? "#38BDF8" : "#334155" }
+                    onAccepted: customNameField.forceActiveFocus()
+                    // A full URL with a port/path is most likely the API base: reuse it.
+                    onEditingFinished: {
+                        var t = text.trim();
+                        if (customApiField.text.trim().length === 0 && t.indexOf("://") > 0) {
+                            customApiField.text = t;
+                        }
+                    }
+                }
+
+                Text { text: "Nome"; color: "#CBD5E1"; font.pixelSize: 11; font.bold: true }
+                TextField {
+                    id: customNameField
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 32
+                    placeholderText: "Es. Gitea di casa (default: host)"
+                    placeholderTextColor: "#475569"
+                    selectByMouse: true
+                    color: "#F8FAFC"
+                    font.pixelSize: 12
+                    background: Rectangle { color: "#0B1120"; radius: 4; border.color: customNameField.activeFocus ? "#38BDF8" : "#334155" }
+                    onAccepted: customApiField.forceActiveFocus()
+                }
+
+                Text { text: "URL API"; color: "#CBD5E1"; font.pixelSize: 11; font.bold: true }
+                TextField {
+                    id: customApiField
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 32
+                    placeholderText: "Default: https://<host> (+ /api/v1)"
+                    placeholderTextColor: "#475569"
+                    selectByMouse: true
+                    color: "#F8FAFC"
+                    font.pixelSize: 12
+                    background: Rectangle { color: "#0B1120"; radius: 4; border.color: customApiField.activeFocus ? "#38BDF8" : "#334155" }
+                    onAccepted: customUserField.forceActiveFocus()
+                }
+
+                Text { text: "Username"; color: "#CBD5E1"; font.pixelSize: 11; font.bold: true }
+                TextField {
+                    id: customUserField
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 32
+                    placeholderText: "Opzionale"
+                    placeholderTextColor: "#475569"
+                    selectByMouse: true
+                    color: "#F8FAFC"
+                    font.pixelSize: 12
+                    background: Rectangle { color: "#0B1120"; radius: 4; border.color: customUserField.activeFocus ? "#38BDF8" : "#334155" }
+                    onAccepted: customTokenField.forceActiveFocus()
+                }
+
+                Text { text: "Token"; color: "#CBD5E1"; font.pixelSize: 11; font.bold: true }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    TextField {
+                        id: customTokenField
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 32
+                        placeholderText: "Access Token (opzionale)"
+                        placeholderTextColor: "#475569"
+                        selectByMouse: true
+                        echoMode: customServerPopup.showToken ? TextInput.Normal : TextInput.Password
+                        color: "#F8FAFC"
+                        font.pixelSize: 12
+                        background: Rectangle { color: "#0B1120"; radius: 4; border.color: customTokenField.activeFocus ? "#38BDF8" : "#334155" }
+                        onAccepted: customServerPopup.submit()
+                    }
+                    Button {
+                        text: customServerPopup.showToken ? "🙈" : "👁️"
+                        Layout.preferredWidth: 32
+                        Layout.preferredHeight: 32
+                        onClicked: customServerPopup.showToken = !customServerPopup.showToken
+                        background: Rectangle { color: "#1E293B"; radius: 4 }
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.leftMargin: 16
+                Layout.rightMargin: 16
+                Layout.bottomMargin: 14
+                Layout.topMargin: 4
+                Layout.fillWidth: true
+                spacing: 8
+
+                Item { Layout.fillWidth: true }
+
+                Button {
+                    text: "Annulla"
+                    Layout.preferredHeight: 32
+                    onClicked: customServerPopup.close()
+                    contentItem: Text {
+                        text: "Annulla"
+                        color: "#94A3B8"
+                        font.bold: true
+                        font.pixelSize: 11
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle {
+                        color: parent.hovered ? "#334155" : "#1E293B"
+                        radius: 4
+                        border.color: "#334155"
+                    }
+                }
+
+                Button {
+                    text: "＋ Aggiungi server"
+                    Layout.preferredHeight: 32
+                    enabled: customHostField.text.trim().length > 0
+                    onClicked: customServerPopup.submit()
+                    contentItem: Text {
+                        text: "＋ Aggiungi server"
+                        color: parent.enabled ? "#FFFFFF" : "#64748B"
+                        font.bold: true
+                        font.pixelSize: 11
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle {
+                        color: parent.enabled ? (parent.hovered ? "#0284C7" : "#0369A1") : "#1E293B"
+                        radius: 4
+                    }
+                }
+            }
+        }
+    }
+
     background: Rectangle {
         color: "#0E1420"
         radius: 14
@@ -346,6 +580,35 @@ Dialog {
                             }
                         }
                     }
+
+                    // Add a self-hosted server (Gitea / Forgejo / Codeberg...)
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 6
+                        Layout.rightMargin: 6
+                        Layout.bottomMargin: 8
+                        Layout.preferredHeight: 36
+                        radius: 8
+                        color: addServerMouse.containsMouse ? "#111A29" : "transparent"
+                        border.color: addServerMouse.containsMouse ? "#38BDF8" : "#1D2A3F"
+                        border.width: 1
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "＋ Server personalizzato"
+                            color: addServerMouse.containsMouse ? "#38BDF8" : "#64748B"
+                            font.pixelSize: 11
+                            font.bold: true
+                        }
+
+                        MouseArea {
+                            id: addServerMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: customServerPopup.openForNew()
+                        }
+                    }
                 }
             }
 
@@ -529,6 +792,38 @@ Dialog {
                                 background: Rectangle {
                                     color: parent.hovered ? "#334155" : "#1E293B"
                                     radius: 4
+                                }
+                            }
+
+                            // Remove Server Button (only for servers added by hand)
+                            Button {
+                                visible: root.activeProfileRemovable
+                                text: "🗑"
+                                Layout.preferredHeight: 26
+                                Layout.preferredWidth: 28
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Rimuovi questo server"
+                                onClicked: {
+                                    if (root.profilesVm) {
+                                        root.profilesVm.removeCustomProfile(root.profilesVm.activeProfileId);
+                                        root.selectedRepoFullName = "";
+                                        root.selectedRepoIsPrivate = false;
+                                        root.showTokenConfig = false;
+                                        root.showRepoPicker = false;
+                                        urlField.text = "";
+                                    }
+                                }
+                                contentItem: Text {
+                                    text: "🗑"
+                                    font.pixelSize: 12
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                background: Rectangle {
+                                    color: parent.hovered ? "#450A0A" : "#1E293B"
+                                    radius: 4
+                                    border.color: parent.hovered ? "#DC2626" : "transparent"
+                                    border.width: 1
                                 }
                             }
 

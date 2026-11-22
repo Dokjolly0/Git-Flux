@@ -75,8 +75,12 @@ namespace gf::desktop::viewmodels
     Q_INVOKABLE void clearProfileToken(const QString& profileId);
     Q_INVOKABLE void refreshRepositories();
     Q_INVOKABLE void clearCache();
+    // Adds (or updates) a self-hosted Gitea/Forgejo server entered by the user. The host may be
+    // given as a bare name or as a URL; an empty apiUrl defaults to https://<host>.
     Q_INVOKABLE void addCustomProfile(const QString& host, const QString& displayName, const QString& token,
-                                      const QString& apiUrl);
+                                      const QString& apiUrl, const QString& username = QString());
+    // Removes a server added with addCustomProfile (built-in/detected profiles are ignored).
+    Q_INVOKABLE void removeCustomProfile(const QString& profileId);
 
         signals :
 

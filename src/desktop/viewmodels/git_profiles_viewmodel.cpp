@@ -5,11 +5,52 @@
 #include <QThread>
 #include <QElapsedTimer>
 
+#include <QUrl>
+
 #include <algorithm>
+#include <cctype>
 #include <optional>
 
 namespace gf::desktop::viewmodels
 {
+    namespace
+    {
+        // Ids of the custom servers the user added by hand (as opposed to "custom_" ids, which
+        // are detected from ~/.ssh/config and filtered by the git-host heuristic).
+        constexpr std::string_view kManualIdPrefix = "manual_";
+
+        bool isManualProfileId(const std::string& id)
+        {
+            return id.starts_with(kManualIdPrefix);
+        }
+
+        bool equalsIgnoreCase(const std::string& a, const std::string& b)
+        {
+            return std::ranges::equal(a, b, [](unsigned char x, unsigned char y)
+            {
+                return std::tolower(x) == std::tolower(y);
+            });
+        }
+
+        // Accepts "gitea.example.com", "https://gitea.example.com/", "git@host:2222"...
+        // and returns the bare host name ("gitea.example.com"), lower-cased.
+        QString normalizeHost(const QString& input)
+        {
+            QString h = input.trimmed();
+            if (h.contains(QStringLiteral("://")))
+            {
+                h = QUrl(h).host();
+            }
+            else
+            {
+                if (const auto at = h.indexOf(QLatin1Char('@')); at >= 0) h = h.mid(at + 1);
+                if (const auto slash = h.indexOf(QLatin1Char('/')); slash >= 0) h = h.left(slash);
+                if (const auto colon = h.indexOf(QLatin1Char(':')); colon >= 0) h = h.left(colon);
+            }
+            return h.trimmed().toLower();
+        }
+    } // namespace
+
     GitProfilesViewModel::GitProfilesViewModel(
         infra::persistence::profiles::SqliteProfileStore& store,
         infra::security::CryptoVault& vault,
@@ -99,7 +140,9 @@ namespace gf::desktop::viewmodels
             stored = std::move(*storedRes);
         }
 
-        // Purge any stored custom profiles that are NOT git hosts (cleans up any old non-git VPS servers)
+        // Purge any stored *detected* custom profiles that are NOT git hosts (cleans up any old
+        // non-git VPS servers picked up from ~/.ssh/config). Profiles the user added by hand
+        // ("manual_" ids) are never touched: their host can be anything (IP, code.example.com...).
         for (auto it = stored.begin(); it != stored.end();)
         {
             if (it->id.starts_with("custom_"))
@@ -134,12 +177,16 @@ namespace gf::desktop::viewmodels
             ++it;
         }
 
-        // 3. Merge: augment stored with detected SSH keys, or add newly detected
+        // 3. Merge: augment stored with detected SSH keys, or add newly detected.
+        //    A detected custom host that the user already added by hand augments that profile
+        //    instead of showing up twice.
         for (const auto& det : detected)
         {
             auto it = std::find_if(stored.begin(), stored.end(), [&](const auto& s)
             {
-                return s.id == det.id;
+                return s.id == det.id ||
+                    (det.providerType == core::git::bo::GitProviderType::Custom && isManualProfileId(s.id) &&
+                        equalsIgnoreCase(s.host, det.host));
             });
 
             if (it != stored.end())
@@ -220,6 +267,7 @@ namespace gf::desktop::viewmodels
             map[QStringLiteral("username")] = QString::fromStdString(p.username);
             map[QStringLiteral("hasSsh")] = p.hasSshKey;
             map[QStringLiteral("hasToken")] = p.hasToken;
+            map[QStringLiteral("removable")] = isManualProfileId(p.id);
 
             QString icon = QStringLiteral("🖥️");
             switch (p.providerType)
@@ -542,20 +590,58 @@ namespace gf::desktop::viewmodels
         const QString& host,
         const QString& displayName,
         const QString& token,
-        const QString& apiUrl
+        const QString& apiUrl,
+        const QString& username
     )
     {
-        if (host.trimmed().isEmpty()) return;
+        const QString cleanHost = normalizeHost(host);
+        if (cleanHost.isEmpty()) return;
 
         core::git::bo::GitProviderProfile p;
-        p.id = "custom_" + host.trimmed().toStdString();
+        p.id = std::string(kManualIdPrefix) + cleanHost.toStdString();
         p.providerType = core::git::bo::GitProviderType::Custom;
         p.displayName = displayName.trimmed().isEmpty()
-                            ? host.trimmed().toStdString()
+                            ? cleanHost.toStdString()
                             : displayName.trimmed().toStdString();
-        p.host = host.trimmed().toStdString();
-        p.customApiUrl = apiUrl.trimmed().toStdString();
-        p.preferredProtocol = "ssh";
+        p.host = cleanHost.toStdString();
+        p.username = username.trimmed().toStdString();
+
+        // Default API endpoint: https://<host>  (fetchCustom appends /api/v1 for Gitea/Forgejo)
+        QString api = apiUrl.trimmed();
+        if (api.isEmpty())
+        {
+            api = QStringLiteral("https://") + cleanHost;
+        }
+        else if (!api.contains(QStringLiteral("://")))
+        {
+            api.prepend(QStringLiteral("https://"));
+        }
+        p.customApiUrl = api.toStdString();
+        p.preferredProtocol = "https";
+
+        // Re-adding the same server keeps the SSH key detected for it (if any).
+        if (const auto* existing = findProfile(QString::fromStdString(p.id)))
+        {
+            p.hasSshKey = existing->hasSshKey;
+            p.sshKeyPath = existing->sshKeyPath;
+            p.createdAtMs = existing->createdAtMs;
+            if (p.username.empty()) p.username = existing->username;
+        }
+        if (!p.hasSshKey)
+        {
+            const auto det = m_detector.detectProfiles();
+            const auto d = std::find_if(det.begin(), det.end(), [&](const auto& x)
+            {
+                return x.hasSshKey && equalsIgnoreCase(x.host, p.host);
+            });
+            if (d != det.end())
+            {
+                p.hasSshKey = true;
+                p.sshKeyPath = d->sshKeyPath;
+                p.preferredProtocol = "ssh";
+                if (p.username.empty()) p.username = d->username;
+            }
+        }
 
         const auto trimmedToken = token.trimmed().toStdString();
         if (trimmedToken.empty())
@@ -581,9 +667,37 @@ namespace gf::desktop::viewmodels
     {
         (void)m_store.saveProfile(profile);
         const auto id = QString::fromStdString(profile.id);
-        m_profiles.push_back(std::move(profile));
+        if (auto* existing = findProfileMut(id))
+        {
+            *existing = std::move(profile);
+        }
+        else
+        {
+            m_profiles.push_back(std::move(profile));
+        }
         emit profilesChanged();
 
         selectProfile(id);
+    }
+
+    void GitProfilesViewModel::removeCustomProfile(const QString& profileId)
+    {
+        const auto id = profileId.toStdString();
+        if (!isManualProfileId(id)) return; // built-in and detected profiles can't be removed
+
+        const auto it = std::find_if(m_profiles.begin(), m_profiles.end(), [&](const auto& p)
+        {
+            return p.id == id;
+        });
+        if (it == m_profiles.end()) return;
+
+        (void)m_store.deleteProfile(id);
+        m_profiles.erase(it);
+        emit profilesChanged();
+
+        if (m_activeProfileId == profileId)
+        {
+            selectProfile(QStringLiteral("url"));
+        }
     }
 } // namespace gf::desktop::viewmodels
