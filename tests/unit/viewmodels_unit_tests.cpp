@@ -4098,6 +4098,86 @@ TEST_CASE (
     std::filesystem::remove_all(baseDir, ec);
 }
 
+TEST_CASE (
+"GitProfilesViewModel checks the SSH key and guides the user when it is rejected"
+,
+"[viewmodel][profiles][ssh]"
+)
+ {
+    ensureQtApp();
+    using gf::desktop::viewmodels::GitProfilesViewModel;
+
+    const auto baseDir = std::filesystem::temp_directory_path() / "gf-profiles-ssh-check";
+    std::filesystem::remove_all(baseDir);
+    std::filesystem::create_directories(baseDir / "home" / ".ssh");
+    { std::ofstream(baseDir / "home" / ".ssh" / "id_ed25519") << "dummy"; }
+
+    // Fake "ssh": answers like GitHub does for an unregistered key (or a greeting when told so).
+    const auto fakeSsh = baseDir / "fake-ssh.sh";
+    const auto modeFile = baseDir / "mode";
+    { std::ofstream(modeFile) << "reject"; }
+    {
+        std::ofstream script(fakeSsh);
+        script << "#!/bin/sh\n"
+                  "if [ \"$(cat '" << modeFile.string() << "')\" = ok ]; then\n"
+                  "  echo \"Hi octocat! You've successfully authenticated, but GitHub does not provide shell access.\"\n"
+                  "  exit 1\n"
+                  "fi\n"
+                  "echo 'git@github.com: Permission denied (publickey).' >&2\n"
+                  "exit 255\n";
+    }
+    std::filesystem::permissions(fakeSsh, std::filesystem::perms::owner_all);
+
+    auto connRes = gf::infra::persistence::sqlite::SqliteConnection::openInMemory();
+    REQUIRE(connRes.has_value());
+    REQUIRE(gf::infra::persistence::sqlite::SchemaMigrator::migrateToLatest(*connRes).has_value());
+    gf::infra::persistence::profiles::SqliteProfileStore store(*connRes);
+    gf::infra::security::CryptoVault vault(baseDir / "vault");
+    gf::infra::git::credentials::SystemCredentialDetector detector(baseDir / "home");
+    QNetworkAccessManager nam;
+    gf::desktop::services::GitProviderApiClient apiClient(&nam);
+    gf::desktop::services::SshConnectionProbe probe;
+    probe.setProgram(QString::fromStdString(fakeSsh.string()));
+
+    GitProfilesViewModel vm(store, vault, detector, &apiClient, nullptr, &probe);
+    vm.initialize(); // selects "github", which has the default key ~/.ssh/id_ed25519
+    REQUIRE(vm.waitForIdle());
+    REQUIRE(vm.activeProfileHasSsh());
+
+    REQUIRE(waitUntil([&] { return vm.sshCheckState() != "checking" && !vm.sshCheckState().isEmpty(); }));
+    CHECK(vm.sshCheckState() == "sshKeyRejected");
+    CHECK(vm.sshCheckOutput().contains("Permission denied"));
+    CHECK(vm.selectedProtocol() == "https"); // switched away from the failing protocol
+    CHECK(vm.sshAutoSwitchedToHttps());
+
+    const auto guide = vm.troubleshootingGuide("sshKeyRejected");
+    CHECK(guide.value("title").toString().contains("GitHub"));
+    const auto steps = guide.value("steps").toList();
+    REQUIRE(steps.size() >= 3);
+    bool hasSettingsLink = false;
+    bool hasRecheck = false;
+    for (const auto& step : steps)
+    {
+        const auto m = step.toMap();
+        hasSettingsLink = hasSettingsLink || m.value("url").toString() == "https://github.com/settings/keys";
+        hasRecheck = hasRecheck || m.value("action").toString() == "recheckSsh";
+    }
+    CHECK(hasSettingsLink);
+    CHECK(hasRecheck);
+
+    // The user registers the key and checks again.
+    { std::ofstream(modeFile) << "ok"; }
+    vm.setSelectedProtocol("ssh");
+    vm.recheckSsh();
+    REQUIRE(waitUntil([&] { return vm.sshCheckState() == "ok"; }));
+    CHECK(vm.sshCheckAccount() == "octocat");
+    CHECK(vm.selectedProtocol() == "ssh");
+    CHECK_FALSE(vm.sshAutoSwitchedToHttps());
+
+    std::error_code ec;
+    std::filesystem::remove_all(baseDir, ec);
+}
+
 // ---------------------------------------------------------------------------------------------
 // DiffViewModel: highlighting cost on the GUI thread
 // ---------------------------------------------------------------------------------------------

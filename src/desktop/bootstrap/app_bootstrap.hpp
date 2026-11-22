@@ -109,6 +109,7 @@ namespace gf::desktop
         std::unique_ptr<infra::git::credentials::SystemCredentialDetector> m_credentialDetector;
         std::unique_ptr<QNetworkAccessManager> m_nam;
         std::unique_ptr<services::GitProviderApiClient> m_gitApiClient;
+        std::unique_ptr<services::SshConnectionProbe> m_sshProbe;
         std::unique_ptr<viewmodels::GitProfilesViewModel> m_gitProfilesVm;
     };
 } // namespace gf::desktop

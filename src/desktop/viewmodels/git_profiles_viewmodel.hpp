@@ -5,12 +5,15 @@
 #include "infrastructure/security/crypto_vault.hpp"
 #include "infrastructure/git/credentials/system_credential_detector.hpp"
 #include "desktop/services/git_provider_api_client.hpp"
+#include "desktop/services/ssh_connection_probe.hpp"
 #include "desktop/services/serial_git_executor.hpp"
 #include "desktop/viewmodels/remote_repo_list_model.hpp"
 
 #include <QObject>
 #include <QString>
 #include <QVariantList>
+#include <QVariantMap>
+#include <QHash>
 #include <vector>
 #include <memory>
 
@@ -35,6 +38,13 @@ namespace gf::desktop::viewmodels
         Q_PROPERTY(bool isFetching READ isFetching NOTIFY isFetchingChanged)
         Q_PROPERTY(QString fetchError READ fetchError NOTIFY fetchErrorChanged)
         Q_PROPERTY(RemoteRepoListModel* remoteReposModel READ remoteReposModel CONSTANT)
+        // SSH key check of the active profile ("ssh -T"): "" (not applicable), "checking", "ok",
+        // or an issue code (see remoteAccessIssueToString: "sshKeyRejected", "sshHostKeyUnknown"...)
+        Q_PROPERTY(QString sshCheckState READ sshCheckState NOTIFY sshCheckChanged)
+        Q_PROPERTY(QString sshCheckAccount READ sshCheckAccount NOTIFY sshCheckChanged)
+        Q_PROPERTY(QString sshCheckOutput READ sshCheckOutput NOTIFY sshCheckChanged)
+        // True when the failed check switched the protocol from SSH to HTTPS on its own.
+        Q_PROPERTY(bool sshAutoSwitchedToHttps READ sshAutoSwitchedToHttps NOTIFY sshCheckChanged)
 
     public:
         explicit GitProfilesViewModel(
@@ -42,7 +52,8 @@ namespace gf::desktop::viewmodels
             infra::security::CryptoVault& vault,
             infra::git::credentials::SystemCredentialDetector& detector,
             services::GitProviderApiClient* apiClient,
-            QObject* parent = nullptr
+            QObject* parent = nullptr,
+            services::SshConnectionProbe* sshProbe = nullptr // nullptr: no automatic SSH key check
         );
         ~GitProfilesViewModel() override;
 
@@ -67,6 +78,11 @@ namespace gf::desktop::viewmodels
 
         [[nodiscard]] RemoteRepoListModel* remoteReposModel() const noexcept { return m_repoModel; }
 
+        [[nodiscard]] QString sshCheckState() const noexcept { return m_sshCheckState; }
+        [[nodiscard]] QString sshCheckAccount() const noexcept { return m_sshCheckAccount; }
+        [[nodiscard]] QString sshCheckOutput() const noexcept { return m_sshCheckOutput; }
+        [[nodiscard]] bool sshAutoSwitchedToHttps() const noexcept { return m_sshAutoSwitched; }
+
         /// Test helper: processes events until the pending encryptions/decryptions are applied.
         bool waitForIdle(int timeoutMs = 10000);
 
@@ -84,6 +100,17 @@ namespace gf::desktop::viewmodels
     // Removes a server added with addCustomProfile (built-in/detected profiles are ignored).
     Q_INVOKABLE void removeCustomProfile(const QString& profileId);
 
+    // Runs the SSH key check of the active profile again (after the user fixed something).
+    Q_INVOKABLE void recheckSsh();
+    // Step-by-step fix for a remote access problem, for the profile serving `host` (the active
+    // profile when empty). Returns { issue, title, summary, steps: [ { title, detail, command,
+    // url, urlLabel, action, actionLabel } ] }; actions: "copyPublicKey", "recheckSsh",
+    // "useHttps", "openTokenConfig".
+    Q_INVOKABLE QVariantMap troubleshootingGuide(const QString& issue, const QString& host = QString()) const;
+    // Copies the public key matching the profile serving `host` (active profile when empty).
+    Q_INVOKABLE bool copyPublicKey(const QString& host = QString());
+    Q_INVOKABLE void copyToClipboard(const QString& text);
+
         signals :
 
         void profilesChanged();
@@ -91,6 +118,7 @@ namespace gf::desktop::viewmodels
         void selectedProtocolChanged();
         void isFetchingChanged();
         void fetchErrorChanged();
+        void sshCheckChanged();
 
     private:
         infra::persistence::profiles::SqliteProfileStore& m_store;
@@ -105,9 +133,30 @@ namespace gf::desktop::viewmodels
         bool m_isFetching{false};
         QString m_fetchError;
 
+        services::SshConnectionProbe* m_sshProbe{nullptr};
+        struct SshCheckResult
+        {
+            QString state;
+            QString account;
+            QString output;
+        };
+        QHash<QString, SshCheckResult> m_sshChecks; // per profile id, until recheckSsh()
+        QString m_sshCheckState;
+        QString m_sshCheckAccount;
+        QString m_sshCheckOutput;
+        bool m_sshAutoSwitched{false};
+
         [[nodiscard]] const core::git::bo::GitProviderProfile* findProfile(const QString& id) const;
         [[nodiscard]] core::git::bo::GitProviderProfile* findProfileMut(const QString& id);
         void fetchActiveProfileRepos();
+        // Starts (or reuses the cached result of) the SSH key check of the active profile.
+        void checkActiveProfileSsh(bool force);
+        void applySshCheckResult(const QString& profileId, const QString& state, const QString& account,
+                                 const QString& output);
+        [[nodiscard]] const core::git::bo::GitProviderProfile* findProfileByHost(const QString& host) const;
+        [[nodiscard]] static services::SshConnectionProbe::Request sshRequestFor(
+            const core::git::bo::GitProviderProfile& profile);
+        [[nodiscard]] static QString publicKeyPathFor(const core::git::bo::GitProviderProfile* profile);
         // Stores and selects a new custom profile (its token, if any, already encrypted).
         void addProfile(core::git::bo::GitProviderProfile profile);
         // Runs `work` on the crypto thread and `done(result)` on the GUI thread.

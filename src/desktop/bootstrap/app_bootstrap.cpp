@@ -144,8 +144,9 @@ namespace gf::desktop
         m_credentialDetector = std::make_unique<infra::git::credentials::SystemCredentialDetector>();
         m_nam = std::make_unique<QNetworkAccessManager>();
         m_gitApiClient = std::make_unique<services::GitProviderApiClient>(m_nam.get());
+        m_sshProbe = std::make_unique<services::SshConnectionProbe>();
         m_gitProfilesVm = std::make_unique<viewmodels::GitProfilesViewModel>(
-            *m_profileStore, *m_cryptoVault, *m_credentialDetector, m_gitApiClient.get()
+            *m_profileStore, *m_cryptoVault, *m_credentialDetector, m_gitApiClient.get(), nullptr, m_sshProbe.get()
         );
         m_gitProfilesVm->initialize();
     }

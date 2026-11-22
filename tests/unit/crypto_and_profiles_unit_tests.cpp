@@ -306,3 +306,63 @@ TEST_CASE (
         CHECK(applySshConfigToCloneUrl("", p).empty());
     }
 }
+
+#include "core/modules/git/bl/remote_access_diagnostics.hpp"
+
+TEST_CASE (
+"remote access diagnostics classify ssh and git output"
+,
+"[git][credentials][diagnostics]"
+)
+ {
+    using namespace gf::core::git::bl;
+
+    SECTION("ssh -T greetings are successes with the account name") {
+        const std::string github = "Hi Dokjolly0! You've successfully authenticated, but GitHub does not provide shell access.";
+        CHECK(classifyRemoteAccessOutput(github) == RemoteAccessIssue::None);
+        CHECK(extractSshGreetingAccount(github) == "Dokjolly0");
+
+        const std::string forgejo = "Hi there, Dokjolly! You've successfully authenticated with the key named pc, "
+                                    "but Forgejo does not provide shell access.";
+        CHECK(classifyRemoteAccessOutput(forgejo) == RemoteAccessIssue::None);
+        CHECK(extractSshGreetingAccount(forgejo) == "Dokjolly");
+
+        const std::string gitlab = "Welcome to GitLab, @jane.doe!";
+        CHECK(classifyRemoteAccessOutput(gitlab) == RemoteAccessIssue::None);
+        CHECK(extractSshGreetingAccount(gitlab) == "jane.doe");
+    }
+
+    SECTION("ssh failures") {
+        CHECK(classifyRemoteAccessOutput("git@github.com: Permission denied (publickey).\r\nfatal: Could not read from "
+            "remote repository.") == RemoteAccessIssue::SshKeyRejected);
+        CHECK(classifyRemoteAccessOutput("No ED25519 host key is known for github.com and you have requested strict "
+            "checking.\nHost key verification failed.") == RemoteAccessIssue::SshHostKeyUnknown);
+        CHECK(classifyRemoteAccessOutput("@@@ WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! @@@\nHost key "
+            "verification failed.") == RemoteAccessIssue::SshHostKeyChanged);
+        CHECK(classifyRemoteAccessOutput("ssh: Could not resolve hostname gitt.example.dev: Name or service not known")
+            == RemoteAccessIssue::HostNotFound);
+        CHECK(classifyRemoteAccessOutput("ssh: connect to host 192.168.1.122 port 22: Connection refused")
+            == RemoteAccessIssue::ConnectionFailed);
+    }
+
+    SECTION("https and repository failures") {
+        CHECK(classifyRemoteAccessOutput("fatal: could not read Username for 'https://github.com': terminal prompts "
+            "disabled") == RemoteAccessIssue::HttpsAuthFailed);
+        CHECK(classifyRemoteAccessOutput("remote: Repository not found.\nfatal: repository "
+            "'https://github.com/a/b.git/' not found") == RemoteAccessIssue::RepositoryNotFound);
+        CHECK(classifyRemoteAccessOutput("something else entirely") == RemoteAccessIssue::Unknown);
+    }
+
+    SECTION("remote URL helpers") {
+        CHECK(extractRemoteHost("git@GitHub.com:Dokjolly0/Git-Flux.git") == "github.com");
+        CHECK(extractRemoteHost("ssh://git@git.example.dev:2222/a/b.git") == "git.example.dev");
+        CHECK(extractRemoteHost("https://user:tok@gitlab.com/a/b.git") == "gitlab.com");
+        CHECK(extractRemoteHost("mygitea:a/b.git") == "mygitea");
+        CHECK(extractRemoteHost("/home/me/repo").empty());
+        CHECK(isSshRemoteUrl("git@github.com:a/b.git"));
+        CHECK(isSshRemoteUrl("ssh://git@host/a.git"));
+        CHECK_FALSE(isSshRemoteUrl("https://github.com/a/b.git"));
+        CHECK_FALSE(isSshRemoteUrl("/home/me/repo"));
+        CHECK(remoteAccessIssueToString(RemoteAccessIssue::SshKeyRejected) == "sshKeyRejected");
+    }
+}

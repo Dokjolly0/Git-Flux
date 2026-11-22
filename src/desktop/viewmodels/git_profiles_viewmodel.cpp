@@ -6,6 +6,11 @@
 #include <QElapsedTimer>
 
 #include <QUrl>
+#include <QClipboard>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QGuiApplication>
 
 #include <algorithm>
 #include <cctype>
@@ -72,7 +77,8 @@ namespace gf::desktop::viewmodels
         infra::security::CryptoVault& vault,
         infra::git::credentials::SystemCredentialDetector& detector,
         services::GitProviderApiClient* apiClient,
-        QObject* parent
+        QObject* parent,
+        services::SshConnectionProbe* sshProbe
     )
         : QObject(parent),
           m_store(store),
@@ -82,6 +88,19 @@ namespace gf::desktop::viewmodels
           m_repoModel(new RemoteRepoListModel(this)),
           m_cryptoExecutor(std::make_unique<SerialGitExecutor>())
     {
+        m_sshProbe = sshProbe;
+        if (m_sshProbe)
+        {
+            connect(m_sshProbe, &services::SshConnectionProbe::probeFinished, this,
+                    [this](const QString& profileId, core::git::bl::RemoteAccessIssue issue, const QString& account,
+                           const QString& output)
+                    {
+                        applySshCheckResult(profileId,
+                                            QString::fromUtf8(core::git::bl::remoteAccessIssueToString(issue).data()),
+                                            account, output);
+                    });
+        }
+
         if (m_apiClient)
         {
             connect(m_apiClient, &services::GitProviderApiClient::repositoriesFetched,
@@ -452,10 +471,12 @@ namespace gf::desktop::viewmodels
             {
                 setSelectedProtocol(QStringLiteral("https"));
             }
+            checkActiveProfileSsh(false);
             fetchActiveProfileRepos();
         }
         else
         {
+            applySshCheckResult(profileId, QString(), QString(), QString());
             // No provider ("url" tab...): drop a token still being decrypted for the previous one.
             m_tokenRequest.invalidate();
             m_repoModel->clear();
@@ -814,5 +835,371 @@ namespace gf::desktop::viewmodels
         {
             selectProfile(QStringLiteral("url"));
         }
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // SSH key check & troubleshooting guide
+    // ---------------------------------------------------------------------------------------------
+
+    services::SshConnectionProbe::Request GitProfilesViewModel::sshRequestFor(
+        const core::git::bo::GitProviderProfile& profile)
+    {
+        services::SshConnectionProbe::Request req;
+        if (!profile.sshHostAlias.empty())
+        {
+            // The ~/.ssh/config block supplies HostName, Port and IdentityFile.
+            req.target = QString::fromStdString(profile.sshHostAlias);
+        }
+        else
+        {
+            req.target = QString::fromStdString(profile.host);
+            req.port = profile.sshPort;
+            req.identityFile = QString::fromStdString(profile.sshKeyPath);
+        }
+        return req;
+    }
+
+    void GitProfilesViewModel::checkActiveProfileSsh(bool force)
+    {
+        const auto* p = findProfile(m_activeProfileId);
+        if (!p || !p->hasSshKey || !m_sshProbe)
+        {
+            applySshCheckResult(m_activeProfileId, QString(), QString(), QString());
+            return;
+        }
+        if (!force)
+        {
+            if (const auto it = m_sshChecks.constFind(m_activeProfileId); it != m_sshChecks.cend())
+            {
+                applySshCheckResult(m_activeProfileId, it->state, it->account, it->output);
+                return;
+            }
+        }
+        m_sshChecks.remove(m_activeProfileId);
+        applySshCheckResult(m_activeProfileId, QStringLiteral("checking"), QString(), QString());
+        m_sshProbe->probe(m_activeProfileId, sshRequestFor(*p));
+    }
+
+    void GitProfilesViewModel::applySshCheckResult(const QString& profileId, const QString& state,
+                                                   const QString& account, const QString& output)
+    {
+        const bool isFinal = !state.isEmpty() && state != QStringLiteral("checking");
+        if (isFinal)
+        {
+            m_sshChecks.insert(profileId, SshCheckResult{state, account, output});
+        }
+        if (profileId != m_activeProfileId) return; // the user moved on: keep the result cached
+
+        const bool changed = m_sshCheckState != state || m_sshCheckAccount != account || m_sshCheckOutput != output;
+        m_sshCheckState = state;
+        m_sshCheckAccount = account;
+        m_sshCheckOutput = output;
+
+        bool switched = false;
+        if (isFinal && state != QStringLiteral("ok") && m_selectedProtocol == QStringLiteral("ssh"))
+        {
+            // Cloning over SSH would fail: fall back to HTTPS, the guide explains how to fix SSH.
+            setSelectedProtocol(QStringLiteral("https"));
+            switched = true;
+        }
+        const bool switchChanged = m_sshAutoSwitched != switched;
+        m_sshAutoSwitched = switched;
+        if (changed || switchChanged) emit sshCheckChanged();
+    }
+
+    void GitProfilesViewModel::recheckSsh()
+    {
+        // Pick up what the user may have just fixed: a new key, a ~/.ssh/config block...
+        if (auto* p = findProfileMut(m_activeProfileId))
+        {
+            const auto detected = m_detector.detectProfiles();
+            const auto d = std::find_if(detected.begin(), detected.end(), [&](const auto& x)
+            {
+                return x.id == p->id || isSameServer(p->host, x);
+            });
+            if (d != detected.end())
+            {
+                const bool gainedKey = d->hasSshKey && !p->hasSshKey;
+                if (d->hasSshKey)
+                {
+                    p->hasSshKey = true;
+                    p->sshKeyPath = d->sshKeyPath;
+                }
+                p->sshHostAlias = d->sshHostAlias;
+                p->sshPort = d->sshPort;
+                if (gainedKey)
+                {
+                    emit profilesChanged();
+                    emit activeProfileChanged();
+                }
+            }
+        }
+        checkActiveProfileSsh(true);
+    }
+
+    const core::git::bo::GitProviderProfile* GitProfilesViewModel::findProfileByHost(const QString& host) const
+    {
+        if (host.isEmpty()) return findProfile(m_activeProfileId);
+        const auto h = host.toLower().toStdString();
+        for (const auto& p : m_profiles)
+        {
+            if (equalsIgnoreCase(p.host, h) || (!p.sshHostAlias.empty() && equalsIgnoreCase(p.sshHostAlias, h)))
+            {
+                return &p;
+            }
+        }
+        return nullptr;
+    }
+
+    QString GitProfilesViewModel::publicKeyPathFor(const core::git::bo::GitProviderProfile* profile)
+    {
+        if (profile && !profile->sshKeyPath.empty())
+        {
+            const auto pub = QString::fromStdString(profile->sshKeyPath) + QStringLiteral(".pub");
+            if (QFileInfo::exists(pub)) return pub;
+        }
+        const QDir ssh(QDir::homePath() + QStringLiteral("/.ssh"));
+        for (const auto* name : {"id_ed25519.pub", "id_ecdsa.pub", "id_rsa.pub"})
+        {
+            const auto path = ssh.filePath(QString::fromLatin1(name));
+            if (QFileInfo::exists(path)) return path;
+        }
+        return {};
+    }
+
+    bool GitProfilesViewModel::copyPublicKey(const QString& host)
+    {
+        const auto path = publicKeyPathFor(findProfileByHost(host));
+        if (path.isEmpty()) return false;
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return false;
+        const auto key = QString::fromUtf8(file.readAll()).trimmed();
+        // Never hand out a private key by mistake.
+        if (key.isEmpty() || key.contains(QStringLiteral("PRIVATE KEY"))) return false;
+        copyToClipboard(key);
+        return true;
+    }
+
+    void GitProfilesViewModel::copyToClipboard(const QString& text)
+    {
+        if (auto* cb = QGuiApplication::clipboard())
+        {
+            cb->setText(text);
+        }
+    }
+
+    namespace
+    {
+        QVariantMap makeStep(const QString& title, const QString& detail,
+                             const QString& command = {}, const QString& url = {}, const QString& urlLabel = {},
+                             const QString& action = {}, const QString& actionLabel = {})
+        {
+            QVariantMap step;
+            step[QStringLiteral("title")] = title;
+            step[QStringLiteral("detail")] = detail;
+            step[QStringLiteral("command")] = command;
+            step[QStringLiteral("url")] = url;
+            step[QStringLiteral("urlLabel")] = urlLabel;
+            step[QStringLiteral("action")] = action;
+            step[QStringLiteral("actionLabel")] = actionLabel;
+            return step;
+        }
+
+        // Web base of a self-hosted server: its API URL without "/api/v1", else https://<host>.
+        QString webBaseUrl(const core::git::bo::GitProviderProfile* p, const QString& host)
+        {
+            if (p && !p->customApiUrl.empty())
+            {
+                QString base = QString::fromStdString(p->customApiUrl);
+                if (const auto api = base.indexOf(QStringLiteral("/api/v")); api >= 0) base.truncate(api);
+                while (base.endsWith(QLatin1Char('/'))) base.chop(1);
+                return base;
+            }
+            return QStringLiteral("https://") + host;
+        }
+
+        QString sshKeysUrl(const core::git::bo::GitProviderProfile* p, const QString& host)
+        {
+            using T = core::git::bo::GitProviderType;
+            if (p && p->providerType == T::GitHub) return QStringLiteral("https://github.com/settings/keys");
+            if (p && p->providerType == T::GitLab) return QStringLiteral("https://gitlab.com/-/user_settings/ssh_keys");
+            if (p && p->providerType == T::Bitbucket)
+                return QStringLiteral("https://bitbucket.org/account/settings/ssh-keys/");
+            return webBaseUrl(p, host) + QStringLiteral("/user/settings/keys"); // Gitea / Forgejo
+        }
+
+        QString tokenUrl(const core::git::bo::GitProviderProfile* p, const QString& host)
+        {
+            using T = core::git::bo::GitProviderType;
+            if (p && p->providerType == T::GitHub) return QStringLiteral("https://github.com/settings/tokens");
+            if (p && p->providerType == T::GitLab)
+                return QStringLiteral("https://gitlab.com/-/user_settings/personal_access_tokens");
+            if (p && p->providerType == T::Bitbucket)
+                return QStringLiteral("https://id.atlassian.com/manage-profile/security/api-tokens");
+            return webBaseUrl(p, host) + QStringLiteral("/user/settings/applications");
+        }
+
+        QString hostKeyFingerprintsUrl(const core::git::bo::GitProviderProfile* p)
+        {
+            using T = core::git::bo::GitProviderType;
+            if (p && p->providerType == T::GitHub)
+                return QStringLiteral(
+                    "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints");
+            if (p && p->providerType == T::GitLab)
+                return QStringLiteral("https://docs.gitlab.com/user/gitlab_com/#ssh-host-keys-fingerprints");
+            return {};
+        }
+    } // namespace
+
+    QVariantMap GitProfilesViewModel::troubleshootingGuide(const QString& issue, const QString& host) const
+    {
+        const auto* p = findProfileByHost(host);
+        const QString serverHost = p ? QString::fromStdString(p->host) : host;
+        const QString providerName = p ? QString::fromStdString(p->displayName) : serverHost;
+        services::SshConnectionProbe::Request req;
+        if (p)
+        {
+            req = sshRequestFor(*p);
+        }
+        else
+        {
+            req.target = serverHost;
+        }
+        const QString testCommand = services::SshConnectionProbe::commandLine(req);
+        const QString pubKey = publicKeyPathFor(p);
+        const QString knownHostsEntry = req.port > 0 && req.port != 22
+                                            ? QStringLiteral("\"[%1]:%2\"").arg(req.target).arg(req.port)
+                                            : req.target;
+
+        QVariantList steps;
+        QString title;
+        QString summary;
+
+        if (issue == QStringLiteral("sshKeyRejected"))
+        {
+            title = QStringLiteral("La chiave SSH non è accettata da %1").arg(providerName);
+            summary = QStringLiteral(
+                "Il server ha rifiutato le chiavi SSH di questo computer: probabilmente la chiave non è ancora "
+                "registrata sul tuo account (ad esempio è registrata solo quella di un altro PC).");
+            if (pubKey.isEmpty())
+            {
+                steps << makeStep(QStringLiteral("Crea una chiave SSH"),
+                                  QStringLiteral("Su questo computer non c'è una chiave pubblica. Creane una nuova "
+                                      "(premi Invio per accettare il percorso proposto)."),
+                                  QStringLiteral("ssh-keygen -t ed25519 -C \"$(whoami)@$(hostname)\""));
+                steps << makeStep(QStringLiteral("Copia la chiave pubblica"),
+                                  QStringLiteral("Poi copia la chiave pubblica appena creata."),
+                                  QStringLiteral("cat ~/.ssh/id_ed25519.pub"), {}, {},
+                                  QStringLiteral("copyPublicKey"), QStringLiteral("Copia chiave pubblica"));
+            }
+            else
+            {
+                steps << makeStep(QStringLiteral("Copia la chiave pubblica"),
+                                  QStringLiteral("Chiave trovata: %1").arg(pubKey),
+                                  QStringLiteral("cat %1").arg(pubKey), {}, {},
+                                  QStringLiteral("copyPublicKey"), QStringLiteral("Copia chiave pubblica"));
+            }
+            steps << makeStep(QStringLiteral("Aggiungila al tuo account %1").arg(providerName),
+                              QStringLiteral("Apri le impostazioni delle chiavi SSH, scegli \"Aggiungi chiave\" e "
+                                  "incolla la chiave pubblica."),
+                              {}, sshKeysUrl(p, serverHost), QStringLiteral("Apri impostazioni chiavi SSH"));
+            steps << makeStep(QStringLiteral("Verifica la connessione"),
+                              QStringLiteral("Dovresti ricevere un messaggio di benvenuto con il tuo nome utente."),
+                              testCommand, {}, {}, QStringLiteral("recheckSsh"), QStringLiteral("Verifica di nuovo"));
+            steps << makeStep(QStringLiteral("In alternativa usa HTTPS"),
+                              QStringLiteral("Funziona subito per i repository pubblici; per quelli privati serve "
+                                  "un token di accesso."),
+                              {}, {}, {}, QStringLiteral("useHttps"), QStringLiteral("Usa HTTPS"));
+        }
+        else if (issue == QStringLiteral("sshHostKeyUnknown"))
+        {
+            title = QStringLiteral("%1 non è ancora tra gli host SSH conosciuti").arg(serverHost);
+            summary = QStringLiteral(
+                "È la prima connessione SSH a questo server da questo computer: ssh deve memorizzarne "
+                "l'impronta (fingerprint). Git Flux non la accetta al posto tuo, per sicurezza.");
+            const auto fpUrl = hostKeyFingerprintsUrl(p);
+            steps << makeStep(QStringLiteral("Connettiti una volta dal terminale"),
+                              QStringLiteral("Controlla che l'impronta mostrata corrisponda a quella ufficiale del "
+                                  "server, poi rispondi \"yes\"."),
+                              testCommand, fpUrl, fpUrl.isEmpty() ? QString() : QStringLiteral("Impronte ufficiali"));
+            steps << makeStep(QStringLiteral("Verifica di nuovo"), QString(), {}, {}, {},
+                              QStringLiteral("recheckSsh"), QStringLiteral("Verifica di nuovo"));
+        }
+        else if (issue == QStringLiteral("sshHostKeyChanged"))
+        {
+            title = QStringLiteral("L'impronta SSH di %1 è cambiata").arg(serverHost);
+            summary = QStringLiteral(
+                "La chiave del server non corrisponde a quella memorizzata. Può succedere dopo una reinstallazione "
+                "del server, ma può anche indicare un attacco: procedi solo se sai perché è cambiata.");
+            const auto fpUrl = hostKeyFingerprintsUrl(p);
+            steps << makeStep(QStringLiteral("Verifica la nuova impronta"),
+                              QStringLiteral("Confrontala con quella ufficiale o chiedi all'amministratore del server."),
+                              {}, fpUrl, fpUrl.isEmpty() ? QString() : QStringLiteral("Impronte ufficiali"));
+            steps << makeStep(QStringLiteral("Rimuovi la vecchia impronta"), QString(),
+                              QStringLiteral("ssh-keygen -R %1").arg(knownHostsEntry));
+            steps << makeStep(QStringLiteral("Connettiti di nuovo e accetta la nuova impronta"), QString(),
+                              testCommand, {}, {}, QStringLiteral("recheckSsh"), QStringLiteral("Verifica di nuovo"));
+        }
+        else if (issue == QStringLiteral("hostNotFound"))
+        {
+            title = QStringLiteral("Impossibile trovare il server %1").arg(serverHost);
+            summary = QStringLiteral("Il nome del server non viene risolto: controlla la connessione a internet e "
+                "che il nome sia scritto correttamente.");
+            steps << makeStep(QStringLiteral("Controlla il nome del server"), QString(),
+                              QStringLiteral("getent hosts %1").arg(serverHost));
+            steps << makeStep(QStringLiteral("Verifica di nuovo"), QString(), {}, {}, {},
+                              QStringLiteral("recheckSsh"), QStringLiteral("Verifica di nuovo"));
+        }
+        else if (issue == QStringLiteral("connectionFailed"))
+        {
+            title = QStringLiteral("Connessione SSH a %1 non riuscita").arg(serverHost);
+            summary = QStringLiteral("Il server non risponde sulla porta SSH. Sui server Gitea/Forgejo in Docker "
+                "SSH di solito è su una porta diversa (ad esempio 2222).");
+            steps << makeStep(QStringLiteral("Diagnostica dettagliata"),
+                              QStringLiteral("Mostra dove si ferma la connessione."),
+                              QStringLiteral("ssh -vT %1").arg(testCommand.mid(QStringLiteral("ssh -T ").size())));
+            steps << makeStep(QStringLiteral("Se SSH usa un'altra porta, aggiungila a ~/.ssh/config"),
+                              QStringLiteral("Git Flux legge il blocco al prossimo avvio e lo usa per i clone."),
+                              QStringLiteral("Host %1\n    HostName %1\n    Port 2222\n    User git").arg(serverHost));
+            steps << makeStep(QStringLiteral("Verifica di nuovo"), QString(), {}, {}, {},
+                              QStringLiteral("recheckSsh"), QStringLiteral("Verifica di nuovo"));
+            steps << makeStep(QStringLiteral("In alternativa usa HTTPS"), QString(), {}, {}, {},
+                              QStringLiteral("useHttps"), QStringLiteral("Usa HTTPS"));
+        }
+        else if (issue == QStringLiteral("httpsAuthFailed"))
+        {
+            title = QStringLiteral("Accesso HTTPS a %1 negato").arg(providerName);
+            summary = QStringLiteral("Il repository richiede l'autenticazione: crea un token di accesso personale "
+                "e inseriscilo in Git Flux.");
+            steps << makeStep(QStringLiteral("Crea un token di accesso"),
+                              QStringLiteral("Concedi almeno il permesso di lettura dei repository."),
+                              {}, tokenUrl(p, serverHost), QStringLiteral("Apri pagina token"));
+            steps << makeStep(QStringLiteral("Inseriscilo in Git Flux"), QString(), {}, {}, {},
+                              QStringLiteral("openTokenConfig"), QStringLiteral("Inserisci token"));
+        }
+        else if (issue == QStringLiteral("repositoryNotFound"))
+        {
+            title = QStringLiteral("Repository non trovato");
+            summary = QStringLiteral("Il server è raggiungibile ma il repository non esiste, oppure è privato e "
+                "il tuo account non ha accesso.");
+            steps << makeStep(QStringLiteral("Controlla l'URL del repository"), QString());
+            steps << makeStep(QStringLiteral("Se è privato, accedi con un token"), QString(), {}, {}, {},
+                              QStringLiteral("openTokenConfig"), QStringLiteral("Inserisci token"));
+        }
+        else
+        {
+            title = QStringLiteral("Errore di accesso al server");
+            summary = QStringLiteral("Copia il log qui sotto per i dettagli. Puoi provare la connessione dal terminale:");
+            steps << makeStep(QStringLiteral("Prova la connessione SSH"), QString(), testCommand, {}, {},
+                              QStringLiteral("recheckSsh"), QStringLiteral("Verifica di nuovo"));
+        }
+
+        QVariantMap guide;
+        guide[QStringLiteral("issue")] = issue;
+        guide[QStringLiteral("title")] = title;
+        guide[QStringLiteral("summary")] = summary;
+        guide[QStringLiteral("steps")] = steps;
+        guide[QStringLiteral("hasPublicKey")] = !pubKey.isEmpty();
+        return guide;
     }
 } // namespace gf::desktop::viewmodels

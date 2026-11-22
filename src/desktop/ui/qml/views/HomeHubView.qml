@@ -121,6 +121,8 @@ Item {
         target: (typeof homeHubVm !== "undefined") ? homeHubVm : null
 
         function onErrorOccurred(message) {
+            // The clone modal shows its own error banner with a guided fix and the git log.
+            if (cloneRepoModal.visible) return;
             errorFeedbackDialog.errorMessage = message;
             errorFeedbackDialog.open();
             feedbackBanner.showError(message);
@@ -3363,15 +3365,36 @@ Item {
         contentItem: ColumnLayout {
             spacing: 12
 
-            Text {
-                text: errorFeedbackDialog.errorMessage
-                color: "#F8FAFC"
-                font.pixelSize: 13
-                wrapMode: Text.Wrap
+            // Selectable so the error can be copied (also via the "Copia" button below).
+            Flickable {
+                id: errorMessageFlick
                 Layout.fillWidth: true
+                Layout.preferredHeight: Math.min(errorMessageEdit.implicitHeight, 260)
+                clip: true
+                contentWidth: width
+                contentHeight: errorMessageEdit.implicitHeight
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                TextEdit {
+                    id: errorMessageEdit
+                    width: errorMessageFlick.width
+                    text: errorFeedbackDialog.errorMessage
+                    color: "#F8FAFC"
+                    font.pixelSize: 13
+                    wrapMode: TextEdit.Wrap
+                    textFormat: TextEdit.PlainText
+                    readOnly: true
+                    selectByMouse: true
+                    selectByKeyboard: true
+                    selectionColor: "#2563EB"
+                    selectedTextColor: "#FFFFFF"
+                }
             }
 
             Text {
+                // Only relevant when adding/opening a local folder that isn't a Git repository.
+                visible: /cartell|repository git|\.git|not a git repository/i.test(errorFeedbackDialog.errorMessage)
                 text: "Suggerimento: Seleziona la cartella radice del progetto Git oppure la cartella '.git' al suo interno tramite il selettore cartelle."
                 color: "#94A3B8"
                 font.pixelSize: 11
@@ -3390,6 +3413,21 @@ Item {
                 anchors.fill: parent
                 anchors.leftMargin: 16
                 anchors.rightMargin: 16
+                Button {
+                    id: copyErrorBtn
+                    property bool copied: false
+                    text: copied ? "✔ Copiato" : "Copia errore"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#334155" : "#1E293B"; radius: 8; border.color: "#475569"; border.width: 1 }
+                    contentItem: Text { text: copyErrorBtn.text; color: "#E2E8F0"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: {
+                        // gitProfilesVm copies silently (homeHubVm would echo the whole text in a banner)
+                        var vm = (typeof gitProfilesVm !== "undefined" && gitProfilesVm) ? gitProfilesVm : homeHubVm;
+                        vm.copyToClipboard(errorFeedbackDialog.errorMessage);
+                        copied = true;
+                        copiedResetTimer.restart();
+                    }
+                    Timer { id: copiedResetTimer; interval: 2000; onTriggered: copyErrorBtn.copied = false }
+                }
                 Item { Layout.fillWidth: true }
                 Button {
                     text: "Chiudi"; Layout.preferredHeight: 32; leftPadding: 18; rightPadding: 18; hoverEnabled: true

@@ -65,6 +65,7 @@ add_library(gf_application STATIC
         src/core/modules/git/bl/git_history_service.cpp
         src/core/modules/git/bl/git_remote_merge_service.cpp
         src/core/modules/git/bl/git_clone_service.cpp
+        src/core/modules/git/bl/remote_access_diagnostics.cpp
         src/core/modules/git/bl/git_stash_service.cpp
         src/core/modules/git/bl/git_rebase_service.cpp
         src/core/modules/git/bl/conflict_marker_parser.cpp
@@ -267,6 +268,7 @@ if (GF_BUILD_DESKTOP)
             src/desktop/viewmodels/home_hub_viewmodel.cpp
             src/desktop/viewmodels/quick_open_viewmodel.cpp
             src/desktop/services/git_provider_api_client.cpp
+            src/desktop/services/ssh_connection_probe.cpp
             src/desktop/viewmodels/remote_repo_list_model.cpp
             src/desktop/viewmodels/git_profiles_viewmodel.cpp
             src/desktop/bootstrap/app_bootstrap.cpp

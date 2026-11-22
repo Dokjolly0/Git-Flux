@@ -50,6 +50,11 @@ namespace gf::desktop
         Q_PROPERTY(bool isCloning READ isCloning NOTIFY isCloningChanged)
         Q_PROPERTY(QString cloneStatusMessage READ cloneStatusMessage NOTIFY cloneStatusMessageChanged)
         Q_PROPERTY(int cloneProgressPercent READ cloneProgressPercent NOTIFY cloneProgressPercentChanged)
+        // Last failed clone: problem code (see remoteAccessIssueToString, "" when none), the remote
+        // host and the raw git output, for the in-app troubleshooting guide and a copyable log.
+        Q_PROPERTY(QString cloneIssue READ cloneIssue NOTIFY cloneDiagnosticsChanged)
+        Q_PROPERTY(QString cloneIssueHost READ cloneIssueHost NOTIFY cloneDiagnosticsChanged)
+        Q_PROPERTY(QString cloneErrorLog READ cloneErrorLog NOTIFY cloneDiagnosticsChanged)
         Q_PROPERTY(
             QString lastCloneDestinationPath READ lastCloneDestinationPath NOTIFY lastCloneDestinationPathChanged)
 
@@ -82,6 +87,9 @@ namespace gf::desktop
         [[nodiscard]] bool isCloning() const noexcept { return m_isCloning; }
         [[nodiscard]] QString cloneStatusMessage() const noexcept { return m_cloneStatusMessage; }
         [[nodiscard]] int cloneProgressPercent() const noexcept { return m_cloneProgressPercent; }
+        [[nodiscard]] QString cloneIssue() const noexcept { return m_cloneIssue; }
+        [[nodiscard]] QString cloneIssueHost() const noexcept { return m_cloneIssueHost; }
+        [[nodiscard]] QString cloneErrorLog() const noexcept { return m_cloneErrorLog; }
         [[nodiscard]] QString lastCloneDestinationPath() const noexcept { return m_lastCloneDestinationPath; }
     Q_INVOKABLE void setLastCloneDestinationPath(const QString& path);
 
@@ -154,6 +162,7 @@ namespace gf::desktop
         void isCloningChanged(bool isCloning);
         void cloneStatusMessageChanged(const QString& message);
         void cloneProgressPercentChanged(int percent);
+        void cloneDiagnosticsChanged();
         void cloneCompleted(bool success, const QString& message);
         void lastCloneDestinationPathChanged(const QString& path);
 
@@ -191,6 +200,10 @@ namespace gf::desktop
         bool m_isCloning{false};
         QString m_cloneStatusMessage;
         int m_cloneProgressPercent{0};
+        QString m_cloneIssue;
+        QString m_cloneIssueHost;
+        QString m_cloneErrorLog;
+        void setCloneDiagnostics(const QString& issue, const QString& host, const QString& log);
         QString m_lastCloneDestinationPath;
         bool m_showRepositories{true};
         bool m_showGroups{true};

@@ -7,6 +7,7 @@
 #include "core/modules/workspaces/bl/workspace_service.hpp"
 #include "core/modules/workspaces/bo/workspace.hpp"
 #include "core/modules/git/bl/git_clone_service.hpp"
+#include "core/modules/git/bl/remote_access_diagnostics.hpp"
 
 #include <thread>
 #include <iostream>
@@ -423,6 +424,7 @@ namespace gf::desktop
         emit cloneStatusMessageChanged(m_cloneStatusMessage);
         setStatus(m_cloneStatusMessage);
         setLastError(QString());
+        setCloneDiagnostics(QString(), QString(), QString());
 
         std::thread([this,
                 cleanUrlStd = cleanUrl.toStdString(),
@@ -463,7 +465,7 @@ namespace gf::desktop
 
                 auto result = m_cloneService->cloneAndRegister(opts, optDisp);
 
-                QMetaObject::invokeMethod(this, [this, result, targetPath, cleanParent]()
+                QMetaObject::invokeMethod(this, [this, result, targetPath, cleanParent, cleanUrlStd]()
                 {
                     m_isCloning = false;
                     m_cloneProgressPercent = result ? 100 : 0;
@@ -472,6 +474,9 @@ namespace gf::desktop
 
                     if (!result)
                     {
+                        const auto& rawLog = result.error().message;
+                        const auto issue = gf::core::git::bl::classifyRemoteAccessOutput(rawLog);
+                        const auto host = QString::fromStdString(gf::core::git::bl::extractRemoteHost(cleanUrlStd));
                         QString errStr;
                         switch (result.error().kind)
                         {
@@ -493,6 +498,44 @@ namespace gf::desktop
                                 .arg(QString::fromStdString(result.error().message));
                             break;
                         }
+
+                        // Recognised network problems get a plain-language message: the raw git
+                        // output stays available (copyable) next to the troubleshooting guide.
+                        using gf::core::git::bl::RemoteAccessIssue;
+                        const bool known = issue != RemoteAccessIssue::Unknown && issue != RemoteAccessIssue::None &&
+                            result.error().kind != gf::git::ports::GitOpsError::Kind::DestinationAlreadyExists;
+                        if (known)
+                        {
+                            switch (issue)
+                            {
+                            case RemoteAccessIssue::SshKeyRejected:
+                                errStr = QStringLiteral("Clone non riuscito: la chiave SSH non è accettata da %1.").arg(host);
+                                break;
+                            case RemoteAccessIssue::SshHostKeyUnknown:
+                                errStr = QStringLiteral("Clone non riuscito: %1 non è tra gli host SSH conosciuti.").arg(host);
+                                break;
+                            case RemoteAccessIssue::SshHostKeyChanged:
+                                errStr = QStringLiteral("Clone non riuscito: l'impronta SSH di %1 è cambiata.").arg(host);
+                                break;
+                            case RemoteAccessIssue::HostNotFound:
+                                errStr = QStringLiteral("Clone non riuscito: server %1 non trovato.").arg(host);
+                                break;
+                            case RemoteAccessIssue::ConnectionFailed:
+                                errStr = QStringLiteral("Clone non riuscito: impossibile connettersi a %1.").arg(host);
+                                break;
+                            case RemoteAccessIssue::HttpsAuthFailed:
+                                errStr = QStringLiteral("Clone non riuscito: accesso HTTPS a %1 negato.").arg(host);
+                                break;
+                            case RemoteAccessIssue::RepositoryNotFound:
+                                errStr = QStringLiteral("Clone non riuscito: repository non trovato o non accessibile.");
+                                break;
+                            default:
+                                break;
+                            }
+                        }
+                        setCloneDiagnostics(
+                            known ? QString::fromUtf8(gf::core::git::bl::remoteAccessIssueToString(issue).data()) : QString(),
+                            host, QString::fromStdString(rawLog).trimmed());
 
                         m_cloneStatusMessage = errStr;
                         emit cloneStatusMessageChanged(errStr);
@@ -587,7 +630,17 @@ namespace gf::desktop
         emit cloneProgressPercentChanged(0);
         emit cloneStatusMessageChanged(QString());
         setLastError(QString());
+        setCloneDiagnostics(QString(), QString(), QString());
         clearFeedback();
+    }
+
+    void HomeHubViewModel::setCloneDiagnostics(const QString& issue, const QString& host, const QString& log)
+    {
+        if (m_cloneIssue == issue && m_cloneIssueHost == host && m_cloneErrorLog == log) return;
+        m_cloneIssue = issue;
+        m_cloneIssueHost = host;
+        m_cloneErrorLog = log;
+        emit cloneDiagnosticsChanged();
     }
 
     bool HomeHubViewModel::reconnectRepository(const QString& repoId, const QString& newPath)

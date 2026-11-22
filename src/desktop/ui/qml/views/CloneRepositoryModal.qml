@@ -28,6 +28,288 @@ Dialog {
     property bool repoTouched: false
     property bool destFolderMissing: false
     property bool urlMissing: false
+    property bool sshGuideExpanded: true
+
+    // Re-points the URL field at the selected repository after a protocol change (SSH <-> HTTPS).
+    function refreshSelectedRepoUrl() {
+        if (!root.profilesVm || root.selectedRepoFullName.length === 0) return;
+        for (var i = 0; i < repoListView.count; ++i) {
+            var r = root.profilesVm.remoteReposModel.getRepoAt(i);
+            if (r.fullName === root.selectedRepoFullName) {
+                urlField.text = r.activeCloneUrl;
+                break;
+            }
+        }
+    }
+
+    // Runs an action button of the troubleshooting guide. Returns a short feedback text.
+    function runGuideAction(action, host) {
+        if (!root.profilesVm) return "";
+        if (action === "copyPublicKey") {
+            return root.profilesVm.copyPublicKey(host) ? "Chiave copiata negli appunti" : "Nessuna chiave pubblica trovata";
+        }
+        if (action === "recheckSsh") {
+            root.profilesVm.recheckSsh();
+            return "Verifica in corso…";
+        }
+        if (action === "useHttps") {
+            root.profilesVm.setSelectedProtocol("https");
+            root.refreshSelectedRepoUrl();
+            if (root.effectiveHubVm && root.effectiveHubVm.cloneIssue.length > 0) {
+                root.effectiveHubVm.resetCloneState();
+            }
+            return "Protocollo impostato su HTTPS";
+        }
+        if (action === "openTokenConfig") {
+            root.showTokenConfig = true;
+            return "";
+        }
+        return "";
+    }
+
+    // Read-only text that can be selected with the mouse and copied (logs, commands...).
+    component SelectableText: TextEdit {
+        readOnly: true
+        selectByMouse: true
+        selectByKeyboard: true
+        persistentSelection: false
+        wrapMode: TextEdit.Wrap
+        textFormat: TextEdit.PlainText
+        selectionColor: "#2563EB"
+        selectedTextColor: "#FFFFFF"
+        color: "#E2E8F0"
+        font.pixelSize: 11
+    }
+
+    // Small flat button used by the guide (copy, open link, actions).
+    component GuideButton: Button {
+        id: guideBtn
+        property color accent: "#38BDF8"
+        Layout.preferredHeight: 24
+        leftPadding: 10
+        rightPadding: 10
+        hoverEnabled: true
+        contentItem: Text {
+            text: guideBtn.text
+            color: guideBtn.hovered ? "#FFFFFF" : guideBtn.accent
+            font.pixelSize: 11
+            font.bold: true
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+        background: Rectangle {
+            radius: 4
+            color: guideBtn.hovered ? "#1E3A5F" : "#0F172A"
+            border.color: guideBtn.accent
+            border.width: 1
+        }
+    }
+
+    // Step-by-step "how to fix it" card for a remote access problem (SSH key, host key, token...).
+    // `guide` is GitProfilesViewModel.troubleshootingGuide(); `logText` is the raw ssh/git output.
+    component RemoteAccessGuide: ColumnLayout {
+        id: guideRoot
+        property var guide: ({})
+        property string host: ""
+        property string logText: ""
+        property bool showSummary: true
+        property string feedback: ""
+        property bool showLog: false
+        // Injected by the user: inline components can't see the ids of the enclosing file.
+        property var profilesVm: null
+        property var actionHandler: null // function(action, host) -> feedback text
+        spacing: 8
+
+        Timer {
+            id: feedbackTimer
+            interval: 2500
+            onTriggered: guideRoot.feedback = ""
+        }
+
+        function act(action) {
+            guideRoot.feedback = guideRoot.actionHandler ? guideRoot.actionHandler(action, guideRoot.host) : "";
+            if (guideRoot.feedback.length > 0) feedbackTimer.restart();
+        }
+
+        Text {
+            visible: guideRoot.showSummary && (guideRoot.guide.summary || "").length > 0
+            text: guideRoot.guide.summary || ""
+            color: "#CBD5E1"
+            font.pixelSize: 11
+            wrapMode: Text.Wrap
+            Layout.fillWidth: true
+        }
+
+        Repeater {
+            model: guideRoot.guide.steps || []
+
+            delegate: RowLayout {
+                required property var modelData
+                required property int index
+                Layout.fillWidth: true
+                spacing: 8
+
+                Rectangle {
+                    Layout.alignment: Qt.AlignTop
+                    Layout.preferredWidth: 20
+                    Layout.preferredHeight: 20
+                    radius: 10
+                    color: "#1E3A5F"
+                    Text {
+                        anchors.centerIn: parent
+                        text: index + 1
+                        color: "#BAE6FD"
+                        font.pixelSize: 10
+                        font.bold: true
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+
+                    Text {
+                        text: modelData.title
+                        color: "#F8FAFC"
+                        font.pixelSize: 12
+                        font.bold: true
+                        wrapMode: Text.Wrap
+                        Layout.fillWidth: true
+                    }
+
+                    SelectableText {
+                        visible: (modelData.detail || "").length > 0
+                        text: modelData.detail || ""
+                        color: "#94A3B8"
+                        Layout.fillWidth: true
+                    }
+
+                    // Copyable command / snippet
+                    Rectangle {
+                        visible: (modelData.command || "").length > 0
+                        Layout.fillWidth: true
+                        implicitHeight: cmdRow.implicitHeight + 10
+                        radius: 4
+                        color: "#020617"
+                        border.color: "#1E293B"
+
+                        RowLayout {
+                            id: cmdRow
+                            anchors.fill: parent
+                            anchors.margins: 5
+                            spacing: 6
+
+                            SelectableText {
+                                text: modelData.command || ""
+                                font.family: "monospace"
+                                color: "#A5F3FC"
+                                Layout.fillWidth: true
+                            }
+
+                            GuideButton {
+                                text: "Copia"
+                                Layout.alignment: Qt.AlignTop
+                                onClicked: {
+                                    if (guideRoot.profilesVm) guideRoot.profilesVm.copyToClipboard(modelData.command);
+                                    guideRoot.feedback = "Comando copiato negli appunti";
+                                    feedbackTimer.restart();
+                                }
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        visible: (modelData.url || "").length > 0 || (modelData.action || "").length > 0
+                        spacing: 6
+
+                        GuideButton {
+                            visible: (modelData.action || "").length > 0
+                            text: modelData.actionLabel || ""
+                            accent: "#34D399"
+                            onClicked: guideRoot.act(modelData.action)
+                        }
+
+                        GuideButton {
+                            visible: (modelData.url || "").length > 0
+                            text: (modelData.urlLabel || "Apri") + " ↗"
+                            onClicked: Qt.openUrlExternally(modelData.url)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Raw output, selectable and copyable
+        RowLayout {
+            visible: guideRoot.logText.length > 0
+            spacing: 6
+
+            GuideButton {
+                text: guideRoot.showLog ? "Nascondi log" : "Mostra log"
+                accent: "#94A3B8"
+                onClicked: guideRoot.showLog = !guideRoot.showLog
+            }
+
+            GuideButton {
+                text: "Copia log"
+                accent: "#94A3B8"
+                onClicked: {
+                    if (guideRoot.profilesVm) guideRoot.profilesVm.copyToClipboard(guideRoot.logText);
+                    guideRoot.feedback = "Log copiato negli appunti";
+                    feedbackTimer.restart();
+                }
+            }
+
+            Text {
+                visible: guideRoot.feedback.length > 0
+                text: "✔ " + guideRoot.feedback
+                color: "#6EE7B7"
+                font.pixelSize: 11
+            }
+        }
+
+        Text {
+            visible: guideRoot.logText.length === 0 && guideRoot.feedback.length > 0
+            text: "✔ " + guideRoot.feedback
+            color: "#6EE7B7"
+            font.pixelSize: 11
+        }
+
+        Rectangle {
+            visible: guideRoot.showLog && guideRoot.logText.length > 0
+            Layout.fillWidth: true
+            Layout.preferredHeight: Math.min(logEdit.implicitHeight + 12, 140)
+            radius: 4
+            color: "#020617"
+            border.color: "#1E293B"
+
+            Flickable {
+                id: logFlick
+                anchors.fill: parent
+                anchors.margins: 6
+                clip: true
+                contentWidth: width
+                contentHeight: logEdit.implicitHeight
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                SelectableText {
+                    id: logEdit
+                    width: logFlick.width
+                    text: guideRoot.logText
+                    font.family: "monospace"
+                    color: "#FCA5A5"
+                }
+            }
+        }
+    }
+
+    Connections {
+        target: root.profilesVm
+        function onSelectedProtocolChanged() {
+            root.refreshSelectedRepoUrl();
+        }
+    }
 
     function resetFormAndCache() {
         console.log("[CloneModal] Reset completo del form e della cache...");
@@ -876,6 +1158,93 @@ Dialog {
                                     radius: 4
                                     border.color: root.showTokenConfig ? "#38BDF8" : "#334155"
                                     border.width: 1
+                                }
+                            }
+                        }
+                    }
+
+                    // ---------------------------------------------------------
+                    // A2. SSH KEY CHECK ("ssh -T") + HOW TO FIX IT
+                    // ---------------------------------------------------------
+                    Rectangle {
+                        id: sshCheckCard
+                        readonly property string checkState: root.profilesVm ? root.profilesVm.sshCheckState : ""
+                        readonly property bool isIssue: checkState.length > 0 && checkState !== "checking" && checkState !== "ok"
+                        // A failed clone shows its own guide below: don't repeat it here.
+                        readonly property bool cloneGuideShown: Boolean(root.effectiveHubVm && root.effectiveHubVm.cloneIssue.length > 0)
+
+                        Layout.fillWidth: true
+                        visible: root.profilesVm !== null && root.profilesVm.activeProfileId !== "url" &&
+                                 checkState.length > 0 && !(isIssue && cloneGuideShown)
+                        implicitHeight: sshCheckCol.implicitHeight + 14
+                        radius: 6
+                        color: isIssue ? "#2A1A05" : (checkState === "ok" ? "#052E1C" : "#0F1B2D")
+                        border.color: isIssue ? "#D97706" : (checkState === "ok" ? "#059669" : "#1E3A5F")
+                        border.width: 1
+
+                        ColumnLayout {
+                            id: sshCheckCol
+                            anchors.fill: parent
+                            anchors.margins: 7
+                            spacing: 6
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.Wrap
+                                    font.pixelSize: 11
+                                    font.bold: true
+                                    color: sshCheckCard.isIssue ? "#FCD34D" : (sshCheckCard.checkState === "ok" ? "#6EE7B7" : "#93C5FD")
+                                    text: {
+                                        if (!root.profilesVm) return "";
+                                        var host = root.profilesVm.activeProfileHost;
+                                        if (sshCheckCard.checkState === "checking") return "⏳ Verifica della chiave SSH su " + host + "…";
+                                        if (sshCheckCard.checkState === "ok") {
+                                            var acc = root.profilesVm.sshCheckAccount;
+                                            return "✔ Chiave SSH accettata da " + host + (acc.length > 0 ? " (account @" + acc + ")" : "");
+                                        }
+                                        var g = root.profilesVm.troubleshootingGuide(sshCheckCard.checkState, "");
+                                        return "⚠️ " + g.title + (root.profilesVm.sshAutoSwitchedToHttps ? " — per ora uso HTTPS" : "");
+                                    }
+                                }
+
+                                GuideButton {
+                                    visible: sshCheckCard.isIssue
+                                    text: root.sshGuideExpanded ? "Nascondi ▴" : "Come risolvere ▾"
+                                    accent: "#FBBF24"
+                                    onClicked: root.sshGuideExpanded = !root.sshGuideExpanded
+                                }
+
+                                GuideButton {
+                                    visible: sshCheckCard.checkState === "ok"
+                                    text: "Verifica di nuovo"
+                                    accent: "#34D399"
+                                    onClicked: root.profilesVm.recheckSsh()
+                                }
+                            }
+
+                            Flickable {
+                                id: sshGuideFlick
+                                visible: sshCheckCard.isIssue && root.sshGuideExpanded
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: Math.min(sshGuide.implicitHeight, 260)
+                                clip: true
+                                contentWidth: width
+                                contentHeight: sshGuide.implicitHeight
+                                boundsBehavior: Flickable.StopAtBounds
+                                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                                RemoteAccessGuide {
+                                    id: sshGuide
+                                    width: sshGuideFlick.width - 10
+                                    profilesVm: root.profilesVm
+                                    actionHandler: root.runGuideAction
+                                    guide: (root.profilesVm && sshCheckCard.isIssue)
+                                        ? root.profilesVm.troubleshootingGuide(sshCheckCard.checkState, "") : ({})
+                                    logText: root.profilesVm ? root.profilesVm.sshCheckOutput : ""
                                 }
                             }
                         }
@@ -1922,12 +2291,13 @@ Dialog {
                                 }
                             }
 
-                            Text {
+                            SelectableText {
                                 text: root.effectiveHubVm ? root.effectiveHubVm.cloneStatusMessage : ""
                                 color: "#94A3B8"
                                 font.pixelSize: 11
                                 font.family: "monospace"
-                                elide: Text.ElideRight
+                                wrapMode: TextEdit.NoWrap
+                                clip: true
                                 Layout.fillWidth: true
                             }
                         }
@@ -1935,22 +2305,72 @@ Dialog {
 
                     // Error Banner
                     Rectangle {
+                        id: errorBanner
                         Layout.fillWidth: true
                         visible: Boolean(root.effectiveHubVm && root.effectiveHubVm.lastError.length > 0 && !root.effectiveHubVm.isCloning)
                         color: "#450A0A"
                         radius: 6
                         border.color: "#DC2626"
                         border.width: 1
-                        implicitHeight: errorText.implicitHeight + 16
+                        implicitHeight: errorCol.implicitHeight + 16
 
-                        Text {
-                            id: errorText
+                        readonly property string issue: root.effectiveHubVm ? root.effectiveHubVm.cloneIssue : ""
+                        readonly property string rawLog: root.effectiveHubVm ? root.effectiveHubVm.cloneErrorLog : ""
+
+                        ColumnLayout {
+                            id: errorCol
                             anchors.fill: parent
                             anchors.margins: 8
-                            text: root.effectiveHubVm ? root.effectiveHubVm.lastError : ""
-                            color: "#FECACA"
-                            font.pixelSize: 12
-                            wrapMode: Text.Wrap
+                            spacing: 8
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                // Selectable: the message can be copied like any log.
+                                SelectableText {
+                                    id: errorText
+                                    Layout.fillWidth: true
+                                    text: root.effectiveHubVm ? root.effectiveHubVm.lastError : ""
+                                    color: "#FECACA"
+                                    font.pixelSize: 12
+                                    font.bold: errorBanner.issue.length > 0
+                                }
+
+                                GuideButton {
+                                    visible: errorBanner.issue.length === 0
+                                    Layout.alignment: Qt.AlignTop
+                                    text: "Copia"
+                                    accent: "#FCA5A5"
+                                    onClicked: if (root.profilesVm) root.profilesVm.copyToClipboard(
+                                        errorBanner.rawLog.length > 0 ? errorBanner.rawLog : errorText.text)
+                                }
+                            }
+
+                            // Recognised problem: guided fix + copyable git log
+                            Flickable {
+                                id: cloneGuideFlick
+                                visible: errorBanner.issue.length > 0
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: Math.min(cloneGuide.implicitHeight, 280)
+                                clip: true
+                                contentWidth: width
+                                contentHeight: cloneGuide.implicitHeight
+                                boundsBehavior: Flickable.StopAtBounds
+                                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                                RemoteAccessGuide {
+                                    id: cloneGuide
+                                    width: cloneGuideFlick.width - 10
+                                    profilesVm: root.profilesVm
+                                    actionHandler: root.runGuideAction
+                                    host: root.effectiveHubVm ? root.effectiveHubVm.cloneIssueHost : ""
+                                    guide: (root.profilesVm && errorBanner.issue.length > 0)
+                                        ? root.profilesVm.troubleshootingGuide(errorBanner.issue, host) : ({})
+                                    logText: errorBanner.rawLog
+                                    showLog: true
+                                }
+                            }
                         }
                     }
                 }
