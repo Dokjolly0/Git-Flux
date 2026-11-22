@@ -172,3 +172,137 @@ TEST_CASE (
         }
     }
 }
+
+#include <algorithm>
+#include <fstream>
+
+namespace
+{
+    const gf::core::git::bo::GitProviderProfile* findById(
+        const std::vector<gf::core::git::bo::GitProviderProfile>& profiles, const std::string& id)
+    {
+        const auto it = std::find_if(profiles.begin(), profiles.end(), [&](const auto& p) { return p.id == id; });
+        return it == profiles.end() ? nullptr : &*it;
+    }
+} // namespace
+
+TEST_CASE (
+"SystemCredentialDetector: ssh config Port, multiple Host aliases and patterns"
+,
+"[git][credentials]"
+)
+ {
+    const auto home = std::filesystem::temp_directory_path() / "gf-ssh-config-parse";
+    std::filesystem::remove_all(home);
+    std::filesystem::create_directories(home / ".ssh");
+    { std::ofstream(home / ".ssh" / "id_ed25519_gitea") << "dummy"; }
+    {
+        std::ofstream cfg(home / ".ssh" / "config");
+        cfg << "Host *\n"
+               "    ServerAliveInterval 60\n"
+               "\n"
+               "# Gitea in Docker: SSH on 2222, two aliases on one line\n"
+               "Host mygitea git.example.dev\n"
+               "    HostName git.example.dev\n"
+               "    User git\n"
+               "    Port 2222\n"
+               "    Port 2200\n" // ssh keeps the first value
+               "    IdentityFile ~/.ssh/id_ed25519_gitea\n"
+               "\n"
+               "# Only the second alias looks like a forge\n"
+               "Host box forgejo-box\n"
+               "    HostName 10.0.0.5\n"
+               "    Port=3022\n"
+               "\n"
+               "Host gh-work\n"
+               "    HostName github.com\n"
+               "    IdentityFile ~/.ssh/id_ed25519_gitea\n"
+               "\n"
+               "Host raspberry\n"
+               "    HostName 192.168.1.30\n"
+               "    User pi\n";
+    }
+
+    gf::infra::git::credentials::SystemCredentialDetector detector(home);
+    const auto profiles = detector.detectProfiles();
+
+    SECTION("first alias names the profile, Port and key are read") {
+        const auto* p = findById(profiles, "custom_mygitea");
+        REQUIRE(p != nullptr);
+        CHECK(p->host == "git.example.dev");
+        CHECK(p->sshHostAlias == "mygitea");
+        CHECK(p->sshPort == 2222);
+        CHECK(p->hasSshKey);
+        CHECK(p->customApiUrl == "https://git.example.dev"); // SSH port never leaks into the API URL
+        CHECK(findById(profiles, "custom_git.example.dev") == nullptr); // one profile per block
+    }
+
+    SECTION("any alias of the block can mark it as a git host, 'Key=Value' works") {
+        const auto* p = findById(profiles, "custom_box");
+        REQUIRE(p != nullptr);
+        CHECK(p->host == "10.0.0.5");
+        CHECK(p->sshPort == 3022);
+        CHECK_FALSE(p->hasSshKey);
+    }
+
+    SECTION("an alias for a built-in provider augments it") {
+        const auto* gh = findById(profiles, "github");
+        REQUIRE(gh != nullptr);
+        CHECK(gh->sshHostAlias == "gh-work");
+        CHECK(gh->hasSshKey);
+        CHECK(findById(profiles, "custom_gh-work") == nullptr);
+    }
+
+    SECTION("patterns and non-git hosts are ignored") {
+        CHECK(findById(profiles, "custom_*") == nullptr);
+        CHECK(findById(profiles, "custom_raspberry") == nullptr);
+    }
+
+    std::error_code ec;
+    std::filesystem::remove_all(home, ec);
+}
+
+TEST_CASE (
+"applySshConfigToCloneUrl adapts clone URLs to the ssh config block"
+,
+"[git][credentials]"
+)
+ {
+    using gf::core::git::bo::applySshConfigToCloneUrl;
+    gf::core::git::bo::GitProviderProfile p;
+    p.host = "git.example.dev";
+
+    SECTION("no alias and no port: unchanged") {
+        CHECK(applySshConfigToCloneUrl("git@git.example.dev:a/b.git", p) == "git@git.example.dev:a/b.git");
+    }
+
+    SECTION("port only: added when the server advertises none") {
+        p.sshHostAlias = "git.example.dev"; // alias equal to the host isn't an alias
+        p.sshPort = 2222;
+        CHECK(applySshConfigToCloneUrl("git@git.example.dev:a/b.git", p) == "ssh://git@git.example.dev:2222/a/b.git");
+        CHECK(applySshConfigToCloneUrl("ssh://git@git.example.dev/a/b.git", p) ==
+            "ssh://git@git.example.dev:2222/a/b.git");
+        CHECK(applySshConfigToCloneUrl("ssh://git@git.example.dev:2200/a/b.git", p) ==
+            "ssh://git@git.example.dev:2200/a/b.git");
+    }
+
+    SECTION("alias: the block supplies HostName, Port and key") {
+        p.sshHostAlias = "mygitea";
+        p.sshPort = 2222;
+        CHECK(applySshConfigToCloneUrl("git@git.example.dev:a/b.git", p) == "git@mygitea:a/b.git");
+        CHECK(applySshConfigToCloneUrl("ssh://git@Git.Example.Dev:2222/a/b.git", p) == "git@mygitea:a/b.git");
+    }
+
+    SECTION("alias without Port keeps the server's port") {
+        p.sshHostAlias = "mygitea";
+        CHECK(applySshConfigToCloneUrl("ssh://git@git.example.dev:2222/a/b.git", p) == "ssh://git@mygitea:2222/a/b.git");
+    }
+
+    SECTION("other hosts and non-SSH URLs are untouched") {
+        p.sshHostAlias = "mygitea";
+        p.sshPort = 2222;
+        CHECK(applySshConfigToCloneUrl("https://git.example.dev/a/b.git", p) == "https://git.example.dev/a/b.git");
+        CHECK(applySshConfigToCloneUrl("git@other.host:a/b.git", p) == "git@other.host:a/b.git");
+        CHECK(applySshConfigToCloneUrl("", p).empty());
+    }
+}

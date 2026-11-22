@@ -76,7 +76,16 @@ namespace gf::desktop::viewmodels
                         {
                             m_isFetching = false;
                             m_fetchError.clear();
-                            m_repoModel->setRepositories(repos);
+                            // Adapt SSH clone URLs to ~/.ssh/config (Host alias, Port)
+                            auto adapted = repos;
+                            if (const auto* p = findProfile(profileId))
+                            {
+                                for (auto& r : adapted)
+                                {
+                                    r.sshUrl = core::git::bo::applySshConfigToCloneUrl(r.sshUrl, *p);
+                                }
+                            }
+                            m_repoModel->setRepositories(adapted);
                             emit isFetchingChanged();
                             emit fetchErrorChanged();
                         }
@@ -195,6 +204,11 @@ namespace gf::desktop::viewmodels
                 {
                     it->hasSshKey = true;
                     it->sshKeyPath = det.sshKeyPath;
+                }
+                if (it->sshHostAlias.empty() && !det.sshHostAlias.empty())
+                {
+                    it->sshHostAlias = det.sshHostAlias;
+                    it->sshPort = det.sshPort;
                 }
                 if (it->username.empty() && !det.username.empty())
                 {
@@ -624,21 +638,32 @@ namespace gf::desktop::viewmodels
         {
             p.hasSshKey = existing->hasSshKey;
             p.sshKeyPath = existing->sshKeyPath;
+            p.sshHostAlias = existing->sshHostAlias;
+            p.sshPort = existing->sshPort;
             p.createdAtMs = existing->createdAtMs;
             if (p.username.empty()) p.username = existing->username;
         }
-        if (!p.hasSshKey)
+        if (!p.hasSshKey || p.sshHostAlias.empty())
         {
+            // Pick up the ~/.ssh/config block of this host, if any (key, Host alias, Port).
             const auto det = m_detector.detectProfiles();
             const auto d = std::find_if(det.begin(), det.end(), [&](const auto& x)
             {
-                return x.hasSshKey && equalsIgnoreCase(x.host, p.host);
+                return (x.hasSshKey || !x.sshHostAlias.empty()) && equalsIgnoreCase(x.host, p.host);
             });
             if (d != det.end())
             {
-                p.hasSshKey = true;
-                p.sshKeyPath = d->sshKeyPath;
-                p.preferredProtocol = "ssh";
+                if (d->hasSshKey && !p.hasSshKey)
+                {
+                    p.hasSshKey = true;
+                    p.sshKeyPath = d->sshKeyPath;
+                    p.preferredProtocol = "ssh";
+                }
+                if (p.sshHostAlias.empty())
+                {
+                    p.sshHostAlias = d->sshHostAlias;
+                    p.sshPort = d->sshPort;
+                }
                 if (p.username.empty()) p.username = d->username;
             }
         }

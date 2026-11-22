@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <cstdlib>
 #include <array>
+#include <cctype>
+#include <string_view>
 
 namespace gf::infra::git::credentials
 {
@@ -17,6 +19,13 @@ namespace gf::infra::git::credentials
             if (first == std::string::npos) return "";
             const auto last = str.find_last_not_of(" \t\r\n");
             return str.substr(first, (last - first + 1));
+        }
+
+        std::string toLower(std::string str)
+        {
+            std::transform(str.begin(), str.end(), str.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            return str;
         }
 
         std::filesystem::path getSystemHomeDir()
@@ -110,86 +119,96 @@ namespace gf::infra::git::credentials
 
         std::ifstream file(sshConfigPath);
         std::string line;
-        std::string currentHost;
+        // Concrete aliases of the current "Host" block (patterns like "*" or "!foo" are dropped).
+        std::vector<std::string> currentAliases;
         std::string currentHostName;
         std::string currentIdentityFile;
         std::string currentUser;
-        int currentPort = 22;
+        int currentPort = 0; // 0 = not set (ssh default 22)
 
         auto finalizeBlock = [&]()
         {
-            if (currentHost.empty() || currentHost == "*")
+            if (currentAliases.empty())
             {
                 return;
             }
 
-            const auto hostToUse = !currentHostName.empty() ? currentHostName : currentHost;
+            const auto& primaryAlias = currentAliases.front();
+            const auto hostToUse = !currentHostName.empty() ? currentHostName : primaryAlias;
             const auto keyPath = expandTilde(currentIdentityFile);
             const bool keyExists = !currentIdentityFile.empty() && std::filesystem::exists(keyPath, ec);
 
             // Check if this host is actually a Git host (filter out general VPS/SSH boxes like remote-viewer, alex-violatto)
-            std::string lowerHost = currentHost;
-            std::transform(lowerHost.begin(), lowerHost.end(), lowerHost.begin(), ::tolower);
-            std::string lowerHostName = currentHostName;
-            std::transform(lowerHostName.begin(), lowerHostName.end(), lowerHostName.begin(), ::tolower);
-            std::string lowerUser = currentUser;
-            std::transform(lowerUser.begin(), lowerUser.end(), lowerUser.begin(), ::tolower);
-            std::string lowerIdentity = currentIdentityFile;
-            std::transform(lowerIdentity.begin(), lowerIdentity.end(), lowerIdentity.begin(), ::tolower);
+            const auto lowerHostName = toLower(currentHostName);
+            const auto lowerUser = toLower(currentUser);
+            const auto lowerIdentity = toLower(currentIdentityFile);
+
+            constexpr std::array<std::string_view, 6> kForgeNames = {
+                "github", "gitlab", "bitbucket", "gitea", "forgejo", "codeberg"
+            };
+            auto looksLikeGitHost = [&](const std::string& name)
+            {
+                if (name.empty()) return false;
+                for (const auto forge : kForgeNames)
+                {
+                    if (name.find(forge) != std::string::npos) return true;
+                }
+                return name.starts_with("git.") || name.find(".git.") != std::string::npos;
+            };
 
             bool isGitHost = (lowerUser == "git") ||
-                (lowerHost.find("github") != std::string::npos) ||
-                (lowerHost.find("gitlab") != std::string::npos) ||
-                (lowerHost.find("bitbucket") != std::string::npos) ||
-                (lowerHost.find("gitea") != std::string::npos) ||
-                (lowerHost.find("forgejo") != std::string::npos) ||
-                (lowerHost.find("codeberg") != std::string::npos) ||
-                (lowerHostName.find("github") != std::string::npos) ||
-                (lowerHostName.find("gitlab") != std::string::npos) ||
-                (lowerHostName.find("bitbucket") != std::string::npos) ||
-                (lowerHostName.find("gitea") != std::string::npos) ||
-                (lowerHostName.find("forgejo") != std::string::npos) ||
-                (lowerHostName.find("codeberg") != std::string::npos) ||
-                (lowerHost.starts_with("git.") || lowerHostName.starts_with("git.")) ||
-                (lowerHost.find(".git.") != std::string::npos || lowerHostName.find(".git.") != std::string::npos) ||
+                looksLikeGitHost(lowerHostName) ||
                 (lowerIdentity.find("git") != std::string::npos);
+            for (const auto& alias : currentAliases)
+            {
+                isGitHost = isGitHost || looksLikeGitHost(toLower(alias));
+            }
 
             if (!isGitHost)
             {
                 return;
             }
 
-            // Find if profile for host already exists
+            auto applySshSettings = [&](core::git::bo::GitProviderProfile& p)
+            {
+                if (keyExists)
+                {
+                    p.hasSshKey = true;
+                    p.sshKeyPath = keyPath.string();
+                    p.preferredProtocol = "ssh";
+                }
+                // First block wins (ssh itself applies the first match), so don't override.
+                if (p.sshHostAlias.empty())
+                {
+                    p.sshHostAlias = primaryAlias;
+                    p.sshPort = currentPort;
+                }
+            };
+
+            // Find if profile for host already exists (built-in provider or an earlier block)
             auto it = std::find_if(profiles.begin(), profiles.end(), [&](const auto& p)
             {
-                return p.host == hostToUse || p.host == currentHost;
+                if (p.host == hostToUse) return true;
+                return std::find(currentAliases.begin(), currentAliases.end(), p.host) != currentAliases.end();
             });
 
             if (it != profiles.end())
             {
-                if (keyExists)
-                {
-                    it->hasSshKey = true;
-                    it->sshKeyPath = keyPath.string();
-                    it->preferredProtocol = "ssh";
-                }
+                applySshSettings(*it);
             }
             else
             {
                 // New custom host profile (e.g. git.alexviolatto.dev)
                 core::git::bo::GitProviderProfile custom;
-                custom.id = "custom_" + currentHost;
+                custom.id = "custom_" + primaryAlias;
                 custom.providerType = core::git::bo::GitProviderType::Custom;
-                custom.displayName = currentHost;
+                custom.displayName = primaryAlias;
                 custom.host = hostToUse;
                 custom.username = currentUser;
                 custom.preferredProtocol = "ssh";
-                if (keyExists)
-                {
-                    custom.hasSshKey = true;
-                    custom.sshKeyPath = keyPath.string();
-                }
+                // The SSH port never applies to the web API: always https://<host>
                 custom.customApiUrl = "https://" + hostToUse;
+                applySshSettings(custom);
                 profiles.push_back(custom);
             }
         };
@@ -202,38 +221,74 @@ namespace gf::infra::git::credentials
                 continue;
             }
 
+            // ssh_config also accepts "Key=Value" and "Key = Value"
+            if (const auto eq = line.find('='); eq != std::string::npos)
+            {
+                const auto firstSpace = line.find_first_of(" \t");
+                if (firstSpace == std::string::npos || eq < firstSpace ||
+                    line.find_first_not_of(" \t", firstSpace) == eq)
+                {
+                    line[eq] = ' ';
+                }
+            }
+
             std::istringstream iss(line);
             std::string key;
             iss >> key;
-            std::transform(key.begin(), key.end(), key.begin(), ::tolower);
+            key = toLower(key);
 
             if (key == "host")
             {
                 finalizeBlock();
-                currentHost = "";
+                currentAliases.clear();
                 currentHostName = "";
                 currentIdentityFile = "";
                 currentUser = "";
-                currentPort = 22;
-                iss >> currentHost;
+                currentPort = 0;
+
+                // "Host a b c": every non-pattern token is an alias of the same block
+                std::string alias;
+                while (iss >> alias)
+                {
+                    if (alias.find_first_of("*?!") != std::string::npos) continue;
+                    currentAliases.push_back(alias);
+                }
             }
-            else if (key == "hostname")
+            else if (key == "match")
+            {
+                // A Match block isn't tied to a concrete host name: ignore its settings.
+                finalizeBlock();
+                currentAliases.clear();
+                currentHostName = "";
+                currentIdentityFile = "";
+                currentUser = "";
+                currentPort = 0;
+            }
+            else if (currentHostName.empty() && key == "hostname")
             {
                 iss >> currentHostName;
             }
-            else if (key == "identityfile")
+            else if (currentIdentityFile.empty() && key == "identityfile")
             {
                 std::string path;
                 iss >> path;
+                if (path.size() >= 2 && path.front() == '"' && path.back() == '"')
+                {
+                    path = path.substr(1, path.size() - 2);
+                }
                 currentIdentityFile = path;
             }
-            else if (key == "user")
+            else if (currentUser.empty() && key == "user")
             {
                 iss >> currentUser;
             }
-            else if (key == "port")
+            else if (currentPort == 0 && key == "port")
             {
-                iss >> currentPort;
+                int port = 0;
+                if (iss >> port && port > 0 && port <= 65535)
+                {
+                    currentPort = port;
+                }
             }
         }
         finalizeBlock();
