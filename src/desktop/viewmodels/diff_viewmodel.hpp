@@ -12,6 +12,7 @@
 
 #include "core/modules/syntax/syntax_highlighter.hpp"
 #include "core/modules/git/ports/repository_git_ops.hpp"
+#include "desktop/services/diff_file_inspector.hpp"
 #include "desktop/services/serial_git_executor.hpp"
 #include "desktop/viewmodels/diff_line_list_model.hpp"
 
@@ -68,6 +69,46 @@ namespace gf::desktop
             bool
  showMarkdownRichDiff READ showMarkdownRichDiff WRITE setShowMarkdownRichDiff NOTIFY showMarkdownRichDiffChanged)
 
+        // Rich Binary / Image / Media / Archive / Font / Hex Preview support
+        Q_PROPERTY(bool hasRichPreview READ hasRichPreview NOTIFY diffLoaded)
+        Q_PROPERTY(bool isSvgPreviewable READ isSvgPreviewable NOTIFY diffLoaded)
+        Q_PROPERTY(bool isRichPreviewRendered READ isRichPreviewRendered WRITE setRichPreviewRendered NOTIFY richPreviewRenderedChanged)
+        Q_PROPERTY(QString fileKind READ fileKind NOTIFY diffLoaded)
+        Q_PROPERTY(QString formatBadge READ formatBadge NOTIFY diffLoaded)
+        Q_PROPERTY(QString formatDescription READ formatDescription NOTIFY diffLoaded)
+        Q_PROPERTY(bool isImage READ isImage NOTIFY diffLoaded)
+        Q_PROPERTY(bool hasVisualPreview READ hasVisualPreview NOTIFY diffLoaded)
+        Q_PROPERTY(QString oldImageUrl READ oldImageUrl NOTIFY diffLoaded)
+        Q_PROPERTY(QString newImageUrl READ newImageUrl NOTIFY diffLoaded)
+        Q_PROPERTY(QString diffImageUrl READ diffImageUrl NOTIFY diffLoaded)
+        Q_PROPERTY(int oldImageWidth READ oldImageWidth NOTIFY diffLoaded)
+        Q_PROPERTY(int oldImageHeight READ oldImageHeight NOTIFY diffLoaded)
+        Q_PROPERTY(int newImageWidth READ newImageWidth NOTIFY diffLoaded)
+        Q_PROPERTY(int newImageHeight READ newImageHeight NOTIFY diffLoaded)
+        Q_PROPERTY(double imageDiffPercent READ imageDiffPercent NOTIFY diffLoaded)
+        Q_PROPERTY(bool hasOldBlob READ hasOldBlob NOTIFY diffLoaded)
+        Q_PROPERTY(bool hasNewBlob READ hasNewBlob NOTIFY diffLoaded)
+        Q_PROPERTY(qint64 oldFileSize READ oldFileSize NOTIFY diffLoaded)
+        Q_PROPERTY(qint64 newFileSize READ newFileSize NOTIFY diffLoaded)
+        Q_PROPERTY(QString oldFileSizeText READ oldFileSizeText NOTIFY diffLoaded)
+        Q_PROPERTY(QString newFileSizeText READ newFileSizeText NOTIFY diffLoaded)
+        Q_PROPERTY(QString fileSizeDeltaText READ fileSizeDeltaText NOTIFY diffLoaded)
+        Q_PROPERTY(QString oldSha256 READ oldSha256 NOTIFY diffLoaded)
+        Q_PROPERTY(QString newSha256 READ newSha256 NOTIFY diffLoaded)
+        Q_PROPERTY(QString oldFontFamily READ oldFontFamily NOTIFY diffLoaded)
+        Q_PROPERTY(QString newFontFamily READ newFontFamily NOTIFY diffLoaded)
+        Q_PROPERTY(QVariantList metadataRows READ metadataRows NOTIFY diffLoaded)
+        Q_PROPERTY(QVariantList archiveEntries READ archiveEntries NOTIFY diffLoaded)
+        Q_PROPERTY(int archiveAddedCount READ archiveAddedCount NOTIFY diffLoaded)
+        Q_PROPERTY(int archiveRemovedCount READ archiveRemovedCount NOTIFY diffLoaded)
+        Q_PROPERTY(int archiveModifiedCount READ archiveModifiedCount NOTIFY diffLoaded)
+        Q_PROPERTY(int archiveUnchangedCount READ archiveUnchangedCount NOTIFY diffLoaded)
+        Q_PROPERTY(QVariantList hexRows READ hexRows NOTIFY diffLoaded)
+        Q_PROPERTY(bool hexTruncated READ hexTruncated NOTIFY diffLoaded)
+        Q_PROPERTY(int hexChangedRows READ hexChangedRows NOTIFY diffLoaded)
+        Q_PROPERTY(QString previewNotice READ previewNotice NOTIFY diffLoaded)
+        Q_PROPERTY(bool canRevealInFileManager READ canRevealInFileManager NOTIFY diffLoaded)
+
     public:
         explicit DiffViewModel(gf::git::bl::GitDiffService& diffService, QObject* parent = nullptr);
         ~DiffViewModel() override;
@@ -106,6 +147,49 @@ namespace gf::desktop
         [[nodiscard]] QString markdownNotice() const noexcept { return m_markdownNotice; }
         [[nodiscard]] bool showMarkdownRichDiff() const noexcept { return m_showMarkdownRichDiff; }
 
+        [[nodiscard]] bool hasRichPreview() const noexcept { return m_hasRichPreview; }
+        [[nodiscard]] bool isSvgPreviewable() const noexcept { return m_isSvgPreviewable; }
+        [[nodiscard]] bool isRichPreviewRendered() const noexcept
+        {
+            if (m_isBinary) return true;
+            return m_isSvgPreviewable && m_preferRichPreview;
+        }
+        [[nodiscard]] QString fileKind() const noexcept { return m_fileKind; }
+        [[nodiscard]] QString formatBadge() const noexcept { return m_formatBadge; }
+        [[nodiscard]] QString formatDescription() const noexcept { return m_formatDescription; }
+        [[nodiscard]] bool isImage() const noexcept { return m_isImage; }
+        [[nodiscard]] bool hasVisualPreview() const noexcept { return m_hasVisualPreview; }
+        [[nodiscard]] QString oldImageUrl() const noexcept { return m_oldImageUrl; }
+        [[nodiscard]] QString newImageUrl() const noexcept { return m_newImageUrl; }
+        [[nodiscard]] QString diffImageUrl() const noexcept { return m_diffImageUrl; }
+        [[nodiscard]] int oldImageWidth() const noexcept { return m_oldImageWidth; }
+        [[nodiscard]] int oldImageHeight() const noexcept { return m_oldImageHeight; }
+        [[nodiscard]] int newImageWidth() const noexcept { return m_newImageWidth; }
+        [[nodiscard]] int newImageHeight() const noexcept { return m_newImageHeight; }
+        [[nodiscard]] double imageDiffPercent() const noexcept { return m_imageDiffPercent; }
+        [[nodiscard]] bool hasOldBlob() const noexcept { return m_hasOldBlob; }
+        [[nodiscard]] bool hasNewBlob() const noexcept { return m_hasNewBlob; }
+        [[nodiscard]] qint64 oldFileSize() const noexcept { return m_oldFileSize; }
+        [[nodiscard]] qint64 newFileSize() const noexcept { return m_newFileSize; }
+        [[nodiscard]] QString oldFileSizeText() const noexcept { return m_oldFileSizeText; }
+        [[nodiscard]] QString newFileSizeText() const noexcept { return m_newFileSizeText; }
+        [[nodiscard]] QString fileSizeDeltaText() const noexcept { return m_fileSizeDeltaText; }
+        [[nodiscard]] QString oldSha256() const noexcept { return m_oldSha256; }
+        [[nodiscard]] QString newSha256() const noexcept { return m_newSha256; }
+        [[nodiscard]] QString oldFontFamily() const noexcept { return m_oldFontFamily; }
+        [[nodiscard]] QString newFontFamily() const noexcept { return m_newFontFamily; }
+        [[nodiscard]] QVariantList metadataRows() const noexcept { return m_metadataRows; }
+        [[nodiscard]] QVariantList archiveEntries() const noexcept { return m_archiveEntries; }
+        [[nodiscard]] int archiveAddedCount() const noexcept { return m_archiveAddedCount; }
+        [[nodiscard]] int archiveRemovedCount() const noexcept { return m_archiveRemovedCount; }
+        [[nodiscard]] int archiveModifiedCount() const noexcept { return m_archiveModifiedCount; }
+        [[nodiscard]] int archiveUnchangedCount() const noexcept { return m_archiveUnchangedCount; }
+        [[nodiscard]] QVariantList hexRows() const noexcept { return m_hexRows; }
+        [[nodiscard]] bool hexTruncated() const noexcept { return m_hexTruncated; }
+        [[nodiscard]] int hexChangedRows() const noexcept { return m_hexChangedRows; }
+        [[nodiscard]] QString previewNotice() const noexcept { return m_previewNotice; }
+        [[nodiscard]] bool canRevealInFileManager() const noexcept { return m_canRevealInFileManager; }
+
     Q_INVOKABLE void setViewMode(const QString& mode);
     Q_INVOKABLE void setContextLines(int lines);
     Q_INVOKABLE void expandContext(int delta = 15);
@@ -113,6 +197,10 @@ namespace gf::desktop
     Q_INVOKABLE void setMarkdownRendered(bool rendered);
     Q_INVOKABLE void toggleMarkdownRendered();
     Q_INVOKABLE void setShowMarkdownRichDiff(bool show);
+    Q_INVOKABLE void setRichPreviewRendered(bool rendered);
+    Q_INVOKABLE void toggleRichPreviewRendered();
+    Q_INVOKABLE void openPreviewExternally(const QString& side = QStringLiteral("new"));
+    Q_INVOKABLE void revealInFileManager() const;
     Q_INVOKABLE bool reloadCurrentDiff();
     Q_INVOKABLE void copyToClipboard(const QString& text) const;
     Q_INVOKABLE QString extractSelectedText(const QString& target,
@@ -140,6 +228,7 @@ namespace gf::desktop
         void markdownRenderedChanged();
         void markdownDocumentChanged();
         void showMarkdownRichDiffChanged();
+        void richPreviewRenderedChanged();
         void isLoadingChanged();
         void loadFailed(const QString& errorMessage);
 
@@ -172,8 +261,11 @@ namespace gf::desktop
         [[nodiscard]] bool isShowingDiff(const QString& repoPath, const QString& filePath, const QString& revision,
                                          const QString& scope, int contextLines) const;
         void setLoading(bool loading);
+        void releaseTemporaryFonts();
+        void clearRichPreviewState();
 
         gf::git::bl::GitDiffService& m_diffService;
+        std::uint64_t m_instanceId = 0;
         DiffLineListModel m_linesModel;
 
         QString m_filePath;
@@ -212,6 +304,48 @@ namespace gf::desktop
         QVariantList m_markdownToc;
         QString m_markdownSource;
         QString m_markdownNotice;
+
+        // Rich preview state
+        bool m_hasRichPreview = false;
+        bool m_isSvgPreviewable = false;
+        bool m_preferRichPreview = false;
+        QString m_fileKind;
+        QString m_formatBadge;
+        QString m_formatDescription;
+        bool m_isImage = false;
+        bool m_hasVisualPreview = false;
+        QString m_oldImageUrl;
+        QString m_newImageUrl;
+        QString m_diffImageUrl;
+        int m_oldImageWidth = 0;
+        int m_oldImageHeight = 0;
+        int m_newImageWidth = 0;
+        int m_newImageHeight = 0;
+        double m_imageDiffPercent = 0.0;
+        bool m_hasOldBlob = false;
+        bool m_hasNewBlob = false;
+        qint64 m_oldFileSize = 0;
+        qint64 m_newFileSize = 0;
+        QString m_oldFileSizeText;
+        QString m_newFileSizeText;
+        QString m_fileSizeDeltaText;
+        QString m_oldSha256;
+        QString m_newSha256;
+        QString m_oldFontFamily;
+        QString m_newFontFamily;
+        int m_oldFontId = -1;
+        int m_newFontId = -1;
+        QVariantList m_metadataRows;
+        QVariantList m_archiveEntries;
+        int m_archiveAddedCount = 0;
+        int m_archiveRemovedCount = 0;
+        int m_archiveModifiedCount = 0;
+        int m_archiveUnchangedCount = 0;
+        QVariantList m_hexRows;
+        bool m_hexTruncated = false;
+        int m_hexChangedRows = 0;
+        QString m_previewNotice;
+        bool m_canRevealInFileManager = false;
 
         bool m_isLoading = false;
         LatestRequest m_diffRequest;

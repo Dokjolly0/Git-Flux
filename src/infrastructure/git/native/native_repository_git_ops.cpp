@@ -4592,4 +4592,165 @@ namespace gf::infra::git
         stripUtf8Bom(content);
         return content;
     }
+
+    std::expected<gf::git::bo::FileBlob, gf::git::ports::GitOpsError>
+    NativeRepositoryGitOps::getFileBlob(const std::filesystem::path& repoPath,
+                                        const std::string& revision,
+                                        const std::string& filePath,
+                                        std::size_t maxBytes)
+    {
+        if (filePath.empty())
+        {
+            return gf::git::bo::FileBlob{};
+        }
+
+        if (revision.empty() || revision == "WORKTREE")
+        {
+            const auto fullPath = repoPath / gf::core::utf8ToPath(filePath);
+            std::error_code ec;
+            if (!std::filesystem::exists(fullPath, ec) || !std::filesystem::is_regular_file(fullPath, ec))
+            {
+                return std::unexpected(gf::git::ports::GitOpsError{
+                    .kind = gf::git::ports::GitOpsError::Kind::PathNotFound,
+                    .exitCode = -1,
+                    .message = "File non trovato nella working tree: " + filePath,
+                    .command = "read file"
+                });
+            }
+
+            const std::uint64_t fileSize = std::filesystem::file_size(fullPath, ec);
+            if (ec)
+            {
+                return std::unexpected(gf::git::ports::GitOpsError{
+                    .kind = gf::git::ports::GitOpsError::Kind::StorageError,
+                    .exitCode = -1,
+                    .message = "Impossibile determinare la dimensione del file: " + filePath,
+                    .command = "read file"
+                });
+            }
+
+            std::ifstream ifs(fullPath, std::ios::binary);
+            if (!ifs)
+            {
+                return std::unexpected(gf::git::ports::GitOpsError{
+                    .kind = gf::git::ports::GitOpsError::Kind::StorageError,
+                    .exitCode = -1,
+                    .message = "Impossibile leggere il file: " + filePath,
+                    .command = "read file"
+                });
+            }
+
+            gf::git::bo::FileBlob blob;
+            blob.totalSize = fileSize;
+            const std::size_t toRead = static_cast<std::size_t>(
+                std::min<std::uint64_t>(fileSize, static_cast<std::uint64_t>(maxBytes)));
+            blob.truncated = fileSize > static_cast<std::uint64_t>(maxBytes);
+            if (toRead > 0)
+            {
+                blob.bytes.resize(toRead);
+                ifs.read(blob.bytes.data(), static_cast<std::streamsize>(toRead));
+                const auto actuallyRead = static_cast<std::size_t>(ifs.gcount());
+                blob.bytes.resize(actuallyRead);
+            }
+            return blob;
+        }
+
+        std::string normPath = filePath;
+        std::replace(normPath.begin(), normPath.end(), '\\', '/');
+        const std::string targetRev = (revision == "INDEX") ? std::string(":0") : revision;
+        const std::string spec = targetRev + ":" + normPath;
+
+        // First probe exact blob size with `git cat-file -s` so oversized objects never OOM.
+        gf::git::bo::GitCommand sizeCmd{
+            .args = {"cat-file", "-s", spec},
+            .workingDirectory = repoPath,
+            .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
+            .timeout = std::chrono::milliseconds{10'000}
+        };
+        auto sizeRes = m_executor.execute(sizeCmd);
+        if (!sizeRes)
+        {
+            return std::unexpected(gf::git::ports::GitOpsError{
+                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+                .exitCode = -1,
+                .message = "Impossibile eseguire git cat-file: " + sizeRes.error().message,
+                .command = "git cat-file"
+            });
+        }
+        if (sizeRes->exitCode != 0)
+        {
+            const std::string& err = sizeRes->stderrBytes;
+            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+            if (err.find("does not exist") != std::string::npos ||
+                err.find("non esiste") != std::string::npos ||
+                err.find("exists on disk") != std::string::npos ||
+                err.find("Not a valid object name") != std::string::npos ||
+                err.find("Invalid object name") != std::string::npos ||
+                err.find("Path '") != std::string::npos)
+            {
+                kind = gf::git::ports::GitOpsError::Kind::PathNotFound;
+            }
+            return std::unexpected(gf::git::ports::GitOpsError{
+                .kind = kind,
+                .exitCode = sizeRes->exitCode,
+                .message = err.empty() ? sizeRes->stdoutBytes : err,
+                .command = "git cat-file"
+            });
+        }
+
+        std::uint64_t objectSize = 0;
+        try
+        {
+            const std::string trimmed = trimString(sizeRes->stdoutBytes);
+            if (!trimmed.empty())
+            {
+                objectSize = std::stoull(trimmed);
+            }
+        }
+        catch (...)
+        {
+            objectSize = 0;
+        }
+
+        if (objectSize > static_cast<std::uint64_t>(maxBytes))
+        {
+            return gf::git::bo::FileBlob{
+                .bytes = {},
+                .totalSize = objectSize,
+                .truncated = true
+            };
+        }
+
+        gf::git::bo::GitCommand showCmd{
+            .args = {"show", spec},
+            .workingDirectory = repoPath,
+            .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
+            .timeout = std::chrono::milliseconds{20'000}
+        };
+        auto execResult = m_executor.execute(showCmd);
+        if (!execResult)
+        {
+            return std::unexpected(gf::git::ports::GitOpsError{
+                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+                .exitCode = -1,
+                .message = "Impossibile eseguire git show: " + execResult.error().message,
+                .command = "git show"
+            });
+        }
+        if (execResult->exitCode != 0)
+        {
+            return std::unexpected(gf::git::ports::GitOpsError{
+                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+                .exitCode = execResult->exitCode,
+                .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
+                .command = "git show"
+            });
+        }
+
+        gf::git::bo::FileBlob blob;
+        blob.bytes = std::move(execResult->stdoutBytes);
+        blob.totalSize = std::max<std::uint64_t>(objectSize, static_cast<std::uint64_t>(blob.bytes.size()));
+        blob.truncated = false;
+        return blob;
+    }
 } // namespace gf::infra::git

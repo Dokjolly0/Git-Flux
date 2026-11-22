@@ -73,6 +73,13 @@ namespace gf::git::bl
                        const std::string& revision,
                        const std::string& filePath);
 
+        /// Extracts raw binary-safe file bytes from working tree (empty / "WORKTREE"), index (":0" / "INDEX"), or a Git revision.
+        [[nodiscard]] std::expected<bo::FileBlob, ports::GitOpsError>
+        getFileBlob(const std::filesystem::path& repoPath,
+                    const std::string& revision,
+                    const std::string& filePath,
+                    std::size_t maxBytes = 16 * 1024 * 1024);
+
         /// Extracts blame line annotations for a file at a specific revision.
         [[nodiscard]] std::expected<std::vector<bo::BlameLine>, ports::GitOpsError>
         getFileBlame(const std::filesystem::path& repoPath,

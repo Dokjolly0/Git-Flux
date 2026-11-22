@@ -178,6 +178,25 @@ namespace gf::git::bl
         return m_gitOps.getFileContent(repoPath, revision, filePath);
     }
 
+    std::expected<bo::FileBlob, ports::GitOpsError>
+    GitDiffService::getFileBlob(const std::filesystem::path& repoPath,
+                                const std::string& revision,
+                                const std::string& filePath,
+                                std::size_t maxBytes)
+    {
+        if (auto validRepo = validateRepoPath(repoPath); !validRepo)
+        {
+            return std::unexpected(validRepo.error());
+        }
+
+        if (auto validPath = validateRelativeFilePath(filePath); !validPath)
+        {
+            return std::unexpected(validPath.error());
+        }
+
+        return m_gitOps.getFileBlob(repoPath, revision, filePath, maxBytes);
+    }
+
     std::expected<std::vector<bo::BlameLine>, ports::GitOpsError>
     GitDiffService::getFileBlame(const std::filesystem::path& repoPath,
                                  const std::string& revision,

@@ -269,6 +269,8 @@ if (GF_BUILD_DESKTOP)
             src/desktop/viewmodels/quick_open_viewmodel.cpp
             src/desktop/services/git_provider_api_client.cpp
             src/desktop/services/ssh_connection_probe.cpp
+            src/desktop/services/diff_image_provider.cpp
+            src/desktop/services/diff_file_inspector.cpp
             src/desktop/viewmodels/remote_repo_list_model.cpp
             src/desktop/viewmodels/git_profiles_viewmodel.cpp
             src/desktop/bootstrap/app_bootstrap.cpp
@@ -318,6 +320,7 @@ if (GF_BUILD_DESKTOP)
             src/desktop/ui/qml/views/DiffViewerPanel.qml
             src/desktop/ui/qml/views/DiffOverviewScrollBar.qml
             src/desktop/ui/qml/views/MarkdownPreviewView.qml
+            src/desktop/ui/qml/views/RichFilePreviewView.qml
             src/desktop/ui/qml/views/BranchSwitcherDropdown.qml
             src/desktop/ui/qml/views/BranchManagerModal.qml
             src/desktop/ui/qml/views/CreateBranchModal.qml

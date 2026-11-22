@@ -159,6 +159,25 @@ namespace gf::git::ports
             return std::string{};
         }
 
+        /// Retrieves raw binary-safe file bytes from working tree (empty / "WORKTREE"), index (":0" / "INDEX"), or a Git revision.
+        [[nodiscard]] virtual std::expected<bo::FileBlob, GitOpsError>
+        getFileBlob(const std::filesystem::path& repoPath,
+                    const std::string& revision,
+                    const std::string& filePath,
+                    std::size_t maxBytes = 16 * 1024 * 1024)
+        {
+            (void)repoPath;
+            (void)revision;
+            (void)filePath;
+            (void)maxBytes;
+            return std::unexpected(GitOpsError{
+                .kind = GitOpsError::Kind::InvalidOperation,
+                .exitCode = -1,
+                .message = "Lettura binaria non supportata da questo adapter",
+                .command = "git show"
+            });
+        }
+
         /// Retrieves the line-by-line blame annotation for a file at a specific revision (or HEAD if empty).
         [[nodiscard]] virtual std::expected<std::vector<bo::BlameLine>, GitOpsError>
         getFileBlame(const std::filesystem::path& repoPath,

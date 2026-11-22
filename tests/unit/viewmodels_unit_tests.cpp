@@ -570,7 +570,7 @@ TEST_CASE (
     CHECK(errorSpy.count() == 1);
 }
 
-class MockFullGitOps final : public gf::git::ports::IRepositoryGitOps
+class MockFullGitOps : public gf::git::ports::IRepositoryGitOps
 {
 public:
     std::atomic<int> listBranchesCalls{0};
@@ -4520,6 +4520,7 @@ TEST_CASE("Flux UI Kit QML components load and instantiate cleanly", "[qml][ui]"
     requireValidComponent(qmlBaseDir / "views" / "DiffOverviewScrollBar.qml");
     requireValidComponent(qmlBaseDir / "views" / "DiffViewerPanel.qml");
     requireValidComponent(qmlBaseDir / "views" / "MarkdownPreviewView.qml");
+    requireValidComponent(qmlBaseDir / "views" / "RichFilePreviewView.qml");
     requireValidComponent(qmlBaseDir / "views" / "CommitHistoryPanel.qml");
     requireValidComponent(qmlBaseDir / "views" / "WorkspaceSessionView.qml");
 
@@ -4716,5 +4717,216 @@ TEST_CASE("Flux UI Kit QML components load and instantiate cleanly", "[qml][ui]"
 
         QMetaObject::invokeMethod(panelObj.get(), "clearSelection");
         CHECK_FALSE(panelObj->property("hasSelection").toBool());
+    }
+}
+
+#include "desktop/services/diff_file_inspector.hpp"
+#include "desktop/services/diff_image_provider.hpp"
+#include <QBuffer>
+#include <QImage>
+
+namespace
+{
+    std::string makeTestPngBytes(int width, int height, QColor fillColor, bool drawRedBox = false)
+    {
+        QImage img(width, height, QImage::Format_ARGB32);
+        img.fill(fillColor);
+        if (drawRedBox)
+        {
+            for (int y = 0; y < height / 2; ++y)
+            {
+                for (int x = 0; x < width / 2; ++x)
+                {
+                    img.setPixelColor(x, y, QColor(220, 38, 38, 255));
+                }
+            }
+        }
+        QByteArray ba;
+        QBuffer buf(&ba);
+        buf.open(QIODevice::WriteOnly);
+        img.save(&buf, "PNG");
+        return std::string(ba.constData(), static_cast<std::size_t>(ba.size()));
+    }
+
+    // Builds a minimal valid uncompressed (stored) ZIP archive with the given entries.
+    std::string makeTestZipBytes(const std::vector<std::pair<std::string, std::string>>& files)
+    {
+        auto pushLE16 = [](std::string& s, std::uint16_t v)
+        {
+            s.push_back(static_cast<char>(v & 0xFF));
+            s.push_back(static_cast<char>((v >> 8) & 0xFF));
+        };
+        auto pushLE32 = [](std::string& s, std::uint32_t v)
+        {
+            s.push_back(static_cast<char>(v & 0xFF));
+            s.push_back(static_cast<char>((v >> 8) & 0xFF));
+            s.push_back(static_cast<char>((v >> 16) & 0xFF));
+            s.push_back(static_cast<char>((v >> 24) & 0xFF));
+        };
+        auto simpleHash = [](const std::string& data) -> std::uint32_t
+        {
+            std::uint32_t h = 2166136261u;
+            for (unsigned char c : data) h = (h ^ c) * 16777619u;
+            return h;
+        };
+
+        std::string zip;
+        struct CdRec { std::string name; std::uint32_t crc; std::uint32_t size; std::uint32_t offset; };
+        std::vector<CdRec> records;
+
+        for (const auto& [name, content] : files)
+        {
+            const std::uint32_t offset = static_cast<std::uint32_t>(zip.size());
+            const std::uint32_t crc = simpleHash(content);
+            const std::uint32_t sz = static_cast<std::uint32_t>(content.size());
+            pushLE32(zip, 0x04034b50u);
+            pushLE16(zip, 20); pushLE16(zip, 0); pushLE16(zip, 0); pushLE16(zip, 0); pushLE16(zip, 0);
+            pushLE32(zip, crc); pushLE32(zip, sz); pushLE32(zip, sz);
+            pushLE16(zip, static_cast<std::uint16_t>(name.size())); pushLE16(zip, 0);
+            zip.append(name);
+            zip.append(content);
+            records.push_back({name, crc, sz, offset});
+        }
+
+        const std::uint32_t cdOffset = static_cast<std::uint32_t>(zip.size());
+        for (const auto& r : records)
+        {
+            pushLE32(zip, 0x02014b50u);
+            pushLE16(zip, 20); pushLE16(zip, 20); pushLE16(zip, 0); pushLE16(zip, 0);
+            pushLE16(zip, 0); pushLE16(zip, 0);
+            pushLE32(zip, r.crc); pushLE32(zip, r.size); pushLE32(zip, r.size);
+            pushLE16(zip, static_cast<std::uint16_t>(r.name.size()));
+            pushLE16(zip, 0); pushLE16(zip, 0); pushLE16(zip, 0); pushLE16(zip, 0);
+            pushLE32(zip, 0); pushLE32(zip, r.offset);
+            zip.append(r.name);
+        }
+        const std::uint32_t cdSize = static_cast<std::uint32_t>(zip.size()) - cdOffset;
+
+        pushLE32(zip, 0x06054b50u);
+        pushLE16(zip, 0); pushLE16(zip, 0);
+        pushLE16(zip, static_cast<std::uint16_t>(records.size()));
+        pushLE16(zip, static_cast<std::uint16_t>(records.size()));
+        pushLE32(zip, cdSize);
+        pushLE32(zip, cdOffset);
+        pushLE16(zip, 0);
+        return zip;
+    }
+
+    class MockBlobGitOps final : public MockFullGitOps
+    {
+    public:
+        std::map<std::string, gf::git::bo::FileBlob> blobsByRev;
+
+        std::expected<gf::git::bo::FileBlob, gf::git::ports::GitOpsError>
+        getFileBlob(const std::filesystem::path&, const std::string& revision, const std::string&, std::size_t) override
+        {
+            if (const auto it = blobsByRev.find(revision); it != blobsByRev.end())
+            {
+                return it->second;
+            }
+            return std::unexpected(gf::git::ports::GitOpsError{
+                .kind = gf::git::ports::GitOpsError::Kind::PathNotFound,
+                .exitCode = 1,
+                .message = "not found",
+                .command = "git show"
+            });
+        }
+    };
+} // namespace
+
+TEST_CASE("DiffViewModel and DiffFileInspector preview images, archives, and binary files", "[viewmodel][diff][binary]")
+{
+    ensureQtApp();
+
+    SECTION("Modified PNG image exposes dimensions, pixel diff, and image provider URLs")
+    {
+        MockBlobGitOps mockOps;
+        mockOps.diffToReturn.oldPath = "assets/banner.png";
+        mockOps.diffToReturn.newPath = "assets/banner.png";
+        mockOps.diffToReturn.isBinary = true;
+
+        const std::string oldPng = makeTestPngBytes(32, 32, QColor(15, 23, 42, 255), false);
+        const std::string newPng = makeTestPngBytes(32, 32, QColor(15, 23, 42, 255), true);
+        mockOps.blobsByRev[":0"] = gf::git::bo::FileBlob{.bytes = oldPng, .totalSize = oldPng.size()};
+        mockOps.blobsByRev["WORKTREE"] = gf::git::bo::FileBlob{.bytes = newPng, .totalSize = newPng.size()};
+
+        gf::git::bl::GitDiffService diffService(mockOps);
+        DiffViewModel vm(diffService);
+
+        REQUIRE(vm.loadDiff(QString::fromStdString(std::filesystem::temp_directory_path().string()),
+                            QStringLiteral("assets/banner.png"), QStringLiteral("unstaged")));
+        REQUIRE(vm.waitForIdle());
+
+        CHECK(vm.isBinary());
+        CHECK(vm.hasRichPreview());
+        CHECK(vm.isImage());
+        CHECK(vm.hasVisualPreview());
+        CHECK(vm.fileKind() == "image");
+        CHECK(vm.formatBadge() == "PNG");
+        CHECK(vm.oldImageWidth() == 32);
+        CHECK(vm.oldImageHeight() == 32);
+        CHECK(vm.newImageWidth() == 32);
+        CHECK(vm.newImageHeight() == 32);
+        // Quarter of 32x32 image changed (25%)
+        CHECK(std::abs(vm.imageDiffPercent() - 25.0) < 0.5);
+        CHECK(vm.oldImageUrl().startsWith("image://diffpreview/"));
+        CHECK(vm.newImageUrl().startsWith("image://diffpreview/"));
+        CHECK(vm.diffImageUrl().startsWith("image://diffpreview/"));
+
+        gf::desktop::DiffImageProvider provider;
+        QSize sz;
+        const QString oldId = vm.oldImageUrl().mid(QStringLiteral("image://diffpreview/").size());
+        const QString diffId = vm.diffImageUrl().mid(QStringLiteral("image://diffpreview/").size());
+        CHECK(provider.requestImage(oldId, &sz, QSize()).size() == QSize(32, 32));
+        CHECK(provider.requestImage(diffId, &sz, QSize()).size() == QSize(32, 32));
+    }
+
+    SECTION("ZIP archive diff classifies added, removed, modified, and unchanged entries")
+    {
+        const std::string oldZip = makeTestZipBytes({
+            {"keep.txt", "same"},
+            {"edit.txt", "before"},
+            {"gone.txt", "removed"}
+        });
+        const std::string newZip = makeTestZipBytes({
+            {"keep.txt", "same"},
+            {"edit.txt", "after-updated"},
+            {"added.txt", "hello"}
+        });
+
+        const auto insp = gf::desktop::DiffFileInspector::inspect(
+            "bundle.zip",
+            gf::git::bo::FileBlob{.bytes = oldZip, .totalSize = oldZip.size()},
+            gf::git::bo::FileBlob{.bytes = newZip, .totalSize = newZip.size()});
+
+        REQUIRE(insp.valid);
+        CHECK(insp.fileKind == "archive");
+        CHECK(insp.formatBadge == "ZIP");
+        CHECK(insp.archiveAddedCount == 1);
+        CHECK(insp.archiveRemovedCount == 1);
+        CHECK(insp.archiveModifiedCount == 1);
+        CHECK(insp.archiveUnchangedCount == 1);
+        CHECK(insp.archiveEntries.size() == 4);
+    }
+
+    SECTION("Generic binary, PDF, and Hex diff detect metadata and changed byte rows")
+    {
+        const std::string oldPdf = "%PDF-1.5\n1 0 obj << /Type /Page >> endobj\n<< /Title (Old Doc) >>";
+        const std::string newPdf = "%PDF-1.7\n1 0 obj << /Type /Page >> endobj\n2 0 obj << /Type /Page >> endobj\n<< /Title (New Doc) >>";
+
+        const auto insp = gf::desktop::DiffFileInspector::inspect(
+            "docs/spec.pdf",
+            gf::git::bo::FileBlob{.bytes = oldPdf, .totalSize = oldPdf.size()},
+            gf::git::bo::FileBlob{.bytes = newPdf, .totalSize = newPdf.size()});
+
+        REQUIRE(insp.valid);
+        CHECK(insp.fileKind == "pdf");
+        CHECK(insp.formatBadge == "PDF");
+        CHECK_FALSE(insp.oldSha256.isEmpty());
+        CHECK_FALSE(insp.newSha256.isEmpty());
+        CHECK(insp.oldSha256 != insp.newSha256);
+        CHECK(insp.hexChangedRows > 0);
+        CHECK_FALSE(insp.hexRows.isEmpty());
+        CHECK_FALSE(insp.metadataRows.isEmpty());
     }
 }

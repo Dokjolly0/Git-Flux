@@ -1,5 +1,6 @@
 #include "desktop/viewmodels/diff_viewmodel.hpp"
 #include "desktop/viewmodels/commit_history_list_model.hpp"
+#include "desktop/services/diff_image_provider.hpp"
 
 #include "core/shared/utf8_path.hpp"
 #include "core/modules/git/bl/git_diff_service.hpp"
@@ -9,12 +10,19 @@
 
 #include <QClipboard>
 #include <QCoreApplication>
-#include <QElapsedTimer>
-#include <QThread>
 #include <QCryptographicHash>
+#include <QDesktopServices>
+#include <QDir>
+#include <QElapsedTimer>
+#include <QFile>
+#include <QFileInfo>
+#include <QFontDatabase>
 #include <QGuiApplication>
 #include <QHash>
+#include <QStandardPaths>
 #include <QStringList>
+#include <QThread>
+#include <QUrl>
 #include <QVariantMap>
 #include <algorithm>
 #include <cmath>
@@ -309,6 +317,8 @@ namespace gf::desktop
         QVariantList markdownToc;
         QString markdownSource;
         QString markdownNotice;
+
+        std::optional<DiffFileInspection> inspection;
     };
 
     struct DiffViewModel::DiffFetch
@@ -317,6 +327,10 @@ namespace gf::desktop
         std::optional<std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>> diff;
         std::optional<std::expected<std::string, gf::git::ports::GitOpsError>> markdownContent;
         std::string deletedNotice;
+        std::optional<gf::git::bo::FileBlob> oldBlob;
+        std::optional<gf::git::bo::FileBlob> newBlob;
+        std::string inspectPath;
+        bool inspectedRichFile = false;
         // The diff shown when the request started (same file/revision/scope/context), if any.
         std::shared_ptr<const gf::git::bo::FileDiff> comparedWith;
         bool unchanged = false;              // identical to comparedWith: nothing was prepared
@@ -360,18 +374,106 @@ namespace gf::desktop
                 diff.displayPath().empty() ? filePath : diff.displayPath());
             return langInfo.language == gf::core::syntax::Language::Markdown && !diff.isBinary;
         }
+
+        bool shouldInspectRichFile(const gf::git::bo::FileDiff& diff, const std::string& filePath)
+        {
+            if (diff.isBinary) return true;
+            const std::string& path = diff.displayPath().empty() ? filePath : diff.displayPath();
+            return DiffFileInspector::isSvgPath(path) && DiffFileInspector::canDecodeSvg();
+        }
+
+        std::optional<gf::git::bo::FileBlob> readSideBlob(gf::git::bl::GitDiffService& service,
+                                                          const std::filesystem::path& repoPath,
+                                                          const std::string& primaryRev,
+                                                          const std::string& fallbackRev,
+                                                          const std::string& targetPath)
+        {
+            if (targetPath.empty()) return std::nullopt;
+            auto res = service.getFileBlob(repoPath, primaryRev, targetPath, DiffFileInspector::kMaxBlobBytes);
+            if (!res && !fallbackRev.empty())
+            {
+                res = service.getFileBlob(repoPath, fallbackRev, targetPath, DiffFileInspector::kMaxBlobBytes);
+            }
+            if (res)
+            {
+                return std::move(*res);
+            }
+            return std::nullopt;
+        }
     } // namespace
 
     DiffViewModel::DiffViewModel(gf::git::bl::GitDiffService& diffService, QObject* parent)
         : QObject(parent)
           , m_diffService(diffService)
+          , m_instanceId(DiffImageStore::instance().allocateInstanceId())
           , m_linesModel(this)
           , m_readExecutor(std::make_unique<SerialGitExecutor>())
     {
     }
 
     // m_readExecutor (declared last) is destroyed first and waits for the running read.
-    DiffViewModel::~DiffViewModel() = default;
+    DiffViewModel::~DiffViewModel()
+    {
+        releaseTemporaryFonts();
+        DiffImageStore::instance().clear(m_instanceId);
+    }
+
+    void DiffViewModel::releaseTemporaryFonts()
+    {
+        if (m_oldFontId >= 0)
+        {
+            QFontDatabase::removeApplicationFont(m_oldFontId);
+            m_oldFontId = -1;
+        }
+        if (m_newFontId >= 0)
+        {
+            QFontDatabase::removeApplicationFont(m_newFontId);
+            m_newFontId = -1;
+        }
+        m_oldFontFamily.clear();
+        m_newFontFamily.clear();
+    }
+
+    void DiffViewModel::clearRichPreviewState()
+    {
+        releaseTemporaryFonts();
+        DiffImageStore::instance().clear(m_instanceId);
+        m_hasRichPreview = false;
+        m_isSvgPreviewable = false;
+        m_fileKind.clear();
+        m_formatBadge.clear();
+        m_formatDescription.clear();
+        m_isImage = false;
+        m_hasVisualPreview = false;
+        m_oldImageUrl.clear();
+        m_newImageUrl.clear();
+        m_diffImageUrl.clear();
+        m_oldImageWidth = 0;
+        m_oldImageHeight = 0;
+        m_newImageWidth = 0;
+        m_newImageHeight = 0;
+        m_imageDiffPercent = 0.0;
+        m_hasOldBlob = false;
+        m_hasNewBlob = false;
+        m_oldFileSize = 0;
+        m_newFileSize = 0;
+        m_oldFileSizeText.clear();
+        m_newFileSizeText.clear();
+        m_fileSizeDeltaText.clear();
+        m_oldSha256.clear();
+        m_newSha256.clear();
+        m_metadataRows.clear();
+        m_archiveEntries.clear();
+        m_archiveAddedCount = 0;
+        m_archiveRemovedCount = 0;
+        m_archiveModifiedCount = 0;
+        m_archiveUnchangedCount = 0;
+        m_hexRows.clear();
+        m_hexTruncated = false;
+        m_hexChangedRows = 0;
+        m_previewNotice.clear();
+        m_canRevealInFileManager = false;
+    }
 
     void DiffViewModel::setLoading(bool loading)
     {
@@ -459,6 +561,108 @@ namespace gf::desktop
         if (m_showMarkdownRichDiff == show) return;
         m_showMarkdownRichDiff = show;
         emit showMarkdownRichDiffChanged();
+    }
+
+    void DiffViewModel::setRichPreviewRendered(bool rendered)
+    {
+        if (m_preferRichPreview == rendered) return;
+        m_preferRichPreview = rendered;
+        emit richPreviewRenderedChanged();
+    }
+
+    void DiffViewModel::toggleRichPreviewRendered()
+    {
+        setRichPreviewRendered(!m_preferRichPreview);
+    }
+
+    void DiffViewModel::openPreviewExternally(const QString& side)
+    {
+        if (m_currentRepoPath.isEmpty() || m_filePath.isEmpty()) return;
+
+        const bool wantOld = (side.compare(QStringLiteral("old"), Qt::CaseInsensitive) == 0);
+        const std::string targetPath = wantOld
+                                           ? (m_oldPath.isEmpty() ? m_filePath.toStdString() : m_oldPath.toStdString())
+                                           : m_filePath.toStdString();
+        const auto repoFs = gf::core::utf8ToPath(m_currentRepoPath.toStdString());
+
+        // For the current working-tree file, open the actual file on disk directly.
+        if (!wantOld && m_currentRevision.isEmpty() &&
+            m_lastScope.compare(QStringLiteral("staged"), Qt::CaseInsensitive) != 0)
+        {
+            const auto fullPath = repoFs / gf::core::utf8ToPath(targetPath);
+            std::error_code ec;
+            if (std::filesystem::exists(fullPath, ec) && std::filesystem::is_regular_file(fullPath, ec))
+            {
+                const std::string utf8 = gf::core::pathToUtf8(fullPath);
+                QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromUtf8(utf8.data(), static_cast<qsizetype>(utf8.size()))));
+                return;
+            }
+        }
+
+        // Otherwise materialize the revision blob into a temp file on the worker and launch it.
+        std::string primaryRev;
+        std::string fallbackRev;
+        if (!m_currentRevision.isEmpty())
+        {
+            primaryRev = wantOld ? (m_currentRevision.toStdString() + "^") : m_currentRevision.toStdString();
+        }
+        else if (m_lastScope.compare(QStringLiteral("staged"), Qt::CaseInsensitive) == 0)
+        {
+            primaryRev = wantOld ? "HEAD" : ":0";
+        }
+        else
+        {
+            primaryRev = wantOld ? ":0" : "WORKTREE";
+            if (wantOld) fallbackRev = "HEAD";
+        }
+
+        auto& service = m_diffService;
+        const QString tag = wantOld ? QStringLiteral("before") : QStringLiteral("after");
+        m_readExecutor->run(this,
+                            [&service, repoFs, primaryRev, fallbackRev, targetPath, tag]() -> QString
+                            {
+                                constexpr std::size_t kMaxExternalOpenBytes = 64 * 1024 * 1024;
+                                auto res = service.getFileBlob(repoFs, primaryRev, targetPath, kMaxExternalOpenBytes);
+                                if (!res && !fallbackRev.empty())
+                                {
+                                    res = service.getFileBlob(repoFs, fallbackRev, targetPath, kMaxExternalOpenBytes);
+                                }
+                                if (!res || res->truncated) return {};
+
+                                const QString tempBase = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+                                QDir dir(tempBase + QStringLiteral("/git-flux-preview"));
+                                if (!dir.exists()) (void)dir.mkpath(QStringLiteral("."));
+
+                                const QFileInfo fi(QString::fromUtf8(targetPath.data(), static_cast<qsizetype>(targetPath.size())));
+                                const QString safeName = fi.fileName().isEmpty() ? QStringLiteral("preview.bin") : fi.fileName();
+                                const QString outPath = dir.filePath(tag + QLatin1Char('_') + safeName);
+                                QFile f(outPath);
+                                if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return {};
+                                f.write(res->bytes.data(), static_cast<qint64>(res->bytes.size()));
+                                f.close();
+                                return outPath;
+                            },
+                            [](QString tempFilePath)
+                            {
+                                if (!tempFilePath.isEmpty())
+                                {
+                                    QDesktopServices::openUrl(QUrl::fromLocalFile(tempFilePath));
+                                }
+                            });
+    }
+
+    void DiffViewModel::revealInFileManager() const
+    {
+        if (m_currentRepoPath.isEmpty() || m_filePath.isEmpty()) return;
+        const auto fullPath = gf::core::utf8ToPath(m_currentRepoPath.toStdString()) /
+                              gf::core::utf8ToPath(m_filePath.toStdString());
+        const auto parentDir = fullPath.parent_path();
+        std::error_code ec;
+        if (std::filesystem::exists(parentDir, ec))
+        {
+            const std::string utf8 = gf::core::pathToUtf8(parentDir);
+            QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromUtf8(utf8.data(), static_cast<qsizetype>(utf8.size()))));
+        }
     }
 
     bool DiffViewModel::reloadCurrentDiff()
@@ -1083,6 +1287,93 @@ namespace gf::desktop
             }
         }
 
+        const bool wasRichRendered = isRichPreviewRendered();
+        clearRichPreviewState();
+        if (prepared.inspection && prepared.inspection->valid)
+        {
+            auto& insp = *prepared.inspection;
+            m_fileKind = std::move(insp.fileKind);
+            m_formatBadge = std::move(insp.formatBadge);
+            m_formatDescription = std::move(insp.formatDescription);
+            m_isImage = insp.isImage;
+            m_hasVisualPreview = insp.hasVisualPreview;
+            m_isSvgPreviewable = insp.isSvg && insp.hasVisualPreview && !m_isBinary;
+            m_hasRichPreview = m_isBinary || m_isSvgPreviewable;
+
+            m_hasOldBlob = insp.hasOldBlob;
+            m_hasNewBlob = insp.hasNewBlob;
+            m_oldFileSize = insp.oldFileSize;
+            m_newFileSize = insp.newFileSize;
+            m_oldFileSizeText = m_hasOldBlob ? DiffFileInspector::formatByteSize(m_oldFileSize) : QString();
+            m_newFileSizeText = m_hasNewBlob ? DiffFileInspector::formatByteSize(m_newFileSize) : QString();
+            m_fileSizeDeltaText = DiffFileInspector::formatSizeDelta(m_oldFileSize, m_newFileSize, m_hasOldBlob, m_hasNewBlob);
+            m_oldSha256 = std::move(insp.oldSha256);
+            m_newSha256 = std::move(insp.newSha256);
+
+            m_oldImageWidth = insp.oldImageWidth;
+            m_oldImageHeight = insp.oldImageHeight;
+            m_newImageWidth = insp.newImageWidth;
+            m_newImageHeight = insp.newImageHeight;
+            m_imageDiffPercent = insp.imageDiffPercent;
+
+            if (m_hasVisualPreview)
+            {
+                const bool hasOldImg = !insp.oldImage.isNull();
+                const bool hasNewImg = !insp.newImage.isNull();
+                const bool hasDiffImg = !insp.diffImage.isNull();
+                const std::uint64_t gen = DiffImageStore::instance().setImages(
+                    m_instanceId, std::move(insp.oldImage), std::move(insp.newImage), std::move(insp.diffImage));
+                if (hasOldImg) m_oldImageUrl = DiffImageStore::buildUrl(m_instanceId, gen, QStringLiteral("old"));
+                if (hasNewImg) m_newImageUrl = DiffImageStore::buildUrl(m_instanceId, gen, QStringLiteral("new"));
+                if (hasDiffImg) m_diffImageUrl = DiffImageStore::buildUrl(m_instanceId, gen, QStringLiteral("diff"));
+            }
+
+            if (!insp.oldFontBytes.isEmpty())
+            {
+                m_oldFontId = QFontDatabase::addApplicationFontFromData(insp.oldFontBytes);
+                if (m_oldFontId >= 0)
+                {
+                    const auto families = QFontDatabase::applicationFontFamilies(m_oldFontId);
+                    if (!families.isEmpty()) m_oldFontFamily = families.first();
+                }
+            }
+            if (!insp.newFontBytes.isEmpty())
+            {
+                m_newFontId = QFontDatabase::addApplicationFontFromData(insp.newFontBytes);
+                if (m_newFontId >= 0)
+                {
+                    const auto families = QFontDatabase::applicationFontFamilies(m_newFontId);
+                    if (!families.isEmpty()) m_newFontFamily = families.first();
+                }
+            }
+
+            m_metadataRows = std::move(insp.metadataRows);
+            m_archiveEntries = std::move(insp.archiveEntries);
+            m_archiveAddedCount = insp.archiveAddedCount;
+            m_archiveRemovedCount = insp.archiveRemovedCount;
+            m_archiveModifiedCount = insp.archiveModifiedCount;
+            m_archiveUnchangedCount = insp.archiveUnchangedCount;
+            m_hexRows = std::move(insp.hexRows);
+            m_hexTruncated = insp.hexTruncated;
+            m_hexChangedRows = insp.hexChangedRows;
+            m_previewNotice = std::move(insp.notice);
+        }
+        else if (m_isBinary)
+        {
+            m_hasRichPreview = true;
+            m_fileKind = QStringLiteral("binary");
+            m_formatBadge = QStringLiteral("BINARY");
+            m_formatDescription = QStringLiteral("File binario");
+        }
+
+        {
+            std::error_code ec;
+            const auto diskPath = gf::core::utf8ToPath(m_currentRepoPath.toStdString()) /
+                                  gf::core::utf8ToPath(m_filePath.toStdString());
+            m_canRevealInFileManager = !m_currentRepoPath.isEmpty() && !m_filePath.isEmpty() &&
+                                       std::filesystem::exists(diskPath.parent_path(), ec);
+        }
+
         m_linesModel.setRows(std::move(prepared.modelLines), std::move(prepared.modelRich));
         m_blameLines.clear();
         m_maxLineLength = prepared.maxLineLength;
@@ -1097,6 +1388,10 @@ namespace gf::desktop
         {
             emit markdownRenderedChanged();
         }
+        if (wasRichRendered != isRichPreviewRendered())
+        {
+            emit richPreviewRenderedChanged();
+        }
     }
 
     void DiffViewModel::prepareFetch(DiffFetch& fetch)
@@ -1106,7 +1401,9 @@ namespace gf::desktop
             return;
         }
         const auto& diff = **fetch.diff;
-        if (fetch.comparedWith && *fetch.comparedWith == diff)
+        // Binary diffs only say "Binary files differ" with no hunks, so we cannot tell from FileDiff
+        // alone whether the underlying file bytes changed on disk; always re-inspect binary/rich files.
+        if (!fetch.inspectedRichFile && !diff.isBinary && fetch.comparedWith && *fetch.comparedWith == diff)
         {
             fetch.unchanged = true; // periodic reload of an unchanged file: nothing to rebuild
             return;
@@ -1117,6 +1414,11 @@ namespace gf::desktop
         if (fetch.markdownContent)
         {
             prepareMarkdown(*fetch.markdownContent, fetch.deletedNotice, diff, *fetch.prepared, seedStates);
+        }
+        if (fetch.inspectedRichFile)
+        {
+            fetch.prepared->inspection = DiffFileInspector::inspect(
+                fetch.inspectPath, fetch.oldBlob, fetch.newBlob);
         }
         prepareFileDiff(diff, seedStates.empty() ? nullptr : &seedStates, *fetch.prepared);
     }
@@ -1171,23 +1473,60 @@ namespace gf::desktop
                                     return fetch;
                                 }
                                 fetch.diff = service.getFileDiff(rPath, fPath, diffScope, contextLines);
-                                if (*fetch.diff && isMarkdownDiff(**fetch.diff, fPath))
+                                if (*fetch.diff)
                                 {
                                     const auto& diff = **fetch.diff;
-                                    if (diffScope == gf::git::bo::DiffScope::Staged)
+                                    if (isMarkdownDiff(diff, fPath))
                                     {
-                                        fetch.markdownContent = readMarkdownContent(
-                                            service, rPath, fPath, diff, diff.isDeletedFile ? "HEAD" : ":0", "");
-                                        fetch.deletedNotice =
-                                            "File eliminato nello stage — visualizzata la versione in HEAD.";
+                                        if (diffScope == gf::git::bo::DiffScope::Staged)
+                                        {
+                                            fetch.markdownContent = readMarkdownContent(
+                                                service, rPath, fPath, diff, diff.isDeletedFile ? "HEAD" : ":0", "");
+                                            fetch.deletedNotice =
+                                                "File eliminato nello stage — visualizzata la versione in HEAD.";
+                                        }
+                                        else
+                                        {
+                                            fetch.markdownContent = readMarkdownContent(
+                                                service, rPath, fPath, diff, diff.isDeletedFile ? ":0" : "",
+                                                diff.isDeletedFile ? "HEAD" : "");
+                                            fetch.deletedNotice =
+                                                "File eliminato nella working tree — visualizzata l'ultima versione tracciata.";
+                                        }
                                     }
-                                    else
+                                    if (shouldInspectRichFile(diff, fPath))
                                     {
-                                        fetch.markdownContent = readMarkdownContent(
-                                            service, rPath, fPath, diff, diff.isDeletedFile ? ":0" : "",
-                                            diff.isDeletedFile ? "HEAD" : "");
-                                        fetch.deletedNotice =
-                                            "File eliminato nella working tree — visualizzata l'ultima versione tracciata.";
+                                        fetch.inspectedRichFile = true;
+                                        fetch.inspectPath = diff.displayPath().empty() ? fPath : diff.displayPath();
+                                        const std::string oldP = diff.oldPath.empty() ? fPath : diff.oldPath;
+                                        const std::string newP = diff.newPath.empty() ? fPath : diff.newPath;
+
+                                        if (diffScope == gf::git::bo::DiffScope::Untracked)
+                                        {
+                                            fetch.newBlob = readSideBlob(service, rPath, "WORKTREE", "", newP);
+                                        }
+                                        else if (diffScope == gf::git::bo::DiffScope::Staged)
+                                        {
+                                            if (!diff.isNewFile)
+                                            {
+                                                fetch.oldBlob = readSideBlob(service, rPath, "HEAD", "", oldP);
+                                            }
+                                            if (!diff.isDeletedFile)
+                                            {
+                                                fetch.newBlob = readSideBlob(service, rPath, ":0", "", newP);
+                                            }
+                                        }
+                                        else
+                                        {
+                                            if (!diff.isNewFile)
+                                            {
+                                                fetch.oldBlob = readSideBlob(service, rPath, ":0", "HEAD", oldP);
+                                            }
+                                            if (!diff.isDeletedFile)
+                                            {
+                                                fetch.newBlob = readSideBlob(service, rPath, "WORKTREE", "", newP);
+                                            }
+                                        }
                                     }
                                 }
                                 prepareFetch(fetch);
@@ -1217,7 +1556,8 @@ namespace gf::desktop
         }
 
         // Same diff as the one shown: keep everything (scroll position, blame...) as is.
-        if (isShowingDiff(repoPath, filePath, revision, scope, contextLines))
+        if (!fetch.inspectedRichFile && !result->isBinary &&
+            isShowingDiff(repoPath, filePath, revision, scope, contextLines))
         {
             const bool comparedWithShown = fetch.comparedWith == m_lastDiff;
             if (comparedWithShown ? fetch.unchanged : (*m_lastDiff == *result))
@@ -1276,13 +1616,31 @@ namespace gf::desktop
                                     return fetch;
                                 }
                                 fetch.diff = service.getCommitFileDiff(rPath, shaStr, fPath, contextLines);
-                                if (*fetch.diff && isMarkdownDiff(**fetch.diff, fPath))
+                                if (*fetch.diff)
                                 {
                                     const auto& diff = **fetch.diff;
-                                    fetch.markdownContent = readMarkdownContent(
-                                        service, rPath, fPath, diff, diff.isDeletedFile ? (shaStr + "^") : shaStr, "");
-                                    fetch.deletedNotice =
-                                        "File eliminato in questo commit — visualizzata la versione del commit precedente.";
+                                    if (isMarkdownDiff(diff, fPath))
+                                    {
+                                        fetch.markdownContent = readMarkdownContent(
+                                            service, rPath, fPath, diff, diff.isDeletedFile ? (shaStr + "^") : shaStr, "");
+                                        fetch.deletedNotice =
+                                            "File eliminato in questo commit — visualizzata la versione del commit precedente.";
+                                    }
+                                    if (shouldInspectRichFile(diff, fPath))
+                                    {
+                                        fetch.inspectedRichFile = true;
+                                        fetch.inspectPath = diff.displayPath().empty() ? fPath : diff.displayPath();
+                                        const std::string oldP = diff.oldPath.empty() ? fPath : diff.oldPath;
+                                        const std::string newP = diff.newPath.empty() ? fPath : diff.newPath;
+                                        if (!diff.isNewFile)
+                                        {
+                                            fetch.oldBlob = readSideBlob(service, rPath, shaStr + "^", "", oldP);
+                                        }
+                                        if (!diff.isDeletedFile)
+                                        {
+                                            fetch.newBlob = readSideBlob(service, rPath, shaStr, "", newP);
+                                        }
+                                    }
                                 }
                                 prepareFetch(fetch);
                                 return fetch;
@@ -1411,6 +1769,7 @@ namespace gf::desktop
         setLoading(false);
 
         const bool hadMarkdown = m_isMarkdown;
+        const bool hadRichRendered = isRichPreviewRendered();
         m_filePath.clear();
         m_oldPath.clear();
         m_languageName.clear();
@@ -1441,11 +1800,16 @@ namespace gf::desktop
         m_markdownToc.clear();
         m_markdownSource.clear();
         m_markdownNotice.clear();
+        clearRichPreviewState();
 
         emit markdownDocumentChanged();
         if (hadMarkdown)
         {
             emit markdownRenderedChanged();
+        }
+        if (hadRichRendered)
+        {
+            emit richPreviewRenderedChanged();
         }
         emit diffLoaded();
     }

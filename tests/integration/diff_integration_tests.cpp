@@ -276,4 +276,57 @@ TEST_CASE (
         REQUIRE(commitDiffFull->hunks.size() == 1);
         CHECK(commitDiffFull->hunks[0].lines.size() == 31);
     }
+
+    SECTION("getFileBlob legge byte binari (con NUL) da HEAD, indice (:0), worktree e rispetta il limite maxBytes") {
+        const std::string v1("\x89PNG\r\n\x1a\n\x00\x00\x00\x0D" "v1-payload", 22);
+        const std::string v2("\x89PNG\r\n\x1a\n\x00\x00\x00\x0D" "v2-payload-longer", 29);
+
+        auto binPath = sandbox.root / "assets" / "pic.png";
+        std::filesystem::create_directories(binPath.parent_path());
+        {
+            std::ofstream ofs(binPath, std::ios::binary | std::ios::trunc);
+            ofs.write(v1.data(), static_cast<std::streamsize>(v1.size()));
+        }
+        REQUIRE(stagingService.stageAll(sandbox.root).has_value());
+        auto cBin = stagingService.createCommit(sandbox.root, gf::git::bo::CommitOptions{.message = "add binary"});
+        REQUIRE(cBin.has_value());
+
+        // Overwrite in working tree
+        {
+            std::ofstream ofs(binPath, std::ios::binary | std::ios::trunc);
+            ofs.write(v2.data(), static_cast<std::streamsize>(v2.size()));
+        }
+
+        auto diffRes = diffService.getUnstagedFileDiff(sandbox.root, "assets/pic.png");
+        REQUIRE(diffRes.has_value());
+        CHECK(diffRes->isBinary);
+
+        auto headBlob = diffService.getFileBlob(sandbox.root, "HEAD", "assets/pic.png");
+        REQUIRE(headBlob.has_value());
+        CHECK_FALSE(headBlob->truncated);
+        CHECK(headBlob->totalSize == v1.size());
+        CHECK(headBlob->bytes == v1);
+
+        auto indexBlob = diffService.getFileBlob(sandbox.root, ":0", "assets/pic.png");
+        REQUIRE(indexBlob.has_value());
+        CHECK(indexBlob->bytes == v1);
+
+        auto wtBlob = diffService.getFileBlob(sandbox.root, "WORKTREE", "assets/pic.png");
+        REQUIRE(wtBlob.has_value());
+        CHECK_FALSE(wtBlob->truncated);
+        CHECK(wtBlob->totalSize == v2.size());
+        CHECK(wtBlob->bytes == v2);
+
+        // Truncation check when maxBytes is smaller than totalSize
+        auto cappedWt = diffService.getFileBlob(sandbox.root, "WORKTREE", "assets/pic.png", 8);
+        REQUIRE(cappedWt.has_value());
+        CHECK(cappedWt->truncated);
+        CHECK(cappedWt->totalSize == v2.size());
+        CHECK(cappedWt->bytes.size() == 8);
+
+        auto cappedHead = diffService.getFileBlob(sandbox.root, "HEAD", "assets/pic.png", 8);
+        REQUIRE(cappedHead.has_value());
+        CHECK(cappedHead->truncated);
+        CHECK(cappedHead->totalSize == v1.size());
+    }
 }

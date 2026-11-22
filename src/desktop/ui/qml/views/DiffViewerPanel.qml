@@ -16,8 +16,10 @@ Rectangle {
     property bool wrapMarkdown: true
     property bool wrapCode: false
     readonly property bool isMarkdown: (root.diffViewer && root.diffViewer.isMarkdown === true)
+    readonly property bool isSvgPreviewable: (root.diffViewer && root.diffViewer.isSvgPreviewable === true)
     readonly property bool effectiveWrap: isMarkdown ? wrapMarkdown : wrapCode
     readonly property bool showingMarkdownPreview: (root.diffViewer && root.diffViewer.isMarkdownRendered === true && !root.diffViewer.isBinary && !root.diffViewer.isEmpty)
+    readonly property bool showingRichPreview: (root.diffViewer && !root.diffViewer.isEmpty && (root.diffViewer.isBinary || root.diffViewer.isRichPreviewRendered === true))
 
     property real horizontalScrollX: 0
 
@@ -763,10 +765,31 @@ Rectangle {
                             if (root.diffViewer.isNewFile) return "NEW";
                             if (root.diffViewer.isDeletedFile) return "DELETED";
                             if (root.diffViewer.isRenamed) return "RENAMED";
-                            if (root.diffViewer.isBinary) return "BINARY";
+                            if (root.diffViewer.isBinary) return (root.diffViewer.formatBadge && root.diffViewer.formatBadge.length > 0) ? root.diffViewer.formatBadge : "BINARY";
                             return "MODIFIED";
                         }
                         color: "#FFFFFF"
+                        font.pixelSize: 10
+                        font.bold: true
+                    }
+                }
+
+                // Format Badge for new/deleted/renamed binary files (e.g. PNG, PDF, ZIP)
+                Rectangle {
+                    visible: root.diffViewer && !root.diffViewer.isEmpty && root.diffViewer.isBinary &&
+                             (root.diffViewer.isNewFile || root.diffViewer.isDeletedFile || root.diffViewer.isRenamed) &&
+                             root.diffViewer.formatBadge && root.diffViewer.formatBadge.length > 0
+                    Layout.preferredHeight: 22
+                    implicitWidth: fmtBadgeTxt.implicitWidth + 12
+                    radius: 6
+                    color: "#1E293B"
+                    border.color: "#334155"
+                    border.width: 1
+                    Text {
+                        id: fmtBadgeTxt
+                        anchors.centerIn: parent
+                        text: root.diffViewer ? root.diffViewer.formatBadge : ""
+                        color: "#38BDF8"
                         font.pixelSize: 10
                         font.bold: true
                     }
@@ -870,11 +893,72 @@ Rectangle {
                     }
                 }
 
+                // SVG Segmented Switch: Diff <> vs Anteprima 👁
+                Rectangle {
+                    visible: root.isSvgPreviewable && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary
+                    Layout.preferredHeight: 28
+                    implicitWidth: svgToggleRow.implicitWidth + 6
+                    color: "#0A0E15"
+                    radius: 8
+                    border.color: "#222F42"
+                    border.width: 1
+
+                    RowLayout {
+                        id: svgToggleRow
+                        anchors.centerIn: parent
+                        spacing: 3
+
+                        Button {
+                            id: svgDiffSourceBtn
+                            Layout.preferredHeight: 22
+                            leftPadding: 9
+                            rightPadding: 9
+                            hoverEnabled: true
+                            readonly property bool active: !root.showingRichPreview
+                            background: Rectangle {
+                                color: svgDiffSourceBtn.active ? "#152336" : (svgDiffSourceBtn.hovered ? "#141D2B" : "transparent")
+                                radius: 6
+                                border.color: svgDiffSourceBtn.active ? "#38BDF8" : "transparent"
+                                border.width: 1
+                            }
+                            contentItem: Text {
+                                text: "<> Codice"
+                                color: svgDiffSourceBtn.active ? "#38BDF8" : "#94A3B8"
+                                font.pixelSize: 11
+                                font.bold: svgDiffSourceBtn.active
+                            }
+                            onClicked: if (root.diffViewer) root.diffViewer.setRichPreviewRendered(false)
+                        }
+
+                        Button {
+                            id: svgPreviewBtn
+                            Layout.preferredHeight: 22
+                            leftPadding: 9
+                            rightPadding: 9
+                            hoverEnabled: true
+                            readonly property bool active: root.showingRichPreview
+                            background: Rectangle {
+                                color: svgPreviewBtn.active ? "#063B2C" : (svgPreviewBtn.hovered ? "#141D2B" : "transparent")
+                                radius: 6
+                                border.color: svgPreviewBtn.active ? "#34D399" : "transparent"
+                                border.width: 1
+                            }
+                            contentItem: Text {
+                                text: "🖼 Anteprima"
+                                color: svgPreviewBtn.active ? "#6EE7B7" : "#94A3B8"
+                                font.pixelSize: 11
+                                font.bold: svgPreviewBtn.active
+                            }
+                            onClicked: if (root.diffViewer) root.diffViewer.setRichPreviewRendered(true)
+                        }
+                    }
+                }
+
                 // Context Lines Selector (for ALL files when in source diff view)
                 Button {
                     id: contextBtn
                     visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary &&
-                        !root.showingMarkdownPreview && root.diffViewer.viewMode !== "blame"
+                        !root.showingMarkdownPreview && !root.showingRichPreview && root.diffViewer.viewMode !== "blame"
                     Layout.preferredHeight: 28
                     leftPadding: 10
                     rightPadding: 10
@@ -959,7 +1043,7 @@ Rectangle {
                 Button {
                     id: wrapBtn
                     visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary &&
-                        !root.showingMarkdownPreview && root.diffViewer.viewMode !== "blame"
+                        !root.showingMarkdownPreview && !root.showingRichPreview && root.diffViewer.viewMode !== "blame"
                     Layout.preferredHeight: 28
                     leftPadding: 10
                     rightPadding: 10
@@ -992,7 +1076,7 @@ Rectangle {
 
                 // View Mode Switcher Buttons (Inline, Split, Hunk, Blame)
                 Rectangle {
-                    visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && !root.showingMarkdownPreview
+                    visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && !root.showingMarkdownPreview && !root.showingRichPreview
                     Layout.preferredHeight: 28
                     implicitWidth: viewModeRow.implicitWidth + 6
                     radius: 8
@@ -1191,13 +1275,12 @@ Rectangle {
                 font.pixelSize: 13
             }
 
-            // Binary File Notice
-            Text {
-                anchors.centerIn: parent
-                visible: root.diffViewer && root.diffViewer.isBinary
-                text: "📦 File binario — anteprima delle differenze testuali non disponibile"
-                color: "#94A3B8"
-                font.pixelSize: 13
+            // Rich Binary / Image / SVG / Archive / Font / Hex Preview
+            RichFilePreviewView {
+                anchors.fill: parent
+                visible: root.showingRichPreview
+                diffViewer: root.diffViewer
+                monoFont: root.monoFont
             }
 
             // ------------------------------------------
@@ -1215,7 +1298,7 @@ Rectangle {
             // ------------------------------------------
             Item {
                 anchors.fill: parent
-                visible: !root.showingMarkdownPreview && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "inline"
+                visible: !root.showingMarkdownPreview && !root.showingRichPreview && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "inline"
                 clip: true
 
                 ListView {
@@ -1469,7 +1552,7 @@ Rectangle {
             // ------------------------------------------
             ColumnLayout {
                 anchors.fill: parent
-                visible: !root.showingMarkdownPreview && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && (root.diffViewer.viewMode === "split" || root.diffViewer.viewMode === "")
+                visible: !root.showingMarkdownPreview && !root.showingRichPreview && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && (root.diffViewer.viewMode === "split" || root.diffViewer.viewMode === "")
                 spacing: 0
 
                 // Split Header (Original vs Modified)
@@ -1884,7 +1967,7 @@ Rectangle {
             // ------------------------------------------
             Item {
                 anchors.fill: parent
-                visible: !root.showingMarkdownPreview && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "hunk"
+                visible: !root.showingMarkdownPreview && !root.showingRichPreview && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "hunk"
                 clip: true
 
                 ScrollView {
@@ -2172,7 +2255,7 @@ Rectangle {
             // ------------------------------------------
             Item {
                 anchors.fill: parent
-                visible: !root.showingMarkdownPreview && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "blame"
+                visible: !root.showingMarkdownPreview && !root.showingRichPreview && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "blame"
                 clip: true
 
                 ListView {

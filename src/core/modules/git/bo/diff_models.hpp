@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -98,5 +99,15 @@ namespace gf::git::bo
         std::string date{};
         int lineNumber = 0;
         std::string content{};
+    };
+
+    /// Binary-safe snapshot of a file at a Git revision, index, or working tree.
+    /// If the file exceeds the requested byte limit, `bytes` holds a prefix (or empty for
+    /// oversized Git objects) while `totalSize` reports the true byte size and `truncated` is true.
+    struct FileBlob
+    {
+        std::string bytes{};
+        std::uint64_t totalSize = 0;
+        bool truncated = false;
     };
 } // namespace gf::git::bo

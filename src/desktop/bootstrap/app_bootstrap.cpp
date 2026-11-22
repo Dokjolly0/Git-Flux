@@ -1,4 +1,5 @@
 #include "desktop/bootstrap/app_bootstrap.hpp"
+#include "desktop/services/diff_image_provider.hpp"
 #include "infrastructure/persistence/sqlite/migrations/schema_migrator.hpp"
 #include "infrastructure/git/git_discovery.hpp"
 
@@ -202,6 +203,7 @@ namespace gf::desktop
                                                                      "ViewModel managed by bootstrap");
 
         auto* rootCtx = engine.rootContext();
+        engine.addImageProvider(QStringLiteral("diffpreview"), new DiffImageProvider());
         rootCtx->setContextProperty(QStringLiteral("homeHubVm"), m_homeHubVm.get());
         rootCtx->setContextProperty(QStringLiteral("quickOpenVm"), m_quickOpenVm.get());
         rootCtx->setContextProperty(QStringLiteral("workspaceSessionVm"), m_workspaceSessionVm.get());
