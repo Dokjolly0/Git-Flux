@@ -6,8 +6,11 @@
 #include <memory>
 #include <vector>
 #include <filesystem>
+#include <functional>
 #include <string>
 
+#include "core/modules/git/bo/https_credential_models.hpp"
+#include "core/modules/git/bo/remote_merge_models.hpp"
 #include "desktop/services/serial_git_executor.hpp"
 #include "desktop/viewmodels/branch_list_model.hpp"
 #include "desktop/viewmodels/commit_history_list_model.hpp"
@@ -72,6 +75,14 @@ namespace gf::desktop
         [[nodiscard]] QString statusMessage() const noexcept { return m_statusMessage; }
         [[nodiscard]] QString remoteOperation() const noexcept { return m_remoteOperation; }
         [[nodiscard]] QString remoteUrl() const noexcept { return m_remoteUrl; }
+
+        /// Resolves the saved provider token for an HTTPS remote URL (GUI thread): returns a
+        /// loader run on the git worker thread, or an empty function when there is none.
+        using HttpsCredentialResolver = std::function<git::bo::HttpsCredentialLoader(const QString& remoteUrl)>;
+        void setHttpsCredentialResolver(HttpsCredentialResolver resolver)
+        {
+            m_httpsCredentialResolver = std::move(resolver);
+        }
         [[nodiscard]] QString fileHistoryPath() const noexcept { return m_fileHistoryPath; }
         [[nodiscard]] bool hasConflicts() const noexcept { return !m_conflictedFiles.isEmpty(); }
         [[nodiscard]] QStringList conflictedFiles() const noexcept { return m_conflictedFiles; }
@@ -183,6 +194,8 @@ namespace gf::desktop
         // Marks operation `id` as the running network operation `kind` (see remoteOperation).
         void beginRemoteOperation(int id, const QString& kind);
         void endRemoteOperation(int id);
+        // Credential loader for `remoteName` (push URL when `forPush`), empty if none applies.
+        [[nodiscard]] git::bo::HttpsCredentialLoader httpsCredentialFor(const QString& remoteName, bool forPush) const;
 
         git::bl::GitBranchService& m_branchService;
         git::bl::GitHistoryService& m_historyService;
@@ -201,6 +214,8 @@ namespace gf::desktop
         bool m_isBusy = false;
         QString m_statusMessage;
         QString m_remoteUrl;
+        std::vector<git::bo::GitRemote> m_remotes; // last loaded `git remote -v`
+        HttpsCredentialResolver m_httpsCredentialResolver;
         QStringList m_conflictedFiles;
         bool m_refreshScheduled = false;   // a coalesced refresh is queued on the event loop
         bool m_refreshRunning = false;     // a background reload is in flight

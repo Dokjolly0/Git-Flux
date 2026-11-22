@@ -1252,6 +1252,7 @@ namespace gf::desktop::viewmodels
         const auto host = QString::fromStdString(core::git::bl::extractRemoteHost(url));
         const auto* p = findProfileByHost(host);
         if (!p) return {};
+        const auto hostName = host.toStdString(); // the URL's host: what git sends to the helper
 
         // The account name git sends with the token. Providers check the token itself; these
         // are the names each one documents for token authentication.
@@ -1276,18 +1277,19 @@ namespace gf::desktop::viewmodels
         if (!p->tokenSecret.empty())
         {
             auto& vault = m_vault;
-            return [&vault, secret = p->tokenSecret, username]() -> std::optional<gf::git::bl::HttpsCredential>
+            return [&vault, secret = p->tokenSecret, username, hostName]() -> std::optional<gf::git::bl::HttpsCredential>
             {
                 auto plain = vault.decrypt(secret);
                 if (!plain || plain->empty()) return std::nullopt;
-                return gf::git::bl::HttpsCredential{.username = username, .password = std::move(*plain)};
+                return gf::git::bl::HttpsCredential{.username = username, .password = std::move(*plain),
+                                                    .host = hostName};
             };
         }
         if (auto envToken = environmentToken(p->providerType))
         {
-            return [token = std::move(*envToken), username]() -> std::optional<gf::git::bl::HttpsCredential>
+            return [token = std::move(*envToken), username, hostName]() -> std::optional<gf::git::bl::HttpsCredential>
             {
-                return gf::git::bl::HttpsCredential{.username = username, .password = token};
+                return gf::git::bl::HttpsCredential{.username = username, .password = token, .host = hostName};
             };
         }
         return {};

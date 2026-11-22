@@ -447,28 +447,77 @@ TEST_CASE (
         }
         return out + "'";
     };
-    std::string line = "printf 'protocol=https\\nhost=github.com\\n\\n' | env -u GIT_ASKPASS -u SSH_ASKPASS "
-                       "GIT_TERMINAL_PROMPT=0";
-    for (const auto& [name, value] : cmd.extraEnvironment)
+    auto credentialFill = [&](const gf::git::bo::GitCommand& command, const std::string& host, int& exitCode)
     {
-        line += " " + name + "=" + shellQuote(value);
-    }
-    line += " " + shellQuote(gitExe.string());
-    for (const auto& arg : cmd.args)
-    {
-        line += " " + shellQuote(arg);
-    }
-    line += " 2>&1";
+        std::string line = "printf 'protocol=https\\nhost=" + host + "\\n\\n' | env -u GIT_ASKPASS -u SSH_ASKPASS "
+                           "GIT_TERMINAL_PROMPT=0";
+        for (const auto& [name, value] : command.extraEnvironment)
+        {
+            line += " " + name + "=" + shellQuote(value);
+        }
+        line += " " + shellQuote(gitExe.string());
+        for (const auto& arg : command.args)
+        {
+            line += " " + shellQuote(arg);
+        }
+        line += " 2>&1";
 
-    std::string output;
-    if (FILE* pipe = ::popen(line.c_str(), "r"))
-    {
-        char buf[256];
-        while (std::fgets(buf, sizeof buf, pipe)) output += buf;
-        CHECK(::pclose(pipe) == 0);
-    }
+        std::string output;
+        exitCode = -1;
+        if (FILE* pipe = ::popen(line.c_str(), "r"))
+        {
+            char buf[256];
+            while (std::fgets(buf, sizeof buf, pipe)) output += buf;
+            exitCode = ::pclose(pipe);
+        }
+        return output;
+    };
+
+    int exitCode = -1;
+    const auto output = credentialFill(cmd, "github.com", exitCode);
     INFO(output);
+    CHECK(exitCode == 0);
     CHECK(output.find("username=x-access-token\n") != std::string::npos);
     CHECK(output.find("password=ghp_secret 'quoted' $HOME\n") != std::string::npos);
+
+    SECTION("a credential bound to a host is only given to that host")
+    {
+        gf::git::bo::GitCommand bound{.args = {"credential", "fill"}};
+        gf::git::bl::applyHttpsCredential(bound, {.username = "alex", .password = "forgejo-token",
+                                                  .host = "192.168.1.122"});
+
+        // Same server on a non-default port: git sends "host=192.168.1.122:3000".
+        const auto same = credentialFill(bound, "192.168.1.122:3000", exitCode);
+        INFO(same);
+        CHECK(exitCode == 0);
+        CHECK(same.find("password=forgejo-token\n") != std::string::npos);
+
+        // Another remote (fetch --all) or a redirect target: the helper stays silent and git,
+        // with prompts disabled, fails instead of leaking the token.
+        const auto other = credentialFill(bound, "evil.example.com", exitCode);
+        INFO(other);
+        CHECK(exitCode != 0);
+        CHECK(other.find("forgejo-token") == std::string::npos);
+    }
+
+    SECTION("a loader is only applied when it returns a token")
+    {
+        gf::git::bo::GitCommand untouched{.args = {"fetch", "origin"}};
+        gf::git::bl::applyHttpsCredential(untouched, gf::git::bo::HttpsCredentialLoader{});
+        gf::git::bl::applyHttpsCredential(untouched, gf::git::bo::HttpsCredentialLoader{
+                                              []() -> std::optional<gf::git::bo::HttpsCredential> { return std::nullopt; }
+                                          });
+        CHECK(untouched.args.size() == 2);
+        CHECK(untouched.extraEnvironment.empty());
+
+        gf::git::bl::applyHttpsCredential(untouched, gf::git::bo::HttpsCredentialLoader{
+                                              []() -> std::optional<gf::git::bo::HttpsCredential>
+                                              {
+                                                  return gf::git::bo::HttpsCredential{.username = "u", .password = "t"};
+                                              }
+                                          });
+        CHECK(untouched.args.size() == 6);
+        CHECK(untouched.args[4] == "fetch");
+    }
 }
 #endif

@@ -1,5 +1,6 @@
 #include "infrastructure/git/native/native_repository_git_ops.hpp"
 #include "core/modules/git/bl/https_credential.hpp"
+#include "core/modules/git/bl/remote_access_diagnostics.hpp"
 #include "core/shared/utf8_path.hpp"
 #include "core/modules/git/bl/commit_log_parser.hpp"
 #include "core/modules/git/bl/conflict_marker_parser.hpp"
@@ -2357,6 +2358,7 @@ namespace gf::infra::git
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
             .timeout = std::chrono::milliseconds{60'000}
         };
+        gf::git::bl::applyHttpsCredential(cmd, options.httpsCredential);
 
         auto execResult = m_executor.execute(cmd);
         if (!execResult)
@@ -2423,6 +2425,7 @@ namespace gf::infra::git
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
             .timeout = std::chrono::milliseconds{60'000}
         };
+        gf::git::bl::applyHttpsCredential(cmd, options.httpsCredential);
 
         auto execResult = m_executor.execute(cmd);
         if (!execResult)
@@ -2494,6 +2497,7 @@ namespace gf::infra::git
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
             .timeout = std::chrono::milliseconds{60'000}
         };
+        gf::git::bl::applyHttpsCredential(cmd, options.httpsCredential);
 
         auto execResult = m_executor.execute(cmd);
         if (!execResult)
@@ -4370,7 +4374,8 @@ namespace gf::infra::git
         {
             gf::git::bl::applyHttpsCredential(cmd, {
                                                   .username = options.httpsUsername.value_or("x-access-token"),
-                                                  .password = *options.httpsToken
+                                                  .password = *options.httpsToken,
+                                                  .host = gf::core::git::bl::extractRemoteHost(options.remoteUrl)
                                               });
         }
 

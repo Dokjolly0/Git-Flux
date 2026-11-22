@@ -6,6 +6,8 @@
 #include "core/modules/git/bl/git_remote_merge_service.hpp"
 #include "desktop/services/serial_git_executor.hpp"
 
+#include <algorithm>
+
 #include <QClipboard>
 #include <QCoreApplication>
 #include <QElapsedTimer>
@@ -138,6 +140,7 @@ namespace gf::desktop
             m_headSha.clear();
             m_followHeadPending = false;
             m_remoteUrl.clear();
+            m_remotes.clear();
             m_isDetached = false;
             m_branchListModel.setBranches({});
             m_commitHistoryModel.setCommits({});
@@ -307,6 +310,7 @@ namespace gf::desktop
         // 3. Remote URL (prefer "origin", otherwise the first remote)
         if (snapshot.remotes)
         {
+            m_remotes = *snapshot.remotes;
             QString url;
             for (const auto& r : *snapshot.remotes)
             {
@@ -687,10 +691,21 @@ namespace gf::desktop
             msg.contains("terminal prompts disabled", Qt::CaseInsensitive))
         {
             return QStringLiteral(
-                "Autenticazione HTTPS non riuscita: i prompt da terminale sono disabilitati nell'app. "
-                "Passa all'URL SSH del repository (es. git remote set-url origin git@github.com:...) "
-                "oppure configura un credential helper (git config --global credential.helper store). "
+                "Autenticazione HTTPS non riuscita: nessun token salvato per questo server. "
+                "Aggiungi un token al profilo del provider (finestra Clona repository, sezione del provider) "
+                "oppure passa all'URL SSH del repository (es. git remote set-url origin git@github.com:...). "
                 "Dettagli: %1").arg(msg.trimmed());
+        }
+        if (msg.contains("Invalid username or token", Qt::CaseInsensitive) ||
+            msg.contains("Invalid username or password", Qt::CaseInsensitive) ||
+            msg.contains("Authentication failed", Qt::CaseInsensitive) ||
+            msg.contains("returned error: 403", Qt::CaseInsensitive))
+        {
+            return QStringLiteral(
+                "Autenticazione HTTPS rifiutata dal server: il token salvato non è valido, è scaduto "
+                "o non ha i permessi necessari (per il push serve l'accesso in scrittura ai contenuti del "
+                "repository). Genera un nuovo token e aggiornalo nel profilo del provider. Dettagli: %1")
+                .arg(msg.trimmed());
         }
         if (msg.contains("Permission denied (publickey)", Qt::CaseInsensitive))
         {
@@ -699,6 +714,18 @@ namespace gf::desktop
                 "e configurata su GitHub/GitLab. Dettagli: %1").arg(msg.trimmed());
         }
         return msg;
+    }
+
+    git::bo::HttpsCredentialLoader BranchManagerViewModel::httpsCredentialFor(const QString& remoteName,
+                                                                           bool forPush) const
+    {
+        if (!m_httpsCredentialResolver) return {};
+        const auto name = remoteName.toStdString();
+        const auto it = std::find_if(m_remotes.begin(), m_remotes.end(),
+                                     [&](const git::bo::GitRemote& r) { return r.name == name; });
+        if (it == m_remotes.end()) return {};
+        const auto& url = (forPush && !it->pushUrl.empty()) ? it->pushUrl : it->fetchUrl;
+        return m_httpsCredentialResolver(QString::fromStdString(url));
     }
 
     bool BranchManagerViewModel::fetchRemote(const QString& remoteName, bool allRemotes)
@@ -710,11 +737,13 @@ namespace gf::desktop
 
         auto& service = m_remoteMergeService;
         const auto repoPath = m_repoPath;
-        const git::bo::RemoteOperationOptions opts{
+        git::bo::RemoteOperationOptions opts{
             .remoteName = remoteName.toStdString(),
             .prune = true,
             .allRemotes = allRemotes
         };
+        // With --all only the token for this remote's server is offered (the helper checks the host).
+        opts.httpsCredential = httpsCredentialFor(allRemotes ? QStringLiteral("origin") : remoteName, false);
 
         // Network: may take seconds (or wait for credentials), never on the GUI thread.
         const int operationId = runOperation(
@@ -764,12 +793,13 @@ namespace gf::desktop
                                        : ((strategy == "ff-only") ? QStringLiteral(" (solo fast-forward)") : QString());
         auto& service = m_remoteMergeService;
         const auto repoPath = m_repoPath;
-        const git::bo::RemoteOperationOptions opts{
+        git::bo::RemoteOperationOptions opts{
             .remoteName = remoteName.toStdString(),
             .branchName = m_currentBranch.isEmpty() ? std::nullopt : std::make_optional(m_currentBranch.toStdString()),
             .rebase = (strategy == "rebase"),
             .fastForwardOnly = (strategy == "ff-only")
         };
+        opts.httpsCredential = httpsCredentialFor(remoteName, false);
 
         // On the shared executor: a pull rewrites the working tree, so it stays ordered with
         // staging, commits and status reads.
@@ -809,13 +839,14 @@ namespace gf::desktop
                                              : (setUpstream ? QStringLiteral(" (set-upstream)") : QString()));
         auto& service = m_remoteMergeService;
         const auto repoPath = m_repoPath;
-        const git::bo::RemoteOperationOptions opts{
+        git::bo::RemoteOperationOptions opts{
             .remoteName = remoteName.toStdString(),
             .branchName = m_currentBranch.isEmpty() ? std::nullopt : std::make_optional(m_currentBranch.toStdString()),
             .setUpstream = setUpstream,
             .force = force,
             .tags = tags
         };
+        opts.httpsCredential = httpsCredentialFor(remoteName, true);
 
         const int operationId = runOperation(
             QStringLiteral("Push verso %1%2 in corso...").arg(remoteName, optsDesc),

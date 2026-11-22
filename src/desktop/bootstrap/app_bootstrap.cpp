@@ -154,6 +154,8 @@ namespace gf::desktop
         {
             return vm->httpsCredentialLoader(url);
         });
+        m_workspaceSessionVm->branchManager()->setHttpsCredentialResolver(
+            [vm = m_gitProfilesVm.get()](const QString& url) { return vm->httpsCredentialLoader(url); });
     }
 
     void AppBootstrap::registerWithQml(QQmlApplicationEngine& engine)

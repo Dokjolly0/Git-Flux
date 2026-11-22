@@ -41,6 +41,8 @@
 
 #include <atomic>
 #include <mutex>
+#include <QThread>
+#include <utility>
 #include <set>
 #include <thread>
 
@@ -810,8 +812,31 @@ public:
     std::expected<std::vector<gf::git::bo::GitRemote>, gf::git::ports::GitOpsError>
     listRemotes(const std::filesystem::path&) override
     {
-        return std::vector<gf::git::bo::GitRemote>{};
+        return remotesToReturn; // set before the repository is opened (read on the worker)
     }
+
+    std::vector<gf::git::bo::GitRemote> remotesToReturn{};
+
+    // What the HTTPS credential loader of the last network operation produced (worker thread).
+    void recordCredential(const char* operation, const gf::git::bo::RemoteOperationOptions& options)
+    {
+        std::string seen = std::string(operation) + ":";
+        if (options.httpsCredential)
+        {
+            if (auto c = options.httpsCredential()) seen += c->username + "/" + c->password + "@" + c->host;
+        }
+        std::lock_guard lock(credentialMutex);
+        credentialsSeen.push_back(std::move(seen));
+    }
+
+    std::vector<std::string> takeCredentialsSeen()
+    {
+        std::lock_guard lock(credentialMutex);
+        return std::exchange(credentialsSeen, {});
+    }
+
+    std::mutex credentialMutex;
+    std::vector<std::string> credentialsSeen;
 
     std::expected<void, gf::git::ports::GitOpsError>
     addRemote(const std::filesystem::path&, const std::string&, const std::string&) override
@@ -826,9 +851,10 @@ public:
     }
 
     std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
-    fetchRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions&) override
+    fetchRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions& options) override
     {
         simulateNetwork();
+        recordCredential("fetch", options);
         if (fetchFailsAuth)
         {
             return std::unexpected(gf::git::ports::GitOpsError{
@@ -838,9 +864,10 @@ public:
     }
 
     std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
-    pullRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions&) override
+    pullRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions& options) override
     {
         simulateNetwork();
+        recordCredential("pull", options);
         return gf::git::bo::RemoteOperationResult{.success = true};
     }
 
@@ -848,6 +875,7 @@ public:
     pushRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions& options) override
     {
         simulateNetwork();
+        recordCredential("push", options);
         ++pushCalls;
         lastPushSetUpstream = options.setUpstream;
         if (pushNeedsUpstream && !options.setUpstream)
@@ -2284,6 +2312,75 @@ TEST_CASE (
         CHECK(branchVm.fileHistoryPath().isEmpty());
         CHECK(historySpy.count() == 0);
     }
+}
+
+TEST_CASE (
+"BranchManagerViewModel passes the saved token of each remote to fetch, pull and push"
+,
+"[viewmodel][branch][remote][credentials]"
+)
+ {
+    ensureQtApp();
+
+    MockFullGitOps mockOps;
+    mockOps.remotesToReturn = {
+        {.name = "origin", .fetchUrl = "https://github.com/Dokjolly0/RemoteViewer.git",
+         .pushUrl = "https://github.com/Dokjolly0/RemoteViewer.git"},
+        {.name = "lan", .fetchUrl = "http://192.168.1.122:3000/Dokjolly/FileHub.git",
+         .pushUrl = "git@git.alexviolatto.dev:Dokjolly/FileHub.git"},
+        {.name = "plain", .fetchUrl = "https://example.org/x.git", .pushUrl = "https://example.org/x.git"},
+    };
+    gf::git::bl::GitBranchService branchService(mockOps);
+    gf::git::bl::GitHistoryService historyService(mockOps);
+    gf::git::bl::GitRemoteMergeService remoteMergeService(mockOps);
+    BranchManagerViewModel branchVm(branchService, historyService, remoteMergeService);
+
+    QStringList resolvedOnGuiThread;
+    branchVm.setHttpsCredentialResolver([&](const QString& url) -> gf::git::bo::HttpsCredentialLoader
+    {
+        CHECK(QThread::currentThread() == QCoreApplication::instance()->thread());
+        resolvedOnGuiThread << url;
+        if (url.startsWith("https://github.com/"))
+        {
+            return [] { return std::optional(gf::git::bo::HttpsCredential{"x-access-token", "ghp_saved", "github.com"}); };
+        }
+        if (url.startsWith("http://192.168.1.122"))
+        {
+            return [] { return std::optional(gf::git::bo::HttpsCredential{"alex", "forgejo", "192.168.1.122"}); };
+        }
+        return {};
+    });
+
+    const auto repo = std::filesystem::temp_directory_path() / "gf-remote-credentials";
+    std::filesystem::create_directories(repo);
+    branchVm.setRepositoryPath(QString::fromStdString(repo.string()));
+    REQUIRE(branchVm.waitForIdle());
+
+    REQUIRE(branchVm.fetchRemote("origin"));
+    REQUIRE(branchVm.pullRemote("origin"));
+    REQUIRE(branchVm.pushRemote("origin"));
+    REQUIRE(branchVm.fetchRemote("lan"));
+    REQUIRE(branchVm.pushRemote("lan")); // SSH push URL: no token
+    REQUIRE(branchVm.fetchRemote("plain")); // no profile for this server
+    REQUIRE(branchVm.fetchRemote("missing"));
+    REQUIRE(branchVm.fetchRemote("whatever", true)); // --all: origin's token, bound to its host
+    REQUIRE(branchVm.waitForIdle());
+
+    const std::vector<std::string> expected{
+        "fetch:x-access-token/ghp_saved@github.com",
+        "pull:x-access-token/ghp_saved@github.com",
+        "push:x-access-token/ghp_saved@github.com",
+        "fetch:alex/forgejo@192.168.1.122",
+        "push:",
+        "fetch:",
+        "fetch:",
+        "fetch:x-access-token/ghp_saved@github.com",
+    };
+    CHECK(mockOps.takeCredentialsSeen() == expected);
+    CHECK(resolvedOnGuiThread.contains("git@git.alexviolatto.dev:Dokjolly/FileHub.git"));
+
+    std::error_code ec;
+    std::filesystem::remove_all(repo, ec);
 }
 
 TEST_CASE (
