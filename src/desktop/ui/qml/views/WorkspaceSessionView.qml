@@ -1047,6 +1047,12 @@ Rectangle {
                 bannerText.text = message;
                 bannerTimer.restart();
             }
+
+            function onForcePushConfirmationRequested(remoteName, branchName, setUpstream, tags, requiresUnconditionalForce, reasonSummary, details) {
+                forcePushConfirmModal.openForRequest(
+                    remoteName, branchName, setUpstream, tags, requiresUnconditionalForce, reasonSummary, details
+                );
+            }
         }
 
         // ==========================================
@@ -1237,6 +1243,21 @@ Rectangle {
 
     BatchProgressModal {
         id: batchProgressModal
+    }
+
+    ForcePushConfirmModal {
+        id: forcePushConfirmModal
+        branchManager: (root.sessionVm && root.sessionVm.branchManager) ? root.sessionVm.branchManager : null
+    }
+
+    Connections {
+        target: root.sessionVm
+
+        function onActiveTabIndexChanged() {
+            if (forcePushConfirmModal.opened) {
+                forcePushConfirmModal.close();
+            }
+        }
     }
 
     Connections {

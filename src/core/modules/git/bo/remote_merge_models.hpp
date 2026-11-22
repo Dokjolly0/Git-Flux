@@ -22,7 +22,10 @@ namespace gf::git::bo
         std::optional<std::string> branchName{std::nullopt};
         bool prune{false};
         bool setUpstream{false};
+        /// Uses `--force-with-lease` during push unless `forceUnconditional` is also set.
         bool force{false};
+        /// Uses unconditional `--force` during push (needed e.g. on stale lease / fetch-first / tags).
+        bool forceUnconditional{false};
         bool tags{false};
         bool rebase{false};
         bool fastForwardOnly{false};

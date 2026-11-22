@@ -684,6 +684,81 @@ namespace gf::desktop
         return true;
     }
 
+    enum class ForcePushReason
+    {
+        None,
+        NonFastForward,
+        FetchFirst,
+        StaleLease,
+        TagAlreadyExists
+    };
+
+    static ForcePushReason classifyForcePushReason(const git::ports::GitOpsError& error,
+                                                   bool alreadyForceWithLease,
+                                                   bool alreadyForceUnconditional)
+    {
+        if (alreadyForceUnconditional || error.kind != git::ports::GitOpsError::Kind::RemoteRejected)
+        {
+            return ForcePushReason::None;
+        }
+
+        const QString msg = QString::fromStdString(error.message);
+        // Server-side hooks / branch protection rules print "[remote rejected]"; force push cannot override them.
+        if (msg.contains(QStringLiteral("[remote rejected]"), Qt::CaseInsensitive))
+        {
+            return ForcePushReason::None;
+        }
+        if (msg.contains(QStringLiteral("stale info"), Qt::CaseInsensitive))
+        {
+            return ForcePushReason::StaleLease;
+        }
+        if (msg.contains(QStringLiteral("already exists"), Qt::CaseInsensitive))
+        {
+            return ForcePushReason::TagAlreadyExists;
+        }
+        if (msg.contains(QStringLiteral("fetch first"), Qt::CaseInsensitive))
+        {
+            return ForcePushReason::FetchFirst;
+        }
+        if (!alreadyForceWithLease &&
+            msg.contains(QStringLiteral("non-fast-forward"), Qt::CaseInsensitive))
+        {
+            return ForcePushReason::NonFastForward;
+        }
+        return ForcePushReason::None;
+    }
+
+    static QString formatForcePushReasonSummary(ForcePushReason reason,
+                                                const QString& remoteName,
+                                                const QString& branchName)
+    {
+        const QString target = branchName.isEmpty()
+                                   ? remoteName
+                                   : QStringLiteral("%1/%2").arg(remoteName, branchName);
+        switch (reason)
+        {
+            case ForcePushReason::NonFastForward:
+                return QStringLiteral(
+                    "Il push su '%1' è stato rifiutato perché la cronologia locale diverge da quella remota "
+                    "(ad esempio dopo un amend, rebase o reset).").arg(target);
+            case ForcePushReason::FetchFirst:
+                return QStringLiteral(
+                    "Il push su '%1' è stato rifiutato perché il repository remoto contiene commit che non "
+                    "sono ancora presenti in locale.").arg(target);
+            case ForcePushReason::StaleLease:
+                return QStringLiteral(
+                    "Il push con --force-with-lease su '%1' è stato rifiutato perché il branch remoto è "
+                    "cambiato rispetto all'ultimo fetch.").arg(target);
+            case ForcePushReason::TagAlreadyExists:
+                return QStringLiteral(
+                    "Il push su '%1' è stato rifiutato perché uno o più tag esistono già sul remote con un "
+                    "riferimento diverso.").arg(target);
+            case ForcePushReason::None:
+                break;
+        }
+        return {};
+    }
+
     static QString formatRemoteError(const std::string& rawMsg)
     {
         const QString msg = QString::fromStdString(rawMsg);
@@ -826,31 +901,43 @@ namespace gf::desktop
         return true;
     }
 
-    bool BranchManagerViewModel::pushRemote(const QString& remoteName, bool setUpstream, bool force, bool tags)
+    bool BranchManagerViewModel::pushRemote(const QString& remoteName, bool setUpstream, bool force, bool tags,
+                                            bool forceUnconditional)
     {
         if (m_repoPath.empty())
         {
             return false;
         }
 
-        const QString optsDesc = force
-                                     ? QStringLiteral(" (force-with-lease)")
-                                     : (tags ? QStringLiteral(" (con tag)")
-                                             : (setUpstream ? QStringLiteral(" (set-upstream)") : QString()));
+        const QString optsDesc = forceUnconditional
+                                     ? (tags ? QStringLiteral(" (force, con tag)") : QStringLiteral(" (force)"))
+                                     : (force
+                                            ? (tags ? QStringLiteral(" (force-with-lease, con tag)")
+                                                    : QStringLiteral(" (force-with-lease)"))
+                                            : (tags ? QStringLiteral(" (con tag)")
+                                                    : (setUpstream ? QStringLiteral(" (set-upstream)") : QString())));
         auto& service = m_remoteMergeService;
         const auto repoPath = m_repoPath;
+        const QString branchName = m_currentBranch;
         git::bo::RemoteOperationOptions opts{
             .remoteName = remoteName.toStdString(),
-            .branchName = m_currentBranch.isEmpty() ? std::nullopt : std::make_optional(m_currentBranch.toStdString()),
+            .branchName = branchName.isEmpty() ? std::nullopt : std::make_optional(branchName.toStdString()),
             .setUpstream = setUpstream,
             .force = force,
+            .forceUnconditional = forceUnconditional,
             .tags = tags
         };
         opts.httpsCredential = httpsCredentialFor(remoteName, true);
 
+        struct PushAttempt
+        {
+            std::expected<git::bo::RemoteOperationResult, git::ports::GitOpsError> result;
+            bool usedSetUpstream = false;
+        };
+
         const int operationId = runOperation(
             QStringLiteral("Push verso %1%2 in corso...").arg(remoteName, optsDesc),
-            [&service, repoPath, options = opts]()
+            [&service, repoPath, options = opts]() -> PushAttempt
             {
                 auto opts = options;
                 auto res = service.pushRemote(repoPath, opts);
@@ -862,14 +949,27 @@ namespace gf::desktop
                     opts.setUpstream = true;
                     res = service.pushRemote(repoPath, opts);
                 }
-                return res;
+                return PushAttempt{std::move(res), opts.setUpstream};
             },
-            [this, remoteName, optsDesc](int id, bool sameRepo, auto res)
+            [this, remoteName, branchName, optsDesc, force, forceUnconditional, tags](int id, bool sameRepo,
+                                                                                      PushAttempt attempt)
             {
                 endRemoteOperation(id);
-                if (!res)
+                if (!attempt.result)
                 {
-                    completeOperation(id, false, formatRemoteError(res.error().message));
+                    const auto reason = classifyForcePushReason(attempt.result.error(), force, forceUnconditional);
+                    if (sameRepo && reason != ForcePushReason::None)
+                    {
+                        const bool needsUnconditional = (reason != ForcePushReason::NonFastForward);
+                        const QString summary = formatForcePushReasonSummary(reason, remoteName, branchName);
+                        const QString details = QString::fromStdString(attempt.result.error().message).trimmed();
+                        setStatusMessage(QStringLiteral("Push rifiutato da %1: richiesto force push").arg(remoteName));
+                        emit operationFinished(id, false, summary);
+                        emit forcePushConfirmationRequested(remoteName, branchName, attempt.usedSetUpstream, tags,
+                                                            needsUnconditional, summary, details);
+                        return;
+                    }
+                    completeOperation(id, false, formatRemoteError(attempt.result.error().message));
                     return;
                 }
                 if (sameRepo)

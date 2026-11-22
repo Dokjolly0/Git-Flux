@@ -127,7 +127,7 @@ namespace gf::desktop
     Q_INVOKABLE bool fetchRemote(const QString& remoteName = "origin", bool allRemotes = false);
     Q_INVOKABLE bool pullRemote(const QString& remoteName = "origin", const QString& strategy = "default");
     Q_INVOKABLE bool pushRemote(const QString& remoteName = "origin", bool setUpstream = false, bool force = false,
-                                bool tags = false);
+                                bool tags = false, bool forceUnconditional = false);
     Q_INVOKABLE bool setRemoteUrl(const QString& remoteName, const QString& newUrl);
     Q_INVOKABLE bool convertRemoteToSsh(const QString& remoteName = "origin");
 
@@ -170,6 +170,15 @@ namespace gf::desktop
         void commitFilesLoaded(const QString& commitSha, const QVariantList& files);
         void repositoryFilesLoaded(const QStringList& files);
         void fastForwardCheckReady(const QString& targetBranch, const QString& sourceBranch, bool possible);
+        // Emitted when a push is rejected because history diverged or remote refs conflict and
+        // a force push can resolve it; the UI confirms with the user before retrying with force.
+        void forcePushConfirmationRequested(const QString& remoteName,
+                                            const QString& branchName,
+                                            bool setUpstream,
+                                            bool tags,
+                                            bool requiresUnconditionalForce,
+                                            const QString& reasonSummary,
+                                            const QString& details);
 
     private:
         struct RefreshSnapshot;

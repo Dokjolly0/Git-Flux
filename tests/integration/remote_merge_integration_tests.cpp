@@ -222,6 +222,104 @@ TEST_CASE (
         CHECK(sandbox.readFile(sandbox.localRepoB, "new_feature.txt") == "Contenuto 2\n");
     }
 
+    SECTION("2b. Push rifiutato richiede force-with-lease o force incondizionato") {
+        REQUIRE(service.addRemote(sandbox.localRepoA, "origin", sandbox.bareRemote.string()).has_value());
+
+        // Initial push from repoA
+        REQUIRE(service.pushRemote(sandbox.localRepoA, gf::git::bo::RemoteOperationOptions{
+            .remoteName = "origin",
+            .branchName = "main",
+            .setUpstream = true
+        }).has_value());
+
+        // Clone into repoB
+        REQUIRE(executor.execute(gf::git::bo::GitCommand{
+            .args = {"clone", sandbox.bareRemote.string(), "."},
+            .workingDirectory = sandbox.localRepoB,
+            .lockPolicy = gf::git::bo::GitLockPolicy::Standard
+        })->exitCode == 0);
+        REQUIRE(executor.execute(gf::git::bo::GitCommand{
+            .args = {"config", "user.name", "Tester B"},
+            .workingDirectory = sandbox.localRepoB,
+            .lockPolicy = gf::git::bo::GitLockPolicy::Standard
+        })->exitCode == 0);
+        REQUIRE(executor.execute(gf::git::bo::GitCommand{
+            .args = {"config", "user.email", "tester.b@gitflux.local"},
+            .workingDirectory = sandbox.localRepoB,
+            .lockPolicy = gf::git::bo::GitLockPolicy::Standard
+        })->exitCode == 0);
+
+        // Case 1: repoA amends its pushed commit -> normal push fails with non-fast-forward,
+        //         then --force-with-lease succeeds.
+        sandbox.writeFile(sandbox.localRepoA, "README.md", "# Repo A (amended)\n");
+        REQUIRE(executor.execute(gf::git::bo::GitCommand{
+            .args = {"add", "README.md"},
+            .workingDirectory = sandbox.localRepoA,
+            .lockPolicy = gf::git::bo::GitLockPolicy::Standard
+        })->exitCode == 0);
+        REQUIRE(executor.execute(gf::git::bo::GitCommand{
+            .args = {"commit", "--amend", "-m", "Commit iniziale emendato"},
+            .workingDirectory = sandbox.localRepoA,
+            .lockPolicy = gf::git::bo::GitLockPolicy::Standard
+        })->exitCode == 0);
+
+        auto rejectedNff = service.pushRemote(sandbox.localRepoA, gf::git::bo::RemoteOperationOptions{
+            .remoteName = "origin",
+            .branchName = "main"
+        });
+        REQUIRE_FALSE(rejectedNff.has_value());
+        CHECK(rejectedNff.error().kind == gf::git::ports::GitOpsError::Kind::RemoteRejected);
+        CHECK(rejectedNff.error().message.find("non-fast-forward") != std::string::npos);
+
+        auto leaseOk = service.pushRemote(sandbox.localRepoA, gf::git::bo::RemoteOperationOptions{
+            .remoteName = "origin",
+            .branchName = "main",
+            .force = true
+        });
+        REQUIRE(leaseOk.has_value());
+        CHECK(leaseOk->success);
+
+        // Case 2: repoB hasn't fetched repoA's amended history and makes a local commit.
+        //         Normal push -> fetch first; --force-with-lease -> stale info; --force -> succeeds.
+        sandbox.writeFile(sandbox.localRepoB, "from_b.txt", "Da B\n");
+        REQUIRE(executor.execute(gf::git::bo::GitCommand{
+            .args = {"add", "from_b.txt"},
+            .workingDirectory = sandbox.localRepoB,
+            .lockPolicy = gf::git::bo::GitLockPolicy::Standard
+        })->exitCode == 0);
+        REQUIRE(executor.execute(gf::git::bo::GitCommand{
+            .args = {"commit", "-m", "Commit da B"},
+            .workingDirectory = sandbox.localRepoB,
+            .lockPolicy = gf::git::bo::GitLockPolicy::Standard
+        })->exitCode == 0);
+
+        auto rejectedFetchFirst = service.pushRemote(sandbox.localRepoB, gf::git::bo::RemoteOperationOptions{
+            .remoteName = "origin",
+            .branchName = "main"
+        });
+        REQUIRE_FALSE(rejectedFetchFirst.has_value());
+        CHECK(rejectedFetchFirst.error().kind == gf::git::ports::GitOpsError::Kind::RemoteRejected);
+        CHECK(rejectedFetchFirst.error().message.find("fetch first") != std::string::npos);
+
+        auto rejectedStale = service.pushRemote(sandbox.localRepoB, gf::git::bo::RemoteOperationOptions{
+            .remoteName = "origin",
+            .branchName = "main",
+            .force = true
+        });
+        REQUIRE_FALSE(rejectedStale.has_value());
+        CHECK(rejectedStale.error().kind == gf::git::ports::GitOpsError::Kind::RemoteRejected);
+        CHECK(rejectedStale.error().message.find("stale info") != std::string::npos);
+
+        auto forceOk = service.pushRemote(sandbox.localRepoB, gf::git::bo::RemoteOperationOptions{
+            .remoteName = "origin",
+            .branchName = "main",
+            .force = true,
+            .forceUnconditional = true
+        });
+        REQUIRE(forceOk.has_value());
+        CHECK(forceOk->success);
+    }
+
     SECTION("3. Merge Fast-Forward") {
         // Create branch feature/ff
         REQUIRE(executor.execute(gf::git::bo::GitCommand{

@@ -2477,7 +2477,11 @@ namespace gf::infra::git
         {
             args.emplace_back("-u");
         }
-        if (options.force)
+        if (options.forceUnconditional)
+        {
+            args.emplace_back("--force");
+        }
+        else if (options.force)
         {
             args.emplace_back("--force-with-lease");
         }
@@ -2515,7 +2519,9 @@ namespace gf::infra::git
             auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
             if (execResult->stderrBytes.find("rejected") != std::string::npos ||
                 execResult->stderrBytes.find("non-fast-forward") != std::string::npos ||
-                execResult->stderrBytes.find("fetch first") != std::string::npos)
+                execResult->stderrBytes.find("fetch first") != std::string::npos ||
+                execResult->stderrBytes.find("stale info") != std::string::npos ||
+                execResult->stderrBytes.find("already exists") != std::string::npos)
             {
                 kind = gf::git::ports::GitOpsError::Kind::RemoteRejected;
             }

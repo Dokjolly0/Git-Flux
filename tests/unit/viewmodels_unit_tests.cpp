@@ -614,6 +614,11 @@ public:
     std::atomic<bool> fetchFailsAuth{false};
     std::atomic<int> pushCalls{0};
     std::atomic<bool> lastPushSetUpstream{false};
+    std::atomic<bool> lastPushForce{false};
+    std::atomic<bool> lastPushForceUnconditional{false};
+    std::atomic<bool> lastPushTags{false};
+    std::function<std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>(
+        const gf::git::bo::RemoteOperationOptions&)> pushOverride;
 
     std::expected<gf::git::bo::RepoWorkingTreeStatus, gf::git::ports::GitOpsError>
     getWorkingTreeStatus(const std::filesystem::path&) override
@@ -878,10 +883,17 @@ public:
         recordCredential("push", options);
         ++pushCalls;
         lastPushSetUpstream = options.setUpstream;
+        lastPushForce = options.force;
+        lastPushForceUnconditional = options.forceUnconditional;
+        lastPushTags = options.tags;
         if (pushNeedsUpstream && !options.setUpstream)
         {
             return std::unexpected(gf::git::ports::GitOpsError{
                 gf::git::ports::GitOpsError::Kind::ExecutionFailed, 1, "fatal: The current branch has no upstream branch."});
+        }
+        if (pushOverride)
+        {
+            return pushOverride(options);
         }
         return gf::git::bo::RemoteOperationResult{.success = true};
     }
@@ -2215,6 +2227,143 @@ TEST_CASE (
         CHECK_FALSE(emptyVm.fetchRemote("origin"));
         CHECK_FALSE(emptyVm.pullRemote("origin"));
         CHECK_FALSE(emptyVm.pushRemote("origin"));
+    }
+
+    SECTION("a non-fast-forward rejection requests force-with-lease confirmation before retrying") {
+        QSignalSpy completedSpy(&branchVm, &BranchManagerViewModel::operationCompleted);
+        QSignalSpy confirmSpy(&branchVm, &BranchManagerViewModel::forcePushConfirmationRequested);
+
+        mockOps.pushOverride = [](const gf::git::bo::RemoteOperationOptions& opts)
+            -> std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
+        {
+            if (!opts.force && !opts.forceUnconditional)
+            {
+                return std::unexpected(gf::git::ports::GitOpsError{
+                    .kind = gf::git::ports::GitOpsError::Kind::RemoteRejected,
+                    .exitCode = 1,
+                    .message = "To origin\n ! [rejected] main -> main (non-fast-forward)\nerror: failed to push some refs"
+                });
+            }
+            return gf::git::bo::RemoteOperationResult{.success = true};
+        };
+
+        REQUIRE(branchVm.pushRemote("origin", false, false, false));
+        REQUIRE(branchVm.waitForIdle());
+
+        REQUIRE(confirmSpy.count() == 1);
+        CHECK(completedSpy.count() == 0); // no red toast behind the confirmation dialog
+        REQUIRE(finishedSpy.count() == 1);
+        CHECK_FALSE(finishedSpy.at(0).at(1).toBool());
+
+        const auto args = confirmSpy.at(0);
+        CHECK(args.at(0).toString() == "origin");
+        CHECK(args.at(2).toBool() == false); // setUpstream
+        CHECK(args.at(3).toBool() == false); // tags
+        CHECK(args.at(4).toBool() == false); // requiresUnconditionalForce -> --force-with-lease suffices
+        CHECK(args.at(5).toString().contains("diverge"));
+        CHECK(args.at(6).toString().contains("non-fast-forward"));
+
+        // User confirms the dialog -> retries with force-with-lease
+        REQUIRE(branchVm.pushRemote(args.at(0).toString(), args.at(2).toBool(), true, args.at(3).toBool(),
+                                    args.at(4).toBool()));
+        REQUIRE(branchVm.waitForIdle());
+
+        CHECK(mockOps.lastPushForce.load());
+        CHECK_FALSE(mockOps.lastPushForceUnconditional.load());
+        REQUIRE(completedSpy.count() == 1);
+        CHECK(completedSpy.at(0).at(0).toBool());
+        CHECK(completedSpy.at(0).at(1).toString().contains("force-with-lease"));
+    }
+
+    SECTION("a fetch-first rejection requests unconditional force confirmation and preserves auto set-upstream") {
+        QSignalSpy completedSpy(&branchVm, &BranchManagerViewModel::operationCompleted);
+        QSignalSpy confirmSpy(&branchVm, &BranchManagerViewModel::forcePushConfirmationRequested);
+
+        mockOps.pushNeedsUpstream = true;
+        mockOps.pushOverride = [](const gf::git::bo::RemoteOperationOptions& opts)
+            -> std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
+        {
+            if (!opts.forceUnconditional)
+            {
+                return std::unexpected(gf::git::ports::GitOpsError{
+                    .kind = gf::git::ports::GitOpsError::Kind::RemoteRejected,
+                    .exitCode = 1,
+                    .message = "To origin\n ! [rejected] main -> main (fetch first)\nerror: failed to push some refs"
+                });
+            }
+            return gf::git::bo::RemoteOperationResult{.success = true};
+        };
+
+        REQUIRE(branchVm.pushRemote("origin", false, false, false));
+        REQUIRE(branchVm.waitForIdle());
+
+        REQUIRE(confirmSpy.count() == 1);
+        CHECK(completedSpy.count() == 0);
+        const auto args = confirmSpy.at(0);
+        CHECK(args.at(2).toBool() == true);  // setUpstream auto-retry preserved
+        CHECK(args.at(4).toBool() == true);  // requiresUnconditionalForce -> --force needed
+
+        // User confirms unconditional --force
+        REQUIRE(branchVm.pushRemote(args.at(0).toString(), args.at(2).toBool(), true, args.at(3).toBool(),
+                                    args.at(4).toBool()));
+        REQUIRE(branchVm.waitForIdle());
+
+        CHECK(mockOps.lastPushSetUpstream.load());
+        CHECK(mockOps.lastPushForceUnconditional.load());
+        REQUIRE(completedSpy.count() == 1);
+        CHECK(completedSpy.at(0).at(0).toBool());
+        CHECK(completedSpy.at(0).at(1).toString().contains("(force)"));
+    }
+
+    SECTION("a stale-info rejection on force-with-lease escalates to unconditional force, then stops") {
+        QSignalSpy completedSpy(&branchVm, &BranchManagerViewModel::operationCompleted);
+        QSignalSpy confirmSpy(&branchVm, &BranchManagerViewModel::forcePushConfirmationRequested);
+
+        mockOps.pushOverride = [](const gf::git::bo::RemoteOperationOptions&)
+            -> std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
+        {
+            return std::unexpected(gf::git::ports::GitOpsError{
+                .kind = gf::git::ports::GitOpsError::Kind::RemoteRejected,
+                .exitCode = 1,
+                .message = "To origin\n ! [rejected] main -> main (stale info)\nerror: failed to push some refs"
+            });
+        };
+
+        REQUIRE(branchVm.pushRemote("origin", false, true, false, false));
+        REQUIRE(branchVm.waitForIdle());
+
+        REQUIRE(confirmSpy.count() == 1);
+        CHECK(confirmSpy.at(0).at(4).toBool() == true); // requiresUnconditionalForce
+
+        // Even if unconditional --force somehow returns RemoteRejected, it must NOT prompt in a loop
+        REQUIRE(branchVm.pushRemote("origin", false, true, false, true));
+        REQUIRE(branchVm.waitForIdle());
+
+        CHECK(confirmSpy.count() == 1);
+        REQUIRE(completedSpy.count() == 1);
+        CHECK_FALSE(completedSpy.at(0).at(0).toBool());
+    }
+
+    SECTION("a server-side remote rejected hook error does not prompt for force push") {
+        QSignalSpy completedSpy(&branchVm, &BranchManagerViewModel::operationCompleted);
+        QSignalSpy confirmSpy(&branchVm, &BranchManagerViewModel::forcePushConfirmationRequested);
+
+        mockOps.pushOverride = [](const gf::git::bo::RemoteOperationOptions&)
+            -> std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
+        {
+            return std::unexpected(gf::git::ports::GitOpsError{
+                .kind = gf::git::ports::GitOpsError::Kind::RemoteRejected,
+                .exitCode = 1,
+                .message = "To origin\n ! [remote rejected] main -> main (protected branch hook declined)"
+            });
+        };
+
+        REQUIRE(branchVm.pushRemote("origin", false, false, false));
+        REQUIRE(branchVm.waitForIdle());
+
+        CHECK(confirmSpy.count() == 0);
+        REQUIRE(completedSpy.count() == 1);
+        CHECK_FALSE(completedSpy.at(0).at(0).toBool());
     }
 
     std::error_code ec;
