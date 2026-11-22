@@ -32,6 +32,22 @@ namespace gf::desktop::viewmodels
             });
         }
 
+        // True when `host` names the server of a detected ~/.ssh/config profile, either by its
+        // HostName or by its Host alias ("Host git.example.dev" + "HostName 192.168.1.10").
+        bool isSameServer(const std::string& host, const core::git::bo::GitProviderProfile& detected)
+        {
+            return equalsIgnoreCase(host, detected.host) ||
+                (!detected.sshHostAlias.empty() && equalsIgnoreCase(host, detected.sshHostAlias));
+        }
+
+        // True when `profile` is a ~/.ssh/config detection ("custom_<alias>") of the same server
+        // as a profile the user added by hand for `manualHost`.
+        bool isDetectedDuplicateOf(const core::git::bo::GitProviderProfile& profile, const std::string& manualHost)
+        {
+            return profile.id.starts_with("custom_") &&
+                (equalsIgnoreCase(profile.id, "custom_" + manualHost) || isSameServer(manualHost, profile));
+        }
+
         // Accepts "gitea.example.com", "https://gitea.example.com/", "git@host:2222"...
         // and returns the bare host name ("gitea.example.com"), lower-cased.
         QString normalizeHost(const QString& input)
@@ -186,17 +202,35 @@ namespace gf::desktop::viewmodels
             ++it;
         }
 
+        // A server added by hand replaces its ~/.ssh/config detection saved earlier.
+        for (const auto& manual : std::vector(stored))
+        {
+            if (!isManualProfileId(manual.id)) continue;
+            std::erase_if(stored, [&](const auto& s)
+            {
+                if (!isDetectedDuplicateOf(s, manual.host)) return false;
+                (void)m_store.deleteProfile(s.id);
+                return true;
+            });
+        }
+
         // 3. Merge: augment stored with detected SSH keys, or add newly detected.
         //    A detected custom host that the user already added by hand augments that profile
         //    instead of showing up twice.
         for (const auto& det : detected)
         {
-            auto it = std::find_if(stored.begin(), stored.end(), [&](const auto& s)
+            auto it = stored.end();
+            if (det.providerType == core::git::bo::GitProviderType::Custom)
             {
-                return s.id == det.id ||
-                    (det.providerType == core::git::bo::GitProviderType::Custom && isManualProfileId(s.id) &&
-                        equalsIgnoreCase(s.host, det.host));
-            });
+                it = std::find_if(stored.begin(), stored.end(), [&](const auto& s)
+                {
+                    return isManualProfileId(s.id) && isSameServer(s.host, det);
+                });
+            }
+            if (it == stored.end())
+            {
+                it = std::find_if(stored.begin(), stored.end(), [&](const auto& s) { return s.id == det.id; });
+            }
 
             if (it != stored.end())
             {
@@ -649,7 +683,7 @@ namespace gf::desktop::viewmodels
             const auto det = m_detector.detectProfiles();
             const auto d = std::find_if(det.begin(), det.end(), [&](const auto& x)
             {
-                return (x.hasSshKey || !x.sshHostAlias.empty()) && equalsIgnoreCase(x.host, p.host);
+                return (x.hasSshKey || !x.sshHostAlias.empty()) && isSameServer(p.host, x);
             });
             if (d != det.end())
             {
@@ -690,6 +724,16 @@ namespace gf::desktop::viewmodels
 
     void GitProfilesViewModel::addProfile(core::git::bo::GitProviderProfile profile)
     {
+        if (isManualProfileId(profile.id))
+        {
+            std::erase_if(m_profiles, [&](const auto& p)
+            {
+                if (!isDetectedDuplicateOf(p, profile.host)) return false;
+                (void)m_store.deleteProfile(p.id);
+                return true;
+            });
+        }
+
         (void)m_store.saveProfile(profile);
         const auto id = QString::fromStdString(profile.id);
         if (auto* existing = findProfileMut(id))

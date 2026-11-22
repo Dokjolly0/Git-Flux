@@ -3761,6 +3761,7 @@ TEST_CASE (
 #include <QNetworkAccessManager>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <fstream>
 
 namespace
 {
@@ -3967,6 +3968,66 @@ TEST_CASE (
                            [](const auto& p) { return p.id == "manual_forge.lan"; }));
         CHECK(std::any_of(stored->begin(), stored->end(), [](const auto& p) { return p.id == "github"; }));
     }
+
+    std::error_code ec;
+    std::filesystem::remove_all(baseDir, ec);
+}
+
+TEST_CASE (
+"GitProfilesViewModel links a server added by hand to its ssh config Host alias"
+,
+"[viewmodel][profiles]"
+)
+ {
+    ensureQtApp();
+    using gf::desktop::viewmodels::GitProfilesViewModel;
+
+    // Home LAN setup: the public domain is a Host alias pointing at the LAN IP, SSH on 2222.
+    const auto baseDir = std::filesystem::temp_directory_path() / "gf-profiles-ssh-alias";
+    std::filesystem::remove_all(baseDir);
+    std::filesystem::create_directories(baseDir / "home" / ".ssh");
+    { std::ofstream(baseDir / "home" / ".ssh" / "id_ed25519") << "dummy"; }
+    {
+        std::ofstream cfg(baseDir / "home" / ".ssh" / "config");
+        cfg << "Host git.example.dev\n"
+               "    HostName 192.168.1.10\n"
+               "    Port 2222\n"
+               "    User git\n"
+               "    IdentityFile ~/.ssh/id_ed25519\n";
+    }
+
+    auto connRes = gf::infra::persistence::sqlite::SqliteConnection::openInMemory();
+    REQUIRE(connRes.has_value());
+    REQUIRE(gf::infra::persistence::sqlite::SchemaMigrator::migrateToLatest(*connRes).has_value());
+    gf::infra::persistence::profiles::SqliteProfileStore store(*connRes);
+    gf::infra::security::CryptoVault vault(baseDir / "vault");
+    gf::infra::git::credentials::SystemCredentialDetector detector(baseDir / "home");
+    QNetworkAccessManager nam;
+    gf::desktop::services::GitProviderApiClient apiClient(&nam);
+    FakeGiteaServer server;
+
+    GitProfilesViewModel vm(store, vault, detector, &apiClient);
+    vm.initialize();
+    REQUIRE(vm.waitForIdle());
+
+    vm.addCustomProfile("https://git.example.dev/", "Casa", QString(), server.url());
+    REQUIRE(vm.waitForIdle());
+    CHECK(vm.activeProfileId() == "manual_git.example.dev");
+    CHECK(vm.activeProfileHasSsh());
+
+    // After a restart the detected block augments the manual profile instead of duplicating it.
+    GitProfilesViewModel restarted(store, vault, detector, &apiClient);
+    restarted.initialize();
+    REQUIRE(restarted.waitForIdle());
+    int customCount = 0;
+    for (const auto& v : restarted.profiles())
+    {
+        const auto id = v.toMap().value("id").toString();
+        if (id.startsWith("custom_") || id.startsWith("manual_")) ++customCount;
+    }
+    CHECK(customCount == 1);
+    restarted.selectProfile("manual_git.example.dev");
+    CHECK(restarted.activeProfileHasSsh());
 
     std::error_code ec;
     std::filesystem::remove_all(baseDir, ec);
