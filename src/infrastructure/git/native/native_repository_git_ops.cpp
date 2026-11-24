@@ -10,13 +10,14 @@
 
 #include <algorithm>
 #include <fstream>
+#include <ranges>
 #include <unordered_map>
 
 namespace gf::infra::git
 {
     namespace
     {
-        [[nodiscard]] gf::git::bo::FileChangeKind mapStatusCharToKind(char code) noexcept
+        [[nodiscard]] gf::git::bo::FileChangeKind mapStatusCharToKind(const char code) noexcept
         {
             switch (code)
             {
@@ -47,9 +48,9 @@ namespace gf::infra::git
             return str.substr(start);
         }
 
-        [[nodiscard]] std::string extractSummaryLine(std::string_view message)
+        [[nodiscard]] std::string extractSummaryLine(const std::string_view message)
         {
-            auto newlinePos = message.find_first_of("\r\n");
+            const auto newlinePos = message.find_first_of("\r\n");
             if (newlinePos == std::string_view::npos)
             {
                 return std::string(message);
@@ -64,7 +65,7 @@ namespace gf::infra::git
                       std::vector<std::string> args)
         {
             const std::string label = "git " + (args.empty() ? std::string{} : args.front());
-            gf::git::bo::GitCommand cmd{
+            const gf::git::bo::GitCommand cmd{
                 .args = std::move(args),
                 .workingDirectory = repoPath,
                 .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -92,7 +93,7 @@ namespace gf::infra::git
             return trimString(std::move(exec->stdoutBytes));
         }
 
-        [[nodiscard]] bool isStashNotFoundError(std::string_view output) noexcept
+        [[nodiscard]] bool isStashNotFoundError(const std::string_view output) noexcept
         {
             return output.find("is not a valid reference") != std::string_view::npos ||
                 output.find("is not a valid-object") != std::string_view::npos ||
@@ -114,19 +115,16 @@ namespace gf::infra::git
         {
             auto readFirstWord = [](const std::filesystem::path& p) -> std::string
             {
-                std::error_code ec;
-                if (!std::filesystem::exists(p, ec)) return {};
+                if (std::error_code ec; !std::filesystem::exists(p, ec)) return {};
                 std::ifstream ifs(p);
-                std::string s;
-                if (ifs >> s) return s;
+                if (std::string s; ifs >> s) return s;
                 return {};
             };
 
             auto rebaseMergeDir = repoPath / ".git" / "rebase-merge";
             auto rebaseApplyDir = repoPath / ".git" / "rebase-apply";
 
-            std::error_code ec;
-            if (std::filesystem::exists(rebaseMergeDir, ec))
+            if (std::error_code ec; std::filesystem::exists(rebaseMergeDir, ec))
             {
                 std::string msgnumStr = readFirstWord(rebaseMergeDir / "msgnum");
                 std::string endStr = readFirstWord(rebaseMergeDir / "end");
@@ -188,8 +186,8 @@ namespace gf::infra::git
                 while (!out.empty())
                 {
                     auto nl = out.find('\n');
-                    std::string_view line = (nl == std::string_view::npos) ? out : out.substr(0, nl);
-                    out = (nl == std::string_view::npos) ? std::string_view{} : out.substr(nl + 1);
+                    std::string_view line = nl == std::string_view::npos ? out : out.substr(0, nl);
+                    out = nl == std::string_view::npos ? std::string_view{} : out.substr(nl + 1);
                     if (!line.empty() && line.back() == '\r')
                     {
                         line.remove_suffix(1);
@@ -211,7 +209,7 @@ namespace gf::infra::git
     std::expected<gf::git::bo::RepoWorkingTreeStatus, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::getWorkingTreeStatus(const std::filesystem::path& repoPath)
     {
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {"status", "--porcelain=v2", "-z", "--branch", "--ahead-behind", "--untracked-files=all"},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
@@ -318,7 +316,7 @@ namespace gf::infra::git
         std::vector<std::string> args{"add", "--"};
         args.insert(args.end(), filePaths.begin(), filePaths.end());
 
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = std::move(args),
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -363,7 +361,7 @@ namespace gf::infra::git
     std::expected<void, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::stageAll(const std::filesystem::path& repoPath)
     {
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {"add", "-A"},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -411,7 +409,7 @@ namespace gf::infra::git
         std::vector<std::string> restoreArgs{"restore", "--staged", "--"};
         restoreArgs.insert(restoreArgs.end(), filePaths.begin(), filePaths.end());
 
-        gf::git::bo::GitCommand restoreCmd{
+        const gf::git::bo::GitCommand restoreCmd{
             .args = std::move(restoreArgs),
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -438,14 +436,13 @@ namespace gf::infra::git
                 std::vector<std::string> rmArgs{"rm", "--cached", "--"};
                 rmArgs.insert(rmArgs.end(), filePaths.begin(), filePaths.end());
 
-                gf::git::bo::GitCommand rmCmd{
+                const gf::git::bo::GitCommand rmCmd{
                     .args = std::move(rmArgs),
                     .workingDirectory = repoPath,
                     .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
                     .timeout = std::chrono::milliseconds{30'000}
                 };
-                auto rmResult = m_executor.execute(rmCmd);
-                if (rmResult && rmResult->exitCode == 0)
+                if (const auto rmResult = m_executor.execute(rmCmd); rmResult && rmResult->exitCode == 0)
                 {
                     return {};
                 }
@@ -471,7 +468,7 @@ namespace gf::infra::git
     std::expected<void, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::unstageAll(const std::filesystem::path& repoPath)
     {
-        gf::git::bo::GitCommand restoreCmd{
+        const gf::git::bo::GitCommand restoreCmd{
             .args = {"restore", "--staged", "."},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -494,14 +491,13 @@ namespace gf::infra::git
             if (execResult->stderrBytes.find("HEAD") != std::string::npos)
             {
                 // Fallback for unborn HEAD: git rm --cached -r -- .
-                gf::git::bo::GitCommand rmCmd{
+                const gf::git::bo::GitCommand rmCmd{
                     .args = {"rm", "--cached", "-r", "--", "."},
                     .workingDirectory = repoPath,
                     .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
                     .timeout = std::chrono::milliseconds{30'000}
                 };
-                auto rmResult = m_executor.execute(rmCmd);
-                if (rmResult && rmResult->exitCode == 0)
+                if (const auto rmResult = m_executor.execute(rmCmd); rmResult && rmResult->exitCode == 0)
                 {
                     return {};
                 }
@@ -536,7 +532,7 @@ namespace gf::infra::git
         for (const auto& path : filePaths)
         {
             // 1. Try restoring tracked file (modified or deleted in working tree)
-            gf::git::bo::GitCommand restoreCmd{
+            const gf::git::bo::GitCommand restoreCmd{
                 .args = {"restore", "--", path},
                 .workingDirectory = repoPath,
                 .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -550,24 +546,22 @@ namespace gf::infra::git
             }
 
             // 2. If restore fails (untracked file), attempt git clean
-            gf::git::bo::GitCommand cleanCmd{
+            const gf::git::bo::GitCommand cleanCmd{
                 .args = {"clean", "-f", "-d", "-q", "--", path},
                 .workingDirectory = repoPath,
                 .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
                 .timeout = std::chrono::milliseconds{30'000}
             };
 
-            auto cleanRes = m_executor.execute(cleanCmd);
-            if (cleanRes && cleanRes->exitCode == 0)
+            if (const auto cleanRes = m_executor.execute(cleanCmd); cleanRes && cleanRes->exitCode == 0)
             {
                 continue;
             }
 
             // 3. Fallback to direct filesystem removal if untracked file still exists
-            std::error_code fsEc;
-            auto targetPath = repoPath / path;
-            if (std::filesystem::exists(targetPath, fsEc))
+            if (std::error_code fsEc; std::filesystem::exists(repoPath / path, fsEc))
             {
+                const auto targetPath = repoPath / path;
                 std::filesystem::remove_all(targetPath, fsEc);
                 if (!fsEc && !std::filesystem::exists(targetPath, fsEc))
                 {
@@ -593,14 +587,13 @@ namespace gf::infra::git
         // Fast check for empty staging area if neither amend nor allowEmpty is specified
         if (!options.amend && !options.allowEmpty)
         {
-            gf::git::bo::GitCommand diffCheck{
+            const gf::git::bo::GitCommand diffCheck{
                 .args = {"diff", "--cached", "--quiet"},
                 .workingDirectory = repoPath,
                 .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
                 .timeout = std::chrono::milliseconds{10'000}
             };
-            auto diffRes = m_executor.execute(diffCheck);
-            if (diffRes && diffRes->exitCode == 0)
+            if (const auto diffRes = m_executor.execute(diffCheck); diffRes && diffRes->exitCode == 0)
             {
                 return std::unexpected(gf::git::ports::GitOpsError{
                     .kind = gf::git::ports::GitOpsError::Kind::NothingToCommit,
@@ -625,7 +618,7 @@ namespace gf::infra::git
             args.emplace_back("--allow-empty");
         }
 
-        gf::git::bo::GitCommand commitCmd{
+        const gf::git::bo::GitCommand commitCmd{
             .args = std::move(args),
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -666,7 +659,7 @@ namespace gf::infra::git
         }
 
         // Commit SHA resolution
-        gf::git::bo::GitCommand revParseCmd{
+        const gf::git::bo::GitCommand revParseCmd{
             .args = {"rev-parse", "HEAD"},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
@@ -677,7 +670,7 @@ namespace gf::infra::git
         std::string shortSha = commitSha.size() >= 8 ? commitSha.substr(0, 8) : commitSha;
 
         // Branch resolution
-        gf::git::bo::GitCommand branchCmd{
+        const gf::git::bo::GitCommand branchCmd{
             .args = {"rev-parse", "--abbrev-ref", "HEAD"},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
@@ -697,7 +690,7 @@ namespace gf::infra::git
     std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::getFileDiff(const std::filesystem::path& repoPath,
                                         const std::string& filePath,
-                                        gf::git::bo::DiffScope scope)
+                                        const gf::git::bo::DiffScope scope)
     {
         return getFileDiffWithContext(repoPath, filePath, scope, 3);
     }
@@ -705,10 +698,10 @@ namespace gf::infra::git
     std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::getFileDiffWithContext(const std::filesystem::path& repoPath,
                                                    const std::string& filePath,
-                                                   gf::git::bo::DiffScope scope,
-                                                   int contextLines)
+                                                   const gf::git::bo::DiffScope scope,
+                                                   const int contextLines)
     {
-        const int effectiveContext = (contextLines < 0) ? 999999 : contextLines;
+        const int effectiveContext = contextLines < 0 ? 999999 : contextLines;
         const std::string contextArg = "-U" + std::to_string(effectiveContext);
         std::vector<std::string> args;
         if (scope == gf::git::bo::DiffScope::Staged)
@@ -732,9 +725,9 @@ namespace gf::infra::git
                 };
             }
             // Untracked: use --no-index against /dev/null
-            const auto untrackedFullPath = repoPath / gf::core::utf8ToPath(filePath);
-            const auto fileSize = std::filesystem::file_size(untrackedFullPath, ec);
-            if (!ec && fileSize > 2 * 1024 * 1024)
+            const auto untrackedFullPath = repoPath / core::utf8ToPath(filePath);
+            if (const auto fileSize = std::filesystem::file_size(untrackedFullPath, ec);
+                !ec && fileSize > 2 * 1024 * 1024)
             {
                 return gf::git::bo::FileDiff{
                     .oldPath = filePath,
@@ -749,7 +742,7 @@ namespace gf::infra::git
             };
         }
 
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = std::move(args),
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
@@ -768,8 +761,8 @@ namespace gf::infra::git
         }
 
         // For --no-index, exitCode 1 indicates differences are present
-        const bool isNoIndex = (scope == gf::git::bo::DiffScope::Untracked);
-        if ((isNoIndex && execResult->exitCode >= 2) || (!isNoIndex && execResult->exitCode > 1))
+        if (const bool isNoIndex = scope == gf::git::bo::DiffScope::Untracked;
+            (isNoIndex && execResult->exitCode >= 2) || (!isNoIndex && execResult->exitCode > 1))
         {
             return std::unexpected(gf::git::ports::GitOpsError{
                 .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
@@ -787,8 +780,8 @@ namespace gf::infra::git
             };
         }
 
-        auto diffOpt = gf::git::bl::UnifiedDiffParser::parseSingle(execResult->stdoutBytes);
-        if (diffOpt.has_value())
+        if (auto diffOpt = gf::git::bl::UnifiedDiffParser::parseSingle(execResult->stdoutBytes);
+            diffOpt.has_value())
         {
             if (diffOpt->newPath.empty())
             {
@@ -805,7 +798,7 @@ namespace gf::infra::git
 
     std::expected<std::vector<gf::git::bo::FileDiff>, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::getAllDiffs(const std::filesystem::path& repoPath,
-                                        gf::git::bo::DiffScope scope)
+                                        const gf::git::bo::DiffScope scope)
     {
         if (scope == gf::git::bo::DiffScope::Untracked)
         {
@@ -820,8 +813,7 @@ namespace gf::infra::git
             result.reserve(statusRes->untrackedFiles.size());
             for (const auto& item : statusRes->untrackedFiles)
             {
-                auto diff = getFileDiff(repoPath, item.path, gf::git::bo::DiffScope::Untracked);
-                if (diff)
+                if (auto diff = getFileDiff(repoPath, item.path, gf::git::bo::DiffScope::Untracked))
                 {
                     result.push_back(std::move(*diff));
                 }
@@ -839,7 +831,7 @@ namespace gf::infra::git
             args = {"diff", "--no-color", "-p"};
         }
 
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = std::move(args),
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
@@ -880,7 +872,7 @@ namespace gf::infra::git
         }
 
         // 1. Run git show -m --first-parent --name-status --format="" <commitSha>
-        gf::git::bo::GitCommand diffTreeCmd{
+        const gf::git::bo::GitCommand diffTreeCmd{
             .args = {"show", "-m", "--first-parent", "--name-status", "--format=", commitSha},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
@@ -899,7 +891,7 @@ namespace gf::infra::git
         }
 
         // 2. Run git show -m --first-parent --numstat --format="" <commitSha>
-        gf::git::bo::GitCommand numstatCmd{
+        const gf::git::bo::GitCommand numstatCmd{
             .args = {"show", "-m", "--first-parent", "--numstat", "--format=", commitSha},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
@@ -977,8 +969,7 @@ namespace gf::infra::git
             std::string rest = dline.substr(tab1 + 1);
 
             gf::git::bo::CommitFileChange change;
-            char sChar = statusStr.empty() ? 'M' : statusStr.front();
-            switch (sChar)
+            switch (statusStr.empty() ? 'M' : statusStr.front())
             {
             case 'A': change.status = gf::git::bo::FileChangeStatus::Added;
                 break;
@@ -995,8 +986,7 @@ namespace gf::infra::git
             if (change.status == gf::git::bo::FileChangeStatus::Renamed ||
                 change.status == gf::git::bo::FileChangeStatus::Copied)
             {
-                auto tab2 = rest.find('\t');
-                if (tab2 != std::string::npos)
+                if (const auto tab2 = rest.find('\t'); tab2 != std::string::npos)
                 {
                     change.oldPath = rest.substr(0, tab2);
                     change.path = rest.substr(tab2 + 1);
@@ -1012,8 +1002,7 @@ namespace gf::infra::git
             }
 
             // Match numstat
-            auto it = numstatMap.find(change.path);
-            if (it != numstatMap.end())
+            if (const auto it = numstatMap.find(change.path); it != numstatMap.end())
             {
                 change.additions = it->second.additions;
                 change.deletions = it->second.deletions;
@@ -1038,16 +1027,16 @@ namespace gf::infra::git
     NativeRepositoryGitOps::getCommitFileDiffWithContext(const std::filesystem::path& repoPath,
                                                          const std::string& commitSha,
                                                          const std::string& filePath,
-                                                         int contextLines)
+                                                         const int contextLines)
     {
-        const int effectiveContext = (contextLines < 0) ? 999999 : contextLines;
+        const int effectiveContext = contextLines < 0 ? 999999 : contextLines;
         const std::string contextArg = "-U" + std::to_string(effectiveContext);
         if (commitSha.empty() || filePath.empty())
         {
             return gf::git::bo::FileDiff{.oldPath = filePath, .newPath = filePath};
         }
 
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {
                 "show", "-m", "--first-parent", "--format=", "--no-ext-diff", "--no-textconv", "--no-color", contextArg,
                 "-p", commitSha, "--", filePath
@@ -1076,8 +1065,8 @@ namespace gf::infra::git
             };
         }
 
-        auto diffOpt = gf::git::bl::UnifiedDiffParser::parseSingle(execResult->stdoutBytes);
-        if (diffOpt.has_value())
+        if (auto diffOpt = gf::git::bl::UnifiedDiffParser::parseSingle(execResult->stdoutBytes);
+            diffOpt.has_value())
         {
             if (diffOpt->newPath.empty())
             {
@@ -1111,10 +1100,10 @@ namespace gf::infra::git
         {
             args.push_back(revision);
         }
-        args.push_back("--");
+        args.emplace_back("--");
         args.push_back(filePath);
 
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = std::move(args),
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
@@ -1144,7 +1133,7 @@ namespace gf::infra::git
 
         while (std::getline(stream, line))
         {
-            while (!line.empty() && (line.back() == '\r'))
+            while (!line.empty() && line.back() == '\r')
             {
                 line.pop_back();
             }
@@ -1179,8 +1168,8 @@ namespace gf::infra::git
             {
                 try
                 {
-                    long long epoch = std::stoll(line.substr(12));
-                    std::time_t t = static_cast<std::time_t>(epoch);
+                    const long long epoch = std::stoll(line.substr(12));
+                    const std::time_t t = epoch;
                     std::tm tmBuf{};
 #if defined(_WIN32)
                     gmtime_s(&tmBuf, &t);
@@ -1199,16 +1188,15 @@ namespace gf::infra::git
             else
             {
                 // Check for header line: "<sha> <orig-line> <final-line>"
-                auto firstSpace = line.find(' ');
-                if (firstSpace == 40)
+                if (const auto firstSpace = line.find(' '); firstSpace == 40)
                 {
                     // 40-character sha
                     currentSha = line.substr(0, 40);
-                    auto secondSpace = line.find(' ', firstSpace + 1);
-                    if (secondSpace != std::string::npos)
+                    if (const auto secondSpace = line.find(' ', firstSpace + 1);
+                        secondSpace != std::string::npos)
                     {
                         auto thirdSpace = line.find(' ', secondSpace + 1);
-                        std::string fLineStr = (thirdSpace != std::string::npos)
+                        std::string fLineStr = thirdSpace != std::string::npos
                                                    ? line.substr(secondSpace + 1, thirdSpace - secondSpace - 1)
                                                    : line.substr(secondSpace + 1);
                         try
@@ -1230,7 +1218,7 @@ namespace gf::infra::git
     std::expected<std::vector<gf::git::bo::GitBranch>, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::listBranches(const std::filesystem::path& repoPath)
     {
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {
                 "for-each-ref", "--format=%(refname)%09%(objectname)%09%(HEAD)%09%(upstream:short)%09%(upstream:track)",
                 "refs/heads", "refs/remotes"
@@ -1268,10 +1256,10 @@ namespace gf::infra::git
         while (startPos < output.size())
         {
             auto endPos = output.find('\n', startPos);
-            std::string_view line = (endPos == std::string_view::npos)
+            std::string_view line = endPos == std::string_view::npos
                                         ? output.substr(startPos)
                                         : output.substr(startPos, endPos - startPos);
-            startPos = (endPos == std::string_view::npos) ? output.size() : endPos + 1;
+            startPos = endPos == std::string_view::npos ? output.size() : endPos + 1;
 
             while (!line.empty() && (line.back() == '\r' || line.back() == ' '))
             {
@@ -1310,7 +1298,7 @@ namespace gf::infra::git
             gf::git::bo::GitBranch b;
             b.fullName = std::string(refname);
             b.targetCommitSha = std::string(objname);
-            b.isCurrent = (headMark.find('*') != std::string_view::npos);
+            b.isCurrent = headMark.find('*') != std::string_view::npos;
             b.upstream = std::string(upstream);
 
             if (refname.starts_with("refs/heads/"))
@@ -1324,7 +1312,7 @@ namespace gf::infra::git
                 b.type = gf::git::bo::BranchType::Remote;
                 b.name = std::string(refname.substr(13));
                 auto slash = b.name.find('/');
-                b.shortName = (slash != std::string::npos) ? b.name.substr(slash + 1) : b.name;
+                b.shortName = slash != std::string::npos ? b.name.substr(slash + 1) : b.name;
                 if (b.shortName == "HEAD")
                 {
                     continue;
@@ -1340,8 +1328,7 @@ namespace gf::infra::git
             // Parse ahead/behind from tracking descriptor (e.g. "[ahead 2, behind 1]")
             if (!track.empty())
             {
-                auto aheadPos = track.find("ahead ");
-                if (aheadPos != std::string_view::npos)
+                if (const auto aheadPos = track.find("ahead "); aheadPos != std::string_view::npos)
                 {
                     int val = 0;
                     std::size_t p = aheadPos + 6;
@@ -1353,8 +1340,7 @@ namespace gf::infra::git
                     b.ahead = val;
                 }
 
-                auto behindPos = track.find("behind ");
-                if (behindPos != std::string_view::npos)
+                if (const auto behindPos = track.find("behind "); behindPos != std::string_view::npos)
                 {
                     int val = 0;
                     std::size_t p = behindPos + 7;
@@ -1373,17 +1359,16 @@ namespace gf::infra::git
         // If branch list is empty (e.g. freshly initialized repository with unborn HEAD)
         if (branches.empty())
         {
-            gf::git::bo::GitCommand branchCheckCmd{
+            const gf::git::bo::GitCommand branchCheckCmd{
                 .args = {"rev-parse", "--abbrev-ref", "HEAD"},
                 .workingDirectory = repoPath,
                 .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
                 .timeout = std::chrono::milliseconds{10'000}
             };
-            auto bcRes = m_executor.execute(branchCheckCmd);
-            if (bcRes && bcRes->exitCode == 0)
+            if (const auto bcRes = m_executor.execute(branchCheckCmd); bcRes && bcRes->exitCode == 0)
             {
-                std::string currentHead = trimString(bcRes->stdoutBytes);
-                if (!currentHead.empty() && currentHead != "HEAD")
+                if (std::string currentHead = trimString(bcRes->stdoutBytes);
+                    !currentHead.empty() && currentHead != "HEAD")
                 {
                     branches.push_back(gf::git::bo::GitBranch{
                         .name = currentHead,
@@ -1423,7 +1408,7 @@ namespace gf::infra::git
             args.push_back(*options.startPoint);
         }
 
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = std::move(args),
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -1498,8 +1483,8 @@ namespace gf::infra::git
                         checkoutTarget.compare(0, remote.size() + 1, remote + "/") == 0 &&
                         checkoutTarget.size() - remote.size() - 1 > 0)
                     {
-                        std::string candidate = checkoutTarget.substr(remote.size() + 1);
-                        if (localName.empty() || candidate.size() < localName.size())
+                        if (std::string candidate = checkoutTarget.substr(remote.size() + 1);
+                            localName.empty() || candidate.size() < localName.size())
                         {
                             localName = std::move(candidate);
                         }
@@ -1536,7 +1521,7 @@ namespace gf::infra::git
         }
         args.push_back(checkoutTarget);
 
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = std::move(args),
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -1587,9 +1572,9 @@ namespace gf::infra::git
     std::expected<void, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::deleteBranch(const std::filesystem::path& repoPath,
                                          const std::string& branchName,
-                                         bool force)
+                                         const bool force)
     {
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {"branch", force ? "-D" : "-d", branchName},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -1640,7 +1625,7 @@ namespace gf::infra::git
                                          const std::string& oldName,
                                          const std::string& newName)
     {
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {"branch", "-m", oldName, newName},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -1752,7 +1737,7 @@ namespace gf::infra::git
             args.push_back(*options.pathFilter);
         }
 
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = std::move(args),
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
@@ -1819,7 +1804,7 @@ namespace gf::infra::git
     std::expected<std::vector<std::string>, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::listTrackedFiles(const std::filesystem::path& repoPath)
     {
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {"ls-files"},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
@@ -1874,7 +1859,7 @@ namespace gf::infra::git
     std::expected<std::vector<gf::git::bo::GitTag>, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::listTags(const std::filesystem::path& repoPath)
     {
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {
                 "tag",
                 "-l",
@@ -1912,8 +1897,8 @@ namespace gf::infra::git
         while (!out.empty())
         {
             auto nextLine = out.find('\n');
-            std::string_view line = (nextLine == std::string_view::npos) ? out : out.substr(0, nextLine);
-            out = (nextLine == std::string_view::npos) ? std::string_view{} : out.substr(nextLine + 1);
+            std::string_view line = nextLine == std::string_view::npos ? out : out.substr(0, nextLine);
+            out = nextLine == std::string_view::npos ? std::string_view{} : out.substr(nextLine + 1);
 
             if (!line.empty() && line.back() == '\r')
             {
@@ -2003,7 +1988,7 @@ namespace gf::infra::git
             args.push_back(*options.targetCommit);
         }
 
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = std::move(args),
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -2050,7 +2035,7 @@ namespace gf::infra::git
     NativeRepositoryGitOps::deleteTag(const std::filesystem::path& repoPath,
                                       const std::string& tagName)
     {
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {"tag", "-d", tagName},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -2091,7 +2076,7 @@ namespace gf::infra::git
     std::expected<std::vector<gf::git::bo::GitRemote>, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::listRemotes(const std::filesystem::path& repoPath)
     {
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {"remote", "-v"},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
@@ -2125,8 +2110,8 @@ namespace gf::infra::git
         while (!out.empty())
         {
             auto nextLine = out.find('\n');
-            std::string_view line = (nextLine == std::string_view::npos) ? out : out.substr(0, nextLine);
-            out = (nextLine == std::string_view::npos) ? std::string_view{} : out.substr(nextLine + 1);
+            std::string_view line = nextLine == std::string_view::npos ? out : out.substr(0, nextLine);
+            out = nextLine == std::string_view::npos ? std::string_view{} : out.substr(nextLine + 1);
 
             if (!line.empty() && line.back() == '\r')
             {
@@ -2166,33 +2151,33 @@ namespace gf::infra::git
                 url = std::string(rest);
             }
 
-            auto& remote = remotesMap[name];
-            remote.name = name;
+            auto& [remoteName, fetchUrl, pushUrl] = remotesMap[name];
+            remoteName = name;
             if (isPush)
             {
-                remote.pushUrl = url;
-                if (remote.fetchUrl.empty())
+                pushUrl = url;
+                if (fetchUrl.empty())
                 {
-                    remote.fetchUrl = url;
+                    fetchUrl = url;
                 }
             }
             else
             {
-                remote.fetchUrl = url;
-                if (remote.pushUrl.empty())
+                fetchUrl = url;
+                if (pushUrl.empty())
                 {
-                    remote.pushUrl = url;
+                    pushUrl = url;
                 }
             }
         }
 
         std::vector<gf::git::bo::GitRemote> remotes;
         remotes.reserve(remotesMap.size());
-        for (auto& [_, r] : remotesMap)
+        for (auto& r : remotesMap | std::views::values)
         {
             remotes.push_back(std::move(r));
         }
-        std::sort(remotes.begin(), remotes.end(), [](const auto& a, const auto& b)
+        std::ranges::sort(remotes, [](const auto& a, const auto& b)
         {
             return a.name < b.name;
         });
@@ -2205,7 +2190,7 @@ namespace gf::infra::git
                                       const std::string& name,
                                       const std::string& url)
     {
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {"remote", "add", name, url},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -2247,7 +2232,7 @@ namespace gf::infra::git
     NativeRepositoryGitOps::removeRemote(const std::filesystem::path& repoPath,
                                          const std::string& name)
     {
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {"remote", "remove", name},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -2291,7 +2276,7 @@ namespace gf::infra::git
                                          const std::string& name,
                                          const std::string& url)
     {
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {"remote", "set-url", name, url},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -2565,7 +2550,7 @@ namespace gf::infra::git
         }
         args.push_back(options.sourceBranchOrCommit);
 
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = std::move(args),
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -2637,8 +2622,8 @@ namespace gf::infra::git
                 while (!out.empty())
                 {
                     auto nl = out.find('\n');
-                    std::string_view line = (nl == std::string_view::npos) ? out : out.substr(0, nl);
-                    out = (nl == std::string_view::npos) ? std::string_view{} : out.substr(nl + 1);
+                    std::string_view line = nl == std::string_view::npos ? out : out.substr(0, nl);
+                    out = nl == std::string_view::npos ? std::string_view{} : out.substr(nl + 1);
                     if (!line.empty() && line.back() == '\r')
                     {
                         line.remove_suffix(1);
@@ -2664,7 +2649,7 @@ namespace gf::infra::git
     std::expected<void, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::abortMerge(const std::filesystem::path& repoPath)
     {
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {"merge", "--abort"},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -2706,7 +2691,7 @@ namespace gf::infra::git
     std::expected<std::vector<gf::git::bo::GitStashItem>, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::listStashes(const std::filesystem::path& repoPath)
     {
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {"stash", "list", "--format=%gd%x00%H%x00%aI%x00%gs%x1e"},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
@@ -2741,7 +2726,7 @@ namespace gf::infra::git
         while (startPos < raw.size())
         {
             auto endPos = raw.find('\x1e', startPos);
-            std::string_view record = (endPos == std::string_view::npos)
+            std::string_view record = endPos == std::string_view::npos
                                           ? raw.substr(startPos)
                                           : raw.substr(startPos, endPos - startPos);
 
@@ -2769,8 +2754,9 @@ namespace gf::infra::git
                     item.dateIso = trimString(std::string(fields[2]));
 
                     auto openBrace = item.selector.find('{');
-                    auto closeBrace = item.selector.find('}', openBrace);
-                    if (openBrace != std::string::npos && closeBrace != std::string::npos && closeBrace > openBrace + 1)
+                    if (const auto closeBrace = item.selector.find('}', openBrace);
+                        openBrace != std::string::npos && closeBrace != std::string::npos &&
+                        closeBrace > openBrace + 1)
                     {
                         auto numStr = item.selector.substr(openBrace + 1, closeBrace - openBrace - 1);
                         try
@@ -2790,8 +2776,7 @@ namespace gf::infra::git
                     if (subject.starts_with(wipPrefix))
                     {
                         auto rest = subject.substr(wipPrefix.size());
-                        auto colonPos = rest.find(':');
-                        if (colonPos != std::string_view::npos)
+                        if (const auto colonPos = rest.find(':'); colonPos != std::string_view::npos)
                         {
                             item.branchName = trimString(std::string(rest.substr(0, colonPos)));
                             item.message = trimString(std::string(rest.substr(colonPos + 1)));
@@ -2805,8 +2790,7 @@ namespace gf::infra::git
                     else if (subject.starts_with(onPrefix))
                     {
                         auto rest = subject.substr(onPrefix.size());
-                        auto colonPos = rest.find(':');
-                        if (colonPos != std::string_view::npos)
+                        if (const auto colonPos = rest.find(':'); colonPos != std::string_view::npos)
                         {
                             item.branchName = trimString(std::string(rest.substr(0, colonPos)));
                             item.message = trimString(std::string(rest.substr(colonPos + 1)));
@@ -2863,7 +2847,7 @@ namespace gf::infra::git
             }
         }
 
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = std::move(args),
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -2881,8 +2865,8 @@ namespace gf::infra::git
             });
         }
 
-        const std::string combinedOutput = execResult->stdoutBytes + "\n" + execResult->stderrBytes;
-        if (combinedOutput.find("No local changes to save") != std::string::npos ||
+        if (const std::string combinedOutput = execResult->stdoutBytes + "\n" + execResult->stderrBytes;
+            combinedOutput.find("No local changes to save") != std::string::npos ||
             combinedOutput.find("Nessuna modifica locale da salvare") != std::string::npos)
         {
             return std::unexpected(gf::git::ports::GitOpsError{
@@ -2917,7 +2901,7 @@ namespace gf::infra::git
         }
         args.emplace_back("stash@{" + std::to_string(options.stashIndex) + "}");
 
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = std::move(args),
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -2972,7 +2956,7 @@ namespace gf::infra::git
         }
         args.emplace_back("stash@{" + std::to_string(options.stashIndex) + "}");
 
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = std::move(args),
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -3018,9 +3002,9 @@ namespace gf::infra::git
 
     std::expected<void, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::stashDrop(const std::filesystem::path& repoPath,
-                                      std::size_t stashIndex)
+                                      const std::size_t stashIndex)
     {
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {"stash", "drop", "stash@{" + std::to_string(stashIndex) + "}"},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -3062,7 +3046,7 @@ namespace gf::infra::git
     std::expected<void, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::stashClear(const std::filesystem::path& repoPath)
     {
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {"stash", "clear"},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -3122,7 +3106,7 @@ namespace gf::infra::git
             args.emplace_back(*options.branch);
         }
 
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = std::move(args),
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -3193,7 +3177,7 @@ namespace gf::infra::git
     std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::continueRebase(const std::filesystem::path& repoPath)
     {
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {"-c", "core.editor=true", "rebase", "--continue"},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -3216,8 +3200,7 @@ namespace gf::infra::git
 
         if (execResult->exitCode == 0)
         {
-            auto inProgress = isRebaseInProgress(repoPath);
-            if (inProgress && *inProgress)
+            if (const auto inProgress = isRebaseInProgress(repoPath); inProgress && *inProgress)
             {
                 result.status = gf::git::bo::RebaseStatus::Applied;
             }
@@ -3264,7 +3247,7 @@ namespace gf::infra::git
     std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::skipRebase(const std::filesystem::path& repoPath)
     {
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {"-c", "core.editor=true", "rebase", "--skip"},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -3287,8 +3270,7 @@ namespace gf::infra::git
 
         if (execResult->exitCode == 0)
         {
-            auto inProgress = isRebaseInProgress(repoPath);
-            if (inProgress && *inProgress)
+            if (const auto inProgress = isRebaseInProgress(repoPath); inProgress && *inProgress)
             {
                 result.status = gf::git::bo::RebaseStatus::Skipped;
             }
@@ -3334,7 +3316,7 @@ namespace gf::infra::git
     std::expected<void, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::abortRebase(const std::filesystem::path& repoPath)
     {
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {"rebase", "--abort"},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -3384,7 +3366,7 @@ namespace gf::infra::git
         }
         args.emplace_back(options.commitSha);
 
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = std::move(args),
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -3449,8 +3431,8 @@ namespace gf::infra::git
                 while (!out.empty())
                 {
                     auto nl = out.find('\n');
-                    std::string_view line = (nl == std::string_view::npos) ? out : out.substr(0, nl);
-                    out = (nl == std::string_view::npos) ? std::string_view{} : out.substr(nl + 1);
+                    std::string_view line = nl == std::string_view::npos ? out : out.substr(0, nl);
+                    out = nl == std::string_view::npos ? std::string_view{} : out.substr(nl + 1);
                     if (!line.empty() && line.back() == '\r')
                     {
                         line.remove_suffix(1);
@@ -3499,7 +3481,7 @@ namespace gf::infra::git
     std::expected<void, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::abortCherryPick(const std::filesystem::path& repoPath)
     {
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {"cherry-pick", "--abort"},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -3541,9 +3523,9 @@ namespace gf::infra::git
     std::expected<std::string, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::getFileStageContent(const std::filesystem::path& repoPath,
                                                 const std::string& filePath,
-                                                int stage)
+                                                const int stage)
     {
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {"show", ":" + std::to_string(stage) + ":" + filePath},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
@@ -3563,8 +3545,8 @@ namespace gf::infra::git
 
         if (execResult->exitCode != 0)
         {
-            const std::string err = execResult->stderrBytes;
-            if (err.find("does not exist") != std::string::npos ||
+            if (const std::string& err = execResult->stderrBytes;
+                err.find("does not exist") != std::string::npos ||
                 err.find("non esiste") != std::string::npos ||
                 err.find("Path '") != std::string::npos ||
                 err.find("fatal:") != std::string::npos)
@@ -3591,8 +3573,7 @@ namespace gf::infra::git
         file.filePath = filePath;
 
         auto fullPath = repoPath / filePath;
-        std::error_code ec;
-        if (!std::filesystem::exists(fullPath, ec))
+        if (std::error_code ec; !std::filesystem::exists(fullPath, ec))
         {
             return std::unexpected(gf::git::ports::GitOpsError{
                 .kind = gf::git::ports::GitOpsError::Kind::PathNotFound,
@@ -3636,8 +3617,7 @@ namespace gf::infra::git
         }
         if (hasMissingBase)
         {
-            auto stage1 = getFileStageContent(repoPath, filePath, 1);
-            if (stage1 && !stage1->empty())
+            if (const auto stage1 = getFileStageContent(repoPath, filePath, 1); stage1 && !stage1->empty())
             {
                 for (auto& h : file.hunks)
                 {
@@ -3676,7 +3656,7 @@ namespace gf::infra::git
 
         if (options.autoStage)
         {
-            gf::git::bo::GitCommand cmd{
+            const gf::git::bo::GitCommand cmd{
                 .args = {"add", "--", options.filePath},
                 .workingDirectory = repoPath,
                 .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -3718,7 +3698,7 @@ namespace gf::infra::git
         else if (mode == "hard") flag = "--hard";
         else if (mode == "mixed") flag = "--mixed";
 
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {"reset", flag, commitSha},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -3753,7 +3733,7 @@ namespace gf::infra::git
     NativeRepositoryGitOps::revertCommit(const std::filesystem::path& repoPath,
                                          const std::string& commitSha)
     {
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {"-c", "core.editor=true", "revert", "--no-edit", commitSha},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -3791,7 +3771,7 @@ namespace gf::infra::git
     {
         using gf::git::ports::GitOpsError;
 
-        auto makeError = [](GitOpsError::Kind kind, int exitCode, std::string message, std::string command)
+        auto makeError = [](const GitOpsError::Kind kind, const int exitCode, std::string message, std::string command)
         {
             return std::unexpected(GitOpsError{
                 .kind = kind,
@@ -3805,7 +3785,7 @@ namespace gf::infra::git
         auto runGit = [&](std::vector<std::string> args) -> std::expected<std::string, GitOpsError>
         {
             const std::string label = "git " + (args.empty() ? std::string{} : args.front());
-            gf::git::bo::GitCommand cmd{
+            const gf::git::bo::GitCommand cmd{
                 .args = std::move(args),
                 .workingDirectory = repoPath,
                 .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -3909,8 +3889,10 @@ namespace gf::infra::git
             {
                 auto end = out.find('\n', start);
                 if (end == std::string::npos) end = out.size();
-                auto line = trimString(out.substr(start, end - start));
-                if (!line.empty()) descendants.push_back(std::move(line));
+                if (auto line = trimString(out.substr(start, end - start)); !line.empty())
+                {
+                    descendants.push_back(std::move(line));
+                }
                 start = end + 1;
             }
         }
@@ -3931,7 +3913,7 @@ namespace gf::infra::git
         {
             return std::unexpected(gitDirRes.error());
         }
-        std::filesystem::path gitDir = gf::core::utf8ToPath(trimString(*gitDirRes));
+        std::filesystem::path gitDir = core::utf8ToPath(trimString(*gitDirRes));
         if (gitDir.is_relative())
         {
             gitDir = repoPath / gitDir;
@@ -3962,8 +3944,8 @@ namespace gf::infra::git
             const std::string& raw = *rawRes;
 
             const auto sep = raw.find("\n\n");
-            const std::string headerBlock = (sep == std::string::npos) ? raw : raw.substr(0, sep + 1);
-            const std::string oldMessage = (sep == std::string::npos) ? std::string{} : raw.substr(sep + 2);
+            const std::string headerBlock = sep == std::string::npos ? raw : raw.substr(0, sep + 1);
+            const std::string oldMessage = sep == std::string::npos ? std::string{} : raw.substr(sep + 2);
 
             std::string rebuilt;
             rebuilt.reserve(raw.size() + 64);
@@ -3986,7 +3968,7 @@ namespace gf::infra::git
 
                 const auto spacePos = line.find(' ');
                 const std::string key = line.substr(0, spacePos);
-                const std::string value = (spacePos == std::string::npos) ? std::string{} : line.substr(spacePos + 1);
+                const std::string value = spacePos == std::string::npos ? std::string{} : line.substr(spacePos + 1);
 
                 if (key == "parent")
                 {
@@ -4010,7 +3992,7 @@ namespace gf::infra::git
                     rebuilt += line + "\n";
                 }
             }
-            rebuilt += "\n";
+            rebuilt += '\n';
             rebuilt += replacementMessage ? *replacementMessage : oldMessage;
 
             {
@@ -4024,7 +4006,7 @@ namespace gf::infra::git
                 ofs.write(rebuilt.data(), static_cast<std::streamsize>(rebuilt.size()));
             }
 
-            auto hashRes = runGit({"hash-object", "-t", "commit", "-w", gf::core::pathToUtf8(scratchFile)});
+            auto hashRes = runGit({"hash-object", "-t", "commit", "-w", core::pathToUtf8(scratchFile)});
             if (!hashRes)
             {
                 return std::unexpected(hashRes.error());
@@ -4169,11 +4151,11 @@ namespace gf::infra::git
         }
 
         // Checked-out branch: update the working tree too, git refuses if local changes would be overwritten.
-        auto headRef = runGitCapture(m_executor, repoPath, {"symbolic-ref", "-q", "HEAD"});
-        if (headRef && *headRef == plan->targetRef)
+        if (const auto headRef = runGitCapture(m_executor, repoPath, {"symbolic-ref", "-q", "HEAD"});
+            headRef && *headRef == plan->targetRef)
         {
-            auto merged = runGitCapture(m_executor, repoPath, {"merge", "--ff-only", plan->sourceSha});
-            if (!merged)
+            if (auto merged = runGitCapture(m_executor, repoPath, {"merge", "--ff-only", plan->sourceSha});
+                !merged)
             {
                 auto err = merged.error();
                 err.command = "git merge --ff-only";
@@ -4226,7 +4208,7 @@ namespace gf::infra::git
             args.push_back(commitOrBranch);
         }
 
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = std::move(args),
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -4312,12 +4294,12 @@ namespace gf::infra::git
         args.push_back(options.remoteUrl);
         args.push_back(options.destinationPath.string());
 
-        const auto workingDir = (!parentDir.empty() && std::filesystem::exists(parentDir, ec))
+        const auto workingDir = !parentDir.empty() && std::filesystem::exists(parentDir, ec)
                                     ? parentDir
                                     : std::filesystem::temp_directory_path();
 
         std::string lineBuffer;
-        auto parseProgressChunk = [&lineBuffer, &options](std::string_view chunk)
+        auto parseProgressChunk = [&lineBuffer, &options](const std::string_view chunk)
         {
             if (!options.progressCallback) return;
             lineBuffer.append(chunk);
@@ -4325,7 +4307,7 @@ namespace gf::infra::git
             size_t pos = 0;
             while (pos < lineBuffer.size())
             {
-                size_t delim = lineBuffer.find_first_of("\r\n", pos);
+                const size_t delim = lineBuffer.find_first_of("\r\n", pos);
                 if (delim == std::string::npos)
                 {
                     break;
@@ -4338,8 +4320,7 @@ namespace gf::infra::git
                 if (!line.empty())
                 {
                     int percent = -1;
-                    auto pctPos = line.find('%');
-                    if (pctPos != std::string_view::npos && pctPos > 0)
+                    if (const auto pctPos = line.find('%'); pctPos != std::string_view::npos && pctPos > 0)
                     {
                         size_t startDigits = pctPos;
                         while (startDigits > 0 && std::isdigit(static_cast<unsigned char>(line[startDigits - 1])))
@@ -4381,7 +4362,7 @@ namespace gf::infra::git
             gf::git::bl::applyHttpsCredential(cmd, {
                                                   .username = options.httpsUsername.value_or("x-access-token"),
                                                   .password = *options.httpsToken,
-                                                  .host = gf::core::git::bl::extractRemoteHost(options.remoteUrl)
+                                                  .host = core::git::bl::extractRemoteHost(options.remoteUrl)
                                               });
         }
 
@@ -4428,7 +4409,7 @@ namespace gf::infra::git
 
         // Detect initial branch of cloned repository
         std::string branchName = "main";
-        gf::git::bo::GitCommand branchCmd{
+        const gf::git::bo::GitCommand branchCmd{
             .args = {"branch", "--show-current"},
             .workingDirectory = options.destinationPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
@@ -4480,7 +4461,7 @@ namespace gf::infra::git
 
         if (revision.empty() || revision == "WORKTREE")
         {
-            const auto fullPath = repoPath / gf::core::utf8ToPath(filePath);
+            const auto fullPath = repoPath / core::utf8ToPath(filePath);
             std::error_code ec;
             if (!std::filesystem::exists(fullPath, ec) || !std::filesystem::is_regular_file(fullPath, ec))
             {
@@ -4492,8 +4473,8 @@ namespace gf::infra::git
                 });
             }
 
-            const auto fileSize = std::filesystem::file_size(fullPath, ec);
-            if (!ec && fileSize > kMaxContentBytes)
+            if (const auto fileSize = std::filesystem::file_size(fullPath, ec);
+                !ec && fileSize > kMaxContentBytes)
             {
                 return std::unexpected(gf::git::ports::GitOpsError{
                     .kind = gf::git::ports::GitOpsError::Kind::InvalidOperation,
@@ -4539,10 +4520,10 @@ namespace gf::infra::git
         }
 
         std::string normPath = filePath;
-        std::replace(normPath.begin(), normPath.end(), '\\', '/');
-        const std::string targetRev = (revision == "INDEX") ? std::string(":0") : revision;
+        std::ranges::replace(normPath, '\\', '/');
+        const std::string targetRev = revision == "INDEX" ? std::string(":0") : revision;
 
-        gf::git::bo::GitCommand cmd{
+        const gf::git::bo::GitCommand cmd{
             .args = {"show", targetRev + ":" + normPath},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
@@ -4608,7 +4589,7 @@ namespace gf::infra::git
     NativeRepositoryGitOps::getFileBlob(const std::filesystem::path& repoPath,
                                         const std::string& revision,
                                         const std::string& filePath,
-                                        std::size_t maxBytes)
+                                        const std::size_t maxBytes)
     {
         if (filePath.empty())
         {
@@ -4617,7 +4598,7 @@ namespace gf::infra::git
 
         if (revision.empty() || revision == "WORKTREE")
         {
-            const auto fullPath = repoPath / gf::core::utf8ToPath(filePath);
+            const auto fullPath = repoPath / core::utf8ToPath(filePath);
             std::error_code ec;
             if (!std::filesystem::exists(fullPath, ec) || !std::filesystem::is_regular_file(fullPath, ec))
             {
@@ -4653,9 +4634,8 @@ namespace gf::infra::git
 
             gf::git::bo::FileBlob blob;
             blob.totalSize = fileSize;
-            const std::size_t toRead = static_cast<std::size_t>(
-                std::min<std::uint64_t>(fileSize, static_cast<std::uint64_t>(maxBytes)));
-            blob.truncated = fileSize > static_cast<std::uint64_t>(maxBytes);
+            const std::size_t toRead = std::min(fileSize, maxBytes);
+            blob.truncated = fileSize > maxBytes;
             if (toRead > 0)
             {
                 blob.bytes.resize(toRead);
@@ -4667,12 +4647,12 @@ namespace gf::infra::git
         }
 
         std::string normPath = filePath;
-        std::replace(normPath.begin(), normPath.end(), '\\', '/');
-        const std::string targetRev = (revision == "INDEX") ? std::string(":0") : revision;
+        std::ranges::replace(normPath, '\\', '/');
+        const std::string targetRev = revision == "INDEX" ? std::string(":0") : revision;
         const std::string spec = targetRev + ":" + normPath;
 
         // First probe exact blob size with `git cat-file -s` so oversized objects never OOM.
-        gf::git::bo::GitCommand sizeCmd{
+        const gf::git::bo::GitCommand sizeCmd{
             .args = {"cat-file", "-s", spec},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
@@ -4712,8 +4692,7 @@ namespace gf::infra::git
         std::uint64_t objectSize = 0;
         try
         {
-            const std::string trimmed = trimString(sizeRes->stdoutBytes);
-            if (!trimmed.empty())
+            if (const std::string trimmed = trimString(sizeRes->stdoutBytes); !trimmed.empty())
             {
                 objectSize = std::stoull(trimmed);
             }
@@ -4723,7 +4702,7 @@ namespace gf::infra::git
             objectSize = 0;
         }
 
-        if (objectSize > static_cast<std::uint64_t>(maxBytes))
+        if (objectSize > maxBytes)
         {
             return gf::git::bo::FileBlob{
                 .bytes = {},
@@ -4732,7 +4711,7 @@ namespace gf::infra::git
             };
         }
 
-        gf::git::bo::GitCommand showCmd{
+        const gf::git::bo::GitCommand showCmd{
             .args = {"show", spec},
             .workingDirectory = repoPath,
             .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
@@ -4760,7 +4739,7 @@ namespace gf::infra::git
 
         gf::git::bo::FileBlob blob;
         blob.bytes = std::move(execResult->stdoutBytes);
-        blob.totalSize = std::max<std::uint64_t>(objectSize, static_cast<std::uint64_t>(blob.bytes.size()));
+        blob.totalSize = std::max(objectSize, blob.bytes.size());
         blob.truncated = false;
         return blob;
     }

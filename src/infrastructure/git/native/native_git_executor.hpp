@@ -20,9 +20,11 @@ namespace gf::infra::git
             return gitExecutablePath_;
         }
 
+        using gf::git::ports::IGitCommandExecutor::execute;
+
         [[nodiscard]] std::expected<gf::git::bo::GitProcessResult, gf::git::bo::GitExecutionError>
         execute(const gf::git::bo::GitCommand& command,
-                std::stop_token stopToken = {}) override;
+                std::stop_token stopToken) override;
 
         /// Exposed for unit tests verifying Windows command line escaping and quoting security.
         [[nodiscard]] static std::wstring buildWindowsCommandLine(

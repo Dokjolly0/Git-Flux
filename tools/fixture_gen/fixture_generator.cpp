@@ -75,7 +75,7 @@ namespace gf::tools
         sa.nLength = sizeof(sa);
         sa.bInheritHandle = TRUE;
 
-        HANDLE inputHandle = ::CreateFileW(
+        const HANDLE inputHandle = CreateFileW(
             streamFilePath.c_str(),
             GENERIC_READ,
             FILE_SHARE_READ,
@@ -86,27 +86,27 @@ namespace gf::tools
         if (inputHandle == INVALID_HANDLE_VALUE)
         {
             return std::unexpected(
-                "Impossibile aprire file stream fast-import: err=" + std::to_string(::GetLastError()));
+                "Impossibile aprire file stream fast-import: err=" + std::to_string(GetLastError()));
         }
 
         HANDLE errRead = nullptr;
         HANDLE errWrite = nullptr;
-        ::CreatePipe(&errRead, &errWrite, &sa, 0);
-        ::SetHandleInformation(errRead, HANDLE_FLAG_INHERIT, 0);
+        CreatePipe(&errRead, &errWrite, &sa, 0);
+        SetHandleInformation(errRead, HANDLE_FLAG_INHERIT, 0);
 
         STARTUPINFOW si{};
         si.cb = sizeof(si);
         si.dwFlags = STARTF_USESTDHANDLES;
         si.hStdInput = inputHandle;
-        si.hStdOutput = ::GetStdHandle(STD_OUTPUT_HANDLE);
+        si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
         si.hStdError = errWrite;
 
-        std::wstring cmdLine = gf::infra::git::NativeGitCommandExecutor::buildWindowsCommandLine(gitExe_, args);
+        std::wstring cmdLine = infra::git::NativeGitCommandExecutor::buildWindowsCommandLine(gitExe_, args);
         const std::wstring exeWide = gitExe_.wstring();
         const std::wstring workDirWide = repoPath.wstring();
 
         PROCESS_INFORMATION pi{};
-        const BOOL spawned = ::CreateProcessW(
+        const BOOL spawned = CreateProcessW(
             exeWide.c_str(),
             cmdLine.data(),
             nullptr,
@@ -118,29 +118,29 @@ namespace gf::tools
             &si,
             &pi);
 
-        ::CloseHandle(inputHandle);
-        ::CloseHandle(errWrite);
+        CloseHandle(inputHandle);
+        CloseHandle(errWrite);
 
         if (!spawned)
         {
-            if (errRead) ::CloseHandle(errRead);
+            if (errRead) CloseHandle(errRead);
             return std::unexpected("CreateProcessW fallita per git fast-import");
         }
 
         std::string errOutput;
         char errBuf[4096];
         DWORD bytesRead = 0;
-        while (::ReadFile(errRead, errBuf, sizeof(errBuf), &bytesRead, nullptr) && bytesRead > 0)
+        while (ReadFile(errRead, errBuf, sizeof(errBuf), &bytesRead, nullptr) && bytesRead > 0)
         {
             errOutput.append(errBuf, bytesRead);
         }
-        ::CloseHandle(errRead);
+        CloseHandle(errRead);
 
-        ::WaitForSingleObject(pi.hProcess, INFINITE);
+        WaitForSingleObject(pi.hProcess, INFINITE);
         DWORD exitCode = 1;
-        ::GetExitCodeProcess(pi.hProcess, &exitCode);
-        ::CloseHandle(pi.hThread);
-        ::CloseHandle(pi.hProcess);
+        GetExitCodeProcess(pi.hProcess, &exitCode);
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
 
         if (exitCode != 0 || !errOutput.empty())
         {
@@ -208,13 +208,13 @@ namespace gf::tools
             return std::unexpected("Impossibile creare directory repo: " + ec.message());
         }
 
-        gf::infra::git::NativeGitCommandExecutor executor(gitExe_);
+        infra::git::NativeGitCommandExecutor executor(gitExe_);
 
         // 1. git init -q -b main
         auto initRes = executor.execute({
             .args = {"init", "-q", "-b", "main"},
             .workingDirectory = spec.repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard
+            .lockPolicy = git::bo::GitLockPolicy::Standard
         });
         if (!initRes || !initRes->succeeded())
         {
@@ -222,20 +222,31 @@ namespace gf::tools
         }
 
         // Configure local test identity for subsequent test commits
-        (void)executor.execute({
-            .args = {"config", "user.name", "Git Flux Test Bot"},
-            .workingDirectory = spec.repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard
-        });
-        (void)executor.execute({
-            .args = {"config", "user.email", "bot@gitflux.local"},
-            .workingDirectory = spec.repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard
-        });
+        if (const auto nameRes = executor.execute({
+                .args = {"config", "user.name", "Git Flux Test Bot"},
+                .workingDirectory = spec.repoPath,
+                .lockPolicy = git::bo::GitLockPolicy::Standard
+            }); !nameRes || !nameRes->succeeded())
+        {
+            return std::unexpected("git config user.name fallito");
+        }
+        if (const auto emailRes = executor.execute({
+                .args = {"config", "user.email", "bot@gitflux.local"},
+                .workingDirectory = spec.repoPath,
+                .lockPolicy = git::bo::GitLockPolicy::Standard
+            }); !emailRes || !emailRes->succeeded())
+        {
+            return std::unexpected("git config user.email fallito");
+        }
 
         if (spec.commitCount == 0)
         {
-            return FastImportResult{spec.repoPath, 0, 0, std::chrono::milliseconds{0}};
+            return FastImportResult{
+                .repoPath = spec.repoPath,
+                .commitsCreated = 0,
+                .mergesCreated = 0,
+                .elapsed = std::chrono::milliseconds{0}
+            };
         }
 
         // 2. Generate deterministic fast-import stream to a temporary binary file
@@ -248,7 +259,7 @@ namespace gf::tools
             if (!out)
             {
                 return std::unexpected(
-                    "Impossibile creare file stream temporaneo: " + gf::core::pathToUtf8(streamPath));
+                    "Impossibile creare file stream temporaneo: " + core::pathToUtf8(streamPath));
             }
 
             std::mt19937_64 rng(spec.seed);
@@ -257,10 +268,9 @@ namespace gf::tools
             std::size_t featureTipMarks[kFeatureSlots]{};
             std::size_t featureEpochs[kFeatureSlots]{};
 
-            constexpr std::int64_t baseTimestamp = 1700000000;
-
             for (std::size_t i = 1; i <= spec.commitCount; ++i)
             {
+                constexpr std::int64_t baseTimestamp = 1700000000;
                 const std::int64_t ts = baseTimestamp + static_cast<std::int64_t>(i * 60);
                 const std::uint64_t roll = rng() % 100;
 
@@ -275,7 +285,7 @@ namespace gf::tools
                 else if (roll < 20)
                 {
                     // Advance or create a parallel feature branch
-                    const std::size_t slot = static_cast<std::size_t>(rng() % kFeatureSlots);
+                    const std::size_t slot = rng() % kFeatureSlots;
                     if (featureTipMarks[slot] == 0)
                     {
                         featureEpochs[slot] = (featureEpochs[slot] + 1) % 4;
@@ -291,8 +301,8 @@ namespace gf::tools
                 else if (roll < 28)
                 {
                     // Find an open feature branch to merge into main
-                    const std::size_t slot = static_cast<std::size_t>(rng() % kFeatureSlots);
-                    if (featureTipMarks[slot] != 0 && featureTipMarks[slot] != mainTipMark)
+                    if (const std::size_t slot = rng() % kFeatureSlots;
+                        featureTipMarks[slot] != 0 && featureTipMarks[slot] != mainTipMark)
                     {
                         mergeMark = featureTipMarks[slot];
                         featureTipMarks[slot] = 0;
@@ -307,7 +317,7 @@ namespace gf::tools
                     mainTipMark = i;
                 }
 
-                const std::string msg = (mergeMark != 0)
+                const std::string msg = mergeMark != 0
                                             ? std::format("Merge feature branch into main (#{})", i)
                                             : std::format("feat(core): synthetic commit #{} for benchmark", i);
 
@@ -345,8 +355,7 @@ namespace gf::tools
             out.close();
         }
 
-        const auto streamSize = std::filesystem::file_size(streamPath, ec);
-        if (ec || streamSize == 0)
+        if (const auto streamSize = std::filesystem::file_size(streamPath, ec); ec || streamSize == 0)
         {
             return std::unexpected("Stream fast-import vuoto o non scritto su disco");
         }
@@ -365,7 +374,7 @@ namespace gf::tools
             auto coRes = executor.execute({
                 .args = {"reset", "--hard", "refs/heads/main"},
                 .workingDirectory = spec.repoPath,
-                .lockPolicy = gf::git::bo::GitLockPolicy::Standard
+                .lockPolicy = git::bo::GitLockPolicy::Standard
             });
             if (!coRes || !coRes->succeeded())
             {
@@ -411,7 +420,7 @@ namespace gf::tools
             return std::unexpected("Creazione template flotta fallita: " + tplRes.error());
         }
 
-        gf::infra::git::NativeGitCommandExecutor executor(gitExe_);
+        infra::git::NativeGitCommandExecutor executor(gitExe_);
         FleetResult result;
         result.repoPaths.reserve(spec.repoCount);
 
@@ -427,8 +436,7 @@ namespace gf::tools
                 return std::unexpected("Copia template fallita: " + ec.message());
             }
 
-            const std::size_t bucket = i % 10;
-            if (bucket < 7)
+            if (const std::size_t bucket = i % 10; bucket < 7)
             {
                 // 70% clean
                 ++result.cleanCount;
@@ -456,7 +464,7 @@ namespace gf::tools
                 auto addRes = executor.execute({
                     .args = {"add", "src/module_1/item.cpp"},
                     .workingDirectory = repoDir,
-                    .lockPolicy = gf::git::bo::GitLockPolicy::Standard
+                    .lockPolicy = git::bo::GitLockPolicy::Standard
                 });
                 if (!addRes || !addRes->succeeded())
                 {

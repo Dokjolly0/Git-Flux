@@ -12,6 +12,7 @@
 #include <iomanip>
 #include <array>
 #include <cstdlib>
+#include <random>
 
 #ifndef OSSL_KDF_PARAM_THREADS
 #define OSSL_KDF_PARAM_THREADS "threads"
@@ -111,10 +112,10 @@ namespace gf::infra::security
 
         std::filesystem::path getDefaultVaultDir()
         {
-            auto home = gf::core::getEnvVar("HOME");
+            auto home = core::getEnvVar("HOME");
             if (!home)
             {
-                home = gf::core::getEnvVar("USERPROFILE");
+                home = core::getEnvVar("USERPROFILE");
             }
             if (home)
             {
@@ -129,7 +130,7 @@ namespace gf::infra::security
     {
     }
 
-    std::string CryptoVault::toHex(const unsigned char* data, size_t length)
+    std::string CryptoVault::toHex(const unsigned char* data, const size_t length)
     {
         std::ostringstream oss;
         for (size_t i = 0; i < length; ++i)
@@ -144,7 +145,7 @@ namespace gf::infra::security
         return toHex(data.data(), data.size());
     }
 
-    std::vector<unsigned char> CryptoVault::fromHex(std::string_view hex)
+    std::vector<unsigned char> CryptoVault::fromHex(const std::string_view hex)
     {
         std::vector<unsigned char> bytes;
         if (hex.size() % 2 != 0) return bytes;
@@ -178,8 +179,7 @@ namespace gf::infra::security
 
         if (std::filesystem::exists(keyPath, ec))
         {
-            std::ifstream file(keyPath, std::ios::in | std::ios::binary);
-            if (file)
+            if (std::ifstream file(keyPath, std::ios::in | std::ios::binary); file)
             {
                 std::string content;
                 file >> content;
@@ -195,13 +195,17 @@ namespace gf::infra::security
         std::vector<unsigned char> rawKey(32);
         if (RAND_bytes(rawKey.data(), static_cast<int>(rawKey.size())) <= 0)
         {
-            // Fallback pseudorandom if OpenSSL RAND fails
-            for (auto& b : rawKey) b = static_cast<unsigned char>(std::rand() % 256);
+            // Fallback CSPRNG via std::random_device if OpenSSL RAND fails
+            std::random_device rd;
+            std::uniform_int_distribution<unsigned int> dist(0, 255);
+            for (auto& b : rawKey)
+            {
+                b = static_cast<unsigned char>(dist(rd));
+            }
         }
         const std::string newSecret = toHex(rawKey);
 
-        std::ofstream out(keyPath, std::ios::out | std::ios::trunc | std::ios::binary);
-        if (out)
+        if (std::ofstream out(keyPath, std::ios::out | std::ios::trunc | std::ios::binary); out)
         {
             out << newSecret;
             out.close();
@@ -366,7 +370,7 @@ namespace gf::infra::security
         };
 
         // 1. Primary: Try standard PBKDF2-HMAC-SHA256 key derivation
-        if (auto keyRes = derivePbkdf2Key(masterSecret, salt); keyRes)
+        if (const auto keyRes = derivePbkdf2Key(masterSecret, salt); keyRes)
         {
             if (auto decRes = tryDecryptWithKey(*keyRes); decRes)
             {
@@ -375,7 +379,7 @@ namespace gf::infra::security
         }
 
         // 2. Fallback: Try Argon2id key derivation (for secrets created with OpenSSL 3.2+ provider)
-        if (auto keyRes = deriveArgon2idKey(masterSecret, salt); keyRes)
+        if (const auto keyRes = deriveArgon2idKey(masterSecret, salt); keyRes)
         {
             if (auto decRes = tryDecryptWithKey(*keyRes); decRes)
             {

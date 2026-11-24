@@ -37,7 +37,9 @@ namespace gf::infra::git
         {
         public:
 #ifdef _WIN32
-            NativeGitBatchSessionImpl(HANDLE processHandle, HANDLE stdinWrite, HANDLE stdoutRead) noexcept
+            NativeGitBatchSessionImpl(const HANDLE processHandle,
+                                      const HANDLE stdinWrite,
+                                      const HANDLE stdoutRead) noexcept
                 : processHandle_(processHandle)
                   , stdinWrite_(stdinWrite)
                   , stdoutRead_(stdoutRead)
@@ -65,14 +67,14 @@ namespace gf::infra::git
                     return false;
                 }
                 DWORD exitCode = 0;
-                return ::GetExitCodeProcess(processHandle_, &exitCode) && exitCode == STILL_ACTIVE;
+                return GetExitCodeProcess(processHandle_, &exitCode) && exitCode == STILL_ACTIVE;
 #else
                 return pid_ > 0 && stdinFd_ >= 0;
 #endif
             }
 
             [[nodiscard]] std::expected<GitBatchObject, GitExecutionError>
-            readObject(std::string_view revSpec) override
+            readObject(const std::string_view revSpec) override
             {
                 if (!isAlive())
                 {
@@ -114,7 +116,7 @@ namespace gf::infra::git
                 }
 
                 const std::size_t firstSpace = headerLine.find(' ');
-                const std::size_t secondSpace = (firstSpace == std::string::npos)
+                const std::size_t secondSpace = firstSpace == std::string::npos
                                                     ? std::string::npos
                                                     : headerLine.find(' ', firstSpace + 1);
                 if (firstSpace == std::string::npos || secondSpace == std::string::npos)
@@ -129,10 +131,10 @@ namespace gf::infra::git
                 obj.header.oid = headerLine.substr(0, firstSpace);
                 obj.header.type = headerLine.substr(firstSpace + 1, secondSpace - firstSpace - 1);
 
-                std::string_view sizeStr(headerLine.data() + secondSpace + 1,
-                                         headerLine.size() - secondSpace - 1);
-                auto [ptr, ec] = std::from_chars(sizeStr.data(), sizeStr.data() + sizeStr.size(), obj.header.size);
-                if (ec != std::errc{})
+                const std::string_view sizeStr(headerLine.data() + secondSpace + 1,
+                                               headerLine.size() - secondSpace - 1);
+                if (auto [ptr, ec] = std::from_chars(sizeStr.data(), sizeStr.data() + sizeStr.size(), obj.header.size);
+                    ec != std::errc{})
                 {
                     return std::unexpected(GitExecutionError{
                         .kind = GitErrorKind::ProtocolParseError,
@@ -163,15 +165,15 @@ namespace gf::infra::git
             }
 
         private:
-            bool writeAll(const char* data, std::size_t len) noexcept
+            bool writeAll(const char* data, const std::size_t len) noexcept
             {
                 std::size_t writtenTotal = 0;
                 while (writtenTotal < len)
                 {
 #ifdef _WIN32
                     DWORD written = 0;
-                    if (!::WriteFile(stdinWrite_, data + writtenTotal,
-                                     static_cast<DWORD>(len - writtenTotal), &written, nullptr) ||
+                    if (!WriteFile(stdinWrite_, data + writtenTotal,
+                                   static_cast<DWORD>(len - writtenTotal), &written, nullptr) ||
                         written == 0)
                     {
                         return false;
@@ -194,12 +196,12 @@ namespace gf::infra::git
                 bufPos_ = 0;
 #ifdef _WIN32
                 DWORD bytesRead = 0;
-                if (!::ReadFile(stdoutRead_, readBuf_, sizeof(readBuf_), &bytesRead, nullptr) || bytesRead == 0)
+                if (!ReadFile(stdoutRead_, readBuf_, sizeof(readBuf_), &bytesRead, nullptr) || bytesRead == 0)
                 {
                     bufLen_ = 0;
                     return false;
                 }
-                bufLen_ = static_cast<std::size_t>(bytesRead);
+                bufLen_ = bytesRead;
                 return true;
 #else
                 const ssize_t n = ::read(stdoutFd_, readBuf_, sizeof(readBuf_));
@@ -222,8 +224,7 @@ namespace gf::infra::git
                     {
                         return false;
                     }
-                    const void* nlPtr = std::memchr(readBuf_ + bufPos_, '\n', bufLen_ - bufPos_);
-                    if (nlPtr)
+                    if (const void* nlPtr = std::memchr(readBuf_ + bufPos_, '\n', bufLen_ - bufPos_))
                     {
                         const auto chunkLen = static_cast<const char*>(nlPtr) - (readBuf_ + bufPos_);
                         outLine.append(readBuf_ + bufPos_, static_cast<std::size_t>(chunkLen));
@@ -239,7 +240,7 @@ namespace gf::infra::git
                 }
             }
 
-            bool readExact(char* dest, std::size_t totalBytes) noexcept
+            bool readExact(char* dest, const std::size_t totalBytes) noexcept
             {
                 std::size_t copied = 0;
                 while (copied < totalBytes)
@@ -247,7 +248,7 @@ namespace gf::infra::git
                     if (bufPos_ < bufLen_)
                     {
                         const std::size_t avail = bufLen_ - bufPos_;
-                        const std::size_t toCopy = (avail < (totalBytes - copied)) ? avail : (totalBytes - copied);
+                        const std::size_t toCopy = avail < totalBytes - copied ? avail : totalBytes - copied;
                         std::memcpy(dest + copied, readBuf_ + bufPos_, toCopy);
                         bufPos_ += toCopy;
                         copied += toCopy;
@@ -255,17 +256,16 @@ namespace gf::infra::git
                     else
                     {
                         // If remaining payload is large, read directly into destination buffer
-                        const std::size_t remaining = totalBytes - copied;
-                        if (remaining >= sizeof(readBuf_))
+                        if (const std::size_t remaining = totalBytes - copied; remaining >= sizeof(readBuf_))
                         {
 #ifdef _WIN32
                             DWORD n = 0;
-                            if (!::ReadFile(stdoutRead_, dest + copied, static_cast<DWORD>(remaining), &n,
-                                            nullptr) || n == 0)
+                            if (!ReadFile(stdoutRead_, dest + copied, static_cast<DWORD>(remaining), &n,
+                                          nullptr) || n == 0)
                             {
                                 return false;
                             }
-                            copied += static_cast<std::size_t>(n);
+                            copied += n;
 #else
                             const ssize_t n = ::read(stdoutFd_, dest + copied, remaining);
                             if (n <= 0)
@@ -289,21 +289,21 @@ namespace gf::infra::git
 #ifdef _WIN32
                 if (stdinWrite_)
                 {
-                    ::CloseHandle(stdinWrite_);
+                    CloseHandle(stdinWrite_);
                     stdinWrite_ = nullptr;
                 }
                 if (stdoutRead_)
                 {
-                    ::CloseHandle(stdoutRead_);
+                    CloseHandle(stdoutRead_);
                     stdoutRead_ = nullptr;
                 }
                 if (processHandle_)
                 {
-                    if (::WaitForSingleObject(processHandle_, 1000) == WAIT_TIMEOUT)
+                    if (WaitForSingleObject(processHandle_, 1000) == WAIT_TIMEOUT)
                     {
-                        ::TerminateProcess(processHandle_, 0);
+                        TerminateProcess(processHandle_, 0);
                     }
-                    ::CloseHandle(processHandle_);
+                    CloseHandle(processHandle_);
                     processHandle_ = nullptr;
                 }
 #else
@@ -348,7 +348,7 @@ namespace gf::infra::git
     {
     }
 
-    std::expected<std::unique_ptr<gf::git::ports::IGitBatchSession>, gf::git::bo::GitExecutionError>
+    std::expected<std::unique_ptr<IGitBatchSession>, GitExecutionError>
     NativeGitBatchSessionFactory::openSession(const std::filesystem::path& repositoryPath)
     {
         std::error_code ec;
@@ -363,7 +363,7 @@ namespace gf::infra::git
         {
             return std::unexpected(GitExecutionError{
                 .kind = GitErrorKind::WorkingDirectoryInvalid,
-                .message = "Repository inesistente: " + gf::core::pathToUtf8(repositoryPath)
+                .message = "Repository inesistente: " + core::pathToUtf8(repositoryPath)
             });
         }
 
@@ -376,47 +376,47 @@ namespace gf::infra::git
 
         HANDLE childStdinRead = nullptr;
         HANDLE parentStdinWrite = nullptr;
-        if (!::CreatePipe(&childStdinRead, &parentStdinWrite, &sa, 0))
+        if (!CreatePipe(&childStdinRead, &parentStdinWrite, &sa, 0))
         {
             return std::unexpected(GitExecutionError{
                 .kind = GitErrorKind::PipeIoError,
                 .message = "CreatePipe stdin fallita",
-                .osErrorCode = static_cast<int>(::GetLastError())
+                .osErrorCode = static_cast<int>(GetLastError())
             });
         }
-        ::SetHandleInformation(parentStdinWrite, HANDLE_FLAG_INHERIT, 0);
+        SetHandleInformation(parentStdinWrite, HANDLE_FLAG_INHERIT, 0);
 
         HANDLE parentStdoutRead = nullptr;
         HANDLE childStdoutWrite = nullptr;
-        if (!::CreatePipe(&parentStdoutRead, &childStdoutWrite, &sa, 65536))
+        if (!CreatePipe(&parentStdoutRead, &childStdoutWrite, &sa, 65536))
         {
-            ::CloseHandle(childStdinRead);
-            ::CloseHandle(parentStdinWrite);
+            CloseHandle(childStdinRead);
+            CloseHandle(parentStdinWrite);
             return std::unexpected(GitExecutionError{
                 .kind = GitErrorKind::PipeIoError,
                 .message = "CreatePipe stdout fallita",
-                .osErrorCode = static_cast<int>(::GetLastError())
+                .osErrorCode = static_cast<int>(GetLastError())
             });
         }
-        ::SetHandleInformation(parentStdoutRead, HANDLE_FLAG_INHERIT, 0);
+        SetHandleInformation(parentStdoutRead, HANDLE_FLAG_INHERIT, 0);
 
-        HANDLE nulErr = ::CreateFileW(L"NUL", GENERIC_WRITE,
-                                      FILE_SHARE_READ | FILE_SHARE_WRITE,
-                                      &sa, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        const HANDLE nulErr = CreateFileW(L"NUL", GENERIC_WRITE,
+                                          FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                          &sa, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
 
         STARTUPINFOW si{};
         si.cb = sizeof(si);
         si.dwFlags = STARTF_USESTDHANDLES;
         si.hStdInput = childStdinRead;
         si.hStdOutput = childStdoutWrite;
-        si.hStdError = (nulErr != INVALID_HANDLE_VALUE) ? nulErr : ::GetStdHandle(STD_ERROR_HANDLE);
+        si.hStdError = nulErr != INVALID_HANDLE_VALUE ? nulErr : GetStdHandle(STD_ERROR_HANDLE);
 
         std::wstring cmdLine = NativeGitCommandExecutor::buildWindowsCommandLine(gitExecutablePath_, args);
         const std::wstring exeWide = gitExecutablePath_.wstring();
         const std::wstring workDirWide = repositoryPath.wstring();
 
         PROCESS_INFORMATION pi{};
-        const BOOL ok = ::CreateProcessW(
+        const BOOL ok = CreateProcessW(
             exeWide.c_str(),
             cmdLine.data(),
             nullptr,
@@ -428,25 +428,25 @@ namespace gf::infra::git
             &si,
             &pi);
 
-        ::CloseHandle(childStdinRead);
-        ::CloseHandle(childStdoutWrite);
+        CloseHandle(childStdinRead);
+        CloseHandle(childStdoutWrite);
         if (nulErr != INVALID_HANDLE_VALUE)
         {
-            ::CloseHandle(nulErr);
+            CloseHandle(nulErr);
         }
 
         if (!ok)
         {
-            ::CloseHandle(parentStdinWrite);
-            ::CloseHandle(parentStdoutRead);
+            CloseHandle(parentStdinWrite);
+            CloseHandle(parentStdoutRead);
             return std::unexpected(GitExecutionError{
                 .kind = GitErrorKind::SpawnFailed,
                 .message = "CreateProcessW fallita per git cat-file --batch",
-                .osErrorCode = static_cast<int>(::GetLastError())
+                .osErrorCode = static_cast<int>(GetLastError())
             });
         }
 
-        ::CloseHandle(pi.hThread);
+        CloseHandle(pi.hThread);
         return std::make_unique<NativeGitBatchSessionImpl>(pi.hProcess, parentStdinWrite, parentStdoutRead);
 #else
         int inPipe[2]{-1, -1};

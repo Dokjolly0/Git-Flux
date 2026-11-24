@@ -67,11 +67,13 @@ namespace gf::infra::git
                        const std::string& revision,
                        const std::string& filePath) override;
 
+        using gf::git::ports::IRepositoryGitOps::getFileBlob;
+
         [[nodiscard]] std::expected<gf::git::bo::FileBlob, gf::git::ports::GitOpsError>
         getFileBlob(const std::filesystem::path& repoPath,
                     const std::string& revision,
                     const std::string& filePath,
-                    std::size_t maxBytes = 16 * 1024 * 1024) override;
+                    std::size_t maxBytes) override;
 
         [[nodiscard]] std::expected<std::vector<gf::git::bo::BlameLine>, gf::git::ports::GitOpsError>
         getFileBlame(const std::filesystem::path& repoPath,

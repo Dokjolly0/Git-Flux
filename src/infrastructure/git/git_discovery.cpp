@@ -26,7 +26,7 @@ namespace gf::infra::git
     {
         [[nodiscard]] std::string toLowerAscii(std::string s)
         {
-            std::ranges::transform(s, s.begin(), [](unsigned char c)
+            std::ranges::transform(s, s.begin(), [](const unsigned char c)
             {
                 return static_cast<char>(std::tolower(c));
             });
@@ -46,16 +46,17 @@ namespace gf::infra::git
         GitExecutableInfo info;
 
 #ifdef _WIN32
-        wchar_t buffer[MAX_PATH * 4]{};
+        constexpr DWORD kBufferSize = MAX_PATH * 4;
+        wchar_t buffer[kBufferSize]{};
         wchar_t* filePart = nullptr;
-        const DWORD len = ::SearchPathW(nullptr, L"git.exe", nullptr,
-                                        static_cast<DWORD>(std::size(buffer)), buffer, &filePart);
-        if (len == 0 || len >= std::size(buffer))
+        const DWORD len = SearchPathW(nullptr, L"git.exe", nullptr,
+                                      kBufferSize, buffer, &filePart);
+        if (len == 0 || len >= kBufferSize)
         {
             return std::unexpected(GitExecutionError{
                 .kind = GitErrorKind::ExecutableNotFound,
                 .message = "Impossibile trovare git.exe nel PATH di sistema",
-                .osErrorCode = static_cast<int>(::GetLastError())
+                .osErrorCode = static_cast<int>(GetLastError())
             });
         }
 
@@ -63,8 +64,8 @@ namespace gf::infra::git
         info.directBinaryPath = info.discoveredInPath;
 
         // Check if path points to "...\Git\cmd\git.exe" (Git for Windows wrapper shim)
-        const fs::path parentDir = info.discoveredInPath.parent_path();
-        if (toLowerAscii(parentDir.filename().string()) == "cmd")
+        if (const fs::path parentDir = info.discoveredInPath.parent_path();
+            toLowerAscii(parentDir.filename().string()) == "cmd")
         {
             const fs::path gitRoot = parentDir.parent_path();
             const fs::path candidates[] = {
@@ -75,8 +76,7 @@ namespace gf::infra::git
             };
             for (const auto& candidate : candidates)
             {
-                std::error_code ec;
-                if (fs::exists(candidate, ec) && !ec)
+                if (std::error_code ec; fs::exists(candidate, ec) && !ec)
                 {
                     info.directBinaryPath = candidate.lexically_normal();
                     info.isWindowsCmdShim = true;

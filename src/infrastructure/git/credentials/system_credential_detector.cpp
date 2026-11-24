@@ -4,7 +4,6 @@
 #include <fstream>
 #include <sstream>
 #include <algorithm>
-#include <cstdlib>
 #include <array>
 #include <cctype>
 #include <string_view>
@@ -18,26 +17,26 @@ namespace gf::infra::git::credentials
             const auto first = str.find_first_not_of(" \t\r\n");
             if (first == std::string::npos) return "";
             const auto last = str.find_last_not_of(" \t\r\n");
-            return str.substr(first, (last - first + 1));
+            return str.substr(first, last - first + 1);
         }
 
         std::string toLower(std::string str)
         {
-            std::transform(str.begin(), str.end(), str.begin(),
-                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            std::ranges::transform(str, str.begin(),
+                                   [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
             return str;
         }
 
         std::filesystem::path getSystemHomeDir()
         {
-            auto home = gf::core::getEnvVar("HOME");
+            auto home = core::getEnvVar("HOME");
             if (!home)
             {
-                home = gf::core::getEnvVar("USERPROFILE");
+                home = core::getEnvVar("USERPROFILE");
             }
             if (home)
             {
-                return std::filesystem::path(*home);
+                return {*home};
             }
             return std::filesystem::current_path();
         }
@@ -58,7 +57,7 @@ namespace gf::infra::git::credentials
         {
             return m_homeDir;
         }
-        return std::filesystem::path(path);
+        return {path};
     }
 
     std::pair<std::string, std::string> SystemCredentialDetector::detectGlobalGitUser() const
@@ -68,8 +67,7 @@ namespace gf::infra::git::credentials
 
         // Check ~/.gitconfig
         const auto gitConfigPath = m_homeDir / ".gitconfig";
-        std::error_code ec;
-        if (std::filesystem::exists(gitConfigPath, ec))
+        if (std::error_code ec; std::filesystem::exists(gitConfigPath, ec))
         {
             std::ifstream file(gitConfigPath);
             std::string line;
@@ -78,25 +76,23 @@ namespace gf::infra::git::credentials
             while (std::getline(file, line))
             {
                 line = trim(line);
-                if (line.starts_with("[") && line.ends_with("]"))
+                if (line.starts_with('[') && line.ends_with(']'))
                 {
-                    inUserSection = (line == "[user]");
+                    inUserSection = line == "[user]";
                     continue;
                 }
                 if (inUserSection)
                 {
                     if (line.starts_with("name"))
                     {
-                        auto eq = line.find('=');
-                        if (eq != std::string::npos)
+                        if (const auto eq = line.find('='); eq != std::string::npos)
                         {
                             name = trim(line.substr(eq + 1));
                         }
                     }
                     else if (line.starts_with("email"))
                     {
-                        auto eq = line.find('=');
-                        if (eq != std::string::npos)
+                        if (const auto eq = line.find('='); eq != std::string::npos)
                         {
                             email = trim(line.substr(eq + 1));
                         }
@@ -126,7 +122,7 @@ namespace gf::infra::git::credentials
         std::string currentUser;
         int currentPort = 0; // 0 = not set (ssh default 22)
 
-        auto finalizeBlock = [&]()
+        auto finalizeBlock = [&]
         {
             if (currentAliases.empty())
             {
@@ -156,9 +152,9 @@ namespace gf::infra::git::credentials
                 return name.starts_with("git.") || name.find(".git.") != std::string::npos;
             };
 
-            bool isGitHost = (lowerUser == "git") ||
+            bool isGitHost = lowerUser == "git" ||
                 looksLikeGitHost(lowerHostName) ||
-                (lowerIdentity.find("git") != std::string::npos);
+                lowerIdentity.find("git") != std::string::npos;
             for (const auto& alias : currentAliases)
             {
                 isGitHost = isGitHost || looksLikeGitHost(toLower(alias));
@@ -186,10 +182,10 @@ namespace gf::infra::git::credentials
             };
 
             // Find if profile for host already exists (built-in provider or an earlier block)
-            auto it = std::find_if(profiles.begin(), profiles.end(), [&](const auto& p)
+            const auto it = std::ranges::find_if(profiles, [&](const auto& p)
             {
                 if (p.host == hostToUse) return true;
-                return std::find(currentAliases.begin(), currentAliases.end(), p.host) != currentAliases.end();
+                return std::ranges::find(currentAliases, p.host) != currentAliases.end();
             });
 
             if (it != profiles.end())
@@ -216,7 +212,7 @@ namespace gf::infra::git::credentials
         while (std::getline(file, line))
         {
             line = trim(line);
-            if (line.empty() || line.starts_with("#"))
+            if (line.empty() || line.starts_with('#'))
             {
                 continue;
             }
@@ -224,8 +220,8 @@ namespace gf::infra::git::credentials
             // ssh_config also accepts "Key=Value" and "Key = Value"
             if (const auto eq = line.find('='); eq != std::string::npos)
             {
-                const auto firstSpace = line.find_first_of(" \t");
-                if (firstSpace == std::string::npos || eq < firstSpace ||
+                if (const auto firstSpace = line.find_first_of(" \t");
+                    firstSpace == std::string::npos || eq < firstSpace ||
                     line.find_first_not_of(" \t", firstSpace) == eq)
                 {
                     line[eq] = ' ';
@@ -284,8 +280,7 @@ namespace gf::infra::git::credentials
             }
             else if (currentPort == 0 && key == "port")
             {
-                int port = 0;
-                if (iss >> port && port > 0 && port <= 65535)
+                if (int port = 0; iss >> port && port > 0 && port <= 65535)
                 {
                     currentPort = port;
                 }
@@ -305,7 +300,7 @@ namespace gf::infra::git::credentials
 
         auto checkProfileKey = [&](const std::string& profileId, const std::vector<std::string>& keyNames)
         {
-            auto it = std::find_if(profiles.begin(), profiles.end(), [&](const auto& p)
+            const auto it = std::ranges::find_if(profiles, [&](const auto& p)
             {
                 return p.id == profileId;
             });
@@ -313,8 +308,7 @@ namespace gf::infra::git::credentials
 
             for (const auto& name : keyNames)
             {
-                auto path = sshDir / name;
-                if (std::filesystem::exists(path, ec))
+                if (const auto path = sshDir / name; std::filesystem::exists(path, ec))
                 {
                     it->hasSshKey = true;
                     it->sshKeyPath = path.string();
@@ -330,14 +324,13 @@ namespace gf::infra::git::credentials
     }
 
     void SystemCredentialDetector::checkEnvironmentTokens(
-        std::vector<core::git::bo::GitProviderProfile>& profiles) const
+        std::vector<core::git::bo::GitProviderProfile>& profiles)
     {
         auto setEnvToken = [&](const std::string& profileId, const char* envVar)
         {
-            const auto val = gf::core::getEnvVar(envVar);
-            if (val && !val->empty())
+            if (const auto val = core::getEnvVar(envVar); val && !val->empty())
             {
-                auto it = std::find_if(profiles.begin(), profiles.end(), [&](const auto& p)
+                const auto it = std::ranges::find_if(profiles, [&](const auto& p)
                 {
                     return p.id == profileId;
                 });

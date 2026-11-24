@@ -31,28 +31,28 @@ namespace gf::infra::git
     namespace
     {
 #ifdef _WIN32
-        [[nodiscard]] std::wstring utf8ToWide(std::string_view utf8)
+        [[nodiscard]] std::wstring utf8ToWide(const std::string_view utf8)
         {
             if (utf8.empty())
             {
                 return {};
             }
-            const int needed = ::MultiByteToWideChar(CP_UTF8, 0,
-                                                     utf8.data(), static_cast<int>(utf8.size()),
-                                                     nullptr, 0);
+            const int needed = MultiByteToWideChar(CP_UTF8, 0,
+                                                   utf8.data(), static_cast<int>(utf8.size()),
+                                                   nullptr, 0);
             if (needed <= 0)
             {
                 return {};
             }
-            std::wstring result(static_cast<std::size_t>(needed), L'\0');
-            ::MultiByteToWideChar(CP_UTF8, 0,
-                                  utf8.data(), static_cast<int>(utf8.size()),
-                                  result.data(), needed);
+            std::wstring result(needed, L'\0');
+            MultiByteToWideChar(CP_UTF8, 0,
+                                utf8.data(), static_cast<int>(utf8.size()),
+                                result.data(), needed);
             return result;
         }
 
         /// Applies MSVCRT / CommandLineToArgvW quoting rules directly without passing through cmd.exe.
-        void appendQuotedWindowsArg(std::wstring& cmdLine, std::wstring_view arg)
+        void appendQuotedWindowsArg(std::wstring& cmdLine, const std::wstring_view arg)
         {
             const bool needsQuotes = arg.empty() ||
                 arg.find_first_of(L" \t\n\v\"") != std::wstring_view::npos;
@@ -77,7 +77,7 @@ namespace gf::infra::git
                     cmdLine.append(backslashes * 2, L'\\');
                     break;
                 }
-                else if (arg[i] == L'"')
+                if (arg[i] == L'"')
                 {
                     cmdLine.append(backslashes * 2 + 1, L'\\');
                     cmdLine.push_back(L'"');
@@ -98,7 +98,7 @@ namespace gf::infra::git
             HANDLE h = nullptr;
             ScopedHandle() = default;
 
-            explicit ScopedHandle(HANDLE handle) noexcept : h(handle)
+            explicit ScopedHandle(const HANDLE handle) noexcept : h(handle)
             {
             }
 
@@ -118,11 +118,11 @@ namespace gf::infra::git
                 return *this;
             }
 
-            void reset(HANDLE newHandle = nullptr) noexcept
+            void reset(const HANDLE newHandle = nullptr) noexcept
             {
                 if (h && h != INVALID_HANDLE_VALUE)
                 {
-                    ::CloseHandle(h);
+                    CloseHandle(h);
                 }
                 h = newHandle;
             }
@@ -139,9 +139,9 @@ namespace gf::infra::git
             static std::atomic<std::uint64_t> counter{0};
             const auto id = counter.fetch_add(1, std::memory_order_relaxed);
             const std::wstring pipeName = std::format(
-                L"\\\\.\\pipe\\LOCAL\\gf_git_io_{}_{}", ::GetCurrentProcessId(), id);
+                L"\\\\.\\pipe\\LOCAL\\gf_git_io_{}_{}", GetCurrentProcessId(), id);
 
-            HANDLE readEnd = ::CreateNamedPipeW(
+            const HANDLE readEnd = CreateNamedPipeW(
                 pipeName.c_str(),
                 PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED,
                 PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
@@ -159,7 +159,7 @@ namespace gf::infra::git
             saInherit.nLength = sizeof(saInherit);
             saInherit.bInheritHandle = TRUE;
 
-            HANDLE writeEnd = ::CreateFileW(
+            const HANDLE writeEnd = CreateFileW(
                 pipeName.c_str(),
                 GENERIC_WRITE,
                 0,
@@ -169,7 +169,7 @@ namespace gf::infra::git
                 nullptr);
             if (writeEnd == INVALID_HANDLE_VALUE)
             {
-                ::CloseHandle(readEnd);
+                CloseHandle(readEnd);
                 return false;
             }
 
@@ -189,12 +189,12 @@ namespace gf::infra::git
             bool pending = false;
             bool eof = false;
 
-            bool init(HANDLE pipeHandle, std::string* dest, std::function<void(std::string_view)> chunkCb = {})
+            bool init(const HANDLE pipeHandle, std::string* dest, std::function<void(std::string_view)> chunkCb = {})
             {
                 pipe = pipeHandle;
                 destination = dest;
                 onChunk = std::move(chunkCb);
-                HANDLE ev = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
+                const HANDLE ev = CreateEventW(nullptr, TRUE, FALSE, nullptr);
                 if (!ev)
                 {
                     return false;
@@ -209,10 +209,9 @@ namespace gf::infra::git
             {
                 while (!eof && !pending)
                 {
-                    ::ResetEvent(event.h);
+                    ResetEvent(event.h);
                     DWORD bytesRead = 0;
-                    const BOOL ok = ::ReadFile(pipe, buffer, sizeof(buffer), &bytesRead, &ov);
-                    if (ok)
+                    if (const BOOL ok = ReadFile(pipe, buffer, sizeof(buffer), &bytesRead, &ov))
                     {
                         if (bytesRead == 0)
                         {
@@ -229,8 +228,7 @@ namespace gf::infra::git
                     }
                     else
                     {
-                        const DWORD err = ::GetLastError();
-                        if (err == ERROR_IO_PENDING)
+                        if (const DWORD err = GetLastError(); err == ERROR_IO_PENDING)
                         {
                             pending = true;
                         }
@@ -249,7 +247,7 @@ namespace gf::infra::git
                     return;
                 }
                 DWORD bytesTransferred = 0;
-                const BOOL ok = ::GetOverlappedResult(pipe, &ov, &bytesTransferred, FALSE);
+                const BOOL ok = GetOverlappedResult(pipe, &ov, &bytesTransferred, FALSE);
                 pending = false;
                 if (!ok || bytesTransferred == 0)
                 {
@@ -266,15 +264,15 @@ namespace gf::infra::git
 
             void drainAfterProcessExit()
             {
-                while (pending && ::WaitForSingleObject(event.h, 0) == WAIT_OBJECT_0)
+                while (pending && WaitForSingleObject(event.h, 0) == WAIT_OBJECT_0)
                 {
                     completePending();
                 }
                 if (pending)
                 {
-                    ::CancelIoEx(pipe, &ov);
+                    CancelIoEx(pipe, &ov);
                     DWORD bytesTransferred = 0;
-                    ::GetOverlappedResult(pipe, &ov, &bytesTransferred, TRUE);
+                    GetOverlappedResult(pipe, &ov, &bytesTransferred, TRUE);
                     if (bytesTransferred > 0)
                     {
                         destination->append(buffer, bytesTransferred);
@@ -289,11 +287,10 @@ namespace gf::infra::git
             }
         };
 
-        [[nodiscard]] std::wstring buildGitEnvironmentBlock(bool noOptionalLocks)
+        [[nodiscard]] std::wstring buildGitEnvironmentBlock(const bool noOptionalLocks)
         {
             std::wstring block;
-            LPWCH rawEnv = ::GetEnvironmentStringsW();
-            if (rawEnv)
+            if (LPWCH rawEnv = GetEnvironmentStringsW())
             {
                 const wchar_t* cur = rawEnv;
                 while (*cur != L'\0')
@@ -312,7 +309,7 @@ namespace gf::infra::git
                     }
                     cur += entry.size() + 1;
                 }
-                ::FreeEnvironmentStringsW(rawEnv);
+                FreeEnvironmentStringsW(rawEnv);
             }
 
             block.append(L"GIT_TERMINAL_PROMPT=0");
@@ -412,19 +409,19 @@ namespace gf::infra::git
         {
             return std::unexpected(GitExecutionError{
                 .kind = GitErrorKind::ExecutableNotFound,
-                .message = "Eseguibile Git non trovato: " + gf::core::pathToUtf8(gitExecutablePath_)
+                .message = "Eseguibile Git non trovato: " + core::pathToUtf8(gitExecutablePath_)
             });
         }
         if (!command.workingDirectory.empty() && !std::filesystem::exists(command.workingDirectory, fsEc))
         {
             return std::unexpected(GitExecutionError{
                 .kind = GitErrorKind::WorkingDirectoryInvalid,
-                .message = "Working directory inesistente: " + gf::core::pathToUtf8(command.workingDirectory)
+                .message = "Working directory inesistente: " + core::pathToUtf8(command.workingDirectory)
             });
         }
 
         std::vector<std::string> fullArgs;
-        const bool noOptLocks = (command.lockPolicy == GitLockPolicy::NoOptionalLocks);
+        const bool noOptLocks = command.lockPolicy == GitLockPolicy::NoOptionalLocks;
         fullArgs.reserve(command.args.size() + (noOptLocks ? 1 : 0));
         if (noOptLocks)
         {
@@ -441,23 +438,23 @@ namespace gf::infra::git
             return std::unexpected(GitExecutionError{
                 .kind = GitErrorKind::PipeIoError,
                 .message = "Creazione pipe overlapped fallita",
-                .osErrorCode = static_cast<int>(::GetLastError())
+                .osErrorCode = static_cast<int>(GetLastError())
             });
         }
 
         SECURITY_ATTRIBUTES saInherit{};
         saInherit.nLength = sizeof(saInherit);
         saInherit.bInheritHandle = TRUE;
-        ScopedHandle nulInput(::CreateFileW(L"NUL", GENERIC_READ,
-                                            FILE_SHARE_READ | FILE_SHARE_WRITE,
-                                            &saInherit, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
+        ScopedHandle nulInput(CreateFileW(L"NUL", GENERIC_READ,
+                                          FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                          &saInherit, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
 
         STARTUPINFOEXW siEx{};
         siEx.StartupInfo.cb = sizeof(STARTUPINFOEXW);
         siEx.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
-        siEx.StartupInfo.hStdInput = (nulInput.h != INVALID_HANDLE_VALUE)
+        siEx.StartupInfo.hStdInput = nulInput.h != INVALID_HANDLE_VALUE
                                          ? nulInput.h
-                                         : ::GetStdHandle(STD_INPUT_HANDLE);
+                                         : GetStdHandle(STD_INPUT_HANDLE);
         siEx.StartupInfo.hStdOutput = stdoutPipe.childWrite.h;
         siEx.StartupInfo.hStdError = stderrPipe.childWrite.h;
 
@@ -471,22 +468,22 @@ namespace gf::infra::git
         inheritableHandles[inheritCount++] = stderrPipe.childWrite.h;
 
         SIZE_T attrListSize = 0;
-        ::InitializeProcThreadAttributeList(nullptr, 1, 0, &attrListSize);
+        InitializeProcThreadAttributeList(nullptr, 1, 0, &attrListSize);
         std::vector<std::byte> attrListStorage(attrListSize);
         auto* attrList = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attrListStorage.data());
         bool hasAttrList = false;
-        if (attrListSize > 0 && ::InitializeProcThreadAttributeList(attrList, 1, 0, &attrListSize))
+        if (attrListSize > 0 && InitializeProcThreadAttributeList(attrList, 1, 0, &attrListSize))
         {
-            if (::UpdateProcThreadAttribute(attrList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
-                                            inheritableHandles, inheritCount * sizeof(HANDLE),
-                                            nullptr, nullptr))
+            if (UpdateProcThreadAttribute(attrList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                                          inheritableHandles, inheritCount * sizeof(HANDLE),
+                                          nullptr, nullptr))
             {
                 siEx.lpAttributeList = attrList;
                 hasAttrList = true;
             }
             else
             {
-                ::DeleteProcThreadAttributeList(attrList);
+                DeleteProcThreadAttributeList(attrList);
             }
         }
         if (!hasAttrList)
@@ -505,7 +502,9 @@ namespace gf::infra::git
             if (!envBlock.empty()) envBlock.pop_back(); // drop the block terminator
             for (const auto& [name, value] : command.extraEnvironment)
             {
-                envBlock.append(utf8ToWide(name + "=" + value));
+                envBlock.append(utf8ToWide(name));
+                envBlock.push_back(L'=');
+                envBlock.append(utf8ToWide(value));
                 envBlock.push_back(L'\0');
             }
             envBlock.push_back(L'\0');
@@ -514,7 +513,7 @@ namespace gf::infra::git
         PROCESS_INFORMATION pi{};
         const DWORD creationFlags = CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT |
             (hasAttrList ? EXTENDED_STARTUPINFO_PRESENT : 0);
-        const BOOL spawned = ::CreateProcessW(
+        const BOOL spawned = CreateProcessW(
             exeWide.c_str(),
             cmdLine.data(),
             nullptr,
@@ -528,7 +527,7 @@ namespace gf::infra::git
 
         if (hasAttrList)
         {
-            ::DeleteProcThreadAttributeList(attrList);
+            DeleteProcThreadAttributeList(attrList);
         }
         stdoutPipe.childWrite.reset();
         stderrPipe.childWrite.reset();
@@ -539,7 +538,7 @@ namespace gf::infra::git
             return std::unexpected(GitExecutionError{
                 .kind = GitErrorKind::SpawnFailed,
                 .message = "CreateProcessW fallita per git.exe",
-                .osErrorCode = static_cast<int>(::GetLastError())
+                .osErrorCode = static_cast<int>(GetLastError())
             });
         }
 
@@ -547,11 +546,11 @@ namespace gf::infra::git
         ScopedHandle threadHandle(pi.hThread);
 
         GitProcessResult result;
-        std::atomic<bool> cancelledFlag{false};
+        std::atomic cancelledFlag{false};
         std::stop_callback stopCb(stopToken, [&]() noexcept
         {
             cancelledFlag.store(true, std::memory_order_release);
-            ::TerminateProcess(procHandle.h, 130);
+            TerminateProcess(procHandle.h, 130);
         });
 
         AsyncPipeChannel outCh;
@@ -559,7 +558,7 @@ namespace gf::infra::git
         if (!outCh.init(stdoutPipe.parentRead.h, &result.stdoutBytes, command.onStdoutChunk) ||
             !errCh.init(stderrPipe.parentRead.h, &result.stderrBytes, command.onStderrChunk))
         {
-            ::TerminateProcess(procHandle.h, 1);
+            TerminateProcess(procHandle.h, 1);
             return std::unexpected(GitExecutionError{
                 .kind = GitErrorKind::PipeIoError,
                 .message = "Inizializzazione eventi overlapped fallita"
@@ -607,21 +606,21 @@ namespace gf::infra::git
             if (now >= deadline)
             {
                 result.timedOut = true;
-                ::TerminateProcess(procHandle.h, 124);
-                ::CancelIo(stdoutPipe.parentRead.h);
-                ::CancelIo(stderrPipe.parentRead.h);
+                TerminateProcess(procHandle.h, 124);
+                CancelIo(stdoutPipe.parentRead.h);
+                CancelIo(stderrPipe.parentRead.h);
                 break;
             }
             const auto remainingMs = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
-            const DWORD waitRc = ::WaitForMultipleObjects(
+            const DWORD waitRc = WaitForMultipleObjects(
                 handleCount, waitHandles, FALSE, static_cast<DWORD>(remainingMs));
 
             if (waitRc == WAIT_TIMEOUT)
             {
                 result.timedOut = true;
-                ::TerminateProcess(procHandle.h, 124);
-                ::CancelIo(stdoutPipe.parentRead.h);
-                ::CancelIo(stderrPipe.parentRead.h);
+                TerminateProcess(procHandle.h, 124);
+                CancelIo(stdoutPipe.parentRead.h);
+                CancelIo(stderrPipe.parentRead.h);
                 break;
             }
             if (waitRc >= WAIT_OBJECT_0 && waitRc < WAIT_OBJECT_0 + handleCount)
@@ -645,9 +644,9 @@ namespace gf::infra::git
             }
         }
 
-        ::WaitForSingleObject(procHandle.h, 5000);
+        WaitForSingleObject(procHandle.h, 5000);
         DWORD exitCode = 0;
-        ::GetExitCodeProcess(procHandle.h, &exitCode);
+        GetExitCodeProcess(procHandle.h, &exitCode);
         result.exitCode = static_cast<int>(exitCode);
         result.cancelled = cancelledFlag.load(std::memory_order_acquire);
         result.elapsed = std::chrono::duration_cast<std::chrono::microseconds>(

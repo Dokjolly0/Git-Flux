@@ -23,7 +23,7 @@ namespace gf::infra::git::credentials
 
         void parseSshConfig(std::vector<core::git::bo::GitProviderProfile>& profiles) const;
         void checkDefaultSshKeys(std::vector<core::git::bo::GitProviderProfile>& profiles) const;
-        void checkEnvironmentTokens(std::vector<core::git::bo::GitProviderProfile>& profiles) const;
+        static void checkEnvironmentTokens(std::vector<core::git::bo::GitProviderProfile>& profiles);
         [[nodiscard]] std::filesystem::path expandTilde(const std::string& path) const;
     };
 } // namespace gf::infra::git::credentials
