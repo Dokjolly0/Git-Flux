@@ -37,9 +37,9 @@ namespace gf::infra::git
         {
         public:
 #ifdef _WIN32
-            NativeGitBatchSessionImpl(const HANDLE processHandle,
-                                      const HANDLE stdinWrite,
-                                      const HANDLE stdoutRead) noexcept
+            NativeGitBatchSessionImpl(void* const processHandle,
+                                      void* const stdinWrite,
+                                      void* const stdoutRead) noexcept
                 : processHandle_(processHandle)
                   , stdinWrite_(stdinWrite)
                   , stdoutRead_(stdoutRead)
@@ -400,7 +400,7 @@ namespace gf::infra::git
         }
         SetHandleInformation(parentStdoutRead, HANDLE_FLAG_INHERIT, 0);
 
-        const HANDLE nulErr = CreateFileW(L"NUL", GENERIC_WRITE,
+        void* const nulErr = CreateFileW(L"NUL", GENERIC_WRITE,
                                           FILE_SHARE_READ | FILE_SHARE_WRITE,
                                           &sa, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
 

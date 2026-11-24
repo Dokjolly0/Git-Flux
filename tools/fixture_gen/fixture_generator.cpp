@@ -75,7 +75,7 @@ namespace gf::tools
         sa.nLength = sizeof(sa);
         sa.bInheritHandle = TRUE;
 
-        const HANDLE inputHandle = CreateFileW(
+        void* const inputHandle = CreateFileW(
             streamFilePath.c_str(),
             GENERIC_READ,
             FILE_SHARE_READ,

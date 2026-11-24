@@ -98,7 +98,7 @@ namespace gf::infra::git
             HANDLE h = nullptr;
             ScopedHandle() = default;
 
-            explicit ScopedHandle(const HANDLE handle) noexcept : h(handle)
+            explicit ScopedHandle(void* const handle) noexcept : h(handle)
             {
             }
 
@@ -118,7 +118,7 @@ namespace gf::infra::git
                 return *this;
             }
 
-            void reset(const HANDLE newHandle = nullptr) noexcept
+            void reset(void* const newHandle = nullptr) noexcept
             {
                 if (h && h != INVALID_HANDLE_VALUE)
                 {
@@ -141,7 +141,7 @@ namespace gf::infra::git
             const std::wstring pipeName = std::format(
                 L"\\\\.\\pipe\\LOCAL\\gf_git_io_{}_{}", GetCurrentProcessId(), id);
 
-            const HANDLE readEnd = CreateNamedPipeW(
+            void* const readEnd = CreateNamedPipeW(
                 pipeName.c_str(),
                 PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED,
                 PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
@@ -159,7 +159,7 @@ namespace gf::infra::git
             saInherit.nLength = sizeof(saInherit);
             saInherit.bInheritHandle = TRUE;
 
-            const HANDLE writeEnd = CreateFileW(
+            void* const writeEnd = CreateFileW(
                 pipeName.c_str(),
                 GENERIC_WRITE,
                 0,
@@ -189,12 +189,12 @@ namespace gf::infra::git
             bool pending = false;
             bool eof = false;
 
-            bool init(const HANDLE pipeHandle, std::string* dest, std::function<void(std::string_view)> chunkCb = {})
+            bool init(void* const pipeHandle, std::string* dest, std::function<void(std::string_view)> chunkCb = {})
             {
                 pipe = pipeHandle;
                 destination = dest;
                 onChunk = std::move(chunkCb);
-                const HANDLE ev = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+                void* const ev = CreateEventW(nullptr, TRUE, FALSE, nullptr);
                 if (!ev)
                 {
                     return false;

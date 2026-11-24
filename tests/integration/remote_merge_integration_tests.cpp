@@ -100,7 +100,7 @@ TEST_CASE (
     })->exitCode == 0);
 
     // Initial commit in repoA
-    sandbox.writeFile(sandbox.localRepoA, "README.md", "# Repo A\n");
+    RemoteMergeSandbox::writeFile(sandbox.localRepoA, "README.md", "# Repo A\n");
     REQUIRE(executor.execute(gf::git::bo::GitCommand{
         .args = {"add", "README.md"},
         .workingDirectory = sandbox.localRepoA,
@@ -186,10 +186,10 @@ TEST_CASE (
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard
         })->exitCode == 0);
 
-        CHECK(sandbox.readFile(sandbox.localRepoB, "README.md") == "# Repo A\n");
+        CHECK(RemoteMergeSandbox::readFile(sandbox.localRepoB, "README.md") == "# Repo A\n");
 
         // RepoA creates a second file and pushes
-        sandbox.writeFile(sandbox.localRepoA, "new_feature.txt", "Contenuto 2\n");
+        RemoteMergeSandbox::writeFile(sandbox.localRepoA, "new_feature.txt", "Contenuto 2\n");
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"add", "new_feature.txt"},
             .workingDirectory = sandbox.localRepoA,
@@ -219,7 +219,7 @@ TEST_CASE (
         REQUIRE(pullRes.has_value());
         CHECK(pullRes->success);
 
-        CHECK(sandbox.readFile(sandbox.localRepoB, "new_feature.txt") == "Contenuto 2\n");
+        CHECK(RemoteMergeSandbox::readFile(sandbox.localRepoB, "new_feature.txt") == "Contenuto 2\n");
     }
 
     SECTION("2b. Push rifiutato richiede force-with-lease o force incondizionato") {
@@ -251,7 +251,7 @@ TEST_CASE (
 
         // Case 1: repoA amends its pushed commit -> normal push fails with non-fast-forward,
         //         then --force-with-lease succeeds.
-        sandbox.writeFile(sandbox.localRepoA, "README.md", "# Repo A (amended)\n");
+        RemoteMergeSandbox::writeFile(sandbox.localRepoA, "README.md", "# Repo A (amended)\n");
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"add", "README.md"},
             .workingDirectory = sandbox.localRepoA,
@@ -281,7 +281,7 @@ TEST_CASE (
 
         // Case 2: repoB hasn't fetched repoA's amended history and makes a local commit.
         //         Normal push -> fetch first; --force-with-lease -> stale info; --force -> succeeds.
-        sandbox.writeFile(sandbox.localRepoB, "from_b.txt", "Da B\n");
+        RemoteMergeSandbox::writeFile(sandbox.localRepoB, "from_b.txt", "Da B\n");
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"add", "from_b.txt"},
             .workingDirectory = sandbox.localRepoB,
@@ -328,7 +328,7 @@ TEST_CASE (
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard
         })->exitCode == 0);
 
-        sandbox.writeFile(sandbox.localRepoA, "ff.txt", "Fast forward content\n");
+        RemoteMergeSandbox::writeFile(sandbox.localRepoA, "ff.txt", "Fast forward content\n");
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"add", "ff.txt"},
             .workingDirectory = sandbox.localRepoA,
@@ -355,12 +355,12 @@ TEST_CASE (
         REQUIRE(mergeRes.has_value());
         CHECK((mergeRes->status == gf::git::bo::MergeStatus::FastForward ||
                mergeRes->status == gf::git::bo::MergeStatus::Merged));
-        CHECK(sandbox.readFile(sandbox.localRepoA, "ff.txt") == "Fast forward content\n");
+        CHECK(RemoteMergeSandbox::readFile(sandbox.localRepoA, "ff.txt") == "Fast forward content\n");
     }
 
     SECTION("4. Merge a 3 vie con no-ff") {
         // Commit on main
-        sandbox.writeFile(sandbox.localRepoA, "main_file.txt", "Main line\n");
+        RemoteMergeSandbox::writeFile(sandbox.localRepoA, "main_file.txt", "Main line\n");
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"add", "main_file.txt"},
             .workingDirectory = sandbox.localRepoA,
@@ -379,7 +379,7 @@ TEST_CASE (
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard
         })->exitCode == 0);
 
-        sandbox.writeFile(sandbox.localRepoA, "feat_file.txt", "Feature line\n");
+        RemoteMergeSandbox::writeFile(sandbox.localRepoA, "feat_file.txt", "Feature line\n");
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"add", "feat_file.txt"},
             .workingDirectory = sandbox.localRepoA,
@@ -406,12 +406,12 @@ TEST_CASE (
         REQUIRE(mergeRes.has_value());
         CHECK(mergeRes->status == gf::git::bo::MergeStatus::Merged);
         CHECK(mergeRes->conflictedFiles.empty());
-        CHECK(sandbox.readFile(sandbox.localRepoA, "feat_file.txt") == "Feature line\n");
+        CHECK(RemoteMergeSandbox::readFile(sandbox.localRepoA, "feat_file.txt") == "Feature line\n");
     }
 
     SECTION("5. Conflitto di Merge e Abort") {
         // Base commit with file_conflict.txt
-        sandbox.writeFile(sandbox.localRepoA, "file_conflict.txt", "Line 1 base\n");
+        RemoteMergeSandbox::writeFile(sandbox.localRepoA, "file_conflict.txt", "Line 1 base\n");
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"add", "file_conflict.txt"},
             .workingDirectory = sandbox.localRepoA,
@@ -430,7 +430,7 @@ TEST_CASE (
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard
         })->exitCode == 0);
 
-        sandbox.writeFile(sandbox.localRepoA, "file_conflict.txt", "Line 1 from branch feature\n");
+        RemoteMergeSandbox::writeFile(sandbox.localRepoA, "file_conflict.txt", "Line 1 from branch feature\n");
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"commit", "-am", "Change in branch"},
             .workingDirectory = sandbox.localRepoA,
@@ -444,7 +444,7 @@ TEST_CASE (
             .lockPolicy = gf::git::bo::GitLockPolicy::Standard
         })->exitCode == 0);
 
-        sandbox.writeFile(sandbox.localRepoA, "file_conflict.txt", "Line 1 from main differently\n");
+        RemoteMergeSandbox::writeFile(sandbox.localRepoA, "file_conflict.txt", "Line 1 from main differently\n");
         REQUIRE(executor.execute(gf::git::bo::GitCommand{
             .args = {"commit", "-am", "Change in main"},
             .workingDirectory = sandbox.localRepoA,
@@ -461,7 +461,7 @@ TEST_CASE (
         CHECK(conflictRes->conflictedFiles[0] == "file_conflict.txt");
 
         // File contains conflict markers
-        auto conflictedContent = sandbox.readFile(sandbox.localRepoA, "file_conflict.txt");
+        auto conflictedContent = RemoteMergeSandbox::readFile(sandbox.localRepoA, "file_conflict.txt");
         CHECK(conflictedContent.find("<<<<<<<") != std::string::npos);
 
         // Cancel merge with abortMerge
@@ -469,7 +469,7 @@ TEST_CASE (
         REQUIRE(abortRes.has_value());
 
         // File is restored to pre-merge state
-        auto restoredContent = sandbox.readFile(sandbox.localRepoA, "file_conflict.txt");
+        auto restoredContent = RemoteMergeSandbox::readFile(sandbox.localRepoA, "file_conflict.txt");
         CHECK(restoredContent == "Line 1 from main differently\n");
     }
 

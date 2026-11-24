@@ -32,26 +32,26 @@ namespace gf::git::bl
         AsyncGitService(AsyncGitService&&) = delete;
         AsyncGitService& operator=(AsyncGitService&&) = delete;
 
-        std::string fetchRemoteAsync(const std::filesystem::path& repoPath,
-                                     const bo::RemoteOperationOptions& options,
-                                     const AsyncFetchCallback& onCompleted = nullptr,
-                                     AsyncProgressCallback onProgress = nullptr) const;
+        [[nodiscard]] std::string fetchRemoteAsync(const std::filesystem::path& repoPath,
+                                                   const bo::RemoteOperationOptions& options,
+                                                   const AsyncFetchCallback& onCompleted = nullptr,
+                                                   AsyncProgressCallback onProgress = nullptr) const;
 
-        std::string pullRemoteAsync(const std::filesystem::path& repoPath,
-                                    const bo::RemoteOperationOptions& options,
-                                    const AsyncPullCallback& onCompleted = nullptr,
-                                    AsyncProgressCallback onProgress = nullptr) const;
+        [[nodiscard]] std::string pullRemoteAsync(const std::filesystem::path& repoPath,
+                                                  const bo::RemoteOperationOptions& options,
+                                                  const AsyncPullCallback& onCompleted = nullptr,
+                                                  AsyncProgressCallback onProgress = nullptr) const;
 
-        std::string pushRemoteAsync(const std::filesystem::path& repoPath,
-                                    const bo::RemoteOperationOptions& options,
-                                    const AsyncPushCallback& onCompleted = nullptr,
-                                    AsyncProgressCallback onProgress = nullptr) const;
+        [[nodiscard]] std::string pushRemoteAsync(const std::filesystem::path& repoPath,
+                                                  const bo::RemoteOperationOptions& options,
+                                                  const AsyncPushCallback& onCompleted = nullptr,
+                                                  AsyncProgressCallback onProgress = nullptr) const;
 
-        std::string refreshWorkingTreeAsync(const std::filesystem::path& repoPath,
-                                            const AsyncWorkingTreeCallback& onCompleted = nullptr,
-                                            AsyncProgressCallback onProgress = nullptr) const;
+        [[nodiscard]] std::string refreshWorkingTreeAsync(const std::filesystem::path& repoPath,
+                                                          const AsyncWorkingTreeCallback& onCompleted = nullptr,
+                                                          AsyncProgressCallback onProgress = nullptr) const;
 
-        bool cancelOperation(const std::string& taskId) const;
+        [[nodiscard]] bool cancelOperation(const std::string& taskId) const;
 
         [[nodiscard]] tasks::bl::BackgroundTaskRunner& taskRunner() const noexcept { return m_taskRunner; }
 
