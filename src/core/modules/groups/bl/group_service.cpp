@@ -30,7 +30,7 @@ namespace gf::groups::bl
     }
 
     std::expected<Group, GroupServiceError>
-    GroupService::createGroup(std::string name, std::vector<RepositoryId> repoIds)
+    GroupService::createGroup(std::string name, std::vector<RepositoryId> repoIds) const
     {
         if (name.empty())
         {
@@ -43,8 +43,7 @@ namespace gf::groups::bl
         // Verify existence of all provided repositories
         for (const auto& rId : repoIds)
         {
-            auto r = repoStore_.getById(rId);
-            if (!r || !r->has_value())
+            if (const auto r = repoStore_.getById(rId); !r || !r->has_value())
             {
                 return std::unexpected(GroupServiceError{
                     .kind = GroupServiceError::Kind::RepositoryNotFound,
@@ -55,15 +54,14 @@ namespace gf::groups::bl
 
         const auto now = currentUnixMs();
         Group g{
-            .id = GroupId(gf::core::generateUniqueId("grp")),
+            .id = GroupId(core::generateUniqueId("grp")),
             .name = std::move(name),
             .repositoryIds = std::move(repoIds),
             .createdAtUnixEpochMs = now,
             .updatedAtUnixEpochMs = now
         };
 
-        auto saveRes = groupStore_.save(g);
-        if (!saveRes)
+        if (const auto saveRes = groupStore_.save(g); !saveRes)
         {
             if (saveRes.error().kind == ports::GroupStoreError::Kind::DuplicateName)
             {
@@ -82,7 +80,7 @@ namespace gf::groups::bl
     }
 
     std::expected<Group, GroupServiceError>
-    GroupService::renameGroup(const GroupId& id, std::string newName)
+    GroupService::renameGroup(const GroupId& id, std::string newName) const
     {
         if (newName.empty())
         {
@@ -105,8 +103,7 @@ namespace gf::groups::bl
         g.name = std::move(newName);
         g.updatedAtUnixEpochMs = currentUnixMs();
 
-        auto saveRes = groupStore_.save(g);
-        if (!saveRes)
+        if (const auto saveRes = groupStore_.save(g); !saveRes)
         {
             if (saveRes.error().kind == ports::GroupStoreError::Kind::DuplicateName)
             {
@@ -125,10 +122,9 @@ namespace gf::groups::bl
     }
 
     std::expected<Group, GroupServiceError>
-    GroupService::addRepositoryToGroup(const GroupId& id, const RepositoryId& repoId)
+    GroupService::addRepositoryToGroup(const GroupId& id, const RepositoryId& repoId) const
     {
-        auto repoRes = repoStore_.getById(repoId);
-        if (!repoRes || !repoRes->has_value())
+        if (const auto repoRes = repoStore_.getById(repoId); !repoRes || !repoRes->has_value())
         {
             return std::unexpected(GroupServiceError{
                 .kind = GroupServiceError::Kind::RepositoryNotFound,
@@ -150,8 +146,7 @@ namespace gf::groups::bl
         {
             g.repositoryIds.push_back(repoId);
             g.updatedAtUnixEpochMs = currentUnixMs();
-            auto saveRes = groupStore_.save(g);
-            if (!saveRes)
+            if (const auto saveRes = groupStore_.save(g); !saveRes)
             {
                 return std::unexpected(GroupServiceError{
                     .kind = GroupServiceError::Kind::StorageError,
@@ -164,7 +159,7 @@ namespace gf::groups::bl
     }
 
     std::expected<Group, GroupServiceError>
-    GroupService::removeRepositoryFromGroup(const GroupId& id, const RepositoryId& repoId)
+    GroupService::removeRepositoryFromGroup(const GroupId& id, const RepositoryId& repoId) const
     {
         auto groupRes = groupStore_.getById(id);
         if (!groupRes || !groupRes->has_value())
@@ -176,13 +171,11 @@ namespace gf::groups::bl
         }
 
         auto g = std::move(**groupRes);
-        auto it = std::ranges::find(g.repositoryIds, repoId);
-        if (it != g.repositoryIds.end())
+        if (const auto it = std::ranges::find(g.repositoryIds, repoId); it != g.repositoryIds.end())
         {
             g.repositoryIds.erase(it);
             g.updatedAtUnixEpochMs = currentUnixMs();
-            auto saveRes = groupStore_.save(g);
-            if (!saveRes)
+            if (const auto saveRes = groupStore_.save(g); !saveRes)
             {
                 return std::unexpected(GroupServiceError{
                     .kind = GroupServiceError::Kind::StorageError,
@@ -195,7 +188,7 @@ namespace gf::groups::bl
     }
 
     std::expected<Group, GroupServiceError>
-    GroupService::reorderRepositories(const GroupId& id, std::vector<RepositoryId> orderedIds)
+    GroupService::reorderRepositories(const GroupId& id, std::vector<RepositoryId> orderedIds) const
     {
         auto groupRes = groupStore_.getById(id);
         if (!groupRes || !groupRes->has_value())
@@ -210,8 +203,7 @@ namespace gf::groups::bl
         g.repositoryIds = std::move(orderedIds);
         g.updatedAtUnixEpochMs = currentUnixMs();
 
-        auto saveRes = groupStore_.save(g);
-        if (!saveRes)
+        if (const auto saveRes = groupStore_.save(g); !saveRes)
         {
             return std::unexpected(GroupServiceError{
                 .kind = GroupServiceError::Kind::StorageError,
@@ -223,7 +215,7 @@ namespace gf::groups::bl
     }
 
     std::expected<bool, GroupServiceError>
-    GroupService::deleteGroup(const GroupId& id)
+    GroupService::deleteGroup(const GroupId& id) const
     {
         auto res = groupStore_.remove(id);
         if (!res)
@@ -237,7 +229,7 @@ namespace gf::groups::bl
     }
 
     std::expected<std::optional<Group>, GroupServiceError>
-    GroupService::getGroup(const GroupId& id)
+    GroupService::getGroup(const GroupId& id) const
     {
         auto res = groupStore_.getById(id);
         if (!res)
@@ -251,7 +243,7 @@ namespace gf::groups::bl
     }
 
     std::expected<std::vector<Group>, GroupServiceError>
-    GroupService::getAllGroups()
+    GroupService::getAllGroups() const
     {
         auto res = groupStore_.getAll();
         if (!res)
@@ -265,7 +257,7 @@ namespace gf::groups::bl
     }
 
     std::expected<QuickOpenContext, GroupServiceError>
-    GroupService::resolveQuickOpenContext(const std::vector<GroupId>& selectedGroupIds)
+    GroupService::resolveQuickOpenContext(const std::vector<GroupId>& selectedGroupIds) const
     {
         QuickOpenContext ctx;
         ctx.selectedGroupIds = selectedGroupIds;
@@ -288,8 +280,7 @@ namespace gf::groups::bl
                 if (seenRepoIds.insert(rId).second)
                 {
                     // First encounter of this repository: load complete entity
-                    auto repoRes = repoStore_.getById(rId);
-                    if (repoRes && repoRes->has_value())
+                    if (auto repoRes = repoStore_.getById(rId); repoRes && repoRes->has_value())
                     {
                         ctx.repositories.push_back(std::move(**repoRes));
                     }

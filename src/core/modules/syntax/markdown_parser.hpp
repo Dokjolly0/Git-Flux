@@ -103,7 +103,7 @@ namespace gf::core::syntax
 
         [[nodiscard]] static MarkdownDocument parseWithDiff(
             std::string_view markdownText,
-            const gf::git::bo::FileDiff* diff) noexcept;
+            const git::bo::FileDiff* diff) noexcept;
 
         [[nodiscard]] static std::string toGithubSlug(std::string_view headingText) noexcept;
         [[nodiscard]] static std::string renderInlineHtml(std::string_view text) noexcept;

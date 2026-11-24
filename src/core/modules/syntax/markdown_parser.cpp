@@ -2,7 +2,9 @@
 #include "core/modules/syntax/syntax_highlighter.hpp"
 
 #include <algorithm>
+#include <iterator>
 #include <map>
+#include <optional>
 #include <set>
 #include <unordered_map>
 
@@ -10,22 +12,22 @@ namespace gf::core::syntax
 {
     namespace
     {
-        [[nodiscard]] constexpr bool mdIsSpace(char c) noexcept
+        [[nodiscard]] constexpr bool mdIsSpace(const char c) noexcept
         {
             return c == ' ' || c == '\t' || c == '\r' || c == '\n';
         }
 
-        [[nodiscard]] constexpr bool mdIsDigit(char c) noexcept
+        [[nodiscard]] constexpr bool mdIsDigit(const char c) noexcept
         {
             return c >= '0' && c <= '9';
         }
 
-        [[nodiscard]] constexpr char mdToLowerAscii(char c) noexcept
+        [[nodiscard]] constexpr char mdToLowerAscii(const char c) noexcept
         {
-            return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+            return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
         }
 
-        [[nodiscard]] constexpr std::size_t utf8SeqLen(unsigned char b) noexcept
+        [[nodiscard]] constexpr std::size_t utf8SeqLen(const unsigned char b) noexcept
         {
             if (b < 0x80) return 1;
             if ((b & 0xE0) == 0xC0) return 2;
@@ -47,18 +49,18 @@ namespace gf::core::syntax
             return sv;
         }
 
-        [[nodiscard]] std::string toLowerCopy(std::string_view sv)
+        [[nodiscard]] std::string toLowerCopy(const std::string_view sv)
         {
             std::string out;
             out.reserve(sv.size());
-            for (char c : sv)
+            for (const char c : sv)
             {
                 out.push_back(mdToLowerAscii(c));
             }
             return out;
         }
 
-        [[nodiscard]] std::string normalizeLineEndings(std::string_view input)
+        [[nodiscard]] std::string normalizeLineEndings(const std::string_view input)
         {
             std::string out;
             out.reserve(input.size());
@@ -86,7 +88,7 @@ namespace gf::core::syntax
             int lineNumber = 1; // 1-based
         };
 
-        [[nodiscard]] std::vector<LineSlice> splitNormalizedLines(std::string_view text)
+        [[nodiscard]] std::vector<LineSlice> splitNormalizedLines(const std::string_view text)
         {
             std::vector<LineSlice> lines;
             if (text.empty())
@@ -101,24 +103,24 @@ namespace gf::core::syntax
                 {
                     break;
                 }
-                auto nl = text.find('\n', pos);
+                const auto nl = text.find('\n', pos);
                 if (nl == std::string_view::npos)
                 {
-                    lines.push_back({text.substr(pos), lineNum});
+                    lines.push_back({.text = text.substr(pos), .lineNumber = lineNum});
                     break;
                 }
-                lines.push_back({text.substr(pos, nl - pos), lineNum});
+                lines.push_back({.text = text.substr(pos, nl - pos), .lineNumber = lineNum});
                 pos = nl + 1;
                 ++lineNum;
             }
             return lines;
         }
 
-        [[nodiscard]] std::string escapeInlineText(std::string_view text)
+        [[nodiscard]] std::string escapeInlineText(const std::string_view text)
         {
             std::string out;
             out.reserve(text.size() + 8);
-            for (char c : text)
+            for (const char c : text)
             {
                 switch (c)
                 {
@@ -137,11 +139,11 @@ namespace gf::core::syntax
             return out;
         }
 
-        [[nodiscard]] std::string escapeHrefAttr(std::string_view url)
+        [[nodiscard]] std::string escapeHrefAttr(const std::string_view url)
         {
             std::string out;
             out.reserve(url.size() + 8);
-            for (char c : url)
+            for (const char c : url)
             {
                 if (c == '"') out.append("%22");
                 else if (c == '&') out.append("&amp;");
@@ -152,27 +154,31 @@ namespace gf::core::syntax
             return out;
         }
 
-        [[nodiscard]] bool parseBracketLink(std::string_view sv,
-                                            std::size_t startPos,
-                                            bool& outIsImage,
-                                            std::string_view& outLabel,
-                                            std::string_view& outUrl,
-                                            std::size_t& outEndPos) noexcept
+        struct BracketLink
+        {
+            bool isImage = false;
+            std::string_view label;
+            std::string_view url;
+            std::size_t endPos = 0;
+        };
+
+        [[nodiscard]] std::optional<BracketLink> parseBracketLink(const std::string_view sv,
+                                                                  const std::size_t startPos) noexcept
         {
             const std::size_t n = sv.size();
-            if (startPos >= n) return false;
+            if (startPos >= n) return std::nullopt;
 
             bool isImg = false;
             std::size_t openBracket = startPos;
             if (sv[startPos] == '!')
             {
-                if (startPos + 1 >= n || sv[startPos + 1] != '[') return false;
+                if (startPos + 1 >= n || sv[startPos + 1] != '[') return std::nullopt;
                 isImg = true;
                 openBracket = startPos + 1;
             }
             else if (sv[startPos] != '[')
             {
-                return false;
+                return std::nullopt;
             }
 
             int depth = 1;
@@ -210,10 +216,10 @@ namespace gf::core::syntax
 
             if (closeBracket == std::string_view::npos || closeBracket + 1 >= n || sv[closeBracket + 1] != '(')
             {
-                return false;
+                return std::nullopt;
             }
 
-            std::size_t urlStart = closeBracket + 2;
+            const std::size_t urlStart = closeBracket + 2;
             int parenDepth = 1;
             std::size_t p = urlStart;
             std::size_t closeParen = std::string_view::npos;
@@ -241,38 +247,37 @@ namespace gf::core::syntax
             }
             if (closeParen == std::string_view::npos)
             {
-                return false;
+                return std::nullopt;
             }
 
             std::string_view urlPart = trimSpaces(sv.substr(urlStart, closeParen - urlStart));
             // Strip optional link title `url "title"`
             if (!urlPart.empty() && urlPart.front() == '<')
             {
-                auto gt = urlPart.find('>');
-                if (gt != std::string_view::npos)
+                if (const auto gt = urlPart.find('>'); gt != std::string_view::npos)
                 {
                     urlPart = urlPart.substr(1, gt - 1);
                 }
             }
             else
             {
-                auto sp = urlPart.find(' ');
-                if (sp != std::string_view::npos)
+                if (const auto sp = urlPart.find(' '); sp != std::string_view::npos)
                 {
                     urlPart = trimSpaces(urlPart.substr(0, sp));
                 }
             }
 
-            outIsImage = isImg;
-            outLabel = sv.substr(openBracket + 1, closeBracket - openBracket - 1);
-            outUrl = urlPart;
-            outEndPos = closeParen + 1;
-            return true;
+            return BracketLink{
+                .isImage = isImg,
+                .label = sv.substr(openBracket + 1, closeBracket - openBracket - 1),
+                .url = urlPart,
+                .endPos = closeParen + 1
+            };
         }
 
-        [[nodiscard]] std::string badgeColorFromImageUrl(std::string_view imgUrl)
+        [[nodiscard]] std::string badgeColorFromImageUrl(const std::string_view imgUrl)
         {
-            std::string lower = toLowerCopy(imgUrl);
+            const std::string lower = toLowerCopy(imgUrl);
             if (lower.find("41cd52") != std::string::npos || lower.find("brightgreen") != std::string::npos ||
                 lower.find("-green") != std::string::npos)
             {
@@ -302,10 +307,10 @@ namespace gf::core::syntax
             return "#1F6FEB";
         }
 
-        [[nodiscard]] bool tryParseBadgeLine(std::string_view line, std::vector<MarkdownBadge>& outBadges)
+        [[nodiscard]] std::optional<std::vector<MarkdownBadge>> tryParseBadgeLine(const std::string_view line)
         {
-            std::string_view s = trimSpaces(line);
-            if (s.empty()) return false;
+            const std::string_view s = trimSpaces(line);
+            if (s.empty()) return std::nullopt;
 
             std::vector<MarkdownBadge> parsed;
             std::size_t i = 0;
@@ -314,57 +319,49 @@ namespace gf::core::syntax
                 while (i < s.size() && (s[i] == ' ' || s[i] == '\t')) ++i;
                 if (i >= s.size()) break;
 
-                bool isImg = false;
-                std::string_view label;
-                std::string_view url;
-                std::size_t endPos = i;
-                if (!parseBracketLink(s, i, isImg, label, url, endPos))
+                const auto link = parseBracketLink(s, i);
+                if (!link)
                 {
-                    return false;
+                    return std::nullopt;
                 }
 
-                if (isImg)
+                if (link->isImage)
                 {
-                    std::string cleanLabel = std::string(trimSpaces(label));
+                    auto cleanLabel = std::string(trimSpaces(link->label));
                     if (cleanLabel.empty()) cleanLabel = "badge";
                     parsed.push_back(MarkdownBadge{
                         .label = std::move(cleanLabel),
                         .href = "",
-                        .color = badgeColorFromImageUrl(url)
+                        .color = badgeColorFromImageUrl(link->url)
                     });
-                    i = endPos;
+                    i = link->endPos;
                     continue;
                 }
 
                 // Check if link label itself is ![alt](img)
-                std::string_view trimmedLabel = trimSpaces(label);
-                bool innerIsImg = false;
-                std::string_view innerAlt;
-                std::string_view innerImgUrl;
-                std::size_t innerEnd = 0;
-                if (parseBracketLink(trimmedLabel, 0, innerIsImg, innerAlt, innerImgUrl, innerEnd) &&
-                    innerIsImg && innerEnd == trimmedLabel.size())
+                const std::string_view trimmedLabel = trimSpaces(link->label);
+                if (const auto inner = parseBracketLink(trimmedLabel, 0);
+                    inner && inner->isImage && inner->endPos == trimmedLabel.size())
                 {
-                    std::string cleanLabel = std::string(trimSpaces(innerAlt));
-                    if (cleanLabel.empty()) cleanLabel = std::string(url);
+                    auto cleanLabel = std::string(trimSpaces(inner->label));
+                    if (cleanLabel.empty()) cleanLabel = std::string(link->url);
                     parsed.push_back(MarkdownBadge{
                         .label = std::move(cleanLabel),
-                        .href = std::string(url),
-                        .color = badgeColorFromImageUrl(innerImgUrl)
+                        .href = std::string(link->url),
+                        .color = badgeColorFromImageUrl(inner->url)
                     });
-                    i = endPos;
+                    i = link->endPos;
                     continue;
                 }
 
-                return false;
+                return std::nullopt;
             }
 
-            if (parsed.empty()) return false;
-            outBadges.insert(outBadges.end(), parsed.begin(), parsed.end());
-            return true;
+            if (parsed.empty()) return std::nullopt;
+            return parsed;
         }
 
-        [[nodiscard]] std::string stripMarkupToPlainText(std::string_view text)
+        [[nodiscard]] std::string stripMarkupToPlainText(const std::string_view text)
         {
             std::string out;
             out.reserve(text.size());
@@ -382,8 +379,7 @@ namespace gf::core::syntax
                 }
                 if (c == '<')
                 {
-                    auto gt = text.find('>', i + 1);
-                    if (gt != std::string_view::npos && gt - i < 80)
+                    if (const auto gt = text.find('>', i + 1); gt != std::string_view::npos && gt - i < 80)
                     {
                         i = gt + 1;
                         continue;
@@ -404,16 +400,12 @@ namespace gf::core::syntax
                     ++i;
                     continue;
                 }
-                if ((c == '[' || (c == '!' && i + 1 < n && text[i + 1] == '[')))
+                if (c == '[' || (c == '!' && i + 1 < n && text[i + 1] == '['))
                 {
-                    bool isImg = false;
-                    std::string_view lbl;
-                    std::string_view url;
-                    std::size_t endPos = i;
-                    if (parseBracketLink(text, i, isImg, lbl, url, endPos))
+                    if (const auto link = parseBracketLink(text, i))
                     {
-                        out.append(stripMarkupToPlainText(lbl));
-                        i = endPos;
+                        out.append(stripMarkupToPlainText(link->label));
+                        i = link->endPos;
                         continue;
                     }
                 }
@@ -423,29 +415,35 @@ namespace gf::core::syntax
             return out;
         }
 
-        [[nodiscard]] bool tryExtractHeading(std::string_view line, int& outLevel, std::string_view& outTitle) noexcept
+        struct HeadingInfo
+        {
+            int level = 1;
+            std::string_view title;
+        };
+
+        [[nodiscard]] std::optional<HeadingInfo> tryExtractHeading(const std::string_view line) noexcept
         {
             std::size_t leadingCols = 0;
             std::size_t leadIdx = 0;
             while (leadIdx < line.size() && (line[leadIdx] == ' ' || line[leadIdx] == '\t'))
             {
-                leadingCols += (line[leadIdx] == '\t') ? 4 : 1;
+                leadingCols += line[leadIdx] == '\t' ? 4 : 1;
                 ++leadIdx;
             }
-            if (leadingCols >= 4) return false;
+            if (leadingCols >= 4) return std::nullopt;
 
-            std::string_view trimmed = trimSpaces(line.substr(leadIdx));
-            if (trimmed.empty() || trimmed[0] != '#') return false;
+            const std::string_view trimmed = trimSpaces(line.substr(leadIdx));
+            if (trimmed.empty() || trimmed[0] != '#') return std::nullopt;
 
             std::size_t hashes = 0;
             while (hashes < trimmed.size() && hashes < 7 && trimmed[hashes] == '#')
             {
                 ++hashes;
             }
-            if (hashes == 0 || hashes > 6) return false;
+            if (hashes == 0 || hashes > 6) return std::nullopt;
             if (hashes < trimmed.size() && trimmed[hashes] != ' ' && trimmed[hashes] != '\t')
             {
-                return false;
+                return std::nullopt;
             }
 
             std::string_view rest = trimSpaces(trimmed.substr(hashes));
@@ -460,18 +458,19 @@ namespace gf::core::syntax
                 rest = trimSpaces(rest);
             }
 
-            outLevel = static_cast<int>(hashes);
-            outTitle = rest;
-            return true;
+            return HeadingInfo{
+                .level = static_cast<int>(hashes),
+                .title = rest
+            };
         }
 
-        [[nodiscard]] bool isThematicBreak(std::string_view line) noexcept
+        [[nodiscard]] bool isThematicBreak(const std::string_view line) noexcept
         {
-            std::string_view s = trimSpaces(line);
+            const std::string_view s = trimSpaces(line);
             if (s.empty()) return false;
             char marker = '\0';
             int count = 0;
-            for (char c : s)
+            for (const char c : s)
             {
                 if (c == ' ' || c == '\t') continue;
                 if (c != '-' && c != '*' && c != '_') return false;
@@ -482,41 +481,48 @@ namespace gf::core::syntax
             return count >= 3;
         }
 
-        [[nodiscard]] bool tryExtractFenceOpen(std::string_view line,
-                                               char& outChar,
-                                               std::size_t& outLen,
-                                               std::string& outTag) noexcept
+        struct FenceOpenInfo
+        {
+            char fenceChar = '`';
+            std::size_t fenceLen = 0;
+            std::string langTag;
+        };
+
+        [[nodiscard]] std::optional<FenceOpenInfo> tryExtractFenceOpen(const std::string_view line) noexcept
         {
             std::size_t indent = 0;
             while (indent < line.size() && indent < 4 && line[indent] == ' ') ++indent;
-            if (indent >= 4) return false;
+            if (indent >= 4) return std::nullopt;
 
-            std::string_view s = line.substr(indent);
-            if (s.size() < 3 || (s[0] != '`' && s[0] != '~')) return false;
+            const std::string_view s = line.substr(indent);
+            if (s.size() < 3 || (s[0] != '`' && s[0] != '~')) return std::nullopt;
             const char fChar = s[0];
             std::size_t len = 0;
             while (len < s.size() && s[len] == fChar) ++len;
-            if (len < 3) return false;
+            if (len < 3) return std::nullopt;
 
-            std::string_view info = trimSpaces(s.substr(len));
-            if (fChar == '`' && info.find('`') != std::string_view::npos) return false;
+            const std::string_view info = trimSpaces(s.substr(len));
+            if (fChar == '`' && info.find('`') != std::string_view::npos) return std::nullopt;
 
             std::size_t tagEnd = 0;
             while (tagEnd < info.size() && !mdIsSpace(info[tagEnd])) ++tagEnd;
 
-            outChar = fChar;
-            outLen = len;
-            outTag = std::string(info.substr(0, tagEnd));
-            return true;
+            return FenceOpenInfo{
+                .fenceChar = fChar,
+                .fenceLen = len,
+                .langTag = std::string(info.substr(0, tagEnd))
+            };
         }
 
-        [[nodiscard]] bool isFenceClose(std::string_view line, char fenceChar, std::size_t minLen) noexcept
+        [[nodiscard]] bool isFenceClose(const std::string_view line,
+                                        const char fenceChar,
+                                        const std::size_t minLen) noexcept
         {
             std::size_t indent = 0;
             while (indent < line.size() && indent < 4 && line[indent] == ' ') ++indent;
             if (indent >= 4) return false;
 
-            std::string_view s = line.substr(indent);
+            const std::string_view s = line.substr(indent);
             if (s.empty() || s[0] != fenceChar) return false;
             std::size_t len = 0;
             while (len < s.size() && s[len] == fenceChar) ++len;
@@ -525,32 +531,36 @@ namespace gf::core::syntax
             return trimSpaces(s.substr(len)).empty();
         }
 
-        [[nodiscard]] bool tryExtractListItem(std::string_view line,
-                                              int& outIndentLevel,
-                                              bool& outOrdered,
-                                              std::string& outMarker,
-                                              bool& outIsTask,
-                                              bool& outTaskChecked,
-                                              std::string_view& outText) noexcept
+        struct ListItemInfo
+        {
+            int indentLevel = 0;
+            bool ordered = false;
+            std::string marker;
+            bool isTask = false;
+            bool taskChecked = false;
+            std::string_view text;
+        };
+
+        [[nodiscard]] std::optional<ListItemInfo> tryExtractListItem(const std::string_view line) noexcept
         {
             std::size_t wsCols = 0;
             std::size_t i = 0;
             while (i < line.size() && (line[i] == ' ' || line[i] == '\t'))
             {
-                wsCols += (line[i] == '\t') ? 4 : 1;
+                wsCols += line[i] == '\t' ? 4 : 1;
                 ++i;
             }
 
-            std::string_view s = line.substr(i);
-            if (s.empty()) return false;
+            const std::string_view s = line.substr(i);
+            if (s.empty()) return std::nullopt;
 
-            bool ordered = false;
+            bool ordered;
             std::string marker;
-            std::size_t afterMarker = 0;
+            std::size_t afterMarker;
 
             if (s.size() >= 2 && (s[0] == '-' || s[0] == '*' || s[0] == '+') && (s[1] == ' ' || s[1] == '\t'))
             {
-                if (isThematicBreak(s)) return false;
+                if (isThematicBreak(s)) return std::nullopt;
                 ordered = false;
                 marker = "•";
                 afterMarker = 1;
@@ -568,12 +578,12 @@ namespace gf::core::syntax
                 }
                 else
                 {
-                    return false;
+                    return std::nullopt;
                 }
             }
             else
             {
-                return false;
+                return std::nullopt;
             }
 
             while (afterMarker < s.size() && (s[afterMarker] == ' ' || s[afterMarker] == '\t'))
@@ -589,7 +599,7 @@ namespace gf::core::syntax
                 (rest.size() == 3 || rest[3] == ' ' || rest[3] == '\t'))
             {
                 isTask = true;
-                taskChecked = (rest[1] == 'x' || rest[1] == 'X');
+                taskChecked = rest[1] == 'x' || rest[1] == 'X';
                 rest.remove_prefix(3);
                 while (!rest.empty() && (rest.front() == ' ' || rest.front() == '\t'))
                 {
@@ -597,16 +607,17 @@ namespace gf::core::syntax
                 }
             }
 
-            outIndentLevel = static_cast<int>(wsCols / 2);
-            outOrdered = ordered;
-            outMarker = std::move(marker);
-            outIsTask = isTask;
-            outTaskChecked = taskChecked;
-            outText = rest;
-            return true;
+            return ListItemInfo{
+                .indentLevel = static_cast<int>(wsCols / 2),
+                .ordered = ordered,
+                .marker = std::move(marker),
+                .isTask = isTask,
+                .taskChecked = taskChecked,
+                .text = rest
+            };
         }
 
-        [[nodiscard]] std::vector<std::string_view> splitTableCells(std::string_view row)
+        [[nodiscard]] std::vector<std::string_view> splitTableCells(const std::string_view row)
         {
             std::string_view s = trimSpaces(row);
             if (!s.empty() && s.front() == '|') s.remove_prefix(1);
@@ -637,54 +648,53 @@ namespace gf::core::syntax
             return cells;
         }
 
-        [[nodiscard]] bool tryParseTableSeparator(std::string_view row, std::vector<std::string>& outAlignments)
+        [[nodiscard]] std::optional<std::vector<std::string>> tryParseTableSeparator(const std::string_view row)
         {
-            std::string_view trimmed = trimSpaces(row);
+            const std::string_view trimmed = trimSpaces(row);
             if (trimmed.find('|') == std::string_view::npos && trimmed.find('-') == std::string_view::npos)
             {
-                return false;
+                return std::nullopt;
             }
-            auto cells = splitTableCells(trimmed);
-            if (cells.empty()) return false;
+            const auto cells = splitTableCells(trimmed);
+            if (cells.empty()) return std::nullopt;
 
             std::vector<std::string> aligns;
             aligns.reserve(cells.size());
-            for (std::string_view cell : cells)
+            for (const std::string_view cell : cells)
             {
-                if (cell.empty()) return false;
-                bool leftColon = (cell.front() == ':');
-                bool rightColon = (cell.back() == ':');
-                std::size_t start = leftColon ? 1 : 0;
-                std::size_t end = rightColon ? (cell.size() - 1) : cell.size();
-                if (start >= end) return false;
+                if (cell.empty()) return std::nullopt;
+                const bool leftColon = cell.front() == ':';
+                const bool rightColon = cell.back() == ':';
+                const std::size_t start = leftColon ? 1 : 0;
+                const std::size_t end = rightColon ? cell.size() - 1 : cell.size();
+                if (start >= end) return std::nullopt;
 
                 int dashes = 0;
                 for (std::size_t i = start; i < end; ++i)
                 {
-                    if (cell[i] != '-') return false;
+                    if (cell[i] != '-') return std::nullopt;
                     ++dashes;
                 }
-                if (dashes < 1) return false;
+                if (dashes < 1) return std::nullopt;
 
                 if (leftColon && rightColon) aligns.emplace_back("center");
                 else if (rightColon) aligns.emplace_back("right");
                 else aligns.emplace_back("left");
             }
 
-            outAlignments = std::move(aligns);
-            return true;
+            return aligns;
         }
 
-        [[nodiscard]] bool isHtmlWrapperOnlyLine(std::string_view trimmed,
+        [[nodiscard]] bool isHtmlWrapperOnlyLine(const std::string_view trimmed,
                                                  bool& ioCentered,
                                                  std::string& outExtractedSummary)
         {
             outExtractedSummary.clear();
 
             if (trimmed.empty() || trimmed.front() != '<') return false;
-            std::string lower = toLowerCopy(trimmed);
+            const std::string lower = toLowerCopy(trimmed);
 
-            if (lower.starts_with("<div") && lower.find("align=\"center\"") != std::string::npos)
+            if (lower.starts_with("<div") && lower.find(R"(align="center")") != std::string::npos)
             {
                 ioCentered = true;
                 return true;
@@ -720,10 +730,10 @@ namespace gf::core::syntax
             return false;
         }
 
-        [[nodiscard]] std::string formatInlineCodeHtml(std::string_view code)
+        [[nodiscard]] std::string formatInlineCodeHtml(const std::string_view code)
         {
-            std::string html = "<span style=\"background-color:#26303D;color:#A5D6FF;"
-                "font-family:'Cascadia Mono','Consolas','JetBrains Mono','Courier New',monospace;\">";
+            std::string html =
+                R"(<span style="background-color:#26303D;color:#A5D6FF;font-family:'Cascadia Mono','Consolas','JetBrains Mono','Courier New',monospace;">)";
             html.append("&nbsp;");
             html.append(escapeInlineText(code));
             html.append("&nbsp;");
@@ -732,10 +742,10 @@ namespace gf::core::syntax
         }
     } // namespace
 
-    std::string MarkdownParser::toGithubSlug(std::string_view headingText) noexcept
+    std::string MarkdownParser::toGithubSlug(const std::string_view headingText) noexcept
     {
-        std::string plain = stripMarkupToPlainText(headingText);
-        std::string_view sv = trimSpaces(plain);
+        const std::string plain = stripMarkupToPlainText(headingText);
+        const std::string_view sv = trimSpaces(plain);
 
         std::string slug;
         slug.reserve(sv.size());
@@ -745,17 +755,16 @@ namespace gf::core::syntax
         bool started = false;
         while (i < n)
         {
-            const unsigned char uc = static_cast<unsigned char>(sv[i]);
-            if (uc >= 0x80)
+            if (const auto uc = static_cast<unsigned char>(sv[i]); uc >= 0x80)
             {
                 const std::size_t seqLen = utf8SeqLen(uc);
                 const std::size_t clampedLen = std::min(seqLen, n - i);
                 if (clampedLen == 2)
                 {
                     // Keep 2-byte UTF-8 letters (e.g. accented Latin characters)
-                    unsigned char b1 = uc;
-                    unsigned char b2 = (i + 1 < n) ? static_cast<unsigned char>(sv[i + 1]) : 0;
-                    if (b1 == 0xC3 && b2 >= 0x80 && b2 <= 0x9E && b2 != 0x97)
+                    const unsigned char b1 = uc;
+                    if (const unsigned char b2 = i + 1 < n ? static_cast<unsigned char>(sv[i + 1]) : 0;
+                        b1 == 0xC3 && b2 >= 0x80 && b2 <= 0x9E && b2 != 0x97)
                     {
                         slug.push_back(static_cast<char>(b1));
                         slug.push_back(static_cast<char>(b2 + 0x20));
@@ -771,8 +780,7 @@ namespace gf::core::syntax
                 continue;
             }
 
-            const char c = sv[i];
-            if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_')
+            if (const char c = sv[i]; (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_')
             {
                 slug.push_back(c);
                 started = true;
@@ -799,7 +807,7 @@ namespace gf::core::syntax
         return slug;
     }
 
-    std::string MarkdownParser::renderInlineHtml(std::string_view text) noexcept
+    std::string MarkdownParser::renderInlineHtml(const std::string_view text) noexcept
     {
         std::string out;
         out.reserve(text.size() * 2 + 16);
@@ -809,13 +817,13 @@ namespace gf::core::syntax
 
         while (i < n)
         {
-            const unsigned char uc = static_cast<unsigned char>(text[i]);
+            const auto uc = static_cast<unsigned char>(text[i]);
             const char c = text[i];
 
             // Preserve full UTF-8 multi-byte sequences intact
             if (uc >= 0x80)
             {
-                std::size_t start = i;
+                const std::size_t start = i;
                 while (i < n && static_cast<unsigned char>(text[i]) >= 0x80)
                 {
                     i = std::min(n, i + utf8SeqLen(static_cast<unsigned char>(text[i])));
@@ -835,7 +843,7 @@ namespace gf::core::syntax
             // Inline code span (`code` or ``code``)
             if (c == '`')
             {
-                std::size_t tickStart = i;
+                const std::size_t tickStart = i;
                 while (i < n && text[i] == '`') ++i;
                 const std::size_t tickLen = i - tickStart;
 
@@ -879,11 +887,10 @@ namespace gf::core::syntax
             // Simple inline HTML tags
             if (c == '<')
             {
-                std::string_view sub = text.substr(i);
+                const std::string_view sub = text.substr(i);
                 if (sub.starts_with("<!--"))
                 {
-                    auto endPos = text.find("-->", i + 4);
-                    if (endPos != std::string_view::npos)
+                    if (const auto endPos = text.find("-->", i + 4); endPos != std::string_view::npos)
                     {
                         i = endPos + 3;
                     }
@@ -893,20 +900,16 @@ namespace gf::core::syntax
                     }
                     continue;
                 }
-                if (sub.starts_with("http://") || sub.starts_with("https://"))
+                if (i + 1 < n && (sub[1] == 'h' || sub[1] == 'H'))
                 {
-                    // Handled below
-                }
-                else if (i + 1 < n && (sub[1] == 'h' || sub[1] == 'H'))
-                {
-                    auto gt = text.find('>', i + 1);
-                    if (gt != std::string_view::npos &&
+                    if (const auto gt = text.find('>', i + 1);
+                        gt != std::string_view::npos &&
                         (sub.substr(1).starts_with("http://") || sub.substr(1).starts_with("https://")))
                     {
-                        std::string_view url = text.substr(i + 1, gt - (i + 1));
+                        const std::string_view url = text.substr(i + 1, gt - (i + 1));
                         out.append("<a href=\"");
                         out.append(escapeHrefAttr(url));
-                        out.append("\" style=\"color:#58A6FF;text-decoration:none;\">");
+                        out.append(R"(" style="color:#58A6FF;text-decoration:none;">)");
                         out.append(escapeInlineText(url));
                         out.append("</a>");
                         i = gt + 1;
@@ -914,10 +917,9 @@ namespace gf::core::syntax
                     }
                 }
 
-                auto gt = text.find('>', i + 1);
-                if (gt != std::string_view::npos && gt - i < 120)
+                if (const auto gt = text.find('>', i + 1); gt != std::string_view::npos && gt - i < 120)
                 {
-                    std::string tagLower = toLowerCopy(text.substr(i, gt - i + 1));
+                    const std::string tagLower = toLowerCopy(text.substr(i, gt - i + 1));
                     if (tagLower == "<br>" || tagLower == "<br/>" || tagLower == "<br />")
                     {
                         out.append("<br/>");
@@ -962,8 +964,8 @@ namespace gf::core::syntax
                     }
                     if (tagLower == "<code>" || tagLower == "<kbd>")
                     {
-                        out.append("<span style=\"background-color:#26303D;color:#A5D6FF;"
-                            "font-family:'Cascadia Mono','Consolas','JetBrains Mono','Courier New',monospace;\">&nbsp;");
+                        out.append(
+                            R"(<span style="background-color:#26303D;color:#A5D6FF;font-family:'Cascadia Mono','Consolas','JetBrains Mono','Courier New',monospace;">&nbsp;)");
                         i = gt + 1;
                         continue;
                     }
@@ -986,7 +988,7 @@ namespace gf::core::syntax
             if (c == 'h' && (text.substr(i).starts_with("https://") || text.substr(i).starts_with("http://")) &&
                 (i == 0 || mdIsSpace(text[i - 1]) || text[i - 1] == '('))
             {
-                std::size_t start = i;
+                const std::size_t start = i;
                 int parenDepth = 0;
                 while (i < n && !mdIsSpace(text[i]) && text[i] != '"' && text[i] != '<' && text[i] != '>')
                 {
@@ -1002,39 +1004,35 @@ namespace gf::core::syntax
                 {
                     --i;
                 }
-                std::string_view url = text.substr(start, i - start);
+                const std::string_view url = text.substr(start, i - start);
                 out.append("<a href=\"");
                 out.append(escapeHrefAttr(url));
-                out.append("\" style=\"color:#58A6FF;text-decoration:none;\">");
+                out.append(R"(" style="color:#58A6FF;text-decoration:none;">)");
                 out.append(escapeInlineText(url));
                 out.append("</a>");
                 continue;
             }
 
             // Markdown link or image: [label](url) / ![alt](url)
-            if ((c == '[' || (c == '!' && i + 1 < n && text[i + 1] == '[')))
+            if (c == '[' || (c == '!' && i + 1 < n && text[i + 1] == '['))
             {
-                bool isImg = false;
-                std::string_view label;
-                std::string_view url;
-                std::size_t endPos = i;
-                if (parseBracketLink(text, i, isImg, label, url, endPos))
+                if (const auto link = parseBracketLink(text, i))
                 {
-                    if (isImg)
+                    if (link->isImage)
                     {
-                        out.append("<span style=\"background-color:#1F6FEB;color:#FFFFFF;font-weight:bold;\">&nbsp;");
-                        out.append(escapeInlineText(label.empty() ? std::string_view("image") : label));
+                        out.append(R"(<span style="background-color:#1F6FEB;color:#FFFFFF;font-weight:bold;">&nbsp;)");
+                        out.append(escapeInlineText(link->label.empty() ? std::string_view("image") : link->label));
                         out.append("&nbsp;</span>");
                     }
                     else
                     {
                         out.append("<a href=\"");
-                        out.append(escapeHrefAttr(url));
-                        out.append("\" style=\"color:#58A6FF;text-decoration:none;\">");
-                        out.append(renderInlineHtml(label));
+                        out.append(escapeHrefAttr(link->url));
+                        out.append(R"(" style="color:#58A6FF;text-decoration:none;">)");
+                        out.append(renderInlineHtml(link->label));
                         out.append("</a>");
                     }
-                    i = endPos;
+                    i = link->endPos;
                     continue;
                 }
             }
@@ -1043,10 +1041,10 @@ namespace gf::core::syntax
             if ((c == '*' || c == '_') && i + 1 < n && text[i + 1] == c && i + 2 < n && !mdIsSpace(text[i + 2]))
             {
                 const char delim[3] = {c, c, '\0'};
-                auto closePos = text.find(delim, i + 2);
-                if (closePos != std::string_view::npos && closePos > i + 2 && !mdIsSpace(text[closePos - 1]))
+                if (const auto closePos = text.find(delim, i + 2);
+                    closePos != std::string_view::npos && closePos > i + 2 && !mdIsSpace(text[closePos - 1]))
                 {
-                    out.append("<b style=\"color:#F0F6FC;\">");
+                    out.append(R"(<b style="color:#F0F6FC;">)");
                     out.append(renderInlineHtml(text.substr(i + 2, closePos - (i + 2))));
                     out.append("</b>");
                     i = closePos + 2;
@@ -1094,10 +1092,10 @@ namespace gf::core::syntax
             // Strikethrough ~~...~~
             if (c == '~' && i + 1 < n && text[i + 1] == '~' && i + 2 < n && !mdIsSpace(text[i + 2]))
             {
-                auto closePos = text.find("~~", i + 2);
-                if (closePos != std::string_view::npos && closePos > i + 2)
+                if (const auto closePos = text.find("~~", i + 2);
+                    closePos != std::string_view::npos && closePos > i + 2)
                 {
-                    out.append("<s style=\"color:#8B949E;\">");
+                    out.append(R"(<s style="color:#8B949E;">)");
                     out.append(renderInlineHtml(text.substr(i + 2, closePos - (i + 2))));
                     out.append("</s>");
                     i = closePos + 2;
@@ -1125,11 +1123,11 @@ namespace gf::core::syntax
         return out;
     }
 
-    MarkdownDocument MarkdownParser::parse(std::string_view markdownText) noexcept
+    MarkdownDocument MarkdownParser::parse(const std::string_view markdownText) noexcept
     {
         MarkdownDocument doc;
-        std::string normalized = normalizeLineEndings(markdownText);
-        auto lines = splitNormalizedLines(normalized);
+        const std::string normalized = normalizeLineEndings(markdownText);
+        const auto lines = splitNormalizedLines(normalized);
         if (lines.empty())
         {
             return doc;
@@ -1142,8 +1140,8 @@ namespace gf::core::syntax
 
         while (idx < n)
         {
-            const auto& cur = lines[idx];
-            std::string_view trimmed = trimSpaces(cur.text);
+            const auto& [text, lineNumber] = lines[idx];
+            const std::string_view trimmed = trimSpaces(text);
 
             if (trimmed.empty())
             {
@@ -1176,41 +1174,38 @@ namespace gf::core::syntax
                 b.kind = MarkdownBlockKind::Paragraph;
                 b.centered = centeredBlock;
                 b.rawText = summaryInner;
-                b.html = "<b style=\"color:#79C0FF;\">&#9654; " + renderInlineHtml(summaryInner) + "</b>";
-                b.startLine = cur.lineNumber;
-                b.endLine = cur.lineNumber;
+                b.html = R"(<b style="color:#79C0FF;">&#9654; )" + renderInlineHtml(summaryInner) + "</b>";
+                b.startLine = lineNumber;
+                b.endLine = lineNumber;
                 doc.blocks.push_back(std::move(b));
                 ++idx;
                 continue;
             }
 
             // 1. Fenced code block (``` or ~~~)
-            char fenceChar = '`';
-            std::size_t fenceLen = 0;
-            std::string langTag;
-            if (tryExtractFenceOpen(cur.text, fenceChar, fenceLen, langTag))
+            if (auto fence = tryExtractFenceOpen(text))
             {
-                const int startLine = cur.lineNumber;
+                const int startLine = lineNumber;
                 std::string rawCode;
                 ++idx;
-                while (idx < n && !isFenceClose(lines[idx].text, fenceChar, fenceLen))
+                while (idx < n && !isFenceClose(lines[idx].text, fence->fenceChar, fence->fenceLen))
                 {
                     if (!rawCode.empty()) rawCode.push_back('\n');
                     rawCode.append(lines[idx].text);
                     ++idx;
                 }
-                int endLine = (idx < n) ? lines[idx].lineNumber : lines.back().lineNumber;
+                const int endLine = idx < n ? lines[idx].lineNumber : lines.back().lineNumber;
                 if (idx < n) ++idx;
 
-                const Language detectedLang = LanguageDetector::fromCodeFenceInfo(langTag);
-                std::string lowerTag = toLowerCopy(langTag);
-                const bool isDiagram = (lowerTag == "mermaid" || lowerTag == "plantuml" || lowerTag == "dot");
+                const Language detectedLang = LanguageDetector::fromCodeFenceInfo(fence->langTag);
+                const std::string lowerTag = toLowerCopy(fence->langTag);
+                const bool isDiagram = lowerTag == "mermaid" || lowerTag == "plantuml" || lowerTag == "dot";
 
                 MarkdownBlock b;
                 b.kind = MarkdownBlockKind::CodeBlock;
                 b.centered = false;
                 b.isDiagram = isDiagram;
-                b.languageTag = langTag.empty() ? "text" : std::move(langTag);
+                b.languageTag = fence->langTag.empty() ? "text" : std::move(fence->langTag);
                 b.detectedLanguage = detectedLang;
                 b.rawText = rawCode;
                 b.html = SyntaxHighlighter::highlightCodeBlockHtml(rawCode, detectedLang);
@@ -1221,19 +1216,11 @@ namespace gf::core::syntax
             }
 
             // 1b. CommonMark Indented Code Block (4 spaces or tab, outside <div align="center"> and nested list items)
-            if (!centeredBlock && (cur.text.starts_with("    ") || cur.text.starts_with('\t')))
+            if (!centeredBlock && (text.starts_with("    ") || text.starts_with('\t')))
             {
-                int tmpInd = 0;
-                bool tmpOrd = false;
-                std::string tmpMarker;
-                bool tmpTask = false;
-                bool tmpChk = false;
-                std::string_view tmpTxt;
-                const bool isNestedList = tryExtractListItem(cur.text, tmpInd, tmpOrd, tmpMarker, tmpTask, tmpChk,
-                                                             tmpTxt);
-                if (!isNestedList)
+                if (!tryExtractListItem(text))
                 {
-                    auto stripFourSpaceIndent = [](std::string_view line) -> std::string_view
+                    auto stripFourSpaceIndent = [](const std::string_view line) -> std::string_view
                     {
                         if (line.starts_with('\t')) return line.substr(1);
                         std::size_t s = 0;
@@ -1241,27 +1228,22 @@ namespace gf::core::syntax
                         return line.substr(s);
                     };
 
-                    const int startLine = cur.lineNumber;
-                    int endLine = cur.lineNumber;
+                    const int startLine = lineNumber;
+                    int endLine = lineNumber;
                     std::string rawCode;
 
                     while (idx < n)
                     {
-                        std::string_view rawLine = lines[idx].text;
-                        std::string_view lineTrim = trimSpaces(rawLine);
-                        if (lineTrim.empty())
+                        const std::string_view rawLine = lines[idx].text;
+                        if (const std::string_view lineTrim = trimSpaces(rawLine); lineTrim.empty())
                         {
                             std::size_t peek = idx + 1;
                             while (peek < n && trimSpaces(lines[peek].text).empty())
                             {
                                 ++peek;
                             }
-                            bool peekIsNestedList = false;
-                            if (peek < n)
-                            {
-                                peekIsNestedList = tryExtractListItem(
-                                    lines[peek].text, tmpInd, tmpOrd, tmpMarker, tmpTask, tmpChk, tmpTxt);
-                            }
+                            const bool peekIsNestedList =
+                                peek < n && tryExtractListItem(lines[peek].text).has_value();
                             if (peek < n && !peekIsNestedList &&
                                 (lines[peek].text.starts_with("    ") || lines[peek].text.starts_with('\t')))
                             {
@@ -1297,72 +1279,73 @@ namespace gf::core::syntax
             }
 
             // 2. ATX Heading (# Title)
-            int hLevel = 1;
-            std::string_view hTitle;
-            if (tryExtractHeading(cur.text, hLevel, hTitle))
+            if (const auto heading = tryExtractHeading(text))
             {
-                std::string plainTitle = std::string(trimSpaces(stripMarkupToPlainText(hTitle)));
-                std::string baseSlug = toGithubSlug(hTitle);
+                auto plainTitle = std::string(trimSpaces(stripMarkupToPlainText(heading->title)));
+                std::string baseSlug = toGithubSlug(heading->title);
                 if (baseSlug.empty()) baseSlug = "section";
 
                 int& count = slugCounts[baseSlug];
-                std::string uniqueSlug = (count == 0) ? baseSlug : (baseSlug + "-" + std::to_string(count));
+                std::string uniqueSlug = count == 0 ? baseSlug : baseSlug + "-" + std::to_string(count);
                 ++count;
 
                 MarkdownBlock b;
                 b.kind = MarkdownBlockKind::Heading;
-                b.level = hLevel;
+                b.level = heading->level;
                 b.centered = centeredBlock;
                 b.rawText = plainTitle;
-                b.html = renderInlineHtml(hTitle);
+                b.html = renderInlineHtml(heading->title);
                 b.anchor = uniqueSlug;
-                b.startLine = cur.lineNumber;
-                b.endLine = cur.lineNumber;
+                b.startLine = lineNumber;
+                b.endLine = lineNumber;
 
-                const int blockIndex = static_cast<int>(doc.blocks.size());
+                const auto blockIndex = static_cast<int>(doc.blocks.size());
                 doc.blocks.push_back(std::move(b));
                 doc.toc.push_back(MarkdownTocEntry{
-                    .level = hLevel,
+                    .level = heading->level,
                     .title = std::move(plainTitle),
                     .anchor = std::move(uniqueSlug),
                     .blockIndex = blockIndex,
-                    .startLine = cur.lineNumber
+                    .startLine = lineNumber
                 });
                 ++idx;
                 continue;
             }
 
             // 3. Thematic break (---, ***, ___)
-            if (isThematicBreak(cur.text))
+            if (isThematicBreak(text))
             {
                 MarkdownBlock b;
                 b.kind = MarkdownBlockKind::ThematicBreak;
-                b.startLine = cur.lineNumber;
-                b.endLine = cur.lineNumber;
+                b.startLine = lineNumber;
+                b.endLine = lineNumber;
                 doc.blocks.push_back(std::move(b));
                 ++idx;
                 continue;
             }
 
             // 4. Consecutive badge row ([![alt](img)](url) ...)
-            std::vector<MarkdownBadge> badges;
-            if (tryParseBadgeLine(trimmed, badges))
+            if (auto badges = tryParseBadgeLine(trimmed))
             {
-                const int startLine = cur.lineNumber;
-                int endLine = cur.lineNumber;
+                const int startLine = lineNumber;
+                int endLine = lineNumber;
                 ++idx;
                 while (idx < n)
                 {
-                    std::string_view nextTrim = trimSpaces(lines[idx].text);
+                    const std::string_view nextTrim = trimSpaces(lines[idx].text);
                     if (nextTrim.empty()) break;
-                    if (!tryParseBadgeLine(nextTrim, badges)) break;
+                    auto nextBadges = tryParseBadgeLine(nextTrim);
+                    if (!nextBadges) break;
+                    badges->insert(badges->end(),
+                                   std::make_move_iterator(nextBadges->begin()),
+                                   std::make_move_iterator(nextBadges->end()));
                     endLine = lines[idx].lineNumber;
                     ++idx;
                 }
                 MarkdownBlock b;
                 b.kind = MarkdownBlockKind::BadgeRow;
                 b.centered = centeredBlock;
-                b.badges = std::move(badges);
+                b.badges = std::move(*badges);
                 b.startLine = startLine;
                 b.endLine = endLine;
                 doc.blocks.push_back(std::move(b));
@@ -1372,15 +1355,15 @@ namespace gf::core::syntax
             // 5. Blockquote & GitHub Callout Alerts (> ...)
             if (trimmed[0] == '>')
             {
-                const int startLine = cur.lineNumber;
-                int endLine = cur.lineNumber;
+                const int startLine = lineNumber;
+                int endLine = lineNumber;
                 MarkdownAlertType alertType = MarkdownAlertType::None;
                 std::string bodyText;
 
                 bool firstLine = true;
                 while (idx < n)
                 {
-                    std::string_view qt = trimSpaces(lines[idx].text);
+                    const std::string_view qt = trimSpaces(lines[idx].text);
                     if (qt.empty() || qt[0] != '>') break;
                     endLine = lines[idx].lineNumber;
 
@@ -1397,19 +1380,19 @@ namespace gf::core::syntax
                             MarkdownAlertType type;
                         };
                         constexpr AlertDef kAlerts[] = {
-                            {"[!NOTE]", MarkdownAlertType::Note},
-                            {"[!TIP]", MarkdownAlertType::Tip},
-                            {"[!IMPORTANT]", MarkdownAlertType::Important},
-                            {"[!WARNING]", MarkdownAlertType::Warning},
-                            {"[!CAUTION]", MarkdownAlertType::Caution}
+                            {.tag = "[!NOTE]", .type = MarkdownAlertType::Note},
+                            {.tag = "[!TIP]", .type = MarkdownAlertType::Tip},
+                            {.tag = "[!IMPORTANT]", .type = MarkdownAlertType::Important},
+                            {.tag = "[!WARNING]", .type = MarkdownAlertType::Warning},
+                            {.tag = "[!CAUTION]", .type = MarkdownAlertType::Caution}
                         };
                         bool matchedAlert = false;
-                        for (const auto& a : kAlerts)
+                        for (const auto& [tag, type] : kAlerts)
                         {
-                            if (inner.starts_with(a.tag))
+                            if (inner.starts_with(tag))
                             {
-                                alertType = a.type;
-                                inner = trimSpaces(inner.substr(a.tag.size()));
+                                alertType = type;
+                                inner = trimSpaces(inner.substr(tag.size()));
                                 matchedAlert = true;
                                 break;
                             }
@@ -1448,15 +1431,14 @@ namespace gf::core::syntax
             // 6. GFM Pipe Table (header row + separator row)
             if (idx + 1 < n && trimmed.find('|') != std::string_view::npos)
             {
-                std::vector<std::string> alignments;
-                if (tryParseTableSeparator(lines[idx + 1].text, alignments))
+                if (auto alignments = tryParseTableSeparator(lines[idx + 1].text))
                 {
-                    const int startLine = cur.lineNumber;
+                    const int startLine = lineNumber;
                     int endLine = lines[idx + 1].lineNumber;
 
-                    auto rawHeaders = splitTableCells(cur.text);
-                    const std::size_t colCount = std::max(rawHeaders.size(), alignments.size());
-                    alignments.resize(colCount, "left");
+                    const auto rawHeaders = splitTableCells(text);
+                    const std::size_t colCount = std::max(rawHeaders.size(), alignments->size());
+                    alignments->resize(colCount, "left");
 
                     std::vector<std::string> headersHtml;
                     headersHtml.reserve(colCount);
@@ -1469,11 +1451,11 @@ namespace gf::core::syntax
                     std::vector<std::vector<std::string>> rowsHtml;
                     while (idx < n)
                     {
-                        std::string_view rowTrim = trimSpaces(lines[idx].text);
+                        const std::string_view rowTrim = trimSpaces(lines[idx].text);
                         if (rowTrim.empty() || rowTrim.find('|') == std::string_view::npos) break;
                         if (rowTrim[0] == '>' || isThematicBreak(rowTrim)) break;
 
-                        auto cells = splitTableCells(rowTrim);
+                        const auto cells = splitTableCells(rowTrim);
                         std::vector<std::string> rowOut;
                         rowOut.reserve(colCount);
                         for (std::size_t c = 0; c < colCount; ++c)
@@ -1488,7 +1470,7 @@ namespace gf::core::syntax
                     MarkdownBlock b;
                     b.kind = MarkdownBlockKind::Table;
                     b.tableHeaders = std::move(headersHtml);
-                    b.tableAlignments = std::move(alignments);
+                    b.tableAlignments = std::move(*alignments);
                     b.tableRows = std::move(rowsHtml);
                     b.startLine = startLine;
                     b.endLine = endLine;
@@ -1498,117 +1480,82 @@ namespace gf::core::syntax
             }
 
             // 7. List Item (-, *, +, 1.)
+            if (auto listItem = tryExtractListItem(text))
             {
-                int indentLevel = 0;
-                bool ordered = false;
-                std::string marker;
-                bool isTask = false;
-                bool taskChecked = false;
-                std::string_view itemText;
+                const int startLine = lineNumber;
+                int endLine = lineNumber;
+                std::string combinedText(listItem->text);
+                ++idx;
 
-                if (tryExtractListItem(cur.text, indentLevel, ordered, marker, isTask, taskChecked, itemText))
+                // Gather lazy continuation lines indented without starting a new block
+                while (idx < n)
                 {
-                    const int startLine = cur.lineNumber;
-                    int endLine = cur.lineNumber;
-                    std::string combinedText(itemText);
-                    ++idx;
+                    const std::string_view nextRaw = lines[idx].text;
+                    const std::string_view nextTrim = trimSpaces(nextRaw);
+                    if (nextTrim.empty()) break;
 
-                    // Gather lazy continuation lines indented without starting a new block
-                    while (idx < n)
+                    if (tryExtractListItem(nextRaw)) break;
+
+                    if (tryExtractHeading(nextRaw) ||
+                        tryExtractFenceOpen(nextRaw) ||
+                        isThematicBreak(nextRaw) || nextTrim[0] == '>')
                     {
-                        std::string_view nextRaw = lines[idx].text;
-                        std::string_view nextTrim = trimSpaces(nextRaw);
-                        if (nextTrim.empty()) break;
-
-                        int tmpIndent = 0;
-                        bool tmpOrd = false;
-                        std::string tmpMarker;
-                        bool tmpTask = false;
-                        bool tmpChk = false;
-                        std::string_view tmpTxt;
-                        if (tryExtractListItem(nextRaw, tmpIndent, tmpOrd, tmpMarker, tmpTask, tmpChk, tmpTxt)) break;
-
-                        int tmpH = 0;
-                        std::string_view tmpHT;
-                        char tmpFc = '`';
-                        std::size_t tmpFl = 0;
-                        std::string tmpTag;
-                        if (tryExtractHeading(nextRaw, tmpH, tmpHT) ||
-                            tryExtractFenceOpen(nextRaw, tmpFc, tmpFl, tmpTag) ||
-                            isThematicBreak(nextRaw) || nextTrim[0] == '>')
-                        {
-                            break;
-                        }
-
-                        if (!combinedText.empty()) combinedText.push_back(' ');
-                        combinedText.append(nextTrim);
-                        endLine = lines[idx].lineNumber;
-                        ++idx;
+                        break;
                     }
 
-                    MarkdownBlock b;
-                    b.kind = MarkdownBlockKind::ListItem;
-                    b.indentLevel = indentLevel;
-                    b.ordered = ordered;
-                    b.listMarker = std::move(marker);
-                    b.isTask = isTask;
-                    b.taskChecked = taskChecked;
-                    b.rawText = combinedText;
-                    b.html = renderInlineHtml(combinedText);
-                    b.startLine = startLine;
-                    b.endLine = endLine;
-                    doc.blocks.push_back(std::move(b));
-                    continue;
+                    if (!combinedText.empty()) combinedText.push_back(' ');
+                    combinedText.append(nextTrim);
+                    endLine = lines[idx].lineNumber;
+                    ++idx;
                 }
+
+                MarkdownBlock b;
+                b.kind = MarkdownBlockKind::ListItem;
+                b.indentLevel = listItem->indentLevel;
+                b.ordered = listItem->ordered;
+                b.listMarker = std::move(listItem->marker);
+                b.isTask = listItem->isTask;
+                b.taskChecked = listItem->taskChecked;
+                b.rawText = combinedText;
+                b.html = renderInlineHtml(combinedText);
+                b.startLine = startLine;
+                b.endLine = endLine;
+                doc.blocks.push_back(std::move(b));
+                continue;
             }
 
             // 8. Paragraph (gather contiguous non-blank lines that do not open another block)
             {
-                const int startLine = cur.lineNumber;
-                int endLine = cur.lineNumber;
+                const int startLine = lineNumber;
+                int endLine = lineNumber;
                 std::string paraText(trimmed);
                 ++idx;
 
                 while (idx < n)
                 {
-                    std::string_view nextRaw = lines[idx].text;
-                    std::string_view nextTrim = trimSpaces(nextRaw);
+                    const std::string_view nextRaw = lines[idx].text;
+                    const std::string_view nextTrim = trimSpaces(nextRaw);
                     if (nextTrim.empty()) break;
 
                     bool dummyCenter = centeredBlock;
-                    std::string tmpSum;
-                    if (isHtmlWrapperOnlyLine(nextTrim, dummyCenter, tmpSum) || !tmpSum.empty())
+                    if (std::string tmpSum; isHtmlWrapperOnlyLine(nextTrim, dummyCenter, tmpSum) || !tmpSum.empty())
                     {
                         break;
                     }
 
-                    int tmpH = 0;
-                    std::string_view tmpHT;
-                    char tmpFc = '`';
-                    std::size_t tmpFl = 0;
-                    std::string tmpTag;
-                    int tmpInd = 0;
-                    bool tmpOrd = false;
-                    std::string tmpMarker;
-                    bool tmpTask = false;
-                    bool tmpChk = false;
-                    std::string_view tmpListTxt;
-                    std::vector<MarkdownBadge> tmpBadges;
-
-                    if (tryExtractHeading(nextRaw, tmpH, tmpHT) ||
-                        tryExtractFenceOpen(nextRaw, tmpFc, tmpFl, tmpTag) ||
+                    if (tryExtractHeading(nextRaw) ||
+                        tryExtractFenceOpen(nextRaw) ||
                         isThematicBreak(nextRaw) ||
                         nextTrim[0] == '>' ||
-                        tryParseBadgeLine(nextTrim, tmpBadges) ||
-                        tryExtractListItem(nextRaw, tmpInd, tmpOrd, tmpMarker, tmpTask, tmpChk, tmpListTxt))
+                        tryParseBadgeLine(nextTrim) ||
+                        tryExtractListItem(nextRaw))
                     {
                         break;
                     }
 
                     if (idx + 1 < n && nextTrim.find('|') != std::string_view::npos)
                     {
-                        std::vector<std::string> aligns;
-                        if (tryParseTableSeparator(lines[idx + 1].text, aligns))
+                        if (tryParseTableSeparator(lines[idx + 1].text))
                         {
                             break;
                         }
@@ -1645,8 +1592,8 @@ namespace gf::core::syntax
         return doc;
     }
 
-    MarkdownDocument MarkdownParser::parseWithDiff(std::string_view markdownText,
-                                                   const gf::git::bo::FileDiff* diff) noexcept
+    MarkdownDocument MarkdownParser::parseWithDiff(const std::string_view markdownText,
+                                                   const git::bo::FileDiff* diff) noexcept
     {
         MarkdownDocument doc = parse(markdownText);
         if (diff == nullptr || diff->hunks.empty())
@@ -1673,11 +1620,11 @@ namespace gf::core::syntax
             std::vector<std::string> pendingDels;
             for (const auto& line : hunk.lines)
             {
-                if (line.kind == gf::git::bo::DiffLineKind::Deletion)
+                if (line.kind == git::bo::DiffLineKind::Deletion)
                 {
                     pendingDels.push_back(line.content);
                 }
-                else if (line.kind == gf::git::bo::DiffLineKind::Addition)
+                else if (line.kind == git::bo::DiffLineKind::Addition)
                 {
                     if (line.newLineNumber.has_value())
                     {
@@ -1690,7 +1637,7 @@ namespace gf::core::syntax
                         }
                     }
                 }
-                else if (line.kind == gf::git::bo::DiffLineKind::Context)
+                else if (line.kind == git::bo::DiffLineKind::Context)
                 {
                     if (!pendingDels.empty() && line.newLineNumber.has_value())
                     {
@@ -1797,14 +1744,14 @@ namespace gf::core::syntax
             delSnippet.changeStatus = MarkdownChangeStatus::Deleted;
             delSnippet.deletedLineCount = static_cast<int>(eofDels.size());
             delSnippet.deletedLines = std::move(eofDels);
-            delSnippet.startLine = doc.blocks.empty() ? 1 : (doc.blocks.back().endLine + 1);
+            delSnippet.startLine = doc.blocks.empty() ? 1 : doc.blocks.back().endLine + 1;
             delSnippet.endLine = delSnippet.startLine;
             finalBlocks.push_back(std::move(delSnippet));
         }
 
         for (auto& tocEntry : doc.toc)
         {
-            if (auto it = oldToNewBlockIndex.find(tocEntry.blockIndex); it != oldToNewBlockIndex.end())
+            if (const auto it = oldToNewBlockIndex.find(tocEntry.blockIndex); it != oldToNewBlockIndex.end())
             {
                 tocEntry.blockIndex = it->second;
             }

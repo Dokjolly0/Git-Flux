@@ -1,6 +1,7 @@
 #include "core/modules/tasks/bl/background_task_runner.hpp"
 
 #include <chrono>
+#include <ranges>
 
 namespace gf::tasks::bl
 {
@@ -9,6 +10,8 @@ namespace gf::tasks::bl
         class TaskProgressSinkImpl final : public ports::ITaskProgressSink
         {
         public:
+            using ITaskProgressSink::reportProgress;
+
             TaskProgressSinkImpl(std::stop_token token, ProgressCallback callback)
                 : m_token(std::move(token))
                   , m_callback(std::move(callback))
@@ -23,13 +26,15 @@ namespace gf::tasks::bl
                 }
             }
 
-            void reportProgress(int percentage, const std::string& message) override
+            void reportProgress(const int percentage, const std::string& message) override
             {
                 if (m_callback)
                 {
                     m_callback(bo::TaskProgress{
                         .percentage = percentage,
-                        .message = message
+                        .message = message,
+                        .currentStep = 0,
+                        .totalSteps = 0
                     });
                 }
             }
@@ -71,7 +76,7 @@ namespace gf::tasks::bl
 
     std::string BackgroundTaskRunner::postTask(std::string name,
                                                TaskExecutable executable,
-                                               bo::TaskPriority priority,
+                                               const bo::TaskPriority priority,
                                                ProgressCallback onProgress,
                                                CompletionCallback onCompleted)
     {
@@ -80,22 +85,22 @@ namespace gf::tasks::bl
             return {};
         }
 
-        uint64_t seq = m_nextSeq.fetch_add(1);
+        const uint64_t seq = m_nextSeq.fetch_add(1);
         std::string taskId = "task-" + std::to_string(seq);
 
-        TaskItem item{
-            .taskId = taskId,
-            .name = std::move(name),
-            .priority = priority,
-            .sequenceNumber = seq,
-            .executable = std::move(executable),
-            .onProgress = std::move(onProgress),
-            .onCompleted = std::move(onCompleted),
-            .stopSource = std::stop_source{}
-        };
-
         {
-            std::lock_guard<std::mutex> lock(m_mutex);
+            TaskItem item{
+                .taskId = taskId,
+                .name = std::move(name),
+                .priority = priority,
+                .sequenceNumber = seq,
+                .executable = std::move(executable),
+                .onProgress = std::move(onProgress),
+                .onCompleted = std::move(onCompleted),
+                .stopSource = std::stop_source{}
+            };
+
+            std::lock_guard lock(m_mutex);
             m_reports[taskId] = bo::TaskReport{
                 .taskId = taskId,
                 .taskName = item.name,
@@ -113,9 +118,8 @@ namespace gf::tasks::bl
 
     bool BackgroundTaskRunner::cancelTask(const std::string& taskId)
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        auto it = m_runningStopSources.find(taskId);
-        if (it != m_runningStopSources.end())
+        std::lock_guard lock(m_mutex);
+        if (const auto it = m_runningStopSources.find(taskId); it != m_runningStopSources.end())
         {
             return it->second.request_stop();
         }
@@ -124,8 +128,8 @@ namespace gf::tasks::bl
 
     void BackgroundTaskRunner::cancelAll()
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        for (auto& [id, source] : m_runningStopSources)
+        std::lock_guard lock(m_mutex);
+        for (auto& source : m_runningStopSources | std::views::values)
         {
             source.request_stop();
         }
@@ -133,9 +137,8 @@ namespace gf::tasks::bl
 
     std::optional<bo::TaskReport> BackgroundTaskRunner::getTaskReport(const std::string& taskId) const
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        auto it = m_reports.find(taskId);
-        if (it != m_reports.end())
+        std::lock_guard lock(m_mutex);
+        if (const auto it = m_reports.find(taskId); it != m_reports.end())
         {
             return it->second;
         }
@@ -149,14 +152,14 @@ namespace gf::tasks::bl
 
     std::size_t BackgroundTaskRunner::queuedCount() const noexcept
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard lock(m_mutex);
         return m_taskQueue.size();
     }
 
     void BackgroundTaskRunner::waitForAll()
     {
-        std::unique_lock<std::mutex> lock(m_mutex);
-        m_idleCv.wait(lock, [this]()
+        std::unique_lock lock(m_mutex);
+        m_idleCv.wait(lock, [this]
         {
             return m_taskQueue.empty() && m_activeCount.load() == 0;
         });
@@ -182,7 +185,7 @@ namespace gf::tasks::bl
         }
         m_workers.clear();
 
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard lock(m_mutex);
         while (!m_taskQueue.empty())
         {
             m_taskQueue.pop();
@@ -195,10 +198,10 @@ namespace gf::tasks::bl
     {
         while (!m_shutdown.load())
         {
-            TaskItem item;
+            std::optional<TaskItem> item;
             {
-                std::unique_lock<std::mutex> lock(m_mutex);
-                m_cv.wait(lock, [this]()
+                std::unique_lock lock(m_mutex);
+                m_cv.wait(lock, [this]
                 {
                     return m_shutdown.load() || !m_taskQueue.empty();
                 });
@@ -213,38 +216,38 @@ namespace gf::tasks::bl
                     continue;
                 }
 
-                item = std::move(const_cast<TaskItem&>(m_taskQueue.top()));
+                item.emplace(std::move(const_cast<TaskItem&>(m_taskQueue.top())));
                 m_taskQueue.pop();
-                m_activeCount.fetch_add(1);
+                ++m_activeCount;
 
-                if (auto it = m_reports.find(item.taskId); it != m_reports.end())
+                if (const auto it = m_reports.find(item->taskId); it != m_reports.end())
                 {
                     it->second.state = bo::TaskState::Running;
                 }
             }
 
-            auto startTime = std::chrono::steady_clock::now();
+            const auto startTime = std::chrono::steady_clock::now();
             bo::TaskReport report{
-                .taskId = item.taskId,
-                .taskName = item.name,
+                .taskId = item->taskId,
+                .taskName = item->name,
                 .state = bo::TaskState::Running,
                 .errorMessage = {},
                 .durationMs = std::chrono::milliseconds(0)
             };
 
-            if (item.stopSource.stop_requested())
+            if (item->stopSource.stop_requested())
             {
                 report.state = bo::TaskState::Cancelled;
             }
             else
             {
-                TaskProgressSinkImpl sink(item.stopSource.get_token(), item.onProgress);
-                auto execResult = item.executable(sink);
+                TaskProgressSinkImpl sink(item->stopSource.get_token(), std::move(item->onProgress));
+                const auto execResult = item->executable(sink);
 
-                auto endTime = std::chrono::steady_clock::now();
+                const auto endTime = std::chrono::steady_clock::now();
                 report.durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
 
-                if (item.stopSource.stop_requested() || sink.isCancelled())
+                if (item->stopSource.stop_requested() || sink.isCancelled())
                 {
                     report.state = bo::TaskState::Cancelled;
                 }
@@ -259,18 +262,16 @@ namespace gf::tasks::bl
                 }
             }
 
-            CompletionCallback onCompletedCopy = std::move(item.onCompleted);
-
-            if (onCompletedCopy)
+            if (const CompletionCallback onCompletedCopy = std::move(item->onCompleted); onCompletedCopy)
             {
                 onCompletedCopy(report);
             }
 
             {
-                std::lock_guard<std::mutex> lock(m_mutex);
-                m_reports[item.taskId] = report;
-                m_runningStopSources.erase(item.taskId);
-                m_activeCount.fetch_sub(1);
+                std::lock_guard lock(m_mutex);
+                m_reports[item->taskId] = report;
+                m_runningStopSources.erase(item->taskId);
+                --m_activeCount;
             }
 
             m_idleCv.notify_all();

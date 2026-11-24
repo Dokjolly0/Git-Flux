@@ -41,31 +41,31 @@ namespace gf::groups::bl
                      repositories::ports::IRepositoryStore& repoStore) noexcept;
 
         [[nodiscard]] std::expected<bo::Group, GroupServiceError>
-        createGroup(std::string name, std::vector<repositories::bo::RepositoryId> repoIds = {});
+        createGroup(std::string name, std::vector<repositories::bo::RepositoryId> repoIds = {}) const;
 
         [[nodiscard]] std::expected<bo::Group, GroupServiceError>
-        renameGroup(const bo::GroupId& id, std::string newName);
+        renameGroup(const bo::GroupId& id, std::string newName) const;
 
         [[nodiscard]] std::expected<bo::Group, GroupServiceError>
-        addRepositoryToGroup(const bo::GroupId& id, const repositories::bo::RepositoryId& repoId);
+        addRepositoryToGroup(const bo::GroupId& id, const repositories::bo::RepositoryId& repoId) const;
 
         [[nodiscard]] std::expected<bo::Group, GroupServiceError>
-        removeRepositoryFromGroup(const bo::GroupId& id, const repositories::bo::RepositoryId& repoId);
+        removeRepositoryFromGroup(const bo::GroupId& id, const repositories::bo::RepositoryId& repoId) const;
 
         [[nodiscard]] std::expected<bo::Group, GroupServiceError>
-        reorderRepositories(const bo::GroupId& id, std::vector<repositories::bo::RepositoryId> orderedIds);
+        reorderRepositories(const bo::GroupId& id, std::vector<repositories::bo::RepositoryId> orderedIds) const;
 
         [[nodiscard]] std::expected<bool, GroupServiceError>
-        deleteGroup(const bo::GroupId& id);
+        deleteGroup(const bo::GroupId& id) const;
 
         [[nodiscard]] std::expected<std::optional<bo::Group>, GroupServiceError>
-        getGroup(const bo::GroupId& id);
+        getGroup(const bo::GroupId& id) const;
 
         [[nodiscard]] std::expected<std::vector<bo::Group>, GroupServiceError>
-        getAllGroups();
+        getAllGroups() const;
 
         [[nodiscard]] std::expected<QuickOpenContext, GroupServiceError>
-        resolveQuickOpenContext(const std::vector<bo::GroupId>& selectedGroupIds);
+        resolveQuickOpenContext(const std::vector<bo::GroupId>& selectedGroupIds) const;
 
     private:
         ports::IGroupStore& groupStore_;

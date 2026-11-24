@@ -50,7 +50,7 @@ namespace gf::repositories::bl
     }
 
     std::expected<Repository, RepositoryServiceError>
-    RepositoryService::registerRepository(const RegisterRepositoryRequest& req)
+    RepositoryService::registerRepository(const RegisterRepositoryRequest& req) const
     {
         if (req.localPath.empty())
         {
@@ -66,7 +66,7 @@ namespace gf::repositories::bl
         {
             return std::unexpected(RepositoryServiceError{
                 .kind = RepositoryServiceError::Kind::PathNotFound,
-                .message = "Specified folder does not exist: " + gf::core::pathToUtf8(req.localPath)
+                .message = "Specified folder does not exist: " + core::pathToUtf8(req.localPath)
             });
         }
 
@@ -80,7 +80,7 @@ namespace gf::repositories::bl
             return std::unexpected(RepositoryServiceError{
                 .kind = RepositoryServiceError::Kind::NotAGitRepository,
                 .message = "Directory does not contain a valid Git repository (.git not found): " +
-                gf::core::pathToUtf8(targetRepoPath)
+                core::pathToUtf8(targetRepoPath)
             });
         }
 
@@ -118,7 +118,7 @@ namespace gf::repositories::bl
 
         const auto now = currentUnixMs();
         Repository repo{
-            .id = RepositoryId(gf::core::generateUniqueId("repo")),
+            .id = RepositoryId(core::generateUniqueId("repo")),
             .displayName = std::move(displayName),
             .localPath = targetRepoPath,
             .pathStatus = RepositoryPathStatus::Valid,
@@ -126,8 +126,7 @@ namespace gf::repositories::bl
             .lastAccessedAtUnixEpochMs = now
         };
 
-        auto saveRes = store_.save(repo);
-        if (!saveRes)
+        if (const auto saveRes = store_.save(repo); !saveRes)
         {
             return std::unexpected(RepositoryServiceError{
                 .kind = RepositoryServiceError::Kind::StorageError,
@@ -139,7 +138,7 @@ namespace gf::repositories::bl
     }
 
     std::expected<Repository, RepositoryServiceError>
-    RepositoryService::checkRepositoryStatus(const RepositoryId& id)
+    RepositoryService::checkRepositoryStatus(const RepositoryId& id) const
     {
         auto repoRes = store_.getById(id);
         if (!repoRes)
@@ -158,8 +157,7 @@ namespace gf::repositories::bl
         }
 
         auto repo = std::move(**repoRes);
-        std::error_code ec;
-        if (!std::filesystem::exists(repo.localPath, ec))
+        if (std::error_code ec; !std::filesystem::exists(repo.localPath, ec))
         {
             repo.pathStatus = RepositoryPathStatus::Missing;
         }
@@ -172,12 +170,18 @@ namespace gf::repositories::bl
             repo.pathStatus = RepositoryPathStatus::Valid;
         }
 
-        (void)store_.save(repo);
+        if (const auto saveRes = store_.save(repo); !saveRes)
+        {
+            return std::unexpected(RepositoryServiceError{
+                .kind = RepositoryServiceError::Kind::StorageError,
+                .message = saveRes.error().message
+            });
+        }
         return repo;
     }
 
     std::expected<Repository, RepositoryServiceError>
-    RepositoryService::reconnectRepositoryPath(const RepositoryId& id, const std::filesystem::path& newPath)
+    RepositoryService::reconnectRepositoryPath(const RepositoryId& id, const std::filesystem::path& newPath) const
     {
         auto existingRes = store_.getById(id);
         if (!existingRes)
@@ -201,7 +205,7 @@ namespace gf::repositories::bl
         {
             return std::unexpected(RepositoryServiceError{
                 .kind = RepositoryServiceError::Kind::PathNotFound,
-                .message = "The new path does not exist: " + gf::core::pathToUtf8(newPath)
+                .message = "The new path does not exist: " + core::pathToUtf8(newPath)
             });
         }
 
@@ -214,13 +218,12 @@ namespace gf::repositories::bl
         {
             return std::unexpected(RepositoryServiceError{
                 .kind = RepositoryServiceError::Kind::NotAGitRepository,
-                .message = "The new path does not contain a valid .git directory: " + gf::core::pathToUtf8(
+                .message = "The new path does not contain a valid .git directory: " + core::pathToUtf8(
                     targetRepoPath)
             });
         }
 
-        auto updateRes = store_.updatePath(id, targetRepoPath);
-        if (!updateRes)
+        if (const auto updateRes = store_.updatePath(id, targetRepoPath); !updateRes)
         {
             return std::unexpected(RepositoryServiceError{
                 .kind = RepositoryServiceError::Kind::StorageError,
@@ -241,7 +244,7 @@ namespace gf::repositories::bl
     }
 
     std::expected<void, RepositoryServiceError>
-    RepositoryService::touchLastAccessed(const RepositoryId& id)
+    RepositoryService::touchLastAccessed(const RepositoryId& id) const
     {
         auto repoRes = store_.getById(id);
         if (!repoRes || !repoRes->has_value())
@@ -253,8 +256,7 @@ namespace gf::repositories::bl
         }
         auto repo = std::move(**repoRes);
         repo.lastAccessedAtUnixEpochMs = currentUnixMs();
-        auto saveRes = store_.save(repo);
-        if (!saveRes)
+        if (const auto saveRes = store_.save(repo); !saveRes)
         {
             return std::unexpected(RepositoryServiceError{
                 .kind = RepositoryServiceError::Kind::StorageError,
@@ -265,7 +267,7 @@ namespace gf::repositories::bl
     }
 
     std::expected<bool, RepositoryServiceError>
-    RepositoryService::unregisterRepository(const RepositoryId& id)
+    RepositoryService::unregisterRepository(const RepositoryId& id) const
     {
         auto res = store_.remove(id);
         if (!res)
@@ -279,7 +281,7 @@ namespace gf::repositories::bl
     }
 
     std::expected<std::vector<Repository>, RepositoryServiceError>
-    RepositoryService::getAllRepositories()
+    RepositoryService::getAllRepositories() const
     {
         auto res = store_.getAll();
         if (!res)
@@ -293,7 +295,7 @@ namespace gf::repositories::bl
     }
 
     std::expected<std::optional<Repository>, RepositoryServiceError>
-    RepositoryService::getRepository(const RepositoryId& id)
+    RepositoryService::getRepository(const RepositoryId& id) const
     {
         auto res = store_.getById(id);
         if (!res)
@@ -307,7 +309,7 @@ namespace gf::repositories::bl
     }
 
     std::expected<Repository, RepositoryServiceError>
-    RepositoryService::updateDisplayName(const RepositoryId& id, const std::string& newDisplayName)
+    RepositoryService::updateDisplayName(const RepositoryId& id, const std::string& newDisplayName) const
     {
         auto repoRes = store_.getById(id);
         if (!repoRes)
@@ -327,8 +329,7 @@ namespace gf::repositories::bl
 
         auto repo = std::move(**repoRes);
         repo.displayName = newDisplayName.empty() ? repo.localPath.filename().string() : newDisplayName;
-        auto saveRes = store_.save(repo);
-        if (!saveRes)
+        if (const auto saveRes = store_.save(repo); !saveRes)
         {
             return std::unexpected(RepositoryServiceError{
                 .kind = RepositoryServiceError::Kind::StorageError,

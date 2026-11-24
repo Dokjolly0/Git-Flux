@@ -39,28 +39,28 @@ namespace gf::repositories::bl
         explicit RepositoryService(ports::IRepositoryStore& store) noexcept;
 
         [[nodiscard]] std::expected<bo::Repository, RepositoryServiceError>
-        registerRepository(const RegisterRepositoryRequest& request);
+        registerRepository(const RegisterRepositoryRequest& request) const;
 
         [[nodiscard]] std::expected<bo::Repository, RepositoryServiceError>
-        checkRepositoryStatus(const bo::RepositoryId& id);
+        checkRepositoryStatus(const bo::RepositoryId& id) const;
 
         [[nodiscard]] std::expected<bo::Repository, RepositoryServiceError>
-        reconnectRepositoryPath(const bo::RepositoryId& id, const std::filesystem::path& newPath);
+        reconnectRepositoryPath(const bo::RepositoryId& id, const std::filesystem::path& newPath) const;
 
         [[nodiscard]] std::expected<void, RepositoryServiceError>
-        touchLastAccessed(const bo::RepositoryId& id);
+        touchLastAccessed(const bo::RepositoryId& id) const;
 
         [[nodiscard]] std::expected<bool, RepositoryServiceError>
-        unregisterRepository(const bo::RepositoryId& id);
+        unregisterRepository(const bo::RepositoryId& id) const;
 
         [[nodiscard]] std::expected<std::vector<bo::Repository>, RepositoryServiceError>
-        getAllRepositories();
+        getAllRepositories() const;
 
         [[nodiscard]] std::expected<std::optional<bo::Repository>, RepositoryServiceError>
-        getRepository(const bo::RepositoryId& id);
+        getRepository(const bo::RepositoryId& id) const;
 
         [[nodiscard]] std::expected<bo::Repository, RepositoryServiceError>
-        updateDisplayName(const bo::RepositoryId& id, const std::string& newDisplayName);
+        updateDisplayName(const bo::RepositoryId& id, const std::string& newDisplayName) const;
 
         [[nodiscard]] static bool isGitRepositoryDir(const std::filesystem::path& path) noexcept;
 

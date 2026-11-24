@@ -40,30 +40,30 @@ namespace gf::workspaces::bl
         [[nodiscard]] std::expected<bo::Workspace, WorkspaceServiceError>
         createWorkspace(std::string name,
                         std::vector<groups::bo::GroupId> groupIds = {},
-                        std::vector<repositories::bo::RepositoryId> directRepoIds = {});
+                        std::vector<repositories::bo::RepositoryId> directRepoIds = {}) const;
 
         [[nodiscard]] std::expected<bo::Workspace, WorkspaceServiceError>
         updateWorkspaceComposition(const bo::WorkspaceId& id,
                                    std::vector<groups::bo::GroupId> groupIds,
-                                   std::vector<repositories::bo::RepositoryId> directRepoIds);
+                                   std::vector<repositories::bo::RepositoryId> directRepoIds) const;
 
         [[nodiscard]] std::expected<bool, WorkspaceServiceError>
-        deleteWorkspace(const bo::WorkspaceId& id);
+        deleteWorkspace(const bo::WorkspaceId& id) const;
 
         [[nodiscard]] std::expected<std::optional<bo::Workspace>, WorkspaceServiceError>
-        getWorkspace(const bo::WorkspaceId& id);
+        getWorkspace(const bo::WorkspaceId& id) const;
 
         [[nodiscard]] std::expected<std::vector<bo::Workspace>, WorkspaceServiceError>
-        getAllWorkspaces();
+        getAllWorkspaces() const;
 
         [[nodiscard]] std::expected<std::vector<repositories::bo::Repository>, WorkspaceServiceError>
-        resolveWorkspaceRepositories(const bo::WorkspaceId& id);
+        resolveWorkspaceRepositories(const bo::WorkspaceId& id) const;
 
         [[nodiscard]] std::expected<bo::WorkspaceSession, WorkspaceServiceError>
-        loadOrCreateSession(const bo::WorkspaceId& id);
+        loadOrCreateSession(const bo::WorkspaceId& id) const;
 
         [[nodiscard]] std::expected<void, WorkspaceServiceError>
-        saveSession(const bo::WorkspaceSession& session);
+        saveSession(const bo::WorkspaceSession& session) const;
 
     private:
         ports::IWorkspaceStore& wsStore_;
