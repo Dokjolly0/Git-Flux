@@ -8,9 +8,9 @@ namespace gf::git::bl
 {
     namespace
     {
-        [[nodiscard]] bool isWhitespaceOnly(std::string_view str) noexcept
+        [[nodiscard]] bool isWhitespaceOnly(const std::string_view str) noexcept
         {
-            return std::all_of(str.begin(), str.end(), [](unsigned char ch)
+            return std::ranges::all_of(str, [](const unsigned char ch)
             {
                 return std::isspace(ch) != 0;
             });
@@ -23,7 +23,7 @@ namespace gf::git::bl
     }
 
     std::expected<void, ports::GitOpsError>
-    GitStagingService::validateRepoPath(const std::filesystem::path& repoPath) const
+    GitStagingService::validateRepoPath(const std::filesystem::path& repoPath)
     {
         if (repoPath.empty())
         {
@@ -35,8 +35,7 @@ namespace gf::git::bl
             });
         }
 
-        std::error_code ec;
-        if (!std::filesystem::exists(repoPath, ec) || !std::filesystem::is_directory(repoPath, ec))
+        if (std::error_code ec; !std::filesystem::exists(repoPath, ec) || !std::filesystem::is_directory(repoPath, ec))
         {
             return std::unexpected(ports::GitOpsError{
                 .kind = ports::GitOpsError::Kind::PathNotFound,
@@ -50,7 +49,7 @@ namespace gf::git::bl
     }
 
     std::expected<void, ports::GitOpsError>
-    GitStagingService::validateRelativeFilePaths(const std::vector<std::string>& filePaths) const
+    GitStagingService::validateRelativeFilePaths(const std::vector<std::string>& filePaths)
     {
         for (const auto& pathStr : filePaths)
         {
@@ -94,7 +93,7 @@ namespace gf::git::bl
 
     std::expected<void, ports::GitOpsError>
     GitStagingService::stageFiles(const std::filesystem::path& repoPath,
-                                  const std::vector<std::string>& filePaths)
+                                  const std::vector<std::string>& filePaths) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -114,7 +113,7 @@ namespace gf::git::bl
     }
 
     std::expected<void, ports::GitOpsError>
-    GitStagingService::stageAll(const std::filesystem::path& repoPath)
+    GitStagingService::stageAll(const std::filesystem::path& repoPath) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -127,7 +126,7 @@ namespace gf::git::bl
 
     std::expected<void, ports::GitOpsError>
     GitStagingService::unstageFiles(const std::filesystem::path& repoPath,
-                                    const std::vector<std::string>& filePaths)
+                                    const std::vector<std::string>& filePaths) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -147,7 +146,7 @@ namespace gf::git::bl
     }
 
     std::expected<void, ports::GitOpsError>
-    GitStagingService::unstageAll(const std::filesystem::path& repoPath)
+    GitStagingService::unstageAll(const std::filesystem::path& repoPath) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -160,7 +159,7 @@ namespace gf::git::bl
 
     std::expected<void, ports::GitOpsError>
     GitStagingService::discardFiles(const std::filesystem::path& repoPath,
-                                    const std::vector<std::string>& filePaths)
+                                    const std::vector<std::string>& filePaths) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -181,7 +180,7 @@ namespace gf::git::bl
 
     std::expected<bo::CommitResult, ports::GitOpsError>
     GitStagingService::createCommit(const std::filesystem::path& repoPath,
-                                    const bo::CommitOptions& options)
+                                    const bo::CommitOptions& options) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {

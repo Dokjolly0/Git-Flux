@@ -1,26 +1,27 @@
 #include "core/modules/git/bl/fs_event_debouncer.hpp"
 
 #include <algorithm>
+#include <ranges>
 
 namespace gf::git::bl
 {
-    FsEventDebouncer::FsEventDebouncer(Milliseconds quietPeriod, Milliseconds maxWindow)
+    FsEventDebouncer::FsEventDebouncer(const Milliseconds quietPeriod, const Milliseconds maxWindow)
         : m_quietPeriod(quietPeriod)
           , m_maxWindow(maxWindow)
     {
     }
 
     void FsEventDebouncer::pushEvent(const bo::FsRawEvent& event,
-                                     bo::FsChangeClassification classification,
-                                     TimePoint now)
+                                     const bo::FsChangeClassification classification,
+                                     const TimePoint now)
     {
         if (classification == bo::FsChangeClassification::Ignored)
         {
             return;
         }
 
-        std::lock_guard<std::mutex> lock(m_mutex);
-        std::string key = event.repositoryPath.lexically_normal().string();
+        std::lock_guard lock(m_mutex);
+        const std::string key = event.repositoryPath.lexically_normal().string();
 
         auto it = m_pendingByRepo.find(key);
         if (it == m_pendingByRepo.end())
@@ -61,28 +62,25 @@ namespace gf::git::bl
 
         if (!event.changedPath.empty())
         {
-            if (std::find(batch.affectedPaths.begin(), batch.affectedPaths.end(), event.changedPath) == batch.
-                affectedPaths.end())
+            if (std::ranges::find(batch.affectedPaths, event.changedPath) == batch.affectedPaths.end())
             {
                 batch.affectedPaths.push_back(event.changedPath);
             }
         }
     }
 
-    std::vector<bo::FsDebouncedBatch> FsEventDebouncer::flushReadyBatches(TimePoint now)
+    std::vector<bo::FsDebouncedBatch> FsEventDebouncer::flushReadyBatches(const TimePoint now)
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard lock(m_mutex);
         std::vector<bo::FsDebouncedBatch> ready;
 
         for (auto it = m_pendingByRepo.begin(); it != m_pendingByRepo.end();)
         {
-            const auto& state = it->second;
-            bool quietElapsed = (now - state.lastEventTime) >= m_quietPeriod;
-            bool maxWindowElapsed = (now - state.firstEventTime) >= m_maxWindow;
-
-            if (quietElapsed || maxWindowElapsed)
+            const bool quietElapsed = now - it->second.lastEventTime >= m_quietPeriod;
+            if (const bool maxWindowElapsed = now - it->second.firstEventTime >= m_maxWindow;
+                quietElapsed || maxWindowElapsed)
             {
-                ready.push_back(state.batch);
+                ready.push_back(it->second.batch);
                 it = m_pendingByRepo.erase(it);
             }
             else
@@ -96,11 +94,11 @@ namespace gf::git::bl
 
     std::vector<bo::FsDebouncedBatch> FsEventDebouncer::flushAll()
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard lock(m_mutex);
         std::vector<bo::FsDebouncedBatch> all;
         all.reserve(m_pendingByRepo.size());
 
-        for (auto& [key, state] : m_pendingByRepo)
+        for (auto& state : m_pendingByRepo | std::views::values)
         {
             all.push_back(std::move(state.batch));
         }
@@ -111,25 +109,25 @@ namespace gf::git::bl
 
     bool FsEventDebouncer::hasPending() const noexcept
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard lock(m_mutex);
         return !m_pendingByRepo.empty();
     }
 
     void FsEventDebouncer::clear()
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard lock(m_mutex);
         m_pendingByRepo.clear();
     }
 
-    void FsEventDebouncer::setQuietPeriod(Milliseconds ms) noexcept
+    void FsEventDebouncer::setQuietPeriod(const Milliseconds ms) noexcept
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard lock(m_mutex);
         m_quietPeriod = ms;
     }
 
-    void FsEventDebouncer::setMaxWindow(Milliseconds ms) noexcept
+    void FsEventDebouncer::setMaxWindow(const Milliseconds ms) noexcept
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard lock(m_mutex);
         m_maxWindow = ms;
     }
 } // namespace gf::git::bl

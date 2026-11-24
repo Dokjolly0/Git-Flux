@@ -1,7 +1,5 @@
 #include "core/modules/git/bl/git_clone_service.hpp"
 
-#include <algorithm>
-
 namespace gf::git::bl
 {
     GitCloneService::GitCloneService(ports::IRepositoryGitOps& gitOps,
@@ -27,8 +25,8 @@ namespace gf::git::bl
             return "repository";
         }
 
-        auto lastSlash = url.find_last_of("/:\\");
-        std::string_view segment = (lastSlash == std::string_view::npos) ? url : url.substr(lastSlash + 1);
+        const auto lastSlash = url.find_last_of("/:\\");
+        std::string_view segment = lastSlash == std::string_view::npos ? url : url.substr(lastSlash + 1);
 
         if (segment.ends_with(".git"))
         {
@@ -45,7 +43,7 @@ namespace gf::git::bl
 
     std::expected<repositories::bo::Repository, ports::GitOpsError>
     GitCloneService::cloneAndRegister(const bo::CloneRepositoryOptions& options,
-                                      const std::optional<std::string>& customDisplayName)
+                                      const std::optional<std::string>& customDisplayName) const
     {
         auto cloneRes = m_gitOps.cloneRepository(options);
         if (!cloneRes)

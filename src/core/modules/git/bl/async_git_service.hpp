@@ -34,26 +34,26 @@ namespace gf::git::bl
 
         std::string fetchRemoteAsync(const std::filesystem::path& repoPath,
                                      const bo::RemoteOperationOptions& options,
-                                     AsyncFetchCallback onCompleted = nullptr,
-                                     AsyncProgressCallback onProgress = nullptr);
+                                     const AsyncFetchCallback& onCompleted = nullptr,
+                                     AsyncProgressCallback onProgress = nullptr) const;
 
         std::string pullRemoteAsync(const std::filesystem::path& repoPath,
                                     const bo::RemoteOperationOptions& options,
-                                    AsyncPullCallback onCompleted = nullptr,
-                                    AsyncProgressCallback onProgress = nullptr);
+                                    const AsyncPullCallback& onCompleted = nullptr,
+                                    AsyncProgressCallback onProgress = nullptr) const;
 
         std::string pushRemoteAsync(const std::filesystem::path& repoPath,
                                     const bo::RemoteOperationOptions& options,
-                                    AsyncPushCallback onCompleted = nullptr,
-                                    AsyncProgressCallback onProgress = nullptr);
+                                    const AsyncPushCallback& onCompleted = nullptr,
+                                    AsyncProgressCallback onProgress = nullptr) const;
 
         std::string refreshWorkingTreeAsync(const std::filesystem::path& repoPath,
-                                            AsyncWorkingTreeCallback onCompleted = nullptr,
-                                            AsyncProgressCallback onProgress = nullptr);
+                                            const AsyncWorkingTreeCallback& onCompleted = nullptr,
+                                            AsyncProgressCallback onProgress = nullptr) const;
 
-        bool cancelOperation(const std::string& taskId);
+        bool cancelOperation(const std::string& taskId) const;
 
-        [[nodiscard]] tasks::bl::BackgroundTaskRunner& taskRunner() noexcept { return m_taskRunner; }
+        [[nodiscard]] tasks::bl::BackgroundTaskRunner& taskRunner() const noexcept { return m_taskRunner; }
 
     private:
         tasks::bl::BackgroundTaskRunner& m_taskRunner;

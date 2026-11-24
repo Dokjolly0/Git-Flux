@@ -23,35 +23,35 @@ namespace gf::git::bl
 
         /// Returns commit history with pagination and filtering options.
         [[nodiscard]] std::expected<std::vector<bo::GitCommitLogItem>, ports::GitOpsError>
-        getCommitHistory(const std::filesystem::path& repoPath, const bo::CommitLogOptions& options = {});
+        getCommitHistory(const std::filesystem::path& repoPath, const bo::CommitLogOptions& options = {}) const;
 
         /// Returns details of a single commit given its SHA hash or reference.
         [[nodiscard]] std::expected<std::optional<bo::GitCommitLogItem>, ports::GitOpsError>
-        getCommitDetails(const std::filesystem::path& repoPath, const std::string& commitSha);
+        getCommitDetails(const std::filesystem::path& repoPath, const std::string& commitSha) const;
 
         /// Returns the list of files modified, added, deleted, or renamed by a commit.
         [[nodiscard]] std::expected<std::vector<bo::CommitFileChange>, ports::GitOpsError>
-        getCommitFiles(const std::filesystem::path& repoPath, const std::string& commitSha);
+        getCommitFiles(const std::filesystem::path& repoPath, const std::string& commitSha) const;
 
         /// Returns the list of tracked files in the repository (`git ls-files`).
         [[nodiscard]] std::expected<std::vector<std::string>, ports::GitOpsError>
-        listTrackedFiles(const std::filesystem::path& repoPath);
+        listTrackedFiles(const std::filesystem::path& repoPath) const;
 
         /// Returns all repository tags (lightweight and annotated).
         [[nodiscard]] std::expected<std::vector<bo::GitTag>, ports::GitOpsError>
-        listTags(const std::filesystem::path& repoPath);
+        listTags(const std::filesystem::path& repoPath) const;
 
         /// Creates a new tag after validating the name and acquiring per-repo lock.
         [[nodiscard]] std::expected<void, ports::GitOpsError>
-        createTag(const std::filesystem::path& repoPath, const bo::CreateTagOptions& options);
+        createTag(const std::filesystem::path& repoPath, const bo::CreateTagOptions& options) const;
 
         /// Deletes a local tag acquiring per-repo lock.
         [[nodiscard]] std::expected<void, ports::GitOpsError>
-        deleteTag(const std::filesystem::path& repoPath, const std::string& tagName);
+        deleteTag(const std::filesystem::path& repoPath, const std::string& tagName) const;
 
     private:
-        [[nodiscard]] std::expected<void, ports::GitOpsError>
-        validateRepoPath(const std::filesystem::path& repoPath) const;
+        [[nodiscard]] static std::expected<void, ports::GitOpsError>
+        validateRepoPath(const std::filesystem::path& repoPath);
 
         ports::IRepositoryGitOps& m_gitOps;
     };

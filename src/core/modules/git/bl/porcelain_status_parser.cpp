@@ -7,7 +7,7 @@ namespace gf::git::bl
 {
     namespace
     {
-        [[nodiscard]] std::string_view skipSpacesTokens(std::string_view line, int spaceCount) noexcept
+        [[nodiscard]] std::string_view skipSpacesTokens(const std::string_view line, const int spaceCount) noexcept
         {
             std::size_t pos = 0;
             for (int i = 0; i < spaceCount; ++i)
@@ -22,7 +22,7 @@ namespace gf::git::bl
             return line.substr(pos);
         }
 
-        void parseBranchHeader(std::string_view headerLine, bo::GitBranchHead& branch) noexcept
+        void parseBranchHeader(const std::string_view headerLine, bo::GitBranchHead& branch) noexcept
         {
             // Format: "# branch.<key> <value>"
             constexpr std::string_view prefix = "# branch.";
@@ -30,8 +30,7 @@ namespace gf::git::bl
             {
                 return;
             }
-            const std::string_view rest = headerLine.substr(prefix.size());
-            if (rest.starts_with("oid "))
+            if (const std::string_view rest = headerLine.substr(prefix.size()); rest.starts_with("oid "))
             {
                 branch.oid = std::string(rest.substr(4));
                 if (branch.oid == "(initial)")
@@ -55,8 +54,7 @@ namespace gf::git::bl
             {
                 // Esempio: "+3 -1"
                 const std::string_view ab = rest.substr(3);
-                const std::size_t spacePos = ab.find(' ');
-                if (spacePos != std::string_view::npos)
+                if (const std::size_t spacePos = ab.find(' '); spacePos != std::string_view::npos)
                 {
                     std::string_view aheadToken = ab.substr(0, spacePos);
                     std::string_view behindToken = ab.substr(spacePos + 1);
@@ -76,7 +74,7 @@ namespace gf::git::bl
     } // namespace
 
     std::expected<bo::GitRepositoryStatus, std::string>
-    PorcelainStatusParser::parse(std::string_view rawOutput)
+    PorcelainStatusParser::parse(const std::string_view rawOutput)
     {
         bo::GitRepositoryStatus status;
         std::size_t cursor = 0;
@@ -96,7 +94,7 @@ namespace gf::git::bl
                 {
                     tail.remove_suffix(1);
                 }
-                return tail.empty() ? std::nullopt : std::optional<std::string_view>{tail};
+                return tail.empty() ? std::nullopt : std::optional{tail};
             }
             std::string_view token = rawOutput.substr(cursor, nulPos - cursor);
             cursor = nulPos + 1;

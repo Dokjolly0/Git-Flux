@@ -17,20 +17,20 @@ namespace gf::git::bl
 
         /// Returns the detailed structure of a conflicted file (markers, hunks, stages).
         [[nodiscard]] std::expected<bo::ConflictFile, ports::GitOpsError>
-        getConflictFile(const std::filesystem::path& repoPath, const std::string& filePath);
+        getConflictFile(const std::filesystem::path& repoPath, const std::string& filePath) const;
 
         /// Extracts the raw content of a git stage (1=base, 2=ours, 3=theirs).
         [[nodiscard]] std::expected<std::string, ports::GitOpsError>
-        getFileStageContent(const std::filesystem::path& repoPath, const std::string& filePath, int stage);
+        getFileStageContent(const std::filesystem::path& repoPath, const std::string& filePath, int stage) const;
 
         /// Writes the resolved content and optionally stages the file under per-repo lock.
         [[nodiscard]] std::expected<void, ports::GitOpsError>
         applyConflictResolution(const std::filesystem::path& repoPath,
-                                const bo::ApplyConflictResolutionOptions& options);
+                                const bo::ApplyConflictResolutionOptions& options) const;
 
     private:
-        [[nodiscard]] std::expected<void, ports::GitOpsError>
-        validateRepoPath(const std::filesystem::path& repoPath) const;
+        [[nodiscard]] static std::expected<void, ports::GitOpsError>
+        validateRepoPath(const std::filesystem::path& repoPath);
 
         ports::IRepositoryGitOps& m_gitOps;
     };

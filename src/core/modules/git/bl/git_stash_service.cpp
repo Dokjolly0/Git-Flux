@@ -9,7 +9,7 @@ namespace gf::git::bl
     }
 
     std::expected<void, ports::GitOpsError>
-    GitStashService::validateRepoPath(const std::filesystem::path& repoPath) const
+    GitStashService::validateRepoPath(const std::filesystem::path& repoPath)
     {
         if (repoPath.empty())
         {
@@ -21,8 +21,7 @@ namespace gf::git::bl
             });
         }
 
-        std::error_code ec;
-        if (!std::filesystem::exists(repoPath, ec) || !std::filesystem::is_directory(repoPath, ec))
+        if (std::error_code ec; !std::filesystem::exists(repoPath, ec) || !std::filesystem::is_directory(repoPath, ec))
         {
             return std::unexpected(ports::GitOpsError{
                 .kind = ports::GitOpsError::Kind::PathNotFound,
@@ -36,7 +35,7 @@ namespace gf::git::bl
     }
 
     std::expected<std::vector<bo::GitStashItem>, ports::GitOpsError>
-    GitStashService::listStashes(const std::filesystem::path& repoPath)
+    GitStashService::listStashes(const std::filesystem::path& repoPath) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -48,7 +47,7 @@ namespace gf::git::bl
 
     std::expected<void, ports::GitOpsError>
     GitStashService::stashPush(const std::filesystem::path& repoPath,
-                               const bo::StashPushOptions& options)
+                               const bo::StashPushOptions& options) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -61,7 +60,7 @@ namespace gf::git::bl
 
     std::expected<void, ports::GitOpsError>
     GitStashService::stashPop(const std::filesystem::path& repoPath,
-                              const bo::StashApplyOptions& options)
+                              const bo::StashApplyOptions& options) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -74,7 +73,7 @@ namespace gf::git::bl
 
     std::expected<void, ports::GitOpsError>
     GitStashService::stashApply(const std::filesystem::path& repoPath,
-                                const bo::StashApplyOptions& options)
+                                const bo::StashApplyOptions& options) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -87,7 +86,7 @@ namespace gf::git::bl
 
     std::expected<void, ports::GitOpsError>
     GitStashService::stashDrop(const std::filesystem::path& repoPath,
-                               std::size_t stashIndex)
+                               const std::size_t stashIndex) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -99,7 +98,7 @@ namespace gf::git::bl
     }
 
     std::expected<void, ports::GitOpsError>
-    GitStashService::stashClear(const std::filesystem::path& repoPath)
+    GitStashService::stashClear(const std::filesystem::path& repoPath) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {

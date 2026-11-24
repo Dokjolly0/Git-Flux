@@ -9,7 +9,7 @@ namespace gf::git::bl
     }
 
     std::expected<void, ports::GitOpsError>
-    GitRebaseService::validateRepoPath(const std::filesystem::path& repoPath) const
+    GitRebaseService::validateRepoPath(const std::filesystem::path& repoPath)
     {
         if (repoPath.empty())
         {
@@ -21,8 +21,7 @@ namespace gf::git::bl
             });
         }
 
-        std::error_code ec;
-        if (!std::filesystem::exists(repoPath, ec) || !std::filesystem::is_directory(repoPath, ec))
+        if (std::error_code ec; !std::filesystem::exists(repoPath, ec) || !std::filesystem::is_directory(repoPath, ec))
         {
             return std::unexpected(ports::GitOpsError{
                 .kind = ports::GitOpsError::Kind::PathNotFound,
@@ -37,7 +36,7 @@ namespace gf::git::bl
 
     std::expected<bo::RebaseResult, ports::GitOpsError>
     GitRebaseService::startRebase(const std::filesystem::path& repoPath,
-                                  const bo::RebaseOptions& options)
+                                  const bo::RebaseOptions& options) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -59,7 +58,7 @@ namespace gf::git::bl
     }
 
     std::expected<bo::RebaseResult, ports::GitOpsError>
-    GitRebaseService::continueRebase(const std::filesystem::path& repoPath)
+    GitRebaseService::continueRebase(const std::filesystem::path& repoPath) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -71,7 +70,7 @@ namespace gf::git::bl
     }
 
     std::expected<bo::RebaseResult, ports::GitOpsError>
-    GitRebaseService::skipRebase(const std::filesystem::path& repoPath)
+    GitRebaseService::skipRebase(const std::filesystem::path& repoPath) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -83,7 +82,7 @@ namespace gf::git::bl
     }
 
     std::expected<void, ports::GitOpsError>
-    GitRebaseService::abortRebase(const std::filesystem::path& repoPath)
+    GitRebaseService::abortRebase(const std::filesystem::path& repoPath) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -95,7 +94,7 @@ namespace gf::git::bl
     }
 
     std::expected<bool, ports::GitOpsError>
-    GitRebaseService::isRebaseInProgress(const std::filesystem::path& repoPath)
+    GitRebaseService::isRebaseInProgress(const std::filesystem::path& repoPath) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -107,7 +106,7 @@ namespace gf::git::bl
 
     std::expected<bo::CherryPickResult, ports::GitOpsError>
     GitRebaseService::cherryPick(const std::filesystem::path& repoPath,
-                                 const bo::CherryPickOptions& options)
+                                 const bo::CherryPickOptions& options) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -129,7 +128,7 @@ namespace gf::git::bl
     }
 
     std::expected<void, ports::GitOpsError>
-    GitRebaseService::abortCherryPick(const std::filesystem::path& repoPath)
+    GitRebaseService::abortCherryPick(const std::filesystem::path& repoPath) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {

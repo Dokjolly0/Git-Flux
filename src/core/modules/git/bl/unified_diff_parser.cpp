@@ -30,7 +30,7 @@ namespace gf::git::bl
             return std::string(path);
         }
 
-        void parseDiffGitHeader(std::string_view line, bo::FileDiff& file)
+        void parseDiffGitHeader(const std::string_view line, bo::FileDiff& file)
         {
             // line: "diff --git a/path b/path"
             constexpr std::string_view prefix = "diff --git ";
@@ -38,19 +38,18 @@ namespace gf::git::bl
             {
                 return;
             }
-            std::string_view rest = line.substr(prefix.size());
+            const std::string_view rest = line.substr(prefix.size());
             // Handle quoted paths or spaces
-            if (rest.starts_with("\""))
+            if (rest.starts_with('"'))
             {
-                auto closeQuote = rest.find('"', 1);
-                if (closeQuote != std::string_view::npos)
+                if (const auto closeQuote = rest.find('"', 1); closeQuote != std::string_view::npos)
                 {
                     file.oldPath = stripPrefix(rest.substr(0, closeQuote + 1));
-                    auto secondStart = rest.find('"', closeQuote + 1);
-                    if (secondStart != std::string_view::npos)
+                    if (const auto secondStart = rest.find('"', closeQuote + 1);
+                        secondStart != std::string_view::npos)
                     {
-                        auto secondClose = rest.find('"', secondStart + 1);
-                        if (secondClose != std::string_view::npos)
+                        if (const auto secondClose = rest.find('"', secondStart + 1);
+                            secondClose != std::string_view::npos)
                         {
                             file.newPath = stripPrefix(rest.substr(secondStart, secondClose - secondStart + 1));
                             return;
@@ -59,15 +58,14 @@ namespace gf::git::bl
                 }
             }
 
-            auto spacePos = rest.find(" b/");
-            if (spacePos != std::string_view::npos)
+            if (const auto spacePos = rest.find(" b/"); spacePos != std::string_view::npos)
             {
                 file.oldPath = stripPrefix(rest.substr(0, spacePos));
                 file.newPath = stripPrefix(rest.substr(spacePos + 1));
             }
         }
 
-        bool parseHunkHeader(std::string_view line, bo::DiffHunk& hunk)
+        bool parseHunkHeader(const std::string_view line, bo::DiffHunk& hunk)
         {
             // Format: @@ -oldStart[,oldCount] +newStart[,newCount] @@ [heading]
             if (!line.starts_with("@@ -"))
@@ -121,8 +119,8 @@ namespace gf::git::bl
             if (idx < line.size() && line[idx] == ',')
             {
                 ++idx;
-                auto [p4, ec4] = std::from_chars(line.data() + idx, line.data() + line.size(), newCount);
-                if (ec4 != std::errc{})
+                if (auto [p4, ec4] = std::from_chars(line.data() + idx, line.data() + line.size(), newCount);
+                    ec4 != std::errc{})
                 {
                     return false;
                 }
@@ -136,7 +134,7 @@ namespace gf::git::bl
         }
     } // namespace
 
-    std::vector<bo::FileDiff> UnifiedDiffParser::parse(std::string_view diffOutput)
+    std::vector<bo::FileDiff> UnifiedDiffParser::parse(const std::string_view diffOutput)
     {
         std::vector<bo::FileDiff> result;
         if (diffOutput.empty())
@@ -151,7 +149,7 @@ namespace gf::git::bl
         bool inHunk = false;
         bool hasActiveFile = false;
 
-        auto flushHunk = [&]()
+        auto flushHunk = [&]
         {
             if (currentHunk)
             {
@@ -161,7 +159,7 @@ namespace gf::git::bl
             inHunk = false;
         };
 
-        auto flushFile = [&]()
+        auto flushFile = [&]
         {
             flushHunk();
             if (hasActiveFile)
@@ -175,13 +173,13 @@ namespace gf::git::bl
         std::size_t startPos = 0;
         while (startPos < diffOutput.size())
         {
-            auto endPos = diffOutput.find('\n', startPos);
-            std::string_view rawLine = (endPos == std::string_view::npos)
-                                           ? diffOutput.substr(startPos)
-                                           : diffOutput.substr(startPos, endPos - startPos);
-            startPos = (endPos == std::string_view::npos) ? diffOutput.size() : endPos + 1;
+            const auto endPos = diffOutput.find('\n', startPos);
+            const std::string_view rawLine = endPos == std::string_view::npos
+                                                 ? diffOutput.substr(startPos)
+                                                 : diffOutput.substr(startPos, endPos - startPos);
+            startPos = endPos == std::string_view::npos ? diffOutput.size() : endPos + 1;
 
-            std::string_view line = trimRight(rawLine);
+            const std::string_view line = trimRight(rawLine);
 
             // Start of a new diff file
             if (line.starts_with("diff --git "))
@@ -228,8 +226,7 @@ namespace gf::git::bl
             // Standard diff file path header
             if (line.starts_with("--- "))
             {
-                std::string_view pathPart = line.substr(4);
-                if (pathPart != "/dev/null")
+                if (const std::string_view pathPart = line.substr(4); pathPart != "/dev/null")
                 {
                     currentFile.oldPath = stripPrefix(pathPart);
                 }
@@ -237,8 +234,7 @@ namespace gf::git::bl
             }
             if (line.starts_with("+++ "))
             {
-                std::string_view pathPart = line.substr(4);
-                if (pathPart != "/dev/null")
+                if (const std::string_view pathPart = line.substr(4); pathPart != "/dev/null")
                 {
                     currentFile.newPath = stripPrefix(pathPart);
                 }
@@ -249,8 +245,7 @@ namespace gf::git::bl
             if (line.starts_with("@@ -"))
             {
                 flushHunk();
-                bo::DiffHunk hunk;
-                if (parseHunkHeader(line, hunk))
+                if (bo::DiffHunk hunk; parseHunkHeader(line, hunk))
                 {
                     currentOldLine = hunk.oldStartLine;
                     currentNewLine = hunk.newStartLine;

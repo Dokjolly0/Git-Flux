@@ -8,33 +8,33 @@ namespace gf::core::git::bl
 {
     namespace
     {
-        bool containsNoCase(std::string_view haystack, std::string_view needle) noexcept
+        bool containsNoCase(const std::string_view haystack, const std::string_view needle) noexcept
         {
             if (needle.empty()) return true;
-            const auto it = std::search(haystack.begin(), haystack.end(), needle.begin(), needle.end(),
-                                        [](char a, char b)
-                                        {
-                                            return std::tolower(static_cast<unsigned char>(a)) ==
-                                                std::tolower(static_cast<unsigned char>(b));
-                                        });
-            return it != haystack.end();
+            const auto match = std::ranges::search(haystack, needle,
+                                                   [](const char a, const char b)
+                                                   {
+                                                       return std::tolower(static_cast<unsigned char>(a)) ==
+                                                           std::tolower(static_cast<unsigned char>(b));
+                                                   });
+            return !match.empty();
         }
 
         template <std::size_t N>
-        bool containsAny(std::string_view haystack, const std::array<std::string_view, N>& needles) noexcept
+        bool containsAny(const std::string_view haystack, const std::array<std::string_view, N>& needles) noexcept
         {
-            return std::any_of(needles.begin(), needles.end(),
-                               [&](std::string_view n) { return containsNoCase(haystack, n); });
+            return std::ranges::any_of(needles,
+                                       [&](const std::string_view n) { return containsNoCase(haystack, n); });
         }
 
-        bool isNameChar(char c) noexcept
+        bool isNameChar(const char c) noexcept
         {
             const auto u = static_cast<unsigned char>(c);
             return std::isalnum(u) || c == '-' || c == '_' || c == '.';
         }
 
         // Reads an account name starting at `pos` (skipping a leading '@').
-        std::string readName(std::string_view text, std::size_t pos)
+        std::string readName(const std::string_view text, std::size_t pos)
         {
             if (pos < text.size() && text[pos] == '@') ++pos;
             std::size_t end = pos;
@@ -45,7 +45,7 @@ namespace gf::core::git::bl
         }
     } // namespace
 
-    std::string_view remoteAccessIssueToString(RemoteAccessIssue issue) noexcept
+    std::string_view remoteAccessIssueToString(const RemoteAccessIssue issue) noexcept
     {
         switch (issue)
         {
@@ -62,7 +62,7 @@ namespace gf::core::git::bl
         return "unknown";
     }
 
-    RemoteAccessIssue classifyRemoteAccessOutput(std::string_view output) noexcept
+    RemoteAccessIssue classifyRemoteAccessOutput(const std::string_view output) noexcept
     {
         // Order matters: a changed host key also prints "Host key verification failed".
         if (containsNoCase(output, "REMOTE HOST IDENTIFICATION HAS CHANGED"))
@@ -125,7 +125,7 @@ namespace gf::core::git::bl
         return RemoteAccessIssue::Unknown;
     }
 
-    std::string extractSshGreetingAccount(std::string_view output)
+    std::string extractSshGreetingAccount(const std::string_view output)
     {
         // Gitea / Forgejo: "Hi there, alex! You've successfully authenticated..."
         constexpr std::string_view kHiThere = "Hi there, ";
@@ -155,7 +155,7 @@ namespace gf::core::git::bl
         return {};
     }
 
-    bool isSshRemoteUrl(std::string_view url) noexcept
+    bool isSshRemoteUrl(const std::string_view url) noexcept
     {
         if (url.starts_with("ssh://") || url.starts_with("git+ssh://") || url.starts_with("ssh+git://"))
         {
@@ -169,7 +169,7 @@ namespace gf::core::git::bl
         return slash == std::string_view::npos || colon < slash;
     }
 
-    std::string extractRemoteHost(std::string_view url)
+    std::string extractRemoteHost(const std::string_view url)
     {
         std::string_view authority;
         if (const auto scheme = url.find("://"); scheme != std::string_view::npos)
@@ -191,8 +191,8 @@ namespace gf::core::git::bl
             if (const auto at = authority.rfind('@'); at != std::string_view::npos) authority.remove_prefix(at + 1);
         }
         std::string host(authority);
-        std::transform(host.begin(), host.end(), host.begin(),
-                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        std::ranges::transform(host, host.begin(),
+                               [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
         return host;
     }
 } // namespace gf::core::git::bl

@@ -54,7 +54,7 @@ namespace gf::git::bl
             auto future = task->get_future();
 
             enqueueTask(std::move(repoId), kind, priority,
-                        [task]() { (*task)(); });
+                        [task] { (*task)(); });
             return future;
         }
 

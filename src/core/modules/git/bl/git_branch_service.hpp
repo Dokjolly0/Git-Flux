@@ -22,68 +22,70 @@ namespace gf::git::bl
 
         /// Returns the complete list of local and remote branches.
         [[nodiscard]] std::expected<std::vector<bo::GitBranch>, ports::GitOpsError>
-        listBranches(const std::filesystem::path& repoPath);
+        listBranches(const std::filesystem::path& repoPath) const;
 
         /// Returns only local branches.
         [[nodiscard]] std::expected<std::vector<bo::GitBranch>, ports::GitOpsError>
-        getLocalBranches(const std::filesystem::path& repoPath);
+        getLocalBranches(const std::filesystem::path& repoPath) const;
 
         /// Returns only remote branches.
         [[nodiscard]] std::expected<std::vector<bo::GitBranch>, ports::GitOpsError>
-        getRemoteBranches(const std::filesystem::path& repoPath);
+        getRemoteBranches(const std::filesystem::path& repoPath) const;
 
         /// Returns the currently active branch (HEAD), or nullopt if HEAD is detached or missing.
         [[nodiscard]] std::expected<std::optional<bo::GitBranch>, ports::GitOpsError>
-        getCurrentBranch(const std::filesystem::path& repoPath);
+        getCurrentBranch(const std::filesystem::path& repoPath) const;
 
         /// Creates a new branch after validating its name.
         [[nodiscard]] std::expected<void, ports::GitOpsError>
-        createBranch(const std::filesystem::path& repoPath, const bo::CreateBranchOptions& options);
+        createBranch(const std::filesystem::path& repoPath, const bo::CreateBranchOptions& options) const;
 
         /// Checks out a branch or commit.
         [[nodiscard]] std::expected<void, ports::GitOpsError>
-        checkoutBranch(const std::filesystem::path& repoPath, const bo::CheckoutOptions& options);
+        checkoutBranch(const std::filesystem::path& repoPath, const bo::CheckoutOptions& options) const;
 
         /// Deletes a local branch.
         [[nodiscard]] std::expected<void, ports::GitOpsError>
-        deleteBranch(const std::filesystem::path& repoPath, const std::string& branchName, bool force = false);
+        deleteBranch(const std::filesystem::path& repoPath, const std::string& branchName, bool force = false) const;
 
         /// Renames a local branch after validating the new name.
         [[nodiscard]] std::expected<void, ports::GitOpsError>
-        renameBranch(const std::filesystem::path& repoPath, const std::string& oldName, const std::string& newName);
+        renameBranch(const std::filesystem::path& repoPath, const std::string& oldName,
+                     const std::string& newName) const;
 
         /// Resets the current branch to a specific commit.
         [[nodiscard]] std::expected<void, ports::GitOpsError>
-        resetCommit(const std::filesystem::path& repoPath, const std::string& commitSha, const std::string& mode);
+        resetCommit(const std::filesystem::path& repoPath, const std::string& commitSha,
+                    const std::string& mode) const;
 
         /// Reverts a specific commit on the current branch.
         [[nodiscard]] std::expected<void, ports::GitOpsError>
-        revertCommit(const std::filesystem::path& repoPath, const std::string& commitSha);
+        revertCommit(const std::filesystem::path& repoPath, const std::string& commitSha) const;
 
         /// Rewrites the message of a commit reachable from HEAD, replaying all descendant commits.
         /// Returns the new SHA of the reworded commit.
         [[nodiscard]] std::expected<std::string, ports::GitOpsError>
         rewordCommit(const std::filesystem::path& repoPath, const std::string& commitSha,
-                     const std::string& newMessage);
+                     const std::string& newMessage) const;
 
         /// True when local branch `targetBranch` can be fast-forwarded to `sourceRef`.
         [[nodiscard]] std::expected<bool, ports::GitOpsError>
         canFastForwardBranch(const std::filesystem::path& repoPath, const std::string& targetBranch,
-                             const std::string& sourceRef);
+                             const std::string& sourceRef) const;
 
         /// Fast-forwards local branch `targetBranch` to `sourceRef` (fails if branches diverged).
         [[nodiscard]] std::expected<void, ports::GitOpsError>
         fastForwardBranch(const std::filesystem::path& repoPath, const std::string& targetBranch,
-                          const std::string& sourceRef);
+                          const std::string& sourceRef) const;
 
         /// Creates a worktree for a commit or branch.
         [[nodiscard]] std::expected<void, ports::GitOpsError>
         createWorktree(const std::filesystem::path& repoPath, const std::filesystem::path& worktreePath,
-                       const std::string& commitOrBranch);
+                       const std::string& commitOrBranch) const;
 
     private:
-        [[nodiscard]] std::expected<void, ports::GitOpsError>
-        validateRepoPath(const std::filesystem::path& repoPath) const;
+        [[nodiscard]] static std::expected<void, ports::GitOpsError>
+        validateRepoPath(const std::filesystem::path& repoPath);
 
         ports::IRepositoryGitOps& m_gitOps;
     };

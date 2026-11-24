@@ -2,7 +2,6 @@
 
 #include "core/modules/git/bo/fs_watcher_models.hpp"
 #include "core/modules/git/ports/fs_watcher_port.hpp"
-#include "core/modules/git/bl/fs_event_classifier.hpp"
 #include "core/modules/git/bl/fs_event_debouncer.hpp"
 
 #include <atomic>
@@ -10,10 +9,8 @@
 #include <expected>
 #include <filesystem>
 #include <functional>
-#include <memory>
 #include <mutex>
 #include <thread>
-#include <vector>
 
 namespace gf::git::bl
 {
@@ -35,10 +32,10 @@ namespace gf::git::bl
         GitRepositoryWatcherService& operator=(GitRepositoryWatcherService&&) = delete;
 
         [[nodiscard]] std::expected<void, ports::FsWatcherError>
-        startWatching(const std::filesystem::path& repoPath);
+        startWatching(const std::filesystem::path& repoPath) const;
 
         [[nodiscard]] std::expected<void, ports::FsWatcherError>
-        stopWatching(const std::filesystem::path& repoPath);
+        stopWatching(const std::filesystem::path& repoPath) const;
 
         [[nodiscard]] bool isWatching(const std::filesystem::path& repoPath) const;
 

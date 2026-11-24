@@ -4,7 +4,6 @@
 
 #include <expected>
 #include <filesystem>
-#include <string>
 
 namespace gf::git::bl
 {
@@ -14,13 +13,13 @@ namespace gf::git::bl
         explicit GitWorkingTreeService(ports::IRepositoryGitOps& gitOps) noexcept;
 
         [[nodiscard]] std::expected<bo::RepoWorkingTreeStatus, ports::GitOpsError>
-        getWorkingTreeStatus(const std::filesystem::path& repoPath);
+        getWorkingTreeStatus(const std::filesystem::path& repoPath) const;
 
         [[nodiscard]] std::expected<bool, ports::GitOpsError>
-        isRepositoryClean(const std::filesystem::path& repoPath);
+        isRepositoryClean(const std::filesystem::path& repoPath) const;
 
         [[nodiscard]] std::expected<bo::GitBranchHead, ports::GitOpsError>
-        getCurrentBranch(const std::filesystem::path& repoPath);
+        getCurrentBranch(const std::filesystem::path& repoPath) const;
 
     private:
         ports::IRepositoryGitOps& m_gitOps;

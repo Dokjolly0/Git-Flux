@@ -8,7 +8,7 @@ namespace gf::git::bl
     }
 
     std::expected<void, ports::GitOpsError>
-    GitDiffService::validateRepoPath(const std::filesystem::path& repoPath) const
+    GitDiffService::validateRepoPath(const std::filesystem::path& repoPath)
     {
         if (repoPath.empty())
         {
@@ -20,8 +20,7 @@ namespace gf::git::bl
             });
         }
 
-        std::error_code ec;
-        if (!std::filesystem::exists(repoPath, ec) || !std::filesystem::is_directory(repoPath, ec))
+        if (std::error_code ec; !std::filesystem::exists(repoPath, ec) || !std::filesystem::is_directory(repoPath, ec))
         {
             return std::unexpected(ports::GitOpsError{
                 .kind = ports::GitOpsError::Kind::PathNotFound,
@@ -35,7 +34,7 @@ namespace gf::git::bl
     }
 
     std::expected<void, ports::GitOpsError>
-    GitDiffService::validateRelativeFilePath(const std::string& filePath) const
+    GitDiffService::validateRelativeFilePath(const std::string& filePath)
     {
         if (filePath.empty())
         {
@@ -77,7 +76,7 @@ namespace gf::git::bl
     std::expected<bo::FileDiff, ports::GitOpsError>
     GitDiffService::getFileDiff(const std::filesystem::path& repoPath,
                                 const std::string& filePath,
-                                bo::DiffScope scope)
+                                const bo::DiffScope scope) const
     {
         if (auto validRepo = validateRepoPath(repoPath); !validRepo)
         {
@@ -95,8 +94,8 @@ namespace gf::git::bl
     std::expected<bo::FileDiff, ports::GitOpsError>
     GitDiffService::getFileDiff(const std::filesystem::path& repoPath,
                                 const std::string& filePath,
-                                bo::DiffScope scope,
-                                int contextLines)
+                                const bo::DiffScope scope,
+                                const int contextLines) const
     {
         if (auto validRepo = validateRepoPath(repoPath); !validRepo)
         {
@@ -113,7 +112,7 @@ namespace gf::git::bl
 
     std::expected<std::vector<bo::FileDiff>, ports::GitOpsError>
     GitDiffService::getAllDiffs(const std::filesystem::path& repoPath,
-                                bo::DiffScope scope)
+                                const bo::DiffScope scope) const
     {
         if (auto validRepo = validateRepoPath(repoPath); !validRepo)
         {
@@ -126,7 +125,7 @@ namespace gf::git::bl
     std::expected<bo::FileDiff, ports::GitOpsError>
     GitDiffService::getCommitFileDiff(const std::filesystem::path& repoPath,
                                       const std::string& commitSha,
-                                      const std::string& filePath)
+                                      const std::string& filePath) const
     {
         if (auto validRepo = validateRepoPath(repoPath); !validRepo)
         {
@@ -145,7 +144,7 @@ namespace gf::git::bl
     GitDiffService::getCommitFileDiff(const std::filesystem::path& repoPath,
                                       const std::string& commitSha,
                                       const std::string& filePath,
-                                      int contextLines)
+                                      const int contextLines) const
     {
         if (auto validRepo = validateRepoPath(repoPath); !validRepo)
         {
@@ -163,7 +162,7 @@ namespace gf::git::bl
     std::expected<std::string, ports::GitOpsError>
     GitDiffService::getFileContent(const std::filesystem::path& repoPath,
                                    const std::string& revision,
-                                   const std::string& filePath)
+                                   const std::string& filePath) const
     {
         if (auto validRepo = validateRepoPath(repoPath); !validRepo)
         {
@@ -182,7 +181,7 @@ namespace gf::git::bl
     GitDiffService::getFileBlob(const std::filesystem::path& repoPath,
                                 const std::string& revision,
                                 const std::string& filePath,
-                                std::size_t maxBytes)
+                                const std::size_t maxBytes) const
     {
         if (auto validRepo = validateRepoPath(repoPath); !validRepo)
         {
@@ -200,7 +199,7 @@ namespace gf::git::bl
     std::expected<std::vector<bo::BlameLine>, ports::GitOpsError>
     GitDiffService::getFileBlame(const std::filesystem::path& repoPath,
                                  const std::string& revision,
-                                 const std::string& filePath)
+                                 const std::string& filePath) const
     {
         if (auto validRepo = validateRepoPath(repoPath); !validRepo)
         {

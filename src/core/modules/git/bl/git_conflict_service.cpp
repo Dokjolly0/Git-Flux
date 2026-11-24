@@ -9,7 +9,7 @@ namespace gf::git::bl
     }
 
     std::expected<void, ports::GitOpsError>
-    GitConflictService::validateRepoPath(const std::filesystem::path& repoPath) const
+    GitConflictService::validateRepoPath(const std::filesystem::path& repoPath)
     {
         if (repoPath.empty())
         {
@@ -21,8 +21,7 @@ namespace gf::git::bl
             });
         }
 
-        std::error_code ec;
-        if (!std::filesystem::exists(repoPath, ec) || !std::filesystem::is_directory(repoPath, ec))
+        if (std::error_code ec; !std::filesystem::exists(repoPath, ec) || !std::filesystem::is_directory(repoPath, ec))
         {
             return std::unexpected(ports::GitOpsError{
                 .kind = ports::GitOpsError::Kind::PathNotFound,
@@ -37,7 +36,7 @@ namespace gf::git::bl
 
     std::expected<bo::ConflictFile, ports::GitOpsError>
     GitConflictService::getConflictFile(const std::filesystem::path& repoPath,
-                                        const std::string& filePath)
+                                        const std::string& filePath) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -60,7 +59,7 @@ namespace gf::git::bl
     std::expected<std::string, ports::GitOpsError>
     GitConflictService::getFileStageContent(const std::filesystem::path& repoPath,
                                             const std::string& filePath,
-                                            int stage)
+                                            const int stage) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -92,7 +91,7 @@ namespace gf::git::bl
 
     std::expected<void, ports::GitOpsError>
     GitConflictService::applyConflictResolution(const std::filesystem::path& repoPath,
-                                                const bo::ApplyConflictResolutionOptions& options)
+                                                const bo::ApplyConflictResolutionOptions& options) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {

@@ -3,7 +3,6 @@
 #include "core/modules/git/bo/fs_watcher_models.hpp"
 
 #include <filesystem>
-#include <string_view>
 
 namespace gf::git::bl
 {

@@ -1,8 +1,6 @@
 #include "core/modules/git/bl/git_history_service.hpp"
 #include "core/modules/git/bl/repository_lock_coordinator.hpp"
 
-#include <algorithm>
-
 namespace gf::git::bl
 {
     GitHistoryService::GitHistoryService(ports::IRepositoryGitOps& gitOps) noexcept
@@ -10,7 +8,7 @@ namespace gf::git::bl
     {
     }
 
-    bool GitHistoryService::isValidTagName(std::string_view name) noexcept
+    bool GitHistoryService::isValidTagName(const std::string_view name) noexcept
     {
         if (name.empty() || name == "@")
         {
@@ -29,9 +27,9 @@ namespace gf::git::bl
             return false;
         }
 
-        for (char ch : name)
+        for (const char ch : name)
         {
-            unsigned char c = static_cast<unsigned char>(ch);
+            const auto c = static_cast<unsigned char>(ch);
             if (c < 0x20 || c == 0x7f)
             {
                 return false;
@@ -59,7 +57,7 @@ namespace gf::git::bl
     }
 
     std::expected<void, ports::GitOpsError>
-    GitHistoryService::validateRepoPath(const std::filesystem::path& repoPath) const
+    GitHistoryService::validateRepoPath(const std::filesystem::path& repoPath)
     {
         if (repoPath.empty())
         {
@@ -71,8 +69,7 @@ namespace gf::git::bl
             });
         }
 
-        std::error_code ec;
-        if (!std::filesystem::exists(repoPath, ec) || !std::filesystem::is_directory(repoPath, ec))
+        if (std::error_code ec; !std::filesystem::exists(repoPath, ec) || !std::filesystem::is_directory(repoPath, ec))
         {
             return std::unexpected(ports::GitOpsError{
                 .kind = ports::GitOpsError::Kind::PathNotFound,
@@ -87,7 +84,7 @@ namespace gf::git::bl
 
     std::expected<std::vector<bo::GitCommitLogItem>, ports::GitOpsError>
     GitHistoryService::getCommitHistory(const std::filesystem::path& repoPath,
-                                        const bo::CommitLogOptions& options)
+                                        const bo::CommitLogOptions& options) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -99,7 +96,7 @@ namespace gf::git::bl
 
     std::expected<std::optional<bo::GitCommitLogItem>, ports::GitOpsError>
     GitHistoryService::getCommitDetails(const std::filesystem::path& repoPath,
-                                        const std::string& commitSha)
+                                        const std::string& commitSha) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -136,7 +133,7 @@ namespace gf::git::bl
 
     std::expected<std::vector<bo::CommitFileChange>, ports::GitOpsError>
     GitHistoryService::getCommitFiles(const std::filesystem::path& repoPath,
-                                      const std::string& commitSha)
+                                      const std::string& commitSha) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -157,7 +154,7 @@ namespace gf::git::bl
     }
 
     std::expected<std::vector<std::string>, ports::GitOpsError>
-    GitHistoryService::listTrackedFiles(const std::filesystem::path& repoPath)
+    GitHistoryService::listTrackedFiles(const std::filesystem::path& repoPath) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -168,7 +165,7 @@ namespace gf::git::bl
     }
 
     std::expected<std::vector<bo::GitTag>, ports::GitOpsError>
-    GitHistoryService::listTags(const std::filesystem::path& repoPath)
+    GitHistoryService::listTags(const std::filesystem::path& repoPath) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -180,7 +177,7 @@ namespace gf::git::bl
 
     std::expected<void, ports::GitOpsError>
     GitHistoryService::createTag(const std::filesystem::path& repoPath,
-                                 const bo::CreateTagOptions& options)
+                                 const bo::CreateTagOptions& options) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -203,7 +200,7 @@ namespace gf::git::bl
 
     std::expected<void, ports::GitOpsError>
     GitHistoryService::deleteTag(const std::filesystem::path& repoPath,
-                                 const std::string& tagName)
+                                 const std::string& tagName) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {

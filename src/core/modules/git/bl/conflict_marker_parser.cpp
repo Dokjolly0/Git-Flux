@@ -13,7 +13,7 @@ namespace gf::git::bl
         };
     } // namespace
 
-    bool ConflictMarkerParser::hasConflictMarkers(std::string_view content) noexcept
+    bool ConflictMarkerParser::hasConflictMarkers(const std::string_view content) noexcept
     {
         return content.find("<<<<<<<") != std::string_view::npos &&
             content.find("=======") != std::string_view::npos &&
@@ -21,7 +21,7 @@ namespace gf::git::bl
     }
 
     std::vector<bo::ConflictHunk>
-    ConflictMarkerParser::parseHunks(std::string_view content)
+    ConflictMarkerParser::parseHunks(const std::string_view content)
     {
         std::vector<bo::ConflictHunk> hunks;
         if (content.empty())
@@ -29,17 +29,17 @@ namespace gf::git::bl
             return hunks;
         }
 
-        ParseState state = ParseState::Normal;
+        auto state = ParseState::Normal;
         bo::ConflictHunk currentHunk;
         std::size_t currentLineNum = 1;
 
         std::size_t startPos = 0;
         while (startPos < content.size())
         {
-            auto endPos = content.find('\n', startPos);
-            std::string_view fullLine = (endPos == std::string_view::npos)
-                                            ? content.substr(startPos)
-                                            : content.substr(startPos, endPos - startPos + 1);
+            const auto endPos = content.find('\n', startPos);
+            const std::string_view fullLine = endPos == std::string_view::npos
+                                                  ? content.substr(startPos)
+                                                  : content.substr(startPos, endPos - startPos + 1);
 
             std::string_view trimmedLine = fullLine;
             while (!trimmedLine.empty() && (trimmedLine.back() == '\n' || trimmedLine.back() == '\r'))
@@ -66,6 +66,7 @@ namespace gf::git::bl
             {
                 state = ParseState::Normal;
                 hunks.push_back(std::move(currentHunk));
+                currentHunk = bo::ConflictHunk{};
             }
             else
             {
@@ -97,22 +98,22 @@ namespace gf::git::bl
     }
 
     std::expected<std::string, std::string>
-    ConflictMarkerParser::reconstruct(std::string_view originalContent,
+    ConflictMarkerParser::reconstruct(const std::string_view originalContent,
                                       const std::vector<bo::ConflictHunk>& hunks)
     {
         std::string result;
         result.reserve(originalContent.size());
 
-        ParseState state = ParseState::Normal;
+        auto state = ParseState::Normal;
         std::size_t currentHunkIndex = 0;
 
         std::size_t startPos = 0;
         while (startPos < originalContent.size())
         {
-            auto endPos = originalContent.find('\n', startPos);
-            std::string_view fullLine = (endPos == std::string_view::npos)
-                                            ? originalContent.substr(startPos)
-                                            : originalContent.substr(startPos, endPos - startPos + 1);
+            const auto endPos = originalContent.find('\n', startPos);
+            const std::string_view fullLine = endPos == std::string_view::npos
+                                                  ? originalContent.substr(startPos)
+                                                  : originalContent.substr(startPos, endPos - startPos + 1);
 
             std::string_view trimmedLine = fullLine;
             while (!trimmedLine.empty() && (trimmedLine.back() == '\n' || trimmedLine.back() == '\r'))

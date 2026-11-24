@@ -10,7 +10,7 @@ namespace gf::git::bl
     }
 
     std::expected<bo::RepoWorkingTreeStatus, ports::GitOpsError>
-    GitWorkingTreeService::getWorkingTreeStatus(const std::filesystem::path& repoPath)
+    GitWorkingTreeService::getWorkingTreeStatus(const std::filesystem::path& repoPath) const
     {
         if (repoPath.empty())
         {
@@ -22,8 +22,7 @@ namespace gf::git::bl
             });
         }
 
-        std::error_code ec;
-        if (!std::filesystem::exists(repoPath, ec) || !std::filesystem::is_directory(repoPath, ec))
+        if (std::error_code ec; !std::filesystem::exists(repoPath, ec) || !std::filesystem::is_directory(repoPath, ec))
         {
             return std::unexpected(ports::GitOpsError{
                 .kind = ports::GitOpsError::Kind::PathNotFound,
@@ -37,7 +36,7 @@ namespace gf::git::bl
     }
 
     std::expected<bool, ports::GitOpsError>
-    GitWorkingTreeService::isRepositoryClean(const std::filesystem::path& repoPath)
+    GitWorkingTreeService::isRepositoryClean(const std::filesystem::path& repoPath) const
     {
         auto statusResult = getWorkingTreeStatus(repoPath);
         if (!statusResult)
@@ -48,7 +47,7 @@ namespace gf::git::bl
     }
 
     std::expected<bo::GitBranchHead, ports::GitOpsError>
-    GitWorkingTreeService::getCurrentBranch(const std::filesystem::path& repoPath)
+    GitWorkingTreeService::getCurrentBranch(const std::filesystem::path& repoPath) const
     {
         auto statusResult = getWorkingTreeStatus(repoPath);
         if (!statusResult)

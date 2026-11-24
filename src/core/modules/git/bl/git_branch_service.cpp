@@ -10,7 +10,7 @@ namespace gf::git::bl
     {
     }
 
-    bool GitBranchService::isValidBranchName(std::string_view name) noexcept
+    bool GitBranchService::isValidBranchName(const std::string_view name) noexcept
     {
         if (name.empty() || name == "@")
         {
@@ -29,9 +29,9 @@ namespace gf::git::bl
             return false;
         }
 
-        for (char ch : name)
+        for (const char ch : name)
         {
-            unsigned char c = static_cast<unsigned char>(ch);
+            const auto c = static_cast<unsigned char>(ch);
             if (c < 0x20 || c == 0x7f)
             {
                 return false;
@@ -59,7 +59,7 @@ namespace gf::git::bl
     }
 
     std::expected<void, ports::GitOpsError>
-    GitBranchService::validateRepoPath(const std::filesystem::path& repoPath) const
+    GitBranchService::validateRepoPath(const std::filesystem::path& repoPath)
     {
         if (repoPath.empty())
         {
@@ -71,8 +71,7 @@ namespace gf::git::bl
             });
         }
 
-        std::error_code ec;
-        if (!std::filesystem::exists(repoPath, ec) || !std::filesystem::is_directory(repoPath, ec))
+        if (std::error_code ec; !std::filesystem::exists(repoPath, ec) || !std::filesystem::is_directory(repoPath, ec))
         {
             return std::unexpected(ports::GitOpsError{
                 .kind = ports::GitOpsError::Kind::PathNotFound,
@@ -86,7 +85,7 @@ namespace gf::git::bl
     }
 
     std::expected<std::vector<bo::GitBranch>, ports::GitOpsError>
-    GitBranchService::listBranches(const std::filesystem::path& repoPath)
+    GitBranchService::listBranches(const std::filesystem::path& repoPath) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -97,7 +96,7 @@ namespace gf::git::bl
     }
 
     std::expected<std::vector<bo::GitBranch>, ports::GitOpsError>
-    GitBranchService::getLocalBranches(const std::filesystem::path& repoPath)
+    GitBranchService::getLocalBranches(const std::filesystem::path& repoPath) const
     {
         auto all = listBranches(repoPath);
         if (!all)
@@ -117,7 +116,7 @@ namespace gf::git::bl
     }
 
     std::expected<std::vector<bo::GitBranch>, ports::GitOpsError>
-    GitBranchService::getRemoteBranches(const std::filesystem::path& repoPath)
+    GitBranchService::getRemoteBranches(const std::filesystem::path& repoPath) const
     {
         auto all = listBranches(repoPath);
         if (!all)
@@ -137,7 +136,7 @@ namespace gf::git::bl
     }
 
     std::expected<std::optional<bo::GitBranch>, ports::GitOpsError>
-    GitBranchService::getCurrentBranch(const std::filesystem::path& repoPath)
+    GitBranchService::getCurrentBranch(const std::filesystem::path& repoPath) const
     {
         auto all = listBranches(repoPath);
         if (!all)
@@ -157,7 +156,7 @@ namespace gf::git::bl
 
     std::expected<void, ports::GitOpsError>
     GitBranchService::createBranch(const std::filesystem::path& repoPath,
-                                   const bo::CreateBranchOptions& options)
+                                   const bo::CreateBranchOptions& options) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -180,7 +179,7 @@ namespace gf::git::bl
 
     std::expected<void, ports::GitOpsError>
     GitBranchService::checkoutBranch(const std::filesystem::path& repoPath,
-                                     const bo::CheckoutOptions& options)
+                                     const bo::CheckoutOptions& options) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -214,7 +213,7 @@ namespace gf::git::bl
     std::expected<void, ports::GitOpsError>
     GitBranchService::deleteBranch(const std::filesystem::path& repoPath,
                                    const std::string& branchName,
-                                   bool force)
+                                   const bool force) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -238,7 +237,7 @@ namespace gf::git::bl
     std::expected<void, ports::GitOpsError>
     GitBranchService::renameBranch(const std::filesystem::path& repoPath,
                                    const std::string& oldName,
-                                   const std::string& newName)
+                                   const std::string& newName) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -272,7 +271,7 @@ namespace gf::git::bl
     std::expected<void, ports::GitOpsError>
     GitBranchService::resetCommit(const std::filesystem::path& repoPath,
                                   const std::string& commitSha,
-                                  const std::string& mode)
+                                  const std::string& mode) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -293,7 +292,7 @@ namespace gf::git::bl
 
     std::expected<void, ports::GitOpsError>
     GitBranchService::revertCommit(const std::filesystem::path& repoPath,
-                                   const std::string& commitSha)
+                                   const std::string& commitSha) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -315,7 +314,7 @@ namespace gf::git::bl
     std::expected<std::string, ports::GitOpsError>
     GitBranchService::rewordCommit(const std::filesystem::path& repoPath,
                                    const std::string& commitSha,
-                                   const std::string& newMessage)
+                                   const std::string& newMessage) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -346,7 +345,7 @@ namespace gf::git::bl
     std::expected<bool, ports::GitOpsError>
     GitBranchService::canFastForwardBranch(const std::filesystem::path& repoPath,
                                            const std::string& targetBranch,
-                                           const std::string& sourceRef)
+                                           const std::string& sourceRef) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -362,7 +361,7 @@ namespace gf::git::bl
     std::expected<void, ports::GitOpsError>
     GitBranchService::fastForwardBranch(const std::filesystem::path& repoPath,
                                         const std::string& targetBranch,
-                                        const std::string& sourceRef)
+                                        const std::string& sourceRef) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {
@@ -384,7 +383,7 @@ namespace gf::git::bl
     std::expected<void, ports::GitOpsError>
     GitBranchService::createWorktree(const std::filesystem::path& repoPath,
                                      const std::filesystem::path& worktreePath,
-                                     const std::string& commitOrBranch)
+                                     const std::string& commitOrBranch) const
     {
         if (auto valid = validateRepoPath(repoPath); !valid)
         {

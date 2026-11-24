@@ -1,18 +1,18 @@
 #include "core/modules/git/bl/fs_event_classifier.hpp"
 
-#include <algorithm>
 #include <string>
+#include <string_view>
 
 namespace gf::git::bl
 {
     namespace
     {
-        bool startsWith(std::string_view str, std::string_view prefix) noexcept
+        bool startsWith(const std::string_view str, const std::string_view prefix) noexcept
         {
             return str.size() >= prefix.size() && str.substr(0, prefix.size()) == prefix;
         }
 
-        bool endsWith(std::string_view str, std::string_view suffix) noexcept
+        bool endsWith(const std::string_view str, const std::string_view suffix) noexcept
         {
             return str.size() >= suffix.size() && str.substr(str.size() - suffix.size()) == suffix;
         }
@@ -37,15 +37,14 @@ namespace gf::git::bl
         }
         if (!repoRoot.empty())
         {
-            auto lexRel = targetPath.lexically_relative(repoRoot);
-            if (!lexRel.empty() && !startsWith(lexRel.generic_string(), ".."))
+            if (const auto lexRel = targetPath.lexically_relative(repoRoot);
+                !lexRel.empty() && !startsWith(lexRel.generic_string(), ".."))
             {
                 return lexRel.lexically_normal();
             }
         }
         std::error_code ec;
-        auto rel = std::filesystem::relative(targetPath, repoRoot, ec);
-        if (!ec && !rel.empty())
+        if (const auto rel = std::filesystem::relative(targetPath, repoRoot, ec); !ec && !rel.empty())
         {
             return rel.lexically_normal();
         }
@@ -55,11 +54,11 @@ namespace gf::git::bl
     bo::FsChangeClassification FsEventClassifier::classify(const std::filesystem::path& repoRoot,
                                                            const std::filesystem::path& changedPath) noexcept
     {
-        std::filesystem::path relPath = toRelativePath(repoRoot, changedPath);
-        std::string norm = normalizePathString(relPath);
+        const std::filesystem::path relPath = toRelativePath(repoRoot, changedPath);
+        const std::string norm = normalizePathString(relPath);
 
         // Check if it is a common transient file to ignore everywhere
-        std::string filename = relPath.filename().string();
+        const std::string filename = relPath.filename().string();
         if (endsWith(filename, ".swp") || endsWith(filename, ".swo") ||
             endsWith(filename, ".tmp") || endsWith(filename, "~") ||
             startsWith(filename, ".#") || filename == ".DS_Store" ||

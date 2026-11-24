@@ -4,13 +4,13 @@
 
 namespace gf::git::bl
 {
-    OperationCoordinator::OperationCoordinator(std::size_t maxConcurrency)
+    OperationCoordinator::OperationCoordinator(const std::size_t maxConcurrency)
         : maxConcurrency_(std::max<std::size_t>(1, maxConcurrency))
     {
         workers_.reserve(maxConcurrency_);
         for (std::size_t i = 0; i < maxConcurrency_; ++i)
         {
-            workers_.emplace_back([this]() { workerLoop(); });
+            workers_.emplace_back([this] { workerLoop(); });
         }
     }
 
@@ -25,13 +25,17 @@ namespace gf::git::bl
     }
 
     void OperationCoordinator::enqueueTask(repositories::bo::RepositoryId repoId,
-                                           OperationKind kind,
-                                           TaskPriority priority,
+                                           const OperationKind kind,
+                                           const TaskPriority priority,
                                            std::function<void()> work)
     {
         {
             std::scoped_lock lock(mutex_);
-            QueuedTask entry{std::move(repoId), kind, std::move(work)};
+            QueuedTask entry{
+                .repoId = std::move(repoId),
+                .kind = kind,
+                .work = std::move(work)
+            };
             if (priority == TaskPriority::HighActiveRepo)
             {
                 highQueue_.push_back(std::move(entry));
@@ -55,12 +59,12 @@ namespace gf::git::bl
         {
             return true;
         }
-        const RepoConcurrencyState& state = it->second;
+        const auto& [activeReaders, writerActive] = it->second;
         if (task.kind == OperationKind::PassiveRead)
         {
-            return !state.writerActive;
+            return !writerActive;
         }
-        return !state.writerActive && state.activeReaders == 0;
+        return !writerActive && activeReaders == 0;
     }
 
     bool OperationCoordinator::tryPopRunnableTaskLocked(QueuedTask& outTask)
@@ -73,14 +77,14 @@ namespace gf::git::bl
                 {
                     if (!it->repoId.empty())
                     {
-                        auto& state = repoStates_[it->repoId];
+                        auto& [activeReaders, writerActive] = repoStates_[it->repoId];
                         if (it->kind == OperationKind::PassiveRead)
                         {
-                            ++state.activeReaders;
+                            ++activeReaders;
                         }
                         else
                         {
-                            state.writerActive = true;
+                            writerActive = true;
                         }
                     }
                     outTask = std::move(*it);
@@ -99,14 +103,13 @@ namespace gf::git::bl
     }
 
     void OperationCoordinator::onTaskFinished(const repositories::bo::RepositoryId& repoId,
-                                              OperationKind kind)
+                                              const OperationKind kind)
     {
         {
             std::scoped_lock lock(mutex_);
             if (!repoId.empty())
             {
-                const auto it = repoStates_.find(repoId);
-                if (it != repoStates_.end())
+                if (const auto it = repoStates_.find(repoId); it != repoStates_.end())
                 {
                     if (kind == OperationKind::PassiveRead)
                     {
@@ -138,7 +141,7 @@ namespace gf::git::bl
             QueuedTask task;
             {
                 std::unique_lock lock(mutex_);
-                cv_.wait(lock, [this, &task]()
+                cv_.wait(lock, [this, &task]
                 {
                     if (tryPopRunnableTaskLocked(task))
                     {

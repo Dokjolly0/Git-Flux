@@ -43,59 +43,59 @@ namespace gf::git::bl
         MultiRepoBatchCoordinator& operator=(MultiRepoBatchCoordinator&&) = delete;
 
         [[nodiscard]] std::vector<bo::RepoBatchTarget>
-        resolveTargets(const std::vector<std::string>& repoIds);
+        resolveTargets(const std::vector<std::string>& repoIds) const;
 
         [[nodiscard]] std::vector<bo::RepoBatchTarget>
-        resolveGroupTargets(const std::string& groupId);
+        resolveGroupTargets(const std::string& groupId) const;
 
         [[nodiscard]] std::vector<bo::RepoBatchTarget>
-        resolveWorkspaceTargets(const std::string& workspaceId);
+        resolveWorkspaceTargets(const std::string& workspaceId) const;
 
         // Esecuzione Asincrona
         std::string executeBatchFetchAsync(const std::vector<bo::RepoBatchTarget>& targets,
                                            const std::string& remoteName = "origin",
-                                           BatchProgressCallback onProgress = nullptr,
-                                           BatchCompletionCallback onCompleted = nullptr);
+                                           const BatchProgressCallback& onProgress = nullptr,
+                                           const BatchCompletionCallback& onCompleted = nullptr);
 
         std::string executeGroupFetchAsync(const std::string& groupId,
                                            const std::string& remoteName = "origin",
-                                           BatchProgressCallback onProgress = nullptr,
-                                           BatchCompletionCallback onCompleted = nullptr);
+                                           const BatchProgressCallback& onProgress = nullptr,
+                                           const BatchCompletionCallback& onCompleted = nullptr);
 
         std::string executeWorkspaceFetchAsync(const std::string& workspaceId,
                                                const std::string& remoteName = "origin",
-                                               BatchProgressCallback onProgress = nullptr,
-                                               BatchCompletionCallback onCompleted = nullptr);
+                                               const BatchProgressCallback& onProgress = nullptr,
+                                               const BatchCompletionCallback& onCompleted = nullptr);
 
         std::string executeBatchPullAsync(const std::vector<bo::RepoBatchTarget>& targets,
                                           const std::string& remoteName = "origin",
-                                          BatchProgressCallback onProgress = nullptr,
-                                          BatchCompletionCallback onCompleted = nullptr);
+                                          const BatchProgressCallback& onProgress = nullptr,
+                                          const BatchCompletionCallback& onCompleted = nullptr);
 
         std::string executeBatchStatusAsync(const std::vector<bo::RepoBatchTarget>& targets,
-                                            BatchProgressCallback onProgress = nullptr,
-                                            BatchCompletionCallback onCompleted = nullptr);
+                                            const BatchProgressCallback& onProgress = nullptr,
+                                            const BatchCompletionCallback& onCompleted = nullptr);
 
         // Esecuzione Sincrona
         bo::BatchOperationReport executeBatchFetchSync(const std::vector<bo::RepoBatchTarget>& targets,
                                                        const std::string& remoteName = "origin",
-                                                       BatchProgressCallback onProgress = nullptr);
+                                                       const BatchProgressCallback& onProgress = nullptr);
 
         bo::BatchOperationReport executeBatchStatusSync(const std::vector<bo::RepoBatchTarget>& targets,
-                                                        BatchProgressCallback onProgress = nullptr);
+                                                        const BatchProgressCallback& onProgress = nullptr);
 
-        bool cancelBatch(const std::string& operationId);
+        bool cancelBatch(const std::string& operationId) const;
 
         [[nodiscard]] std::size_t maxConcurrency() const noexcept { return m_maxConcurrency; }
-        void setMaxConcurrency(std::size_t limit) noexcept { m_maxConcurrency = (limit == 0 ? 1 : limit); }
+        void setMaxConcurrency(const std::size_t limit) noexcept { m_maxConcurrency = limit == 0 ? 1 : limit; }
 
     private:
         bo::BatchOperationReport runBatchLoop(const std::string& operationId,
                                               bo::BatchOperationType opType,
                                               const std::vector<bo::RepoBatchTarget>& targets,
                                               const std::string& remoteName,
-                                              BatchProgressCallback onProgress,
-                                              tasks::ports::ITaskProgressSink* sink);
+                                              const BatchProgressCallback& onProgress,
+                                              tasks::ports::ITaskProgressSink* sink) const;
 
         repositories::bl::RepositoryService& m_repoService;
         groups::bl::GroupService& m_groupService;

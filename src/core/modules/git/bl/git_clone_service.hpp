@@ -25,7 +25,7 @@ namespace gf::git::bl
         /// Clones a remote repository and registers it into the local catalog.
         [[nodiscard]] std::expected<repositories::bo::Repository, ports::GitOpsError>
         cloneAndRegister(const bo::CloneRepositoryOptions& options,
-                         const std::optional<std::string>& customDisplayName = std::nullopt);
+                         const std::optional<std::string>& customDisplayName = std::nullopt) const;
 
     private:
         ports::IRepositoryGitOps& m_gitOps;

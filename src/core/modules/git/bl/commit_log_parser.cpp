@@ -25,14 +25,13 @@ namespace gf::git::bl
             s = trim(s);
             while (!s.empty())
             {
-                auto nextSpace = s.find(' ');
+                const auto nextSpace = s.find(' ');
                 if (nextSpace == std::string_view::npos)
                 {
                     tokens.emplace_back(s);
                     break;
                 }
-                auto token = s.substr(0, nextSpace);
-                if (!token.empty())
+                if (const auto token = s.substr(0, nextSpace); !token.empty())
                 {
                     tokens.emplace_back(token);
                 }
@@ -47,18 +46,16 @@ namespace gf::git::bl
             s = trim(s);
             while (!s.empty())
             {
-                auto nextComma = s.find(',');
+                const auto nextComma = s.find(',');
                 if (nextComma == std::string_view::npos)
                 {
-                    auto dec = trim(s);
-                    if (!dec.empty())
+                    if (const auto dec = trim(s); !dec.empty())
                     {
                         decorations.emplace_back(dec);
                     }
                     break;
                 }
-                auto dec = trim(s.substr(0, nextComma));
-                if (!dec.empty())
+                if (const auto dec = trim(s.substr(0, nextComma)); !dec.empty())
                 {
                     decorations.emplace_back(dec);
                 }
@@ -68,7 +65,7 @@ namespace gf::git::bl
         }
     } // namespace
 
-    std::vector<bo::GitCommitLogItem> CommitLogParser::parse(std::string_view rawOutput)
+    std::vector<bo::GitCommitLogItem> CommitLogParser::parse(const std::string_view rawOutput)
     {
         std::vector<bo::GitCommitLogItem> commits;
         if (rawOutput.empty())
@@ -76,13 +73,11 @@ namespace gf::git::bl
             return commits;
         }
 
-        constexpr char recordSeparator = '\x1e';
-        constexpr char fieldSeparator = '\0';
-
         std::size_t start = 0;
         while (start < rawOutput.size())
         {
-            auto end = rawOutput.find(recordSeparator, start);
+            constexpr char recordSeparator = '\x1e';
+            const auto end = rawOutput.find(recordSeparator, start);
             std::string_view record;
             if (end == std::string_view::npos)
             {
@@ -107,7 +102,8 @@ namespace gf::git::bl
             std::size_t fieldStart = 0;
             while (fieldStart <= record.size())
             {
-                auto fieldEnd = record.find(fieldSeparator, fieldStart);
+                constexpr char fieldSeparator = '\0';
+                const auto fieldEnd = record.find(fieldSeparator, fieldStart);
                 if (fieldEnd == std::string_view::npos)
                 {
                     fields.push_back(record.substr(fieldStart));

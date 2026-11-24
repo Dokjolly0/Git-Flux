@@ -1,5 +1,7 @@
 #include "core/modules/git/bl/async_git_service.hpp"
 
+#include <utility>
+
 namespace gf::git::bl
 {
     AsyncGitService::AsyncGitService(tasks::bl::BackgroundTaskRunner& taskRunner,
@@ -13,10 +15,10 @@ namespace gf::git::bl
 
     std::string AsyncGitService::fetchRemoteAsync(const std::filesystem::path& repoPath,
                                                   const bo::RemoteOperationOptions& options,
-                                                  AsyncFetchCallback onCompleted,
-                                                  AsyncProgressCallback onProgress)
+                                                  const AsyncFetchCallback& onCompleted,
+                                                  AsyncProgressCallback onProgress) const
     {
-        std::string taskName = "fetch (" + options.remoteName + ") on " + repoPath.filename().string();
+        const std::string taskName = "fetch (" + options.remoteName + ") on " + repoPath.filename().string();
 
         return m_taskRunner.postTask(
             taskName,
@@ -54,17 +56,17 @@ namespace gf::git::bl
                 return {};
             },
             tasks::bo::TaskPriority::Normal,
-            onProgress,
+            std::move(onProgress),
             nullptr
         );
     }
 
     std::string AsyncGitService::pullRemoteAsync(const std::filesystem::path& repoPath,
                                                  const bo::RemoteOperationOptions& options,
-                                                 AsyncPullCallback onCompleted,
-                                                 AsyncProgressCallback onProgress)
+                                                 const AsyncPullCallback& onCompleted,
+                                                 AsyncProgressCallback onProgress) const
     {
-        std::string taskName = "pull (" + options.remoteName + ") on " + repoPath.filename().string();
+        const std::string taskName = "pull (" + options.remoteName + ") on " + repoPath.filename().string();
 
         return m_taskRunner.postTask(
             taskName,
@@ -102,17 +104,17 @@ namespace gf::git::bl
                 return {};
             },
             tasks::bo::TaskPriority::Normal,
-            onProgress,
+            std::move(onProgress),
             nullptr
         );
     }
 
     std::string AsyncGitService::pushRemoteAsync(const std::filesystem::path& repoPath,
                                                  const bo::RemoteOperationOptions& options,
-                                                 AsyncPushCallback onCompleted,
-                                                 AsyncProgressCallback onProgress)
+                                                 const AsyncPushCallback& onCompleted,
+                                                 AsyncProgressCallback onProgress) const
     {
-        std::string taskName = "push (" + options.remoteName + ") on " + repoPath.filename().string();
+        const std::string taskName = "push (" + options.remoteName + ") on " + repoPath.filename().string();
 
         return m_taskRunner.postTask(
             taskName,
@@ -150,16 +152,16 @@ namespace gf::git::bl
                 return {};
             },
             tasks::bo::TaskPriority::Normal,
-            onProgress,
+            std::move(onProgress),
             nullptr
         );
     }
 
     std::string AsyncGitService::refreshWorkingTreeAsync(const std::filesystem::path& repoPath,
-                                                         AsyncWorkingTreeCallback onCompleted,
-                                                         AsyncProgressCallback onProgress)
+                                                         const AsyncWorkingTreeCallback& onCompleted,
+                                                         AsyncProgressCallback onProgress) const
     {
-        std::string taskName = "status on " + repoPath.filename().string();
+        const std::string taskName = "status on " + repoPath.filename().string();
 
         return m_taskRunner.postTask(
             taskName,
@@ -196,12 +198,12 @@ namespace gf::git::bl
                 return {};
             },
             tasks::bo::TaskPriority::High, // High-priority status scan for responsive UI
-            onProgress,
+            std::move(onProgress),
             nullptr
         );
     }
 
-    bool AsyncGitService::cancelOperation(const std::string& taskId)
+    bool AsyncGitService::cancelOperation(const std::string& taskId) const
     {
         return m_taskRunner.cancelTask(taskId);
     }

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <future>
+#include <ranges>
 #include <unordered_set>
 
 namespace gf::git::bl
@@ -13,7 +14,7 @@ namespace gf::git::bl
                                                          GitRemoteMergeService& remoteMergeService,
                                                          GitWorkingTreeService& workingTreeService,
                                                          tasks::bl::BackgroundTaskRunner& taskRunner,
-                                                         std::size_t maxConcurrency)
+                                                         const std::size_t maxConcurrency)
         : m_repoService(repoService)
           , m_groupService(groupService)
           , m_workspaceService(workspaceService)
@@ -27,19 +28,19 @@ namespace gf::git::bl
     MultiRepoBatchCoordinator::~MultiRepoBatchCoordinator()
     {
         {
-            std::lock_guard<std::mutex> lock(m_lifetime->mutex);
+            std::lock_guard lock(m_lifetime->mutex);
             m_lifetime->alive = false; // queued tasks that start from now on exit immediately
         }
         {
-            std::lock_guard<std::mutex> lock(m_activeOpsMutex);
-            for (const auto& [opId, taskId] : m_opToTaskId)
+            std::lock_guard lock(m_activeOpsMutex);
+            for (const auto& taskId : m_opToTaskId | std::views::values)
             {
                 (void)m_taskRunner.cancelTask(taskId);
             }
         }
         // Tasks already inside their body still use this object: wait for them to leave.
-        std::unique_lock<std::mutex> lock(m_lifetime->mutex);
-        m_lifetime->cv.wait(lock, [this]() { return m_lifetime->running == 0; });
+        std::unique_lock lock(m_lifetime->mutex);
+        m_lifetime->cv.wait(lock, [this] { return m_lifetime->running == 0; });
     }
 
     tasks::bl::TaskExecutable MultiRepoBatchCoordinator::guardTask(tasks::bl::TaskExecutable body) const
@@ -48,7 +49,7 @@ namespace gf::git::bl
             tasks::ports::ITaskProgressSink& sink) -> std::expected<void, std::string>
         {
             {
-                std::lock_guard<std::mutex> lock(state->mutex);
+                std::lock_guard lock(state->mutex);
                 if (!state->alive)
                 {
                     return std::unexpected(std::string("Coordinatore batch non più disponibile"));
@@ -62,7 +63,7 @@ namespace gf::git::bl
                 ~RunningScope()
                 {
                     {
-                        std::lock_guard<std::mutex> lock(state.mutex);
+                        std::lock_guard lock(state.mutex);
                         --state.running;
                     }
                     state.cv.notify_all();
@@ -74,7 +75,7 @@ namespace gf::git::bl
     }
 
     std::vector<bo::RepoBatchTarget>
-    MultiRepoBatchCoordinator::resolveTargets(const std::vector<std::string>& repoIds)
+    MultiRepoBatchCoordinator::resolveTargets(const std::vector<std::string>& repoIds) const
     {
         std::vector<bo::RepoBatchTarget> targets;
         std::unordered_set<std::string> seenIds;
@@ -86,8 +87,8 @@ namespace gf::git::bl
                 continue;
             }
 
-            auto repoRes = m_repoService.getRepository(repositories::bo::RepositoryId{idStr});
-            if (repoRes && repoRes->has_value())
+            if (const auto repoRes = m_repoService.getRepository(repositories::bo::RepositoryId{idStr});
+                repoRes && repoRes->has_value())
             {
                 const auto& r = **repoRes;
                 targets.push_back(bo::RepoBatchTarget{
@@ -103,12 +104,11 @@ namespace gf::git::bl
     }
 
     std::vector<bo::RepoBatchTarget>
-    MultiRepoBatchCoordinator::resolveGroupTargets(const std::string& groupId)
+    MultiRepoBatchCoordinator::resolveGroupTargets(const std::string& groupId) const
     {
         std::vector<bo::RepoBatchTarget> targets;
-        auto ctxRes = m_groupService.resolveQuickOpenContext({groups::bo::GroupId{groupId}});
 
-        if (ctxRes)
+        if (const auto ctxRes = m_groupService.resolveQuickOpenContext({groups::bo::GroupId{groupId}}); ctxRes)
         {
             for (const auto& r : ctxRes->repositories)
             {
@@ -124,12 +124,12 @@ namespace gf::git::bl
     }
 
     std::vector<bo::RepoBatchTarget>
-    MultiRepoBatchCoordinator::resolveWorkspaceTargets(const std::string& workspaceId)
+    MultiRepoBatchCoordinator::resolveWorkspaceTargets(const std::string& workspaceId) const
     {
         std::vector<bo::RepoBatchTarget> targets;
-        auto res = m_workspaceService.resolveWorkspaceRepositories(workspaces::bo::WorkspaceId{workspaceId});
 
-        if (res)
+        if (const auto res = m_workspaceService.resolveWorkspaceRepositories(workspaces::bo::WorkspaceId{workspaceId});
+            res)
         {
             for (const auto& r : *res)
             {
@@ -146,13 +146,13 @@ namespace gf::git::bl
 
     bo::BatchOperationReport
     MultiRepoBatchCoordinator::runBatchLoop(const std::string& operationId,
-                                            bo::BatchOperationType opType,
+                                            const bo::BatchOperationType opType,
                                             const std::vector<bo::RepoBatchTarget>& targets,
                                             const std::string& remoteName,
-                                            BatchProgressCallback onProgress,
-                                            tasks::ports::ITaskProgressSink* sink)
+                                            const BatchProgressCallback& onProgress,
+                                            tasks::ports::ITaskProgressSink* sink) const
     {
-        auto overallStart = std::chrono::steady_clock::now();
+        const auto overallStart = std::chrono::steady_clock::now();
         bo::BatchOperationReport report{
             .operationId = operationId,
             .operationType = opType,
@@ -172,14 +172,14 @@ namespace gf::git::bl
         report.items.reserve(targets.size());
         std::size_t completed = 0;
 
-        for (const auto& target : targets)
+        for (const auto& [repoId, repoName, repoPath] : targets)
         {
             if (sink && sink->isCancelled())
             {
                 report.items.push_back(bo::RepoBatchItemResult{
-                    .repoId = target.repoId,
-                    .repoName = target.repoName,
-                    .repoPath = target.repoPath,
+                    .repoId = repoId,
+                    .repoName = repoName,
+                    .repoPath = repoPath,
                     .status = bo::RepoBatchItemStatus::Skipped,
                     .message = "Operazione batch annullata",
                     .durationMs = std::chrono::milliseconds(0)
@@ -189,11 +189,11 @@ namespace gf::git::bl
                 continue;
             }
 
-            auto itemStart = std::chrono::steady_clock::now();
+            const auto itemStart = std::chrono::steady_clock::now();
             bo::RepoBatchItemResult itemResult{
-                .repoId = target.repoId,
-                .repoName = target.repoName,
-                .repoPath = target.repoPath,
+                .repoId = repoId,
+                .repoName = repoName,
+                .repoPath = repoPath,
                 .status = bo::RepoBatchItemStatus::Running,
                 .message = {},
                 .durationMs = std::chrono::milliseconds(0)
@@ -205,8 +205,8 @@ namespace gf::git::bl
                     .operationId = operationId,
                     .completedCount = completed,
                     .totalCount = targets.size(),
-                    .currentRepoName = target.repoName,
-                    .currentMessage = "Esecuzione su " + target.repoName + "..."
+                    .currentRepoName = repoName,
+                    .currentMessage = "Esecuzione su " + repoName + "..."
                 });
             }
 
@@ -214,9 +214,9 @@ namespace gf::git::bl
             {
             case bo::BatchOperationType::Fetch:
                 {
-                    auto res = m_remoteMergeService.fetchRemote(target.repoPath,
-                                                                bo::RemoteOperationOptions{.remoteName = remoteName});
-                    if (res)
+                    if (const auto res = m_remoteMergeService.fetchRemote(
+                            repoPath, bo::RemoteOperationOptions{.remoteName = remoteName});
+                        res)
                     {
                         itemResult.status = bo::RepoBatchItemStatus::Succeeded;
                         itemResult.message = "Fetch completato con successo";
@@ -232,9 +232,9 @@ namespace gf::git::bl
                 }
             case bo::BatchOperationType::Pull:
                 {
-                    auto res = m_remoteMergeService.pullRemote(target.repoPath,
-                                                               bo::RemoteOperationOptions{.remoteName = remoteName});
-                    if (res)
+                    if (const auto res = m_remoteMergeService.pullRemote(
+                            repoPath, bo::RemoteOperationOptions{.remoteName = remoteName});
+                        res)
                     {
                         itemResult.status = bo::RepoBatchItemStatus::Succeeded;
                         itemResult.message = "Pull completato con successo";
@@ -250,13 +250,12 @@ namespace gf::git::bl
                 }
             case bo::BatchOperationType::Status:
                 {
-                    auto res = m_workingTreeService.getWorkingTreeStatus(target.repoPath);
-                    if (res)
+                    if (const auto res = m_workingTreeService.getWorkingTreeStatus(repoPath); res)
                     {
                         itemResult.status = bo::RepoBatchItemStatus::Succeeded;
                         itemResult.message = res->isClean()
                                                  ? "Working tree pulito"
-                                                 : (std::to_string(res->totalChangesCount()) + " modifiche");
+                                                 : std::to_string(res->totalChangesCount()) + " modifiche";
                         report.succeededCount++;
                     }
                     else
@@ -269,7 +268,7 @@ namespace gf::git::bl
                 }
             }
 
-            auto itemEnd = std::chrono::steady_clock::now();
+            const auto itemEnd = std::chrono::steady_clock::now();
             itemResult.durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(itemEnd - itemStart);
             report.items.push_back(std::move(itemResult));
 
@@ -281,20 +280,20 @@ namespace gf::git::bl
                     .operationId = operationId,
                     .completedCount = completed,
                     .totalCount = targets.size(),
-                    .currentRepoName = target.repoName,
-                    .currentMessage = "Completato " + target.repoName
+                    .currentRepoName = repoName,
+                    .currentMessage = "Completato " + repoName
                 });
             }
 
             if (sink)
             {
-                int pct = targets.empty() ? 100 : static_cast<int>((completed * 100) / targets.size());
+                const int pct = targets.empty() ? 100 : static_cast<int>(completed * 100 / targets.size());
                 sink->reportProgress(
                     pct, "Completato " + std::to_string(completed) + "/" + std::to_string(targets.size()));
             }
         }
 
-        auto overallEnd = std::chrono::steady_clock::now();
+        const auto overallEnd = std::chrono::steady_clock::now();
         report.totalDurationMs = std::chrono::duration_cast<std::chrono::milliseconds>(overallEnd - overallStart);
 
         return report;
@@ -303,22 +302,23 @@ namespace gf::git::bl
     std::string
     MultiRepoBatchCoordinator::executeBatchFetchAsync(const std::vector<bo::RepoBatchTarget>& targets,
                                                       const std::string& remoteName,
-                                                      BatchProgressCallback onProgress,
-                                                      BatchCompletionCallback onCompleted)
+                                                      const BatchProgressCallback& onProgress,
+                                                      const BatchCompletionCallback& onCompleted)
     {
-        uint64_t idNum = m_nextOpId.fetch_add(1);
+        const uint64_t idNum = m_nextOpId.fetch_add(1);
         std::string opId = "batch-fetch-" + std::to_string(idNum);
 
-        std::lock_guard<std::mutex> opsLock(m_activeOpsMutex); // see m_opToTaskId
-        std::string taskId = m_taskRunner.postTask(
+        std::lock_guard opsLock(m_activeOpsMutex); // see m_opToTaskId
+        const std::string taskId = m_taskRunner.postTask(
             opId,
             guardTask([this, opId, targets, remoteName, onProgress, onCompleted](
             tasks::ports::ITaskProgressSink& sink) -> std::expected<void, std::string>
             {
-                auto report = runBatchLoop(opId, bo::BatchOperationType::Fetch, targets, remoteName, onProgress, &sink);
+                const auto report =
+                    runBatchLoop(opId, bo::BatchOperationType::Fetch, targets, remoteName, onProgress, &sink);
 
                 {
-                    std::lock_guard<std::mutex> lock(m_activeOpsMutex);
+                    std::lock_guard lock(m_activeOpsMutex);
                     m_opToTaskId.erase(opId);
                 }
 
@@ -343,42 +343,43 @@ namespace gf::git::bl
     std::string
     MultiRepoBatchCoordinator::executeGroupFetchAsync(const std::string& groupId,
                                                       const std::string& remoteName,
-                                                      BatchProgressCallback onProgress,
-                                                      BatchCompletionCallback onCompleted)
+                                                      const BatchProgressCallback& onProgress,
+                                                      const BatchCompletionCallback& onCompleted)
     {
-        auto targets = resolveGroupTargets(groupId);
+        const auto targets = resolveGroupTargets(groupId);
         return executeBatchFetchAsync(targets, remoteName, onProgress, onCompleted);
     }
 
     std::string
     MultiRepoBatchCoordinator::executeWorkspaceFetchAsync(const std::string& workspaceId,
                                                           const std::string& remoteName,
-                                                          BatchProgressCallback onProgress,
-                                                          BatchCompletionCallback onCompleted)
+                                                          const BatchProgressCallback& onProgress,
+                                                          const BatchCompletionCallback& onCompleted)
     {
-        auto targets = resolveWorkspaceTargets(workspaceId);
+        const auto targets = resolveWorkspaceTargets(workspaceId);
         return executeBatchFetchAsync(targets, remoteName, onProgress, onCompleted);
     }
 
     std::string
     MultiRepoBatchCoordinator::executeBatchPullAsync(const std::vector<bo::RepoBatchTarget>& targets,
                                                      const std::string& remoteName,
-                                                     BatchProgressCallback onProgress,
-                                                     BatchCompletionCallback onCompleted)
+                                                     const BatchProgressCallback& onProgress,
+                                                     const BatchCompletionCallback& onCompleted)
     {
-        uint64_t idNum = m_nextOpId.fetch_add(1);
+        const uint64_t idNum = m_nextOpId.fetch_add(1);
         std::string opId = "batch-pull-" + std::to_string(idNum);
 
-        std::lock_guard<std::mutex> opsLock(m_activeOpsMutex); // see m_opToTaskId
-        std::string taskId = m_taskRunner.postTask(
+        std::lock_guard opsLock(m_activeOpsMutex); // see m_opToTaskId
+        const std::string taskId = m_taskRunner.postTask(
             opId,
             guardTask([this, opId, targets, remoteName, onProgress, onCompleted](
             tasks::ports::ITaskProgressSink& sink) -> std::expected<void, std::string>
             {
-                auto report = runBatchLoop(opId, bo::BatchOperationType::Pull, targets, remoteName, onProgress, &sink);
+                const auto report =
+                    runBatchLoop(opId, bo::BatchOperationType::Pull, targets, remoteName, onProgress, &sink);
 
                 {
-                    std::lock_guard<std::mutex> lock(m_activeOpsMutex);
+                    std::lock_guard lock(m_activeOpsMutex);
                     m_opToTaskId.erase(opId);
                 }
 
@@ -402,22 +403,23 @@ namespace gf::git::bl
 
     std::string
     MultiRepoBatchCoordinator::executeBatchStatusAsync(const std::vector<bo::RepoBatchTarget>& targets,
-                                                       BatchProgressCallback onProgress,
-                                                       BatchCompletionCallback onCompleted)
+                                                       const BatchProgressCallback& onProgress,
+                                                       const BatchCompletionCallback& onCompleted)
     {
-        uint64_t idNum = m_nextOpId.fetch_add(1);
+        const uint64_t idNum = m_nextOpId.fetch_add(1);
         std::string opId = "batch-status-" + std::to_string(idNum);
 
-        std::lock_guard<std::mutex> opsLock(m_activeOpsMutex); // see m_opToTaskId
-        std::string taskId = m_taskRunner.postTask(
+        std::lock_guard opsLock(m_activeOpsMutex); // see m_opToTaskId
+        const std::string taskId = m_taskRunner.postTask(
             opId,
             guardTask([this, opId, targets, onProgress, onCompleted](
             tasks::ports::ITaskProgressSink& sink) -> std::expected<void, std::string>
             {
-                auto report = runBatchLoop(opId, bo::BatchOperationType::Status, targets, "", onProgress, &sink);
+                const auto report =
+                    runBatchLoop(opId, bo::BatchOperationType::Status, targets, "", onProgress, &sink);
 
                 {
-                    std::lock_guard<std::mutex> lock(m_activeOpsMutex);
+                    std::lock_guard lock(m_activeOpsMutex);
                     m_opToTaskId.erase(opId);
                 }
 
@@ -442,27 +444,26 @@ namespace gf::git::bl
     bo::BatchOperationReport
     MultiRepoBatchCoordinator::executeBatchFetchSync(const std::vector<bo::RepoBatchTarget>& targets,
                                                      const std::string& remoteName,
-                                                     BatchProgressCallback onProgress)
+                                                     const BatchProgressCallback& onProgress)
     {
-        uint64_t idNum = m_nextOpId.fetch_add(1);
-        std::string opId = "batch-fetch-sync-" + std::to_string(idNum);
+        const uint64_t idNum = m_nextOpId.fetch_add(1);
+        const std::string opId = "batch-fetch-sync-" + std::to_string(idNum);
         return runBatchLoop(opId, bo::BatchOperationType::Fetch, targets, remoteName, onProgress, nullptr);
     }
 
     bo::BatchOperationReport
     MultiRepoBatchCoordinator::executeBatchStatusSync(const std::vector<bo::RepoBatchTarget>& targets,
-                                                      BatchProgressCallback onProgress)
+                                                      const BatchProgressCallback& onProgress)
     {
-        uint64_t idNum = m_nextOpId.fetch_add(1);
-        std::string opId = "batch-status-sync-" + std::to_string(idNum);
+        const uint64_t idNum = m_nextOpId.fetch_add(1);
+        const std::string opId = "batch-status-sync-" + std::to_string(idNum);
         return runBatchLoop(opId, bo::BatchOperationType::Status, targets, "", onProgress, nullptr);
     }
 
-    bool MultiRepoBatchCoordinator::cancelBatch(const std::string& operationId)
+    bool MultiRepoBatchCoordinator::cancelBatch(const std::string& operationId) const
     {
-        std::lock_guard<std::mutex> lock(m_activeOpsMutex);
-        auto it = m_opToTaskId.find(operationId);
-        if (it != m_opToTaskId.end())
+        std::lock_guard lock(m_activeOpsMutex);
+        if (const auto it = m_opToTaskId.find(operationId); it != m_opToTaskId.end())
         {
             return m_taskRunner.cancelTask(it->second);
         }
