@@ -1,4 +1,4 @@
-<div align="center">
+<div style="text-align: center;">
 
 # ⎇ Git Flux
 
@@ -8,7 +8,7 @@
 
 [![C++23](https://img.shields.io/badge/C%2B%2B-23-blue.svg?style=flat-square&logo=c%2B%2B)](https://en.cppreference.com/w/cpp/23)
 [![Qt 6](https://img.shields.io/badge/Qt-6.6%2B-41CD52.svg?style=flat-square&logo=qt)](https://www.qt.io/)
-[![Zero-Qt Core](https://img.shields.io/badge/Core-Zero--Qt-brightgreen.svg?style=flat-square)](#architecture--clean-design)
+[![Zero-Qt Core](https://img.shields.io/badge/Core-Zero--Qt-brightgreen.svg?style=flat-square)](#architecture-and-clean-design)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg?style=flat-square)](#platform-support)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 
@@ -65,7 +65,7 @@
 
 ---
 
-## 🏛️ Architecture & Clean Design
+## Architecture and Clean Design
 
 Git Flux strictly follows **Clean Architecture** / **Hexagonal Architecture** principles. The application is divided
 into three completely decoupled layers:
@@ -163,6 +163,10 @@ GitFlux/
 ---
 
 ## 🛠️ Prerequisites & Toolchain
+
+### Platform Support
+
+Git Flux targets **Linux**, **macOS**, and **Windows** using native OS Git process execution and hardware-accelerated Qt Quick 6.
 
 | Requirement         | Minimum Version                 | Note                                                        |
 |:--------------------|:--------------------------------|:------------------------------------------------------------|

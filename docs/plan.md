@@ -277,7 +277,7 @@ fisso / logo Git Flux). Riflette direttamente il modello dati a tre entità del 
 3. **Colonna 2 — GROUPS LIST (`+`):**
     - Elenco dei gruppi leggeri con indicazione del numero di repository membri.
     - Pulsante **`+`**: crea un nuovo gruppo e associa repository esistenti.
-    - Supporta selezione singola o multipla per l' **Apertura Rapida (Quick Open)**: apre l'unione dei repository dei
+    - Supporta selezione singola o multipla per l'**Apertura Rapida (Quick Open)**: apre l'unione dei repository dei
       gruppi selezionati senza richiedere la persistenza di un workspace.
 4. **Colonna 3 — WORKSPACE LIST (`+`):**
     - Elenco degli ambienti persistenti con anteprima della sessione salvata (tab aperti, gruppi inclusi, filtri attivi,
@@ -780,7 +780,7 @@ restano **locali e opt-in per eventuale condivisione**.
 | **Command**              | Action Registry e dispatch         | Azioni UI distinte dai comandi Git                    |
 | **Observer**             | Cambi stato/progress               | Notifiche tipizzate, no bus globale indiscriminato    |
 | **Strategy**             | Futuri backend AI/process          | Solo quando esistono varianti reali                   |
-| **Factory**              | Creazione configurable di adapter  | Quando emerge la necessità                            |
+| **Factory**              | Creazione configurabile di adapter | Quando emerge la necessità                            |
 
 **Da evitare:** singleton globali mutabili, Service Locator, god class `GitFlux`, un Controller per ogni View, utility
 onnivore, ereditarietà superflua, astrazioni speculative, accessi SQLite diretti dalla UI.
@@ -857,7 +857,7 @@ gf_desktop               # Qt Quick, ViewModel, Bootstrap
 gf_tests                 # core e integrazione
 ```
 
-Non imporremo `QSqlDatabase` nel livello di persistenza: l' **API SQLite nativa** è una candidata per mantenere
+Non imporremo `QSqlDatabase` nel livello di persistenza: l'**API SQLite nativa** è una candidata per mantenere
 l'adapter database indipendente da Qt. Se l'adapter processi usa `QProcess`, ciò resta **esterno** al core.
 
 ### 12.5 Build desiderata (non ancora disponibile)
@@ -1175,7 +1175,7 @@ README):
 ## Sintesi della strategia
 
 > **Prima un Git Flux V1 stabile e piacevole da utilizzare; poi un ambiente Git avanzato, personalizzabile e con AI
-opzionale.**
+> opzionale.**
 >
 > Le fondamenta devono supportare il futuro, ma non è necessario costruirlo tutto oggi.
 

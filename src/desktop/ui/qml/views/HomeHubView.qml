@@ -50,20 +50,20 @@ Item {
 
     function findGroupAtRootPos(rootX, rootY) {
         if (!homeHubVmRef || !homeHubVmRef.showGroups || homeHubVmRef.groupsCount === 0) return null;
-        var listPt = root.mapToItem(groupListView, rootX, rootY);
+        const listPt = root.mapToItem(groupListView, rootX, rootY);
         if (listPt.x < -30 || listPt.x > groupListView.width + 30 || listPt.y < 0 || listPt.y > groupListView.height) return null;
-        var sampleX = Math.max(10, Math.min(groupListView.width - 10, listPt.x + groupListView.contentX));
-        var item = groupListView.itemAt(sampleX, listPt.y + groupListView.contentY);
+        const sampleX = Math.max(10, Math.min(groupListView.width - 10, listPt.x + groupListView.contentX));
+        const item = groupListView.itemAt(sampleX, listPt.y + groupListView.contentY);
         if (item && item.grpCardId) return {id: item.grpCardId, name: item.grpCardName};
         return null;
     }
 
     function findWorkspaceAtRootPos(rootX, rootY) {
         if (!homeHubVmRef || !homeHubVmRef.showWorkspaces || homeHubVmRef.workspacesCount === 0) return null;
-        var listPt = root.mapToItem(wsListView, rootX, rootY);
+        const listPt = root.mapToItem(wsListView, rootX, rootY);
         if (listPt.x < -30 || listPt.x > wsListView.width + 30 || listPt.y < 0 || listPt.y > wsListView.height) return null;
-        var sampleX = Math.max(10, Math.min(wsListView.width - 10, listPt.x + wsListView.contentX));
-        var item = wsListView.itemAt(sampleX, listPt.y + wsListView.contentY);
+        const sampleX = Math.max(10, Math.min(wsListView.width - 10, listPt.x + wsListView.contentX));
+        const item = wsListView.itemAt(sampleX, listPt.y + wsListView.contentY);
         if (item && item.wsCardId) return {id: item.wsCardId, name: item.wsCardName};
         return null;
     }
@@ -128,7 +128,7 @@ Item {
             feedbackBanner.showError(message);
         }
 
-        function onRepositoryAdded(repoName, path) {
+        function onRepositoryAdded(repoName) {
             feedbackBanner.showSuccess("Repository '" + repoName + "' aggiunto con successo!");
         }
 
@@ -1023,24 +1023,24 @@ Item {
                                     }
                                     onPositionChanged: function (mouse) {
                                         if (pressed && !repoCardRect.isMissing) {
-                                            var dx = mouse.x - pressPoint.x;
-                                            var dy = mouse.y - pressPoint.y;
+                                            const dx = mouse.x - pressPoint.x;
+                                            const dy = mouse.y - pressPoint.y;
                                             if (!root.isDraggingRepo && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
                                                 root.startDraggingRepo(repoCardRect.id, repoCardRect.displayName);
                                             }
                                             if (root.isDraggingRepo) {
-                                                var pt = mapToItem(root, mouse.x, mouse.y);
+                                                const pt = mapToItem(root, mouse.x, mouse.y);
                                                 dragGhostRepo.x = pt.x - dragGhostRepo.width / 2;
                                                 dragGhostRepo.y = pt.y - dragGhostRepo.height / 2;
 
-                                                var grp = root.findGroupAtRootPos(pt.x, pt.y);
+                                                const grp = root.findGroupAtRootPos(pt.x, pt.y);
                                                 if (grp) {
                                                     root.hoveredGroupId = grp.id;
                                                     root.hoveredGroupName = grp.name;
                                                     root.hoveredWorkspaceId = "";
                                                     root.hoveredWorkspaceName = "";
                                                 } else {
-                                                    var ws = root.findWorkspaceAtRootPos(pt.x, pt.y);
+                                                    const ws = root.findWorkspaceAtRootPos(pt.x, pt.y);
                                                     if (ws) {
                                                         root.hoveredWorkspaceId = ws.id;
                                                         root.hoveredWorkspaceName = ws.name;
@@ -1056,14 +1056,14 @@ Item {
                                             }
                                         }
                                     }
-                                    onReleased: function (mouse) {
+                                    onReleased: function () {
                                         if (root.isDraggingRepo) {
-                                            var rId = root.draggedRepoId;
-                                            var rName = root.draggedRepoName;
-                                            var gId = root.hoveredGroupId;
-                                            var gName = root.hoveredGroupName;
-                                            var wId = root.hoveredWorkspaceId;
-                                            var wName = root.hoveredWorkspaceName;
+                                            const rId = root.draggedRepoId;
+                                            const rName = root.draggedRepoName;
+                                            const gId = root.hoveredGroupId;
+                                            const gName = root.hoveredGroupName;
+                                            const wId = root.hoveredWorkspaceId;
+                                            const wName = root.hoveredWorkspaceName;
 
                                             root.clearDragState();
 
@@ -1350,7 +1350,7 @@ Item {
                                                 addRepoToGroupDialog.targetGroupId = grpCardRect.id;
                                                 addRepoToGroupDialog.targetGroupName = grpCardRect.name;
                                                 addRepoToGroupDialog.selectedRepoId = "";
-                                                addRepoToGroupDialog.refreshAvailable();
+                                                addRepoToGroupDialog.refreshAvailableReposForGroup();
                                                 addRepoToGroupDialog.open();
                                             }
                                             contentItem: Text {
@@ -1482,7 +1482,7 @@ Item {
                                                             font.bold: true
                                                         }
                                                         onClicked: {
-                                                            var repoId = grpCardRect.repositoryIds[index];
+                                                            const repoId = grpCardRect.repositoryIds[index];
                                                             homeHubVm.removeRepositoryFromGroup(grpCardRect.id, repoId);
                                                         }
                                                     }
@@ -1514,17 +1514,17 @@ Item {
                                     }
                                     onPositionChanged: function (mouse) {
                                         if (pressed) {
-                                            var dx = mouse.x - pressPoint.x;
-                                            var dy = mouse.y - pressPoint.y;
+                                            const dx = mouse.x - pressPoint.x;
+                                            const dy = mouse.y - pressPoint.y;
                                             if (!root.isDraggingGroup && !root.isDraggingRepo && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
                                                 root.startDraggingGroup(grpCardRect.id, grpCardRect.name);
                                             }
                                             if (root.isDraggingGroup) {
-                                                var pt = mapToItem(root, mouse.x, mouse.y);
+                                                const pt = mapToItem(root, mouse.x, mouse.y);
                                                 dragGhostGroup.x = pt.x - dragGhostGroup.width / 2;
                                                 dragGhostGroup.y = pt.y - dragGhostGroup.height / 2;
 
-                                                var ws = root.findWorkspaceAtRootPos(pt.x, pt.y);
+                                                const ws = root.findWorkspaceAtRootPos(pt.x, pt.y);
                                                 if (ws) {
                                                     root.hoveredWorkspaceId = ws.id;
                                                     root.hoveredWorkspaceName = ws.name;
@@ -1535,12 +1535,12 @@ Item {
                                             }
                                         }
                                     }
-                                    onReleased: function (mouse) {
+                                    onReleased: function () {
                                         if (root.isDraggingGroup) {
-                                            var gId = root.draggedGroupId;
-                                            var gName = root.draggedGroupName;
-                                            var wId = root.hoveredWorkspaceId;
-                                            var wName = root.hoveredWorkspaceName;
+                                            const gId = root.draggedGroupId;
+                                            const gName = root.draggedGroupName;
+                                            const wId = root.hoveredWorkspaceId;
+                                            const wName = root.hoveredWorkspaceName;
 
                                             root.clearDragState();
 
@@ -1791,7 +1791,7 @@ Item {
                                                 addRepoToWsDialog.targetWorkspaceId = wsCardRect.id;
                                                 addRepoToWsDialog.targetWorkspaceName = wsCardRect.name;
                                                 addRepoToWsDialog.selectedRepoId = "";
-                                                addRepoToWsDialog.refreshAvailable();
+                                                addRepoToWsDialog.refreshAvailableReposForWorkspace();
                                                 addRepoToWsDialog.open();
                                             }
                                             contentItem: Text {
@@ -1813,7 +1813,7 @@ Item {
                                                 addGrpToWsDialog.targetWorkspaceId = wsCardRect.id;
                                                 addGrpToWsDialog.targetWorkspaceName = wsCardRect.name;
                                                 addGrpToWsDialog.selectedGroupId = "";
-                                                addGrpToWsDialog.refreshAvailable();
+                                                addGrpToWsDialog.refreshAvailableGroupsForWorkspace();
                                                 addGrpToWsDialog.open();
                                             }
                                             contentItem: Text {
@@ -1925,7 +1925,7 @@ Item {
                                                             font.bold: true
                                                         }
                                                         onClicked: {
-                                                            var gId = wsCardRect.groupIds[index];
+                                                            const gId = wsCardRect.groupIds[index];
                                                             homeHubVm.removeGroupFromWorkspace(wsCardRect.id, gId);
                                                         }
                                                     }
@@ -1981,7 +1981,7 @@ Item {
                                                             font.bold: true
                                                         }
                                                         onClicked: {
-                                                            var repoId = wsCardRect.repositoryIds[index];
+                                                            const repoId = wsCardRect.repositoryIds[index];
                                                             homeHubVm.removeRepositoryFromWorkspace(wsCardRect.id, repoId);
                                                         }
                                                     }
@@ -2195,8 +2195,8 @@ Item {
                         FluxCheckBox {
                             checked: isChecked
                             onToggled: {
-                                var copy = addGroupDialog.selectedRepoIds.slice();
-                                var idx = copy.indexOf(model.id);
+                                const copy = addGroupDialog.selectedRepoIds.slice();
+                                const idx = copy.indexOf(model.id);
                                 if (checked && idx === -1) {
                                     copy.push(model.id);
                                 } else if (!checked && idx !== -1) {
@@ -2521,7 +2521,7 @@ Item {
         property string selectedGroupId: ""
         property var availableGroups: []
 
-        function refreshAvailable() {
+        function refreshAvailableGroupsForRepo() {
             if (homeHubVm && targetRepoId.length > 0) {
                 availableGroups = homeHubVm.getAvailableGroupsForRepository(targetRepoId);
             } else {
@@ -2531,7 +2531,7 @@ Item {
 
         onAboutToShow: {
             selectedGroupId = "";
-            refreshAvailable();
+            refreshAvailableGroupsForRepo();
         }
 
         background: Rectangle {
@@ -2692,7 +2692,7 @@ Item {
         property string selectedRepoId: ""
         property var availableRepos: []
 
-        function refreshAvailable() {
+        function refreshAvailableReposForGroup() {
             if (homeHubVm && targetGroupId.length > 0) {
                 availableRepos = homeHubVm.getAvailableRepositoriesForGroup(targetGroupId);
             } else {
@@ -2702,7 +2702,7 @@ Item {
 
         onAboutToShow: {
             selectedRepoId = "";
-            refreshAvailable();
+            refreshAvailableReposForGroup();
         }
 
         background: Rectangle {
@@ -2865,7 +2865,7 @@ Item {
         property string selectedRepoId: ""
         property var availableRepos: []
 
-        function refreshAvailable() {
+        function refreshAvailableReposForWorkspace() {
             if (homeHubVm && targetWorkspaceId.length > 0) {
                 availableRepos = homeHubVm.getAvailableRepositoriesForWorkspace(targetWorkspaceId);
             } else {
@@ -2875,7 +2875,7 @@ Item {
 
         onAboutToShow: {
             selectedRepoId = "";
-            refreshAvailable();
+            refreshAvailableReposForWorkspace();
         }
 
         background: Rectangle {
@@ -3038,7 +3038,7 @@ Item {
         property string selectedGroupId: ""
         property var availableGroups: []
 
-        function refreshAvailable() {
+        function refreshAvailableGroupsForWorkspace() {
             if (homeHubVm && targetWorkspaceId.length > 0) {
                 availableGroups = homeHubVm.getAvailableGroupsForWorkspace(targetWorkspaceId);
             } else {
@@ -3048,7 +3048,7 @@ Item {
 
         onAboutToShow: {
             selectedGroupId = "";
-            refreshAvailable();
+            refreshAvailableGroupsForWorkspace();
         }
 
         background: Rectangle {
@@ -3421,7 +3421,7 @@ Item {
                     contentItem: Text { text: copyErrorBtn.text; color: "#E2E8F0"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                     onClicked: {
                         // gitProfilesVm copies silently (homeHubVm would echo the whole text in a banner)
-                        var vm = (typeof gitProfilesVm !== "undefined" && gitProfilesVm) ? gitProfilesVm : homeHubVm;
+                        const vm = (typeof gitProfilesVm !== "undefined" && gitProfilesVm) ? gitProfilesVm : homeHubVm;
                         vm.copyToClipboard(errorFeedbackDialog.errorMessage);
                         copied = true;
                         copiedResetTimer.restart();

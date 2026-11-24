@@ -18,6 +18,93 @@ Rectangle {
 
     signal quickOpenRequested()
 
+    component TopBarCapsuleButton: Button {
+        id: capsuleBtn
+        property color textColor: "#E2E8F0"
+
+        Layout.preferredHeight: 32
+        leftPadding: 12
+        rightPadding: 12
+        hoverEnabled: true
+        background: Rectangle {
+            color: capsuleBtn.down ? "#1E2D42" : (capsuleBtn.hovered ? "#1A2639" : "#121A27")
+            radius: 9
+            border.color: capsuleBtn.hovered ? "#334968" : "#222F42"
+            border.width: 1
+
+            Behavior on color {
+                ColorAnimation {
+                    duration: 120
+                }
+            }
+            Behavior on border.color {
+                ColorAnimation {
+                    duration: 120
+                }
+            }
+        }
+        contentItem: Text {
+            text: capsuleBtn.text
+            color: capsuleBtn.textColor
+            font.pixelSize: 11
+            font.bold: true
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+    }
+
+    component TopBarSplitMainBtn: Button {
+        id: splitMain
+        property color textColor: "#F1F5F9"
+
+        Layout.preferredHeight: 30
+        leftPadding: 12
+        rightPadding: 10
+        hoverEnabled: true
+        background: Rectangle {
+            color: splitMain.down ? "#1E2D42" : (splitMain.hovered ? "#1A2639" : "transparent")
+            radius: 8
+            Behavior on color {
+                ColorAnimation {
+                    duration: 110
+                }
+            }
+        }
+        contentItem: Text {
+            text: splitMain.text
+            color: splitMain.enabled ? splitMain.textColor : "#64748B"
+            font.pixelSize: 11
+            font.bold: true
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+    }
+
+    component TopBarSplitArrowBtn: Button {
+        id: splitArrow
+        property bool menuOpened: false
+
+        Layout.preferredHeight: 30
+        Layout.preferredWidth: 24
+        hoverEnabled: true
+        background: Rectangle {
+            color: (splitArrow.down || splitArrow.menuOpened) ? "#1E2D42" : (splitArrow.hovered ? "#1A2639" : "transparent")
+            radius: 8
+            Behavior on color {
+                ColorAnimation {
+                    duration: 110
+                }
+            }
+        }
+        contentItem: Text {
+            text: "▾"
+            color: splitArrow.menuOpened ? "#38BDF8" : "#94A3B8"
+            font.pixelSize: 9
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -269,8 +356,8 @@ Rectangle {
                                         }
 
                                         onClicked: {
-                                            var vm = root.sessionVm;
-                                            var target = root;
+                                            const vm = root.sessionVm;
+                                            const target = root;
                                             if (vm) {
                                                 vm.closeTab(index);
                                                 if (!vm.hasOpenTabs && target) {
@@ -372,31 +459,10 @@ Rectangle {
                         anchors.centerIn: parent
                         spacing: 0
 
-                        Button {
+                        TopBarSplitMainBtn {
                             id: pullMainBtn
                             text: root.remoteOperation === "pull" ? "⏳ Pull..." : (root.remoteOperation === "fetch" ? "⏳ Fetch..." : "⬇ Pull")
                             enabled: root.remoteOperation === ""
-                            Layout.preferredHeight: 30
-                            leftPadding: 12
-                            rightPadding: 10
-                            hoverEnabled: true
-                            background: Rectangle {
-                                color: parent.down ? "#1E2D42" : (parent.hovered ? "#1A2639" : "transparent")
-                                radius: 8
-                                Behavior on color {
-                                    ColorAnimation {
-                                        duration: 110
-                                    }
-                                }
-                            }
-                            contentItem: Text {
-                                text: parent.text
-                                color: parent.enabled ? "#F1F5F9" : "#64748B"
-                                font.pixelSize: 11
-                                font.bold: true
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
                             onClicked: {
                                 if (root.sessionVm && root.sessionVm.branchManager) {
                                     root.sessionVm.branchManager.pullRemote("origin", "default");
@@ -410,27 +476,9 @@ Rectangle {
                             color: "#243247"
                         }
 
-                        Button {
+                        TopBarSplitArrowBtn {
                             id: pullMenuBtn
-                            Layout.preferredHeight: 30
-                            Layout.preferredWidth: 24
-                            hoverEnabled: true
-                            background: Rectangle {
-                                color: (parent.down || pullMenu.opened) ? "#1E2D42" : (parent.hovered ? "#1A2639" : "transparent")
-                                radius: 8
-                                Behavior on color {
-                                    ColorAnimation {
-                                        duration: 110
-                                    }
-                                }
-                            }
-                            contentItem: Text {
-                                text: "▾"
-                                color: pullMenu.opened ? "#38BDF8" : "#94A3B8"
-                                font.pixelSize: 9
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
+                            menuOpened: pullMenu.opened
                             onClicked: pullMenu.open()
 
                             FluxMenu {
@@ -500,31 +548,10 @@ Rectangle {
                         anchors.centerIn: parent
                         spacing: 0
 
-                        Button {
+                        TopBarSplitMainBtn {
                             id: pushMainBtn
                             text: root.remoteOperation === "push" ? "⏳ Push..." : "⬆ Push"
                             enabled: root.remoteOperation === ""
-                            Layout.preferredHeight: 30
-                            leftPadding: 12
-                            rightPadding: 10
-                            hoverEnabled: true
-                            background: Rectangle {
-                                color: parent.down ? "#1E2D42" : (parent.hovered ? "#1A2639" : "transparent")
-                                radius: 8
-                                Behavior on color {
-                                    ColorAnimation {
-                                        duration: 110
-                                    }
-                                }
-                            }
-                            contentItem: Text {
-                                text: parent.text
-                                color: parent.enabled ? "#F1F5F9" : "#64748B"
-                                font.pixelSize: 11
-                                font.bold: true
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
                             onClicked: {
                                 if (root.sessionVm && root.sessionVm.branchManager) {
                                     root.sessionVm.branchManager.pushRemote("origin", false, false, false);
@@ -538,27 +565,9 @@ Rectangle {
                             color: "#243247"
                         }
 
-                        Button {
+                        TopBarSplitArrowBtn {
                             id: pushMenuBtn
-                            Layout.preferredHeight: 30
-                            Layout.preferredWidth: 24
-                            hoverEnabled: true
-                            background: Rectangle {
-                                color: (parent.down || pushMenu.opened) ? "#1E2D42" : (parent.hovered ? "#1A2639" : "transparent")
-                                radius: 8
-                                Behavior on color {
-                                    ColorAnimation {
-                                        duration: 110
-                                    }
-                                }
-                            }
-                            contentItem: Text {
-                                text: "▾"
-                                color: pushMenu.opened ? "#38BDF8" : "#94A3B8"
-                                font.pixelSize: 9
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
+                            menuOpened: pushMenu.opened
                             onClicked: pushMenu.open()
 
                             FluxMenu {
@@ -607,37 +616,8 @@ Rectangle {
                 }
 
                 // 3. BRANCH BUTTON (Creates branch at HEAD)
-                Button {
+                TopBarCapsuleButton {
                     text: "🌿 Branch"
-                    Layout.preferredHeight: 32
-                    leftPadding: 12
-                    rightPadding: 12
-                    hoverEnabled: true
-                    background: Rectangle {
-                        color: parent.down ? "#1E2D42" : (parent.hovered ? "#1A2639" : "#121A27")
-                        radius: 9
-                        border.color: parent.hovered ? "#334968" : "#222F42"
-                        border.width: 1
-
-                        Behavior on color {
-                            ColorAnimation {
-                                duration: 120
-                            }
-                        }
-                        Behavior on border.color {
-                            ColorAnimation {
-                                duration: 120
-                            }
-                        }
-                    }
-                    contentItem: Text {
-                        text: parent.text
-                        color: "#E2E8F0"
-                        font.pixelSize: 11
-                        font.bold: true
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
                     ToolTip.visible: hovered
                     ToolTip.text: "Crea un nuovo branch a partire dal branch attuale (HEAD)"
                     onClicked: {
@@ -668,30 +648,10 @@ Rectangle {
                         anchors.centerIn: parent
                         spacing: 0
 
-                        Button {
+                        TopBarSplitMainBtn {
                             id: stashMainBtn
                             text: "📦 Stash"
-                            Layout.preferredHeight: 30
-                            leftPadding: 12
-                            rightPadding: 10
-                            hoverEnabled: true
-                            background: Rectangle {
-                                color: parent.down ? "#1E2D42" : (parent.hovered ? "#1A2639" : "transparent")
-                                radius: 8
-                                Behavior on color {
-                                    ColorAnimation {
-                                        duration: 110
-                                    }
-                                }
-                            }
-                            contentItem: Text {
-                                text: parent.text
-                                color: "#E2E8F0"
-                                font.pixelSize: 11
-                                font.bold: true
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
+                            textColor: "#E2E8F0"
                             ToolTip.visible: hovered
                             ToolTip.text: "Salva le modifiche locali (WIP) nello Stash"
                             onClicked: {
@@ -708,27 +668,9 @@ Rectangle {
                             color: "#243247"
                         }
 
-                        Button {
+                        TopBarSplitArrowBtn {
                             id: stashMenuBtn
-                            Layout.preferredHeight: 30
-                            Layout.preferredWidth: 24
-                            hoverEnabled: true
-                            background: Rectangle {
-                                color: (parent.down || stashMenu.opened) ? "#1E2D42" : (parent.hovered ? "#1A2639" : "transparent")
-                                radius: 8
-                                Behavior on color {
-                                    ColorAnimation {
-                                        duration: 110
-                                    }
-                                }
-                            }
-                            contentItem: Text {
-                                text: "▾"
-                                color: stashMenu.opened ? "#38BDF8" : "#94A3B8"
-                                font.pixelSize: 9
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
+                            menuOpened: stashMenu.opened
                             onClicked: stashMenu.open()
 
                             FluxMenu {
@@ -794,30 +736,10 @@ Rectangle {
                         anchors.centerIn: parent
                         spacing: 0
 
-                        Button {
+                        TopBarSplitMainBtn {
                             id: popMainBtn
                             text: root.stashCount > 1 ? ("↩ Pop (" + root.stashCount + ")") : "↩ Pop"
-                            Layout.preferredHeight: 30
-                            leftPadding: 12
-                            rightPadding: 10
-                            hoverEnabled: true
-                            background: Rectangle {
-                                color: parent.down ? "#1E2D42" : (parent.hovered ? "#1A2639" : "transparent")
-                                radius: 8
-                                Behavior on color {
-                                    ColorAnimation {
-                                        duration: 110
-                                    }
-                                }
-                            }
-                            contentItem: Text {
-                                text: parent.text
-                                color: "#E2E8F0"
-                                font.pixelSize: 11
-                                font.bold: true
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
+                            textColor: "#E2E8F0"
                             ToolTip.visible: hovered
                             ToolTip.text: "Applica e rimuovi il commit di stash più recente (pop stash@{0})"
                             onClicked: {
@@ -833,27 +755,9 @@ Rectangle {
                             color: "#243247"
                         }
 
-                        Button {
+                        TopBarSplitArrowBtn {
                             id: popMenuBtn
-                            Layout.preferredHeight: 30
-                            Layout.preferredWidth: 24
-                            hoverEnabled: true
-                            background: Rectangle {
-                                color: (parent.down || popMenu.opened) ? "#1E2D42" : (parent.hovered ? "#1A2639" : "transparent")
-                                radius: 8
-                                Behavior on color {
-                                    ColorAnimation {
-                                        duration: 110
-                                    }
-                                }
-                            }
-                            contentItem: Text {
-                                text: "▾"
-                                color: popMenu.opened ? "#38BDF8" : "#94A3B8"
-                                font.pixelSize: 9
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
+                            menuOpened: popMenu.opened
                             onClicked: popMenu.open()
 
                             FluxMenu {
@@ -903,37 +807,9 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 8
 
-                Button {
+                TopBarCapsuleButton {
                     text: "⚙ Branch & Sync..."
-                    Layout.preferredHeight: 32
-                    leftPadding: 12
-                    rightPadding: 12
-                    hoverEnabled: true
-                    background: Rectangle {
-                        color: parent.down ? "#1E2D42" : (parent.hovered ? "#1A2639" : "#121A27")
-                        radius: 9
-                        border.color: parent.hovered ? "#334968" : "#222F42"
-                        border.width: 1
-
-                        Behavior on color {
-                            ColorAnimation {
-                                duration: 120
-                            }
-                        }
-                        Behavior on border.color {
-                            ColorAnimation {
-                                duration: 120
-                            }
-                        }
-                    }
-                    contentItem: Text {
-                        text: parent.text
-                        color: "#CBD5E1"
-                        font.pixelSize: 11
-                        font.bold: true
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
+                    textColor: "#CBD5E1"
                     onClicked: {
                         branchModal.open();
                     }
@@ -1263,7 +1139,7 @@ Rectangle {
     Connections {
         target: (root.sessionVm && root.sessionVm.conflictResolver) ? root.sessionVm.conflictResolver : null
 
-        function onResolutionApplied(filePath) {
+        function onResolutionApplied() {
             if (root.sessionVm) {
                 root.sessionVm.refreshActiveTab();
             }

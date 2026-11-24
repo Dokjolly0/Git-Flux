@@ -32,87 +32,16 @@ Dialog {
         root.open();
     }
 
-    background: Rectangle {
-        color: "#111824"
-        radius: 14
+    background: FluxModalBackground {
         border.color: root.requiresUnconditionalForce ? "#7F1D1D" : "#78350F"
-        border.width: 1
-
-        Rectangle {
-            z: -2
-            anchors.fill: parent
-            anchors.margins: -8
-            radius: 20
-            color: "#000000"
-            opacity: 0.30
-        }
-        Rectangle {
-            z: -1
-            anchors.fill: parent
-            anchors.margins: -2
-            radius: 16
-            color: "#000000"
-            opacity: 0.40
-        }
     }
 
-    header: Rectangle {
-        color: "#161F2E"
-        height: 46
-        radius: 14
-
-        Rectangle {
-            anchors.bottom: parent.bottom
-            width: parent.width
-            height: 14
-            color: "#161F2E"
-        }
-
-        Rectangle {
-            anchors.bottom: parent.bottom
-            width: parent.width
-            height: 1
-            color: "#222F42"
-        }
-
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 14
-
-            Text {
-                text: root.requiresUnconditionalForce
-                    ? "⚠ Force Push Richiesto (--force)"
-                    : "⚠ Force Push Richiesto"
-                color: root.requiresUnconditionalForce ? "#F87171" : "#F59E0B"
-                font.bold: true
-                font.pixelSize: 13
-            }
-
-            Item {
-                Layout.fillWidth: true
-            }
-
-            Button {
-                id: closeBtn
-                text: "✕"
-                Layout.preferredWidth: 26
-                Layout.preferredHeight: 26
-                hoverEnabled: true
-                background: Rectangle {
-                    radius: 7
-                    color: closeBtn.hovered ? "#243247" : "transparent"
-                }
-                contentItem: Text {
-                    text: "✕"
-                    color: closeBtn.hovered ? "#F8FAFC" : "#94A3B8"
-                    font.bold: true
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-                onClicked: root.close()
-            }
-        }
+    header: FluxModalHeader {
+        titleText: root.requiresUnconditionalForce
+            ? "⚠ Force Push Richiesto (--force)"
+            : "⚠ Force Push Richiesto"
+        titleColor: root.requiresUnconditionalForce ? "#F87171" : "#F59E0B"
+        onCloseRequested: root.close()
     }
 
     contentItem: ColumnLayout {
@@ -303,10 +232,10 @@ Dialog {
                     verticalAlignment: Text.AlignVCenter
                 }
                 onClicked: {
-                    var targetRemote = root.remoteName;
-                    var upstream = root.setUpstream;
-                    var pushTags = root.tags;
-                    var unconditional = root.requiresUnconditionalForce;
+                    const targetRemote = root.remoteName;
+                    const upstream = root.setUpstream;
+                    const pushTags = root.tags;
+                    const unconditional = root.requiresUnconditionalForce;
                     root.close();
                     if (root.branchManager) {
                         root.branchManager.pushRemote(targetRemote, upstream, true, pushTags, unconditional);

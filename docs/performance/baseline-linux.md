@@ -2,7 +2,7 @@
 
 > **Data esecuzione:** 6 novembre 2026 (confronto cross-platform aggiornato il 9 novembre 2026 a parità di hardware)  
 > **Sistema Operativo:** Linux Ubuntu (kernel 7.0.0-42-generic x86_64)  
-> **CPU:** 13th Gen Intel (R) Core (TM) i9-13900HX (24 Core / 32 Thread logici, fino a 5.4 GHz, 36 MiB L3 Cache)  
+> **CPU:** 13th Gen Intel® Core™ i9-13900HX (24 Core / 32 Thread logici, fino a 5.4 GHz, 36 MiB L3 Cache)  
 > **Compilatore:** GCC 15.2.0 (Ubuntu 15.2.0-16ubuntu1) C++23  
 > **Build System:** CMake 4.2.3 + Ninja 1.12  
 > **Git:** 2.53.0  
@@ -77,8 +77,8 @@ l'adapter Qt 6:
 
 > [!TIP]
 > **Scelta architetturale:** La policy di concorrenza definita in [baseline-windows.md](baseline-windows.md)
-(`std::clamp(hardware_concurrency / 2, 2u, 6u)`) si conferma ottimale anche su Linux: con 4–6 worker la scansione di 30
-repository si completa in ~35–45 ms lasciando ampia disponibilità di core per UI e compiti ad alta priorità.
+> (`std::clamp(hardware_concurrency / 2, 2u, 6u)`) si conferma ottimale anche su Linux: con 4–6 worker la scansione di 30
+> repository si completa in ~35–45 ms lasciando ampia disponibilità di core per UI e compiti ad alta priorità.
 
 ### Benchmark A.4 — Lettura 150 Commit: Single-Shot vs `cat-file --batch` Pipe
 

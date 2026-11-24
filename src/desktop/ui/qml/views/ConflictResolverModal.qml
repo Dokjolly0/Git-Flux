@@ -17,34 +17,12 @@ Dialog {
     Connections {
         target: root.conflictResolver
 
-        function onResolutionApplied(filePath) {
+        function onResolutionApplied() {
             root.close();
         }
     }
 
-    background: Rectangle {
-        color: "#111824"
-        radius: 14
-        border.color: "#28374E"
-        border.width: 1
-
-        Rectangle {
-            z: -2
-            anchors.fill: parent
-            anchors.margins: -8
-            radius: 20
-            color: "#000000"
-            opacity: 0.30
-        }
-        Rectangle {
-            z: -1
-            anchors.fill: parent
-            anchors.margins: -2
-            radius: 16
-            color: "#000000"
-            opacity: 0.40
-        }
-    }
+    background: FluxModalBackground {}
 
     contentItem: ColumnLayout {
         spacing: 12
@@ -474,30 +452,9 @@ Dialog {
                 elide: Text.ElideRight
             }
 
-            Button {
+            FluxActionButton {
                 text: "Annulla"
                 Layout.preferredHeight: 34
-                leftPadding: 14
-                rightPadding: 14
-                hoverEnabled: true
-                background: Rectangle {
-                    color: parent.hovered ? "#1E2B3E" : "#151E2C"
-                    radius: 8
-                    border.color: "#28374E"
-                    border.width: 1
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: 120
-                        }
-                    }
-                }
-                contentItem: Text {
-                    text: parent.text
-                    color: "#CBD5E1"
-                    font.pixelSize: 11
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
                 onClicked: root.close()
             }
 

@@ -2,7 +2,7 @@
 
 > **Data esecuzione:** 9 novembre 2026  
 > **Sistema Operativo:** Windows 11 Pro 26H2 (build 26300)  
-> **CPU:** 13th Gen Intel (R) Core (TM) i9-13900HX (24 Core / 32 Thread logici, fino a 5.4 GHz, 36 MiB L3 Cache)  
+> **CPU:** 13th Gen Intel® Core™ i9-13900HX (24 Core / 32 Thread logici, fino a 5.4 GHz, 36 MiB L3 Cache)  
 > **Compilatore:** MSVC 19.44.35229 (Visual Studio 2022 Community) C++23  
 > **Build System:** CMake 4.4.4 + MSBuild 17.14  
 > **Git:** 2.56.0.windows.4 (`ucrt64\bin\git.exe` diretto vs shim `cmd\git.exe`)  
@@ -79,10 +79,10 @@ binario diretto `ucrt64\bin\git.exe`*
 | Qt 6 (`QProcess`)         |          16 |                   200.5 |                     99.5 |
 
 > [!TIP]
-> **Scelta architetturale:** La concorrenza di default consigliata su macchine desktop multi-core è fissata a **
-`std::clamp(hardware_concurrency / 2, 2u, 6u)`** (tipicamente 4–6 worker). Con 4–8 worker si abbatte il tempo di
-scansione di 30 repository a ~200–330 ms mantenendo la latenza del repository attivo intorno a ~42–55 ms, evitando la
-contesa sul sottosistema filesystem/processi di Windows che emerge oltre gli 8 thread.
+> **Scelta architetturale:** La concorrenza di default consigliata su macchine desktop multi-core è fissata a
+> **`std::clamp(hardware_concurrency / 2, 2u, 6u)`** (tipicamente 4–6 worker). Con 4–8 worker si abbatte il tempo di
+> scansione di 30 repository a ~200–330 ms mantenendo la latenza del repository attivo intorno a ~42–55 ms, evitando la
+> contesa sul sottosistema filesystem/processi di Windows che emerge oltre gli 8 thread.
 
 ### Benchmark A.4 — Lettura 150 Commit: Single-Shot vs `cat-file --batch` Pipe
 

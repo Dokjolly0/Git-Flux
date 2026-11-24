@@ -48,7 +48,7 @@ Builds the project using Windows CMake Presets (`build/qt-msvc` and `build/core-
 
 ### Supported Options:
 
-* `-q, -Qt`: `qt-release` preset [default].
+* `-q, -Qt`: `qt-release` preset (default).
 * `-c, -Core`: `core-release` preset (Zero-Qt).
 * `-a, -All`: builds both Core and Desktop in sequence.
 * `-C, -Clean`: deletes build directory before building.
@@ -85,7 +85,7 @@ Runs CTest test suites and integration tests on Windows.
 
 ### Supported Options:
 
-* `-q, -Qt`: run desktop tests (`qt-release`) [default].
+* `-q, -Qt`: run desktop tests (`qt-release`) (default).
 * `-c, -Core`: run Zero-Qt core tests (`core-release`).
 * `-a, -All`: run tests across both presets.
 * `-f, -Filter <regex>`: include test filter (`ctest -R`).
@@ -156,7 +156,7 @@ Cleans compiled artifact directories.
 
 ### Supported Options:
 
-* `-a, -All`: remove all generated build directories [default].
+* `-a, -All`: remove all generated build directories (default).
 * `-q, -Qt`: remove only `build/qt-msvc`.
 * `-c, -Core`: remove only `build/core-msvc`.
 * `-p, -Packages`: remove only `build/packages`.

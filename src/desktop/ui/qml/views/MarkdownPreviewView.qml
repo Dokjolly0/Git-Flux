@@ -18,9 +18,9 @@ Rectangle {
     function handleLink(url) {
         if (!url || url.length === 0) return;
         if (url.startsWith("#")) {
-            var targetAnchor = url.substring(1);
-            var toc = root.diffViewer ? root.diffViewer.markdownToc : [];
-            for (var i = 0; i < toc.length; ++i) {
+            const targetAnchor = url.substring(1);
+            const toc = root.diffViewer ? root.diffViewer.markdownToc : [];
+            for (let i = 0; i < toc.length; ++i) {
                 if (toc[i].anchor === targetAnchor) {
                     jumpToBlock(toc[i].blockIndex);
                     return;
@@ -41,14 +41,14 @@ Rectangle {
     }
 
     function jumpToNextChange() {
-        var blocks = root.diffViewer ? root.diffViewer.markdownBlocks : [];
+        const blocks = root.diffViewer ? root.diffViewer.markdownBlocks : [];
         if (!blocks || blocks.length === 0) return;
 
-        var startIdx = root.lastChangeSearchIdx + 1;
-        for (var pass = 0; pass < 2; ++pass) {
-            var from = (pass === 0) ? startIdx : 0;
-            var to = (pass === 0) ? blocks.length : Math.min(startIdx, blocks.length);
-            for (var i = from; i < to; ++i) {
+        const startIdx = root.lastChangeSearchIdx + 1;
+        for (let pass = 0; pass < 2; ++pass) {
+            const from = (pass === 0) ? startIdx : 0;
+            const to = (pass === 0) ? blocks.length : Math.min(startIdx, blocks.length);
+            for (let i = from; i < to; ++i) {
                 if (blocks[i].changeStatus && blocks[i].changeStatus !== "unchanged") {
                     root.lastChangeSearchIdx = i;
                     root.highlightedBlockIndex = i;
@@ -61,10 +61,10 @@ Rectangle {
     }
 
     readonly property int changedBlocksCount: {
-        var blocks = root.diffViewer ? root.diffViewer.markdownBlocks : [];
+        const blocks = root.diffViewer ? root.diffViewer.markdownBlocks : [];
         if (!blocks) return 0;
-        var count = 0;
-        for (var i = 0; i < blocks.length; ++i) {
+        let count = 0;
+        for (let i = 0; i < blocks.length; ++i) {
             if (blocks[i].changeStatus && blocks[i].changeStatus !== "unchanged") {
                 ++count;
             }
@@ -140,7 +140,7 @@ Rectangle {
                         }
                         Text {
                             text: {
-                                var tocCount = (root.diffViewer && root.diffViewer.markdownToc) ? root.diffViewer.markdownToc.length : 0;
+                                const tocCount = (root.diffViewer && root.diffViewer.markdownToc) ? root.diffViewer.markdownToc.length : 0;
                                 return "Indice" + (tocCount > 0 ? (" (" + tocCount + ")") : "");
                             }
                             color: root.showToc ? "#38BDF8" : "#CBD5E1"
@@ -593,8 +593,8 @@ Rectangle {
                                         color: "#F0F6FC"
                                         font.bold: true
                                         font.pixelSize: {
-                                            var lvl = modelData.level || 1;
-                                            var base = 13;
+                                            const lvl = modelData.level || 1;
+                                            let base = 13;
                                             if (lvl === 1) base = 26;
                                             else if (lvl === 2) base = 20;
                                             else if (lvl === 3) base = 16;
@@ -848,7 +848,7 @@ Rectangle {
                                         Text {
                                             visible: (modelData.alertType || "none") !== "none"
                                             text: {
-                                                var a = modelData.alertType;
+                                                const a = modelData.alertType;
                                                 if (a === "note") return "ℹ Nota";
                                                 if (a === "tip") return "💡 Suggerimento";
                                                 if (a === "important") return "❗ Importante";
@@ -950,8 +950,8 @@ Rectangle {
                                     readonly property int colCount: Math.max(1, headers.length)
 
                                     readonly property var flatCells: {
-                                        var out = [];
-                                        for (var h = 0; h < headers.length; ++h) {
+                                        const out = [];
+                                        for (let h = 0; h < headers.length; ++h) {
                                             out.push({
                                                 text: headers[h],
                                                 align: (h < aligns.length) ? aligns[h] : "left",
@@ -959,9 +959,9 @@ Rectangle {
                                                 rowIdx: -1
                                             });
                                         }
-                                        for (var r = 0; r < rows.length; ++r) {
-                                            var row = rows[r];
-                                            for (var c = 0; c < headers.length; ++c) {
+                                        for (let r = 0; r < rows.length; ++r) {
+                                            const row = rows[r];
+                                            for (let c = 0; c < headers.length; ++c) {
                                                 out.push({
                                                     text: (c < row.length) ? row[c] : "",
                                                     align: (c < aligns.length) ? aligns[c] : "left",

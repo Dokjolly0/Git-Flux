@@ -39,8 +39,8 @@ Item {
         if (!flickable || !scrollable || maxThumbY <= 0) {
             return;
         }
-        var clamped = Math.max(0, Math.min(maxThumbY, targetThumbY));
-        var frac = clamped / maxThumbY;
+        const clamped = Math.max(0, Math.min(maxThumbY, targetThumbY));
+        const frac = clamped / maxThumbY;
         if (flickable.flicking) {
             flickable.cancelFlick();
         }
@@ -78,33 +78,33 @@ Item {
         onAvailableChanged: if (available) requestPaint()
 
         onPaint: {
-            var ctx = getContext("2d");
+            const ctx = getContext("2d");
             ctx.reset();
             if (width <= 0 || height <= 0) {
                 return;
             }
-            var list = root.markers;
+            const list = root.markers;
             if (!list || list.length === 0) {
                 return;
             }
 
-            var dividerX = Math.floor(width / 2);
-            var leftX = 3;
-            var leftW = Math.max(1, dividerX - 4);
-            var rightX = dividerX + 2;
-            var rightW = Math.max(1, width - rightX - 2);
+            const dividerX = Math.floor(width / 2);
+            const leftX = 3;
+            const leftW = Math.max(1, dividerX - 4);
+            const rightX = dividerX + 2;
+            const rightW = Math.max(1, width - rightX - 2);
 
             ctx.globalAlpha = 0.88;
-            for (var i = 0; i < list.length; ++i) {
-                var m = list[i];
+            for (let i = 0; i < list.length; ++i) {
+                const m = list[i];
                 if (!m) {
                     continue;
                 }
-                var startRatio = Math.max(0, Math.min(1, m.start !== undefined ? m.start : 0));
-                var endRatio = Math.max(startRatio, Math.min(1, m.end !== undefined ? m.end : 0));
-                var rawH = (endRatio - startRatio) * height;
-                var h = Math.min(height, Math.max(root.minMarkerHeight, Math.ceil(rawH)));
-                var y = Math.floor(startRatio * height);
+                const startRatio = Math.max(0, Math.min(1, m.start !== undefined ? m.start : 0));
+                const endRatio = Math.max(startRatio, Math.min(1, m.end !== undefined ? m.end : 0));
+                const rawH = (endRatio - startRatio) * height;
+                const h = Math.min(height, Math.max(root.minMarkerHeight, Math.ceil(rawH)));
+                let y = Math.floor(startRatio * height);
                 if (y + h > height) {
                     y = Math.max(0, height - h);
                 }
@@ -191,7 +191,7 @@ Item {
                 wheel.accepted = false;
                 return;
             }
-            var dy = 0;
+            let dy = 0;
             if (wheel.pixelDelta && wheel.pixelDelta.y !== 0) {
                 dy = wheel.pixelDelta.y;
             } else if (wheel.angleDelta && wheel.angleDelta.y !== 0) {
@@ -201,8 +201,8 @@ Item {
                 if (root.flickable.flicking) {
                     root.flickable.cancelFlick();
                 }
-                var minY = root.flickable.originY;
-                var maxY = minY + root.maxScroll;
+                const minY = root.flickable.originY;
+                const maxY = minY + root.maxScroll;
                 root.flickable.contentY = Math.max(minY, Math.min(maxY, root.flickable.contentY - dy));
                 wheel.accepted = true;
             }

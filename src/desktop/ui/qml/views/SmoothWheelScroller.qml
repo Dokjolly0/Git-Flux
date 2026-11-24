@@ -90,7 +90,7 @@ WheelHandler {
     }
 
     function _findFlickable(item) {
-        for (var it = item; it; it = it.parent) {
+        for (let it = item; it; it = it.parent) {
             if (_isFlickable(it)) {
                 return it;
             }
@@ -113,7 +113,7 @@ WheelHandler {
 
     // Nearest Flickable, starting from ours, able to scroll the given axis.
     function _resolveTarget(vertical) {
-        for (var f = flickable; f; f = _findFlickable(f.parent)) {
+        for (let f = flickable; f; f = _findFlickable(f.parent)) {
             if (_canScroll(f, vertical)) {
                 return f;
             }
@@ -134,7 +134,7 @@ WheelHandler {
         return _vertical ? _target.originY - _target.topMargin : _target.originX - _target.leftMargin;
     }
     function _max() {
-        var hi = _vertical
+        const hi = _vertical
             ? _target.originY + _target.contentHeight + _target.bottomMargin - _target.height
             : _target.originX + _target.contentWidth + _target.rightMargin - _target.width;
         return Math.max(_min(), hi);
@@ -166,9 +166,9 @@ WheelHandler {
             _platformMomentum = true;
         }
         // In content coordinates: swiping "up" (negative delta) scrolls down.
-        var d = -(_vertical ? dy : dx) * speed;
-        var pos = _pos();
-        var dest = Math.max(_min(), Math.min(_max(), pos + _pending + d));
+        const d = -(_vertical ? dy : dx) * speed;
+        const pos = _pos();
+        const dest = Math.max(_min(), Math.min(_max(), pos + _pending + d));
         _pending = dest - pos;
         _samples.push({ t: Date.now(), d: d });
         if (_samples.length > 32) {
@@ -181,26 +181,26 @@ WheelHandler {
     function _endGesture() {
         _gestureActive = false;
         endTimer.stop();
-        var samples = _samples;
+        const samples = _samples;
         _samples = [];
         if (!_target || _platformMomentum || samples.length < 2) {
             return;
         }
         // Fingers rested before lifting: no fling.
-        var now = Date.now();
-        var last = samples[samples.length - 1].t;
+        const now = Date.now();
+        const last = samples[samples.length - 1].t;
         if (now - last > 50) {
             return;
         }
-        // Release velocity: distance travelled over the last ~100 ms of samples.
-        var sum = 0;
-        var first = last;
-        for (var i = samples.length - 1; i >= 0 && last - samples[i].t <= 100; --i) {
+        // Release velocity: distance traveled over the last ~100 ms of samples.
+        let sum = 0;
+        let first = last;
+        for (let i = samples.length - 1; i >= 0 && last - samples[i].t <= 100; --i) {
             sum += samples[i].d;
             first = samples[i].t;
         }
-        var span = Math.max(16, now - first) / 1000.0;
-        var v = Math.max(-maxFlingVelocity, Math.min(maxFlingVelocity, sum / span));
+        const span = Math.max(16, now - first) / 1000.0;
+        const v = Math.max(-maxFlingVelocity, Math.min(maxFlingVelocity, sum / span));
         if (Math.abs(v) < minFlingVelocity) {
             return;
         }
@@ -214,7 +214,7 @@ WheelHandler {
             event.accepted = false;
             return;
         }
-        var active = Registry.active;
+        const active = Registry.activeScroller();
         if (event.phase === Qt.ScrollEnd) {
             if (active) {
                 active._endGesture();
@@ -228,13 +228,13 @@ WheelHandler {
                 active._gestureActive = false;
                 active.stop();
             }
-            Registry.active = null;
+            Registry.setActiveScroller(null);
             event.accepted = false;
             return;
         }
 
-        var dx = event.pixelDelta.x;
-        var dy = event.pixelDelta.y;
+        let dx = event.pixelDelta.x;
+        let dy = event.pixelDelta.y;
         if (dx === 0 && dy === 0) {
             // Touchpad without pixel deltas: 120 angle units ~ one 50 px step.
             dx = event.angleDelta.x / 120 * 50;
@@ -248,14 +248,14 @@ WheelHandler {
         // pointer now. ScrollBegin isn't always delivered to handlers, and some
         // platforms (X11) send no phases at all, so the first update of a
         // gesture also starts it.
-        var owner = (active && active._gestureActive) ? active : null;
+        let owner = (active && active._gestureActive) ? active : null;
         if (!owner) {
             if (dx === 0 && dy === 0) {
                 event.accepted = false;
                 return;
             }
-            var vertical = Math.abs(dy) >= Math.abs(dx);
-            var target = _resolveTarget(vertical);
+            const vertical = Math.abs(dy) >= Math.abs(dx);
+            const target = _resolveTarget(vertical);
             if (!target) {
                 // Nothing here scrolls that way: let it propagate.
                 event.accepted = false;
@@ -266,7 +266,7 @@ WheelHandler {
                 active.stop();
             }
             owner._startGesture(target, vertical);
-            Registry.active = owner;
+            Registry.setActiveScroller(owner);
         }
         owner._feed(dx, dy, event.phase === Qt.ScrollMomentum);
         event.accepted = true;
@@ -289,12 +289,12 @@ WheelHandler {
     property FrameAnimation _frameDriver: FrameAnimation {
         id: frameDriver
         onTriggered: {
-            var f = scroller._target;
+            const f = scroller._target;
             if (!f) {
                 scroller.stop();
                 return;
             }
-            var pos = scroller._pos();
+            const pos = scroller._pos();
             // Someone else moved the view (drag, scrollbar, keyboard,
             // positionViewAtIndex, a real flick): yield to them.
             if (f.dragging || f.flicking || Math.abs(pos - scroller._lastWritten) > 0.5) {
@@ -302,7 +302,7 @@ WheelHandler {
                 return;
             }
 
-            var dt = Math.min(0.05, Math.max(0.001, frameTime));
+            const dt = Math.min(0.05, Math.max(0.001, frameTime));
             if (scroller._coasting) {
                 scroller._pending += scroller._velocity * dt;
                 scroller._velocity *= Math.exp(-dt / scroller.frictionTime);
@@ -312,11 +312,11 @@ WheelHandler {
                 }
             }
 
-            var alpha = 1 - Math.exp(-dt / scroller.smoothingTime);
-            var step = Math.abs(scroller._pending) < 0.5 ? scroller._pending : scroller._pending * alpha;
-            var lo = scroller._min();
-            var hi = scroller._max();
-            var next = pos + step;
+            const alpha = 1 - Math.exp(-dt / scroller.smoothingTime);
+            const step = Math.abs(scroller._pending) < 0.5 ? scroller._pending : scroller._pending * alpha;
+            const lo = scroller._min();
+            const hi = scroller._max();
+            let next = pos + step;
             if (next <= lo || next >= hi) {
                 next = Math.max(lo, Math.min(hi, next));
                 scroller._pending = 0;

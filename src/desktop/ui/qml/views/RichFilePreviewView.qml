@@ -15,9 +15,9 @@ Rectangle {
     property string imageMode: "side"
     // Image canvas backdrop: "checker-dark", "checker-light", "solid-dark", "solid-light"
     property string backdropMode: "checker-dark"
-    // Image zoom: 0 means "Fit to view", > 0 means explicit scale factor (0.25 .. 8.0)
+    // Image zoom: 0 means "Fit to view", > 0 means explicit scale factor (0.25 to 8.0)
     property real zoomFactor: 0
-    // Swipe divider ratio (0.0 .. 1.0) and Onion skin opacity (0.0 .. 1.0)
+    // Swipe divider ratio (0.0 to 1.0) and Onion skin opacity (0.0 to 1.0)
     property real swipeRatio: 0.5
     property real onionOpacity: 0.5
     // Font preview text
@@ -72,8 +72,8 @@ Rectangle {
     }
 
     function stepZoom(multiplier) {
-        var cur = root.zoomFactor <= 0 ? 1.0 : root.zoomFactor;
-        var next = Math.max(0.25, Math.min(8.0, cur * multiplier));
+        const cur = root.zoomFactor <= 0 ? 1.0 : root.zoomFactor;
+        const next = Math.max(0.25, Math.min(8.0, cur * multiplier));
         root.zoomFactor = Math.round(next * 100) / 100;
     }
 
@@ -85,7 +85,7 @@ Rectangle {
         onHeightChanged: requestPaint()
 
         onPaint: {
-            var ctx = getContext("2d");
+            const ctx = getContext("2d");
             ctx.reset();
             if (mode === "solid-dark") {
                 ctx.fillStyle = "#080B10";
@@ -97,16 +97,151 @@ Rectangle {
                 ctx.fillRect(0, 0, width, height);
                 return;
             }
-            var c1 = (mode === "checker-light") ? "#E2E8F0" : "#151D2B";
-            var c2 = (mode === "checker-light") ? "#CBD5E1" : "#0E141F";
-            var tile = 12;
+            const c1 = (mode === "checker-light") ? "#E2E8F0" : "#151D2B";
+            const c2 = (mode === "checker-light") ? "#CBD5E1" : "#0E141F";
+            const tile = 12;
             ctx.fillStyle = c1;
             ctx.fillRect(0, 0, width, height);
             ctx.fillStyle = c2;
-            for (var y = 0; y < height; y += tile) {
-                var offset = (Math.floor(y / tile) % 2) * tile;
-                for (var x = offset; x < width; x += tile * 2) {
+            for (let y = 0; y < height; y += tile) {
+                const offset = (Math.floor(y / tile) % 2) * tile;
+                for (let x = offset; x < width; x += tile * 2) {
                     ctx.fillRect(x, y, tile, tile);
+                }
+            }
+        }
+    }
+
+    // Reusable zoomable, scrollable image viewport with checkerboard backdrop
+    component ZoomableImageCanvas: Item {
+        id: imgCanvas
+        property url imageSource: ""
+        property real naturalWidth: 0
+        property real naturalHeight: 0
+        property bool preferImplicitSize: false
+
+        clip: true
+
+        ImageBackdrop { anchors.fill: parent }
+
+        Flickable {
+            id: imgFlick
+            anchors.fill: parent
+            contentWidth: Math.max(width, imgWrap.width + 32)
+            contentHeight: Math.max(height, imgWrap.height + 32)
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: FluxScrollBar {}
+            ScrollBar.horizontal: FluxScrollBar {}
+
+            Rectangle {
+                id: imgWrap
+                readonly property real natW: imgCanvas.preferImplicitSize
+                    ? (imgItem.implicitWidth > 0 ? imgItem.implicitWidth : imgCanvas.naturalWidth)
+                    : (imgCanvas.naturalWidth > 0 ? imgCanvas.naturalWidth : (imgItem.implicitWidth > 0 ? imgItem.implicitWidth : 0))
+                readonly property real natH: imgCanvas.preferImplicitSize
+                    ? (imgItem.implicitHeight > 0 ? imgItem.implicitHeight : imgCanvas.naturalHeight)
+                    : (imgCanvas.naturalHeight > 0 ? imgCanvas.naturalHeight : (imgItem.implicitHeight > 0 ? imgItem.implicitHeight : 0))
+                readonly property real maxFitW: Math.max(32, imgFlick.width - 32)
+                readonly property real maxFitH: Math.max(32, imgFlick.height - 32)
+                readonly property real effScale: root.zoomFactor <= 0
+                    ? ((natW > 0 && natH > 0)
+                        ? Math.min(1.0, maxFitW / natW, maxFitH / natH)
+                        : 1.0)
+                    : root.zoomFactor
+                width: natW > 0 ? Math.max(1, Math.round(natW * effScale)) : 0
+                height: natH > 0 ? Math.max(1, Math.round(natH * effScale)) : 0
+                x: Math.max(16, Math.round((imgFlick.contentWidth - width) / 2))
+                y: Math.max(16, Math.round((imgFlick.contentHeight - height) / 2))
+                color: "transparent"
+                border.color: "#334155"
+                border.width: width > 0 ? 1 : 0
+
+                Image {
+                    id: imgItem
+                    anchors.fill: parent
+                    source: imgCanvas.imageSource
+                    cache: false
+                    smooth: root.zoomFactor < 2.0
+                    mipmap: true
+                    fillMode: Image.PreserveAspectFit
+                }
+            }
+        }
+    }
+
+    // Reusable framed comparison stage computing shared scale for Before/After images
+    component DualImageStageFrame: Rectangle {
+        property real beforeImplicitW: 0
+        property real beforeImplicitH: 0
+        property real afterImplicitW: 0
+        property real afterImplicitH: 0
+
+        radius: 10
+        color: "#0A0E15"
+        border.color: "#28374E"
+        border.width: 1
+        clip: true
+
+        ImageBackdrop { anchors.fill: parent }
+
+        readonly property real refW: Math.max(
+            root.hasViewer ? root.diffViewer.oldImageWidth : 0,
+            root.hasViewer ? root.diffViewer.newImageWidth : 0,
+            afterImplicitW, beforeImplicitW, 1)
+        readonly property real refH: Math.max(
+            root.hasViewer ? root.diffViewer.oldImageHeight : 0,
+            root.hasViewer ? root.diffViewer.newImageHeight : 0,
+            afterImplicitH, beforeImplicitH, 1)
+        readonly property real fitScale: Math.min(1.0, Math.max(32, width - 48) / refW, Math.max(32, height - 48) / refH)
+        readonly property real effScale: root.zoomFactor <= 0 ? fitScale : root.zoomFactor
+        readonly property real stageW: Math.max(1, Math.round(refW * effScale))
+        readonly property real stageH: Math.max(1, Math.round(refH * effScale))
+    }
+
+    // Reusable font specimen preview card
+    component FontSpecimenPane: Rectangle {
+        id: specimenPane
+        property string headerText: ""
+        property color headerColor: "#FCA5A5"
+        property string fontFamily: ""
+
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        radius: 10
+        color: "#0A0E15"
+        border.width: 1
+        clip: true
+
+        Flickable {
+            anchors.fill: parent
+            anchors.margins: 16
+            contentHeight: specimenCol.implicitHeight
+            ScrollBar.vertical: FluxScrollBar {}
+
+            ColumnLayout {
+                id: specimenCol
+                width: parent.width
+                spacing: 14
+                Text {
+                    text: specimenPane.headerText
+                    color: specimenPane.headerColor
+                    font.pixelSize: 11
+                    font.bold: true
+                }
+                Text {
+                    Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#F8FAFC"
+                    font.family: specimenPane.fontFamily
+                    font.pixelSize: 32; text: root.fontSampleText
+                }
+                Text {
+                    Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#CBD5E1"
+                    font.family: specimenPane.fontFamily
+                    font.pixelSize: 20; text: root.fontSampleText
+                }
+                Text {
+                    Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#94A3B8"
+                    font.family: specimenPane.fontFamily
+                    font.pixelSize: 14; text: "ABCDEFGHIJKLMNOPQRSTUVWXYZ\nabcdefghijklmnopqrstuvwxyz\n0123456789 !@#$%^&*()[]{}"
                 }
             }
         }
@@ -190,9 +325,9 @@ Rectangle {
                     visible: root.hasViewer && (root.diffViewer.hasOldBlob || root.diffViewer.hasNewBlob)
                     text: {
                         if (!root.diffViewer) return "";
-                        var o = root.diffViewer.oldFileSizeText || "";
-                        var n = root.diffViewer.newFileSizeText || "";
-                        var d = root.diffViewer.fileSizeDeltaText || "";
+                        const o = root.diffViewer.oldFileSizeText || "";
+                        const n = root.diffViewer.newFileSizeText || "";
+                        const d = root.diffViewer.fileSizeDeltaText || "";
                         if (o.length > 0 && n.length > 0) return o + " → " + n + (d.length > 0 ? ("  (" + d + ")") : "");
                         if (n.length > 0) return n;
                         return o;
@@ -465,56 +600,12 @@ Rectangle {
                                 }
                             }
 
-                            Item {
+                            ZoomableImageCanvas {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                clip: true
-
-                                ImageBackdrop { anchors.fill: parent }
-
-                                Flickable {
-                                    id: oldImgFlick
-                                    anchors.fill: parent
-                                    contentWidth: Math.max(width, oldImgWrap.width + 32)
-                                    contentHeight: Math.max(height, oldImgWrap.height + 32)
-                                    boundsBehavior: Flickable.StopAtBounds
-                                    ScrollBar.vertical: FluxScrollBar {}
-                                    ScrollBar.horizontal: FluxScrollBar {}
-
-                                    Rectangle {
-                                        id: oldImgWrap
-                                        readonly property real natW: (root.hasViewer && root.diffViewer.oldImageWidth > 0)
-                                            ? root.diffViewer.oldImageWidth
-                                            : (oldImgItem.implicitWidth > 0 ? oldImgItem.implicitWidth : 0)
-                                        readonly property real natH: (root.hasViewer && root.diffViewer.oldImageHeight > 0)
-                                            ? root.diffViewer.oldImageHeight
-                                            : (oldImgItem.implicitHeight > 0 ? oldImgItem.implicitHeight : 0)
-                                        readonly property real maxFitW: Math.max(32, oldImgFlick.width - 32)
-                                        readonly property real maxFitH: Math.max(32, oldImgFlick.height - 32)
-                                        readonly property real effScale: root.zoomFactor <= 0
-                                            ? ((natW > 0 && natH > 0)
-                                                ? Math.min(1.0, maxFitW / natW, maxFitH / natH)
-                                                : 1.0)
-                                            : root.zoomFactor
-                                        width: natW > 0 ? Math.max(1, Math.round(natW * effScale)) : 0
-                                        height: natH > 0 ? Math.max(1, Math.round(natH * effScale)) : 0
-                                        x: Math.max(16, Math.round((oldImgFlick.contentWidth - width) / 2))
-                                        y: Math.max(16, Math.round((oldImgFlick.contentHeight - height) / 2))
-                                        color: "transparent"
-                                        border.color: "#334155"
-                                        border.width: width > 0 ? 1 : 0
-
-                                        Image {
-                                            id: oldImgItem
-                                            anchors.fill: parent
-                                            source: root.hasOldImg ? root.diffViewer.oldImageUrl : ""
-                                            cache: false
-                                            smooth: root.zoomFactor < 2.0
-                                            mipmap: true
-                                            fillMode: Image.PreserveAspectFit
-                                        }
-                                    }
-                                }
+                                imageSource: root.hasOldImg ? root.diffViewer.oldImageUrl : ""
+                                naturalWidth: (root.hasViewer && root.diffViewer.oldImageWidth > 0) ? root.diffViewer.oldImageWidth : 0
+                                naturalHeight: (root.hasViewer && root.diffViewer.oldImageHeight > 0) ? root.diffViewer.oldImageHeight : 0
                             }
                         }
                     }
@@ -580,56 +671,12 @@ Rectangle {
                                 }
                             }
 
-                            Item {
+                            ZoomableImageCanvas {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                clip: true
-
-                                ImageBackdrop { anchors.fill: parent }
-
-                                Flickable {
-                                    id: newImgFlick
-                                    anchors.fill: parent
-                                    contentWidth: Math.max(width, newImgWrap.width + 32)
-                                    contentHeight: Math.max(height, newImgWrap.height + 32)
-                                    boundsBehavior: Flickable.StopAtBounds
-                                    ScrollBar.vertical: FluxScrollBar {}
-                                    ScrollBar.horizontal: FluxScrollBar {}
-
-                                    Rectangle {
-                                        id: newImgWrap
-                                        readonly property real natW: (root.hasViewer && root.diffViewer.newImageWidth > 0)
-                                            ? root.diffViewer.newImageWidth
-                                            : (newImgItem.implicitWidth > 0 ? newImgItem.implicitWidth : 0)
-                                        readonly property real natH: (root.hasViewer && root.diffViewer.newImageHeight > 0)
-                                            ? root.diffViewer.newImageHeight
-                                            : (newImgItem.implicitHeight > 0 ? newImgItem.implicitHeight : 0)
-                                        readonly property real maxFitW: Math.max(32, newImgFlick.width - 32)
-                                        readonly property real maxFitH: Math.max(32, newImgFlick.height - 32)
-                                        readonly property real effScale: root.zoomFactor <= 0
-                                            ? ((natW > 0 && natH > 0)
-                                                ? Math.min(1.0, maxFitW / natW, maxFitH / natH)
-                                                : 1.0)
-                                            : root.zoomFactor
-                                        width: natW > 0 ? Math.max(1, Math.round(natW * effScale)) : 0
-                                        height: natH > 0 ? Math.max(1, Math.round(natH * effScale)) : 0
-                                        x: Math.max(16, Math.round((newImgFlick.contentWidth - width) / 2))
-                                        y: Math.max(16, Math.round((newImgFlick.contentHeight - height) / 2))
-                                        color: "transparent"
-                                        border.color: "#334155"
-                                        border.width: width > 0 ? 1 : 0
-
-                                        Image {
-                                            id: newImgItem
-                                            anchors.fill: parent
-                                            source: root.hasNewImg ? root.diffViewer.newImageUrl : ""
-                                            cache: false
-                                            smooth: root.zoomFactor < 2.0
-                                            mipmap: true
-                                            fillMode: Image.PreserveAspectFit
-                                        }
-                                    }
-                                }
+                                imageSource: root.hasNewImg ? root.diffViewer.newImageUrl : ""
+                                naturalWidth: (root.hasViewer && root.diffViewer.newImageWidth > 0) ? root.diffViewer.newImageWidth : 0
+                                naturalHeight: (root.hasViewer && root.diffViewer.newImageHeight > 0) ? root.diffViewer.newImageHeight : 0
                             }
                         }
                     }
@@ -641,29 +688,13 @@ Rectangle {
                     anchors.margins: 16
                     visible: root.hasBothImgs && root.imageMode === "swipe"
 
-                    Rectangle {
+                    DualImageStageFrame {
                         id: swipeFrame
                         anchors.fill: parent
-                        radius: 10
-                        color: "#0A0E15"
-                        border.color: "#28374E"
-                        border.width: 1
-                        clip: true
-
-                        ImageBackdrop { anchors.fill: parent }
-
-                        readonly property real refW: Math.max(
-                            root.hasViewer ? root.diffViewer.oldImageWidth : 0,
-                            root.hasViewer ? root.diffViewer.newImageWidth : 0,
-                            swipeAfter.implicitWidth, swipeBefore.implicitWidth, 1)
-                        readonly property real refH: Math.max(
-                            root.hasViewer ? root.diffViewer.oldImageHeight : 0,
-                            root.hasViewer ? root.diffViewer.newImageHeight : 0,
-                            swipeAfter.implicitHeight, swipeBefore.implicitHeight, 1)
-                        readonly property real fitScale: Math.min(1.0, Math.max(32, width - 48) / refW, Math.max(32, height - 48) / refH)
-                        readonly property real effScale: root.zoomFactor <= 0 ? fitScale : root.zoomFactor
-                        readonly property real stageW: Math.max(1, Math.round(refW * effScale))
-                        readonly property real stageH: Math.max(1, Math.round(refH * effScale))
+                        beforeImplicitW: swipeBefore.implicitWidth
+                        beforeImplicitH: swipeBefore.implicitHeight
+                        afterImplicitW: swipeAfter.implicitWidth
+                        afterImplicitH: swipeAfter.implicitHeight
 
                         Item {
                             id: swipeStage
@@ -775,33 +806,19 @@ Rectangle {
                     spacing: 10
                     visible: root.hasBothImgs && root.imageMode === "onion"
 
-                    Rectangle {
+                    DualImageStageFrame {
                         id: onionFrame
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        radius: 10
-                        color: "#0A0E15"
-                        border.color: "#28374E"
-                        border.width: 1
-                        clip: true
-
-                        ImageBackdrop { anchors.fill: parent }
-
-                        readonly property real refW: Math.max(
-                            root.hasViewer ? root.diffViewer.oldImageWidth : 0,
-                            root.hasViewer ? root.diffViewer.newImageWidth : 0,
-                            onionAfter.implicitWidth, onionBefore.implicitWidth, 1)
-                        readonly property real refH: Math.max(
-                            root.hasViewer ? root.diffViewer.oldImageHeight : 0,
-                            root.hasViewer ? root.diffViewer.newImageHeight : 0,
-                            onionAfter.implicitHeight, onionBefore.implicitHeight, 1)
-                        readonly property real fitScale: Math.min(1.0, Math.max(32, width - 48) / refW, Math.max(32, height - 48) / refH)
-                        readonly property real effScale: root.zoomFactor <= 0 ? fitScale : root.zoomFactor
+                        beforeImplicitW: onionBefore.implicitWidth
+                        beforeImplicitH: onionBefore.implicitHeight
+                        afterImplicitW: onionAfter.implicitWidth
+                        afterImplicitH: onionAfter.implicitHeight
 
                         Item {
                             anchors.centerIn: parent
-                            width: Math.max(1, Math.round(onionFrame.refW * onionFrame.effScale))
-                            height: Math.max(1, Math.round(onionFrame.refH * onionFrame.effScale))
+                            width: onionFrame.stageW
+                            height: onionFrame.stageH
 
                             Image {
                                 id: onionBefore
@@ -875,52 +892,14 @@ Rectangle {
                         border.width: 1
                         clip: true
 
-                        ImageBackdrop { anchors.fill: parent }
-
-                        Flickable {
-                            id: diffImgFlick
+                        ZoomableImageCanvas {
                             anchors.fill: parent
-                            contentWidth: Math.max(width, diffImgWrap.width + 32)
-                            contentHeight: Math.max(height, diffImgWrap.height + 32)
-                            boundsBehavior: Flickable.StopAtBounds
-                            ScrollBar.vertical: FluxScrollBar {}
-                            ScrollBar.horizontal: FluxScrollBar {}
-
-                            Rectangle {
-                                id: diffImgWrap
-                                readonly property real natW: diffImgItem.implicitWidth > 0
-                                    ? diffImgItem.implicitWidth
-                                    : Math.max(root.hasViewer ? root.diffViewer.oldImageWidth : 0,
-                                               root.hasViewer ? root.diffViewer.newImageWidth : 0)
-                                readonly property real natH: diffImgItem.implicitHeight > 0
-                                    ? diffImgItem.implicitHeight
-                                    : Math.max(root.hasViewer ? root.diffViewer.oldImageHeight : 0,
-                                               root.hasViewer ? root.diffViewer.newImageHeight : 0)
-                                readonly property real maxFitW: Math.max(32, diffImgFlick.width - 32)
-                                readonly property real maxFitH: Math.max(32, diffImgFlick.height - 32)
-                                readonly property real effScale: root.zoomFactor <= 0
-                                    ? ((natW > 0 && natH > 0)
-                                        ? Math.min(1.0, maxFitW / natW, maxFitH / natH)
-                                        : 1.0)
-                                    : root.zoomFactor
-                                width: natW > 0 ? Math.max(1, Math.round(natW * effScale)) : 0
-                                height: natH > 0 ? Math.max(1, Math.round(natH * effScale)) : 0
-                                x: Math.max(16, Math.round((diffImgFlick.contentWidth - width) / 2))
-                                y: Math.max(16, Math.round((diffImgFlick.contentHeight - height) / 2))
-                                color: "transparent"
-                                border.color: "#334155"
-                                border.width: width > 0 ? 1 : 0
-
-                                Image {
-                                    id: diffImgItem
-                                    anchors.fill: parent
-                                    source: root.hasDiffImg ? root.diffViewer.diffImageUrl : ""
-                                    cache: false
-                                    smooth: root.zoomFactor < 2.0
-                                    mipmap: true
-                                    fillMode: Image.PreserveAspectFit
-                                }
-                            }
+                            preferImplicitSize: true
+                            imageSource: root.hasDiffImg ? root.diffViewer.diffImageUrl : ""
+                            naturalWidth: Math.max(root.hasViewer ? root.diffViewer.oldImageWidth : 0,
+                                                   root.hasViewer ? root.diffViewer.newImageWidth : 0)
+                            naturalHeight: Math.max(root.hasViewer ? root.diffViewer.oldImageHeight : 0,
+                                                    root.hasViewer ? root.diffViewer.newImageHeight : 0)
                         }
 
                         Rectangle {
@@ -1029,16 +1008,11 @@ Rectangle {
                         ScrollBar.vertical: FluxScrollBar {}
                         model: {
                             if (!root.hasViewer || !root.diffViewer.archiveEntries) return [];
-                            var list = root.diffViewer.archiveEntries;
-                            var q = root.archiveFilterText.trim().toLowerCase();
-                            var out = [];
-                            for (var i = 0; i < list.length; ++i) {
-                                var e = list[i];
-                                if (root.archiveOnlyChanged && e.status === "unchanged") continue;
-                                if (q.length > 0 && e.path.toLowerCase().indexOf(q) < 0) continue;
-                                out.push(e);
-                            }
-                            return out;
+                            const q = root.archiveFilterText.trim().toLowerCase();
+                            return root.diffViewer.archiveEntries.filter((e) => {
+                                if (root.archiveOnlyChanged && e.status === "unchanged") return false;
+                                return q.length === 0 || e.path.toLowerCase().indexOf(q) >= 0;
+                            });
                         }
 
                         delegate: Rectangle {
@@ -1123,96 +1097,22 @@ Rectangle {
                     spacing: 12
 
                     // Old font specimen
-                    Rectangle {
+                    FontSpecimenPane {
                         visible: root.hasViewer && root.diffViewer.oldFontFamily && root.diffViewer.oldFontFamily.length > 0
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        radius: 10
-                        color: "#0A0E15"
                         border.color: "#4C1D24"
-                        border.width: 1
-                        clip: true
-
-                        Flickable {
-                            anchors.fill: parent
-                            anchors.margins: 16
-                            contentHeight: oldFontCol.implicitHeight
-                            ScrollBar.vertical: FluxScrollBar {}
-
-                            ColumnLayout {
-                                id: oldFontCol
-                                width: parent.width
-                                spacing: 14
-                                Text {
-                                    text: "PRIMA — " + (root.hasViewer ? root.diffViewer.oldFontFamily : "")
-                                    color: "#FCA5A5"
-                                    font.pixelSize: 11
-                                    font.bold: true
-                                }
-                                Text {
-                                    Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#F8FAFC"
-                                    font.family: root.hasViewer ? root.diffViewer.oldFontFamily : ""
-                                    font.pixelSize: 32; text: root.fontSampleText
-                                }
-                                Text {
-                                    Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#CBD5E1"
-                                    font.family: root.hasViewer ? root.diffViewer.oldFontFamily : ""
-                                    font.pixelSize: 20; text: root.fontSampleText
-                                }
-                                Text {
-                                    Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#94A3B8"
-                                    font.family: root.hasViewer ? root.diffViewer.oldFontFamily : ""
-                                    font.pixelSize: 14; text: "ABCDEFGHIJKLMNOPQRSTUVWXYZ\nabcdefghijklmnopqrstuvwxyz\n0123456789 !@#$%^&*()[]{}"
-                                }
-                            }
-                        }
+                        headerText: "PRIMA — " + (root.hasViewer ? root.diffViewer.oldFontFamily : "")
+                        headerColor: "#FCA5A5"
+                        fontFamily: root.hasViewer ? root.diffViewer.oldFontFamily : ""
                     }
 
                     // New font specimen
-                    Rectangle {
+                    FontSpecimenPane {
                         visible: root.hasViewer && root.diffViewer.newFontFamily && root.diffViewer.newFontFamily.length > 0
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        radius: 10
-                        color: "#0A0E15"
                         border.color: "#14532D"
-                        border.width: 1
-                        clip: true
-
-                        Flickable {
-                            anchors.fill: parent
-                            anchors.margins: 16
-                            contentHeight: newFontCol.implicitHeight
-                            ScrollBar.vertical: FluxScrollBar {}
-
-                            ColumnLayout {
-                                id: newFontCol
-                                width: parent.width
-                                spacing: 14
-                                Text {
-                                    text: ((root.hasViewer && root.diffViewer.oldFontFamily.length > 0) ? "DOPO — " : "FONT — ") +
-                                          (root.hasViewer ? root.diffViewer.newFontFamily : "")
-                                    color: "#6EE7B7"
-                                    font.pixelSize: 11
-                                    font.bold: true
-                                }
-                                Text {
-                                    Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#F8FAFC"
-                                    font.family: root.hasViewer ? root.diffViewer.newFontFamily : ""
-                                    font.pixelSize: 32; text: root.fontSampleText
-                                }
-                                Text {
-                                    Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#CBD5E1"
-                                    font.family: root.hasViewer ? root.diffViewer.newFontFamily : ""
-                                    font.pixelSize: 20; text: root.fontSampleText
-                                }
-                                Text {
-                                    Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#94A3B8"
-                                    font.family: root.hasViewer ? root.diffViewer.newFontFamily : ""
-                                    font.pixelSize: 14; text: "ABCDEFGHIJKLMNOPQRSTUVWXYZ\nabcdefghijklmnopqrstuvwxyz\n0123456789 !@#$%^&*()[]{}"
-                                }
-                            }
-                        }
+                        headerText: ((root.hasViewer && root.diffViewer.oldFontFamily.length > 0) ? "DOPO — " : "FONT — ") +
+                                    (root.hasViewer ? root.diffViewer.newFontFamily : "")
+                        headerColor: "#6EE7B7"
+                        fontFamily: root.hasViewer ? root.diffViewer.newFontFamily : ""
                     }
                 }
             }
@@ -1467,12 +1367,7 @@ Rectangle {
                         model: {
                             if (!root.hasViewer || !root.diffViewer.hexRows) return [];
                             if (!root.hexOnlyChanged) return root.diffViewer.hexRows;
-                            var rows = root.diffViewer.hexRows;
-                            var filtered = [];
-                            for (var i = 0; i < rows.length; ++i) {
-                                if (rows[i].hasDiff) filtered.push(rows[i]);
-                            }
-                            return filtered;
+                            return root.diffViewer.hexRows.filter((row) => row.hasDiff);
                         }
 
                         delegate: Rectangle {

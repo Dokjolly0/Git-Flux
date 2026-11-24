@@ -19,7 +19,7 @@ Rectangle {
 
     function resolveStashIndex(selector) {
         if (selector) {
-            var m = selector.match(/^stash@\{(\d+)\}$/);
+            const m = selector.match(/^stash@\{(\d+)\}$/);
             if (m && m.length > 1) {
                 return parseInt(m[1], 10);
             }
@@ -107,11 +107,11 @@ Rectangle {
 
     function saveMessageEdit() {
         if (!root.selectedCommit || !root.branchManager) return;
-        var subject = editSubjectField.text.trim();
+        const subject = editSubjectField.text.trim();
         if (subject.length === 0) return;
-        var body = editBodyArea.text.replace(/\s+$/, "");
-        var message = body.length > 0 ? (subject + "\n\n" + body) : subject;
-        var original = (root.selectedCommit.subject || "") + ((root.selectedCommit.body || "").replace(/\s+$/, "").length > 0
+        const body = editBodyArea.text.replace(/\s+$/, "");
+        const message = body.length > 0 ? (subject + "\n\n" + body) : subject;
+        const original = (root.selectedCommit.subject || "") + ((root.selectedCommit.body || "").replace(/\s+$/, "").length > 0
             ? "\n\n" + root.selectedCommit.body.replace(/\s+$/, "") : "");
         if (message === original) {
             root.isEditingMessage = false;
@@ -125,7 +125,7 @@ Rectangle {
 
     function selectCommitBySha(sha) {
         if (!sha || !root.branchManager || !root.branchManager.commitHistory) return false;
-        var idx = root.branchManager.commitHistory.indexOfSha(sha);
+        const idx = root.branchManager.commitHistory.indexOfSha(sha);
         if (idx < 0) return false;
         root.selectCommitByIndex(idx);
         return true;
@@ -135,9 +135,9 @@ Rectangle {
     // is a simple amend, otherwise every descendant commit is rewritten as well.
     readonly property bool selectedIsHead: {
         if (!root.selectedCommit || root.isWipSelected) return false;
-        var decs = root.selectedCommit.structuredDecorations;
+        const decs = root.selectedCommit.structuredDecorations;
         if (!decs) return false;
-        for (var i = 0; i < decs.length; ++i) {
+        for (let i = 0; i < decs.length; ++i) {
             if (decs[i] && decs[i].isHead) return true;
         }
         return false;
@@ -168,15 +168,15 @@ Rectangle {
     function isSameBranchRef(a, b) {
         if (!a || !b) return false;
         if (a === b) return true;
-        var cleanA = a.startsWith("origin/") ? a.substring(7) : a;
-        var cleanB = b.startsWith("origin/") ? b.substring(7) : b;
+        const cleanA = a.startsWith("origin/") ? a.substring(7) : a;
+        const cleanB = b.startsWith("origin/") ? b.substring(7) : b;
         return cleanA === cleanB;
     }
 
     function hasBranchDecoration(decs, branchName) {
         if (!decs || !branchName) return false;
-        for (var i = 0; i < decs.length; ++i) {
-            var d = decs[i];
+        for (let i = 0; i < decs.length; ++i) {
+            const d = decs[i];
             if (d && (d.name === branchName || isSameBranchRef(d.name, branchName))) {
                 return true;
             }
@@ -186,12 +186,12 @@ Rectangle {
 
     function findBranchAtRootPos(rootX, rootY) {
         if (!root.branchManager || !root.branchManager.commitHistory) return "";
-        var listPt = root.mapToItem(commitTableListView, rootX, rootY);
+        const listPt = root.mapToItem(commitTableListView, rootX, rootY);
         if (listPt.y < 0 || listPt.y > commitTableListView.height) {
             return "";
         }
-        var visualY = listPt.y + commitTableListView.contentY;
-        var rowIndex = commitTableListView.indexAt(listPt.x + commitTableListView.contentX, visualY);
+        const visualY = listPt.y + commitTableListView.contentY;
+        let rowIndex = commitTableListView.indexAt(listPt.x + commitTableListView.contentX, visualY);
         if (rowIndex === -1) {
             rowIndex = Math.floor(visualY / 36);
         }
@@ -199,14 +199,14 @@ Rectangle {
             return "";
         }
 
-        var model = root.branchManager.commitHistory;
-        var commit = model.getCommit(rowIndex);
+        const model = root.branchManager.commitHistory;
+        const commit = model.getCommit(rowIndex);
         if (!commit || !commit.structuredDecorations) return "";
 
-        var decs = commit.structuredDecorations;
-        var remoteCandidate = "";
-        for (var i = 0; i < decs.length; ++i) {
-            var d = decs[i];
+        const decs = commit.structuredDecorations;
+        let remoteCandidate = "";
+        for (let i = 0; i < decs.length; ++i) {
+            const d = decs[i];
             if (d && d.name && !isSameBranchRef(d.name, root.draggingBranchName)) {
                 if (d.type === "local") return d.name;
                 if (d.type === "remote" && !remoteCandidate) remoteCandidate = d.name;
@@ -216,8 +216,8 @@ Rectangle {
     }
 
     readonly property bool hasCollapsedFolders: {
-        var keys = Object.keys(root.collapsedFolders);
-        for (var i = 0; i < keys.length; ++i) {
+        const keys = Object.keys(root.collapsedFolders);
+        for (let i = 0; i < keys.length; ++i) {
             if (root.collapsedFolders[keys[i]]) return true;
         }
         return false;
@@ -227,32 +227,32 @@ Rectangle {
     readonly property int totalFilesCount: root.commitFiles ? root.commitFiles.length : 0
     readonly property int addedFilesCount: {
         if (!root.commitFiles) return 0;
-        var count = 0;
-        for (var i = 0; i < root.commitFiles.length; ++i) {
+        let count = 0;
+        for (let i = 0; i < root.commitFiles.length; ++i) {
             if (root.commitFiles[i].status === "A") count++;
         }
         return count;
     }
     readonly property int modifiedFilesCount: {
         if (!root.commitFiles) return 0;
-        var count = 0;
-        for (var i = 0; i < root.commitFiles.length; ++i) {
+        let count = 0;
+        for (let i = 0; i < root.commitFiles.length; ++i) {
             if (root.commitFiles[i].status === "M") count++;
         }
         return count;
     }
     readonly property int deletedFilesCount: {
         if (!root.commitFiles) return 0;
-        var count = 0;
-        for (var i = 0; i < root.commitFiles.length; ++i) {
+        let count = 0;
+        for (let i = 0; i < root.commitFiles.length; ++i) {
             if (root.commitFiles[i].status === "D") count++;
         }
         return count;
     }
     readonly property int renamedFilesCount: {
         if (!root.commitFiles) return 0;
-        var count = 0;
-        for (var i = 0; i < root.commitFiles.length; ++i) {
+        let count = 0;
+        for (let i = 0; i < root.commitFiles.length; ++i) {
             if (root.commitFiles[i].status === "R" || root.commitFiles[i].status === "C") count++;
         }
         return count;
@@ -261,10 +261,10 @@ Rectangle {
     // Filtered files according to category chip selection and search query
     readonly property var filteredCommitFiles: {
         if (!root.commitFiles) return [];
-        var res = [];
-        var q = root.fileSearchQuery.trim().toLowerCase();
-        for (var i = 0; i < root.commitFiles.length; ++i) {
-            var f = root.commitFiles[i];
+        const res = [];
+        const q = root.fileSearchQuery.trim().toLowerCase();
+        for (let i = 0; i < root.commitFiles.length; ++i) {
+            const f = root.commitFiles[i];
             if (!f) continue;
             if (root.fileCategoryFilter === "M" && f.status !== "M") continue;
             else if (root.fileCategoryFilter === "A" && f.status !== "A") continue;
@@ -272,8 +272,8 @@ Rectangle {
             else if ((root.fileCategoryFilter === "R" || root.fileCategoryFilter === "C") && (f.status !== "R" && f.status !== "C")) continue;
 
             if (q !== "") {
-                var p = (f.path || "").toLowerCase();
-                var fn = (f.filename || root.getFilename(f.path) || "").toLowerCase();
+                const p = (f.path || "").toLowerCase();
+                const fn = (f.filename || root.getFilename(f.path) || "").toLowerCase();
                 if (p.indexOf(q) === -1 && fn.indexOf(q) === -1) continue;
             }
 
@@ -284,17 +284,17 @@ Rectangle {
 
     // Sorted flat files list for Path View
     readonly property var sortedPathFiles: {
-        var list = (root.filteredCommitFiles || []).slice(0);
+        const list = (root.filteredCommitFiles || []).slice(0);
         if (root.fileSortOrder === "name_asc") {
             list.sort(function (a, b) {
-                var fa = root.getFilename(a.path).toLowerCase();
-                var fb = root.getFilename(b.path).toLowerCase();
+                const fa = root.getFilename(a.path).toLowerCase();
+                const fb = root.getFilename(b.path).toLowerCase();
                 return fa.localeCompare(fb);
             });
         } else if (root.fileSortOrder === "name_desc") {
             list.sort(function (a, b) {
-                var fa = root.getFilename(a.path).toLowerCase();
-                var fb = root.getFilename(b.path).toLowerCase();
+                const fa = root.getFilename(a.path).toLowerCase();
+                const fb = root.getFilename(b.path).toLowerCase();
                 return fb.localeCompare(fa);
             });
         }
@@ -314,14 +314,14 @@ Rectangle {
     // Helper to split path into directory and filename
     function getDirectory(path) {
         if (!path) return "";
-        var lastSlash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        const lastSlash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
         if (lastSlash === -1) return "";
         return path.substring(0, lastSlash + 1);
     }
 
     function getFilename(path) {
         if (!path) return "";
-        var lastSlash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        const lastSlash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
         if (lastSlash === -1) return path;
         return path.substring(lastSlash + 1);
     }
@@ -336,9 +336,9 @@ Rectangle {
 
         function onDataChanged() {
             if (root.selectedCommit && root.selectedCommit.sha !== "WIP" && commitTableListView.currentIndex >= 0) {
-                var model = (root.branchManager && root.branchManager.commitHistory) ? root.branchManager.commitHistory : null;
+                const model = (root.branchManager && root.branchManager.commitHistory) ? root.branchManager.commitHistory : null;
                 if (model) {
-                    var updated = model.getCommit(commitTableListView.currentIndex);
+                    const updated = model.getCommit(commitTableListView.currentIndex);
                     if (updated && updated.sha === root.selectedCommit.sha) {
                         root.selectedCommit = updated;
                     }
@@ -419,10 +419,10 @@ Rectangle {
     }
 
     Keys.onPressed: function (event) {
-        if ((event.modifiers & Qt.ControlModifier) && (event.key === Qt.Key_F || event.key === Qt.Key_Find)) {
+        if ((event.modifiers & Qt.ControlModifier) !== 0 && (event.key === Qt.Key_F || event.key === Qt.Key_Find)) {
             root.focusCommitSearch();
             event.accepted = true;
-        } else if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_H) {
+        } else if ((event.modifiers & Qt.ControlModifier) !== 0 && event.key === Qt.Key_H) {
             root.openFileHistoryPicker();
             event.accepted = true;
         }
@@ -482,12 +482,12 @@ Rectangle {
 
     function selectCommitByIndex(idx) {
         if (!root.branchManager || !root.branchManager.commitHistory) return;
-        var model = root.branchManager.commitHistory;
-        var count = model.rowCount();
+        const model = root.branchManager.commitHistory;
+        const count = model.rowCount();
         if (idx < 0 || idx >= count) return;
         commitTableListView.currentIndex = idx;
         commitTableListView.positionViewAtIndex(idx, ListView.Contain);
-        var commit = model.getCommit(idx);
+        const commit = model.getCommit(idx);
         root.selectCommit(commit);
     }
 
@@ -500,7 +500,7 @@ Rectangle {
             root.updateTreeItems();
             return;
         }
-        var model = root.branchManager.commitHistory;
+        const model = root.branchManager.commitHistory;
         if (model.rowCount() > 0) {
             root.selectCommitByIndex(0);
         } else {
@@ -521,8 +521,8 @@ Rectangle {
             root.updateTreeItems();
             return;
         }
-        var model = root.branchManager.commitHistory;
-        var rowCount = model.rowCount();
+        const model = root.branchManager.commitHistory;
+        const rowCount = model.rowCount();
         if (rowCount === 0) {
             root.selectedCommit = null;
             root.commitFiles = [];
@@ -533,23 +533,23 @@ Rectangle {
         }
 
         if (root.pendingSelectSha !== "") {
-            var pending = root.pendingSelectSha;
+            const pending = root.pendingSelectSha;
             root.pendingSelectSha = "";
             if (root.selectCommitBySha(pending)) return;
         }
 
         if (root.selectedCommit) {
-            var prevSha = root.selectedCommit.sha;
+            const prevSha = root.selectedCommit.sha;
             if (prevSha === "WIP") {
-                var firstCommit = model.getCommit(0);
+                const firstCommit = model.getCommit(0);
                 if (firstCommit && firstCommit.sha === "WIP") {
                     commitTableListView.currentIndex = 0;
                     root.selectedCommit = firstCommit;
                     return;
                 }
             } else {
-                for (var i = 0; i < rowCount; ++i) {
-                    var c = model.getCommit(i);
+                for (let i = 0; i < rowCount; ++i) {
+                    const c = model.getCommit(i);
                     if (c && c.sha === prevSha) {
                         commitTableListView.currentIndex = i;
                         root.selectedCommit = c;
@@ -591,7 +591,7 @@ Rectangle {
 
         // If file history mode is active, automatically open the diff of the tracked file in this commit!
         if (root.branchManager && root.branchManager.fileHistoryPath !== "" && root.sessionVm && root.sessionVm.commitDiffViewer) {
-            var repoPath = root.sessionVm.activeRepoPath;
+            const repoPath = root.sessionVm.activeRepoPath;
             root.selectedFile = {path: root.branchManager.fileHistoryPath, isStaged: false};
             root.sessionVm.commitDiffViewer.loadCommitFileDiff(repoPath, commit.sha, root.branchManager.fileHistoryPath);
             root.isDiffOpen = true;
@@ -600,13 +600,13 @@ Rectangle {
 
     function reloadWipFiles() {
         if (!root.sessionVm || !root.sessionVm.workingTree) return;
-        var files = root.sessionVm.workingTree.getAllWorkingFiles();
+        const files = root.sessionVm.workingTree.getAllWorkingFiles();
         root.commitFiles = files || [];
         root.updateTreeItems();
 
         if (root.isDiffOpen && root.selectedFile) {
-            var found = false;
-            for (var i = 0; i < root.commitFiles.length; ++i) {
+            let found = false;
+            for (let i = 0; i < root.commitFiles.length; ++i) {
                 if (root.commitFiles[i].path === root.selectedFile.path) {
                     root.selectedFile = root.commitFiles[i];
                     found = true;
@@ -614,8 +614,8 @@ Rectangle {
                 }
             }
             if (found && root.sessionVm.commitDiffViewer) {
-                var repoPath = root.sessionVm.activeRepoPath;
-                var wipScope = (root.selectedFile.kind === "untracked" || root.selectedFile.kind === "Untracked") ? "untracked" : (root.selectedFile.isStaged ? "staged" : "unstaged");
+                const repoPath = root.sessionVm.activeRepoPath;
+                const wipScope = (root.selectedFile.kind === "untracked" || root.selectedFile.kind === "Untracked") ? "untracked" : (root.selectedFile.isStaged ? "staged" : "unstaged");
                 root.sessionVm.commitDiffViewer.loadDiff(repoPath, root.selectedFile.path, wipScope);
             } else if (!found) {
                 root.closeFileDiff();
@@ -624,25 +624,25 @@ Rectangle {
     }
 
     function updateTreeItems() {
-        var files = root.filteredCommitFiles;
+        const files = root.filteredCommitFiles;
         if (!files || files.length === 0) {
             root.treeItems = [];
             return;
         }
 
-        var rootNode = {name: "", fullPath: "", children: {}, files: [], fileCount: 0};
-        for (var i = 0; i < files.length; ++i) {
-            var f = files[i];
+        const rootNode = {name: "", fullPath: "", children: {}, files: [], fileCount: 0};
+        for (let i = 0; i < files.length; ++i) {
+            const f = files[i];
             if (!f || !f.path) continue;
-            var cleanPath = f.path.replace(/\\/g, '/');
-            var parts = cleanPath.split('/').filter(function (p) {
+            const cleanPath = f.path.replace(/\\/g, '/');
+            const parts = cleanPath.split('/').filter(function (p) {
                 return p.length > 0;
             });
-            var filename = parts.pop();
-            var curr = rootNode;
-            var currPath = "";
-            for (var p = 0; p < parts.length; ++p) {
-                var part = parts[p];
+            parts.pop();
+            let curr = rootNode;
+            let currPath = "";
+            for (let p = 0; p < parts.length; ++p) {
+                const part = parts[p];
                 currPath = currPath ? (currPath + "/" + part) : part;
                 if (!curr.children[part]) {
                     curr.children[part] = {
@@ -660,10 +660,10 @@ Rectangle {
             rootNode.fileCount++;
         }
 
-        var items = [];
+        const items = [];
 
         function traverse(node, depth) {
-            var childKeys = Object.keys(node.children);
+            const childKeys = Object.keys(node.children);
             if (root.fileSortOrder === "name_desc") {
                 childKeys.sort(function (a, b) {
                     return b.toLowerCase().localeCompare(a.toLowerCase());
@@ -674,10 +674,10 @@ Rectangle {
                 });
             }
 
-            for (var k = 0; k < childKeys.length; ++k) {
-                var key = childKeys[k];
-                var child = node.children[key];
-                var isCollapsed = (root.fileSearchQuery.trim() === "") && !!root.collapsedFolders[child.fullPath];
+            for (let k = 0; k < childKeys.length; ++k) {
+                const key = childKeys[k];
+                const child = node.children[key];
+                const isCollapsed = (root.fileSearchQuery.trim() === "") && !!root.collapsedFolders[child.fullPath];
                 items.push({
                     isFolder: true,
                     name: child.name,
@@ -691,24 +691,24 @@ Rectangle {
                 }
             }
 
-            var nodeFiles = node.files.slice(0);
+            const nodeFiles = node.files.slice(0);
             if (root.fileSortOrder === "name_desc") {
                 nodeFiles.sort(function (a, b) {
-                    var fa = root.getFilename(a.path).toLowerCase();
-                    var fb = root.getFilename(b.path).toLowerCase();
+                    const fa = root.getFilename(a.path).toLowerCase();
+                    const fb = root.getFilename(b.path).toLowerCase();
                     return fb.localeCompare(fa);
                 });
             } else if (root.fileSortOrder === "name_asc") {
                 nodeFiles.sort(function (a, b) {
-                    var fa = root.getFilename(a.path).toLowerCase();
-                    var fb = root.getFilename(b.path).toLowerCase();
+                    const fa = root.getFilename(a.path).toLowerCase();
+                    const fb = root.getFilename(b.path).toLowerCase();
                     return fa.localeCompare(fb);
                 });
             }
 
-            for (var fIdx = 0; fIdx < nodeFiles.length; ++fIdx) {
-                var fileObj = nodeFiles[fIdx];
-                var fname = root.getFilename(fileObj.path);
+            for (let fIdx = 0; fIdx < nodeFiles.length; ++fIdx) {
+                const fileObj = nodeFiles[fIdx];
+                const fname = root.getFilename(fileObj.path);
                 items.push({
                     isFolder: false,
                     name: fname,
@@ -728,7 +728,7 @@ Rectangle {
     }
 
     function toggleFolder(fullPath) {
-        var c = Object.assign({}, root.collapsedFolders);
+        const c = Object.assign({}, root.collapsedFolders);
         c[fullPath] = !c[fullPath];
         root.collapsedFolders = c;
         root.updateTreeItems();
@@ -740,16 +740,16 @@ Rectangle {
     }
 
     function collapseAllFolders() {
-        var files = root.filteredCommitFiles;
-        var c = {};
-        for (var i = 0; i < files.length; ++i) {
-            var cleanPath = files[i].path.replace(/\\/g, '/');
-            var parts = cleanPath.split('/').filter(function (p) {
+        const files = root.filteredCommitFiles;
+        const c = {};
+        for (let i = 0; i < files.length; ++i) {
+            const cleanPath = files[i].path.replace(/\\/g, '/');
+            const parts = cleanPath.split('/').filter(function (p) {
                 return p.length > 0;
             });
             parts.pop();
-            var pStr = "";
-            for (var p = 0; p < parts.length; ++p) {
+            let pStr = "";
+            for (let p = 0; p < parts.length; ++p) {
                 pStr = pStr ? (pStr + "/" + parts[p]) : parts[p];
                 c[pStr] = true;
             }
@@ -782,10 +782,10 @@ Rectangle {
         root.selectedFile = file;
         root.isDiffOpen = true;
         if (!file || !root.selectedCommit || !root.sessionVm) return;
-        var repoPath = root.sessionVm.activeRepoPath;
+        const repoPath = root.sessionVm.activeRepoPath;
         if (root.sessionVm.commitDiffViewer) {
             if (root.selectedCommit.sha === "WIP") {
-                var openScope = (file.kind === "untracked" || file.kind === "Untracked") ? "untracked" : (file.isStaged ? "staged" : "unstaged");
+                const openScope = (file.kind === "untracked" || file.kind === "Untracked") ? "untracked" : (file.isStaged ? "staged" : "unstaged");
                 root.sessionVm.commitDiffViewer.loadDiff(repoPath, file.path, openScope);
             } else {
                 root.sessionVm.commitDiffViewer.loadCommitFileDiff(repoPath, root.selectedCommit.sha, file.path);
@@ -795,9 +795,9 @@ Rectangle {
 
     function createWipCommit() {
         if (!root.sessionVm || !root.sessionVm.commitBox) return;
-        var summary = wipSummaryField.text.trim();
+        const summary = wipSummaryField.text.trim();
         if (!summary) return;
-        var fullMsg = summary;
+        let fullMsg = summary;
         if (wipDescriptionField.text.trim().length > 0) {
             fullMsg += "\n\n" + wipDescriptionField.text.trim();
         }
@@ -816,7 +816,7 @@ Rectangle {
     Connections {
         target: (root.sessionVm && root.sessionVm.commitBox) ? root.sessionVm.commitBox : null
 
-        function onCommitSucceeded(sha, summary) {
+        function onCommitSucceeded() {
             wipSummaryField.text = "";
             wipDescriptionField.text = "";
         }
@@ -1192,7 +1192,7 @@ Rectangle {
                                 }
                                 onPositionChanged: function (mouse) {
                                     if (!pressed) return;
-                                    var dx = mapToItem(root, mouse.x, 0).x - pressX;
+                                    const dx = mapToItem(root, mouse.x, 0).x - pressX;
                                     root.branchTagColWidth = Math.max(100, Math.min(520, Math.round(startWidth + dx)));
                                 }
                                 onDoubleClicked: root.branchTagColWidth = 230
@@ -1308,10 +1308,10 @@ Rectangle {
                         event.accepted = true;
                     }
                     Keys.onPressed: function (event) {
-                        if ((event.modifiers & Qt.ControlModifier) && (event.key === Qt.Key_F || event.key === Qt.Key_Find)) {
+                        if ((event.modifiers & Qt.ControlModifier) !== 0 && (event.key === Qt.Key_F || event.key === Qt.Key_Find)) {
                             root.focusCommitSearch();
                             event.accepted = true;
-                        } else if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_H) {
+                        } else if ((event.modifiers & Qt.ControlModifier) !== 0 && event.key === Qt.Key_H) {
                             root.openFileHistoryPicker();
                             event.accepted = true;
                         }
@@ -1414,9 +1414,9 @@ Rectangle {
 
                                 readonly property bool hasOrphanBadge: {
                                     if (commitRow.isOrphan) return true;
-                                    var decs = commitRow.structuredDecorations;
+                                    const decs = commitRow.structuredDecorations;
                                     if (!decs) return false;
-                                    for (var d = 0; d < decs.length; ++d) {
+                                    for (let d = 0; d < decs.length; ++d) {
                                         if (decs[d].isOrphan || (decs[d].name && decs[d].name.indexOf("gh-pages") !== -1)) return true;
                                     }
                                     return false;
@@ -1427,15 +1427,15 @@ Rectangle {
                                 // that opens a popup with the full list, so the column never overflows.
                                 readonly property var allDecs: commitRow.structuredDecorations || []
                                 readonly property int primaryIndex: {
-                                    for (var i = 0; i < allDecs.length; ++i) {
+                                    for (let i = 0; i < allDecs.length; ++i) {
                                         if (allDecs[i] && allDecs[i].isHead) return i;
                                     }
                                     return 0;
                                 }
                                 readonly property var primaryDecs: allDecs.length > 0 ? [allDecs[primaryIndex]] : []
                                 readonly property var extraDecs: {
-                                    var out = [];
-                                    for (var i = 0; i < allDecs.length; ++i) {
+                                    const out = [];
+                                    for (let i = 0; i < allDecs.length; ++i) {
                                         if (i !== primaryIndex) out.push(allDecs[i]);
                                     }
                                     return out;
@@ -1510,9 +1510,9 @@ Rectangle {
                                                         root.hoveredTargetBranch = "";
                                                     }
                                                 }
-                                                onDropped: function (drop) {
-                                                    var src = root.draggingBranchName;
-                                                    var tgt = modelData.name;
+                                                onDropped: function () {
+                                                    const src = root.draggingBranchName;
+                                                    const tgt = modelData.name;
                                                     root.hoveredTargetBranch = "";
                                                     root.draggingBranchName = "";
                                                     dragGhostBadge.visible = false;
@@ -1543,21 +1543,21 @@ Rectangle {
                                                 }
 
                                                 onPositionChanged: function (mouse) {
-                                                    if (pressed && (mouse.buttons & Qt.LeftButton) && (modelData.type === "local" || modelData.type === "remote")) {
-                                                        var dx = mouse.x - startPos.x;
-                                                        var dy = mouse.y - startPos.y;
+                                                    if (pressed && (mouse.buttons & Qt.LeftButton) !== 0 && (modelData.type === "local" || modelData.type === "remote")) {
+                                                        const dx = mouse.x - startPos.x;
+                                                        const dy = mouse.y - startPos.y;
                                                         if (!isDraggingBadge && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
                                                             isDraggingBadge = true;
                                                             root.draggingBranchName = modelData.name;
                                                             root.draggingBranchType = modelData.type;
                                                         }
                                                         if (isDraggingBadge) {
-                                                            var pt = mapToItem(root, mouse.x, mouse.y);
+                                                            const pt = mapToItem(root, mouse.x, mouse.y);
                                                             dragGhostBadge.x = pt.x + 12;
                                                             dragGhostBadge.y = pt.y + 12;
                                                             dragGhostBadge.visible = true;
 
-                                                            var tgt = root.findBranchAtRootPos(pt.x, pt.y);
+                                                            const tgt = root.findBranchAtRootPos(pt.x, pt.y);
                                                             if (tgt && !root.isSameBranchRef(tgt, root.draggingBranchName)) {
                                                                 root.hoveredTargetBranch = tgt;
                                                             } else {
@@ -1571,14 +1571,14 @@ Rectangle {
                                                     if (isDraggingBadge) {
                                                         isDraggingBadge = false;
                                                         dragGhostBadge.visible = false;
-                                                        var src = root.draggingBranchName;
-                                                        var tgt = root.hoveredTargetBranch;
+                                                        const src = root.draggingBranchName;
+                                                        const tgt = root.hoveredTargetBranch;
                                                         root.draggingBranchName = "";
                                                         root.hoveredTargetBranch = "";
                                                         if (src && tgt && !root.isSameBranchRef(src, tgt)) {
                                                             branchDropMenu.sourceBranch = src;
                                                             branchDropMenu.targetBranch = tgt;
-                                                            var rpt = mapToItem(root, mouse.x, mouse.y);
+                                                            const rpt = mapToItem(root, mouse.x, mouse.y);
                                                             branchDropMenu.popup(rpt.x, rpt.y);
                                                         }
                                                     } else if (mouse.button === Qt.RightButton) {
@@ -1835,18 +1835,18 @@ Rectangle {
                                     property int commitLane: commitRow.graphLane !== undefined ? commitRow.graphLane : 0
 
                                     onPaint: {
-                                        var ctx = getContext("2d");
+                                        const ctx = getContext("2d");
                                         ctx.reset();
                                         ctx.lineWidth = 2.5;
                                         ctx.lineCap = "round";
 
-                                        var laneWidth = 22;
-                                        var leftOffset = 14;
+                                        const laneWidth = 22;
+                                        const leftOffset = 14;
                                         function laneX(lane) {
                                             return leftOffset + lane * laneWidth;
                                         }
 
-                                        var centerY = height / 2;
+                                        const centerY = height / 2;
 
                                         // Horizontal connecting line from Col 1 into node
                                         if (commitRow.structuredDecorations && commitRow.structuredDecorations.length > 0) {
@@ -1858,14 +1858,14 @@ Rectangle {
                                             ctx.stroke();
                                         }
 
-                                        for (var i = 0; i < routes.length; ++i) {
-                                            var r = routes[i];
+                                        for (let i = 0; i < routes.length; ++i) {
+                                            const r = routes[i];
                                             ctx.setLineDash(r.dashed === true ? [4, 3] : []);
                                             ctx.strokeStyle = r.color || "#06B6D4";
                                             ctx.beginPath();
 
-                                            var x1 = laneX(r.fromLane);
-                                            var x2 = laneX(r.toLane);
+                                            const x1 = laneX(r.fromLane);
+                                            const x2 = laneX(r.toLane);
 
                                             if (r.type === 0) {
                                                 // Straight pass-through
@@ -1972,11 +1972,11 @@ Rectangle {
                                         onVisibleChanged: if (visible) requestPaint()
                                         onAvailableChanged: if (available) requestPaint()
                                         onPaint: {
-                                            var ctx = getContext("2d");
+                                            const ctx = getContext("2d");
                                             ctx.reset();
-                                            var cx = width / 2;
-                                            var cy = height / 2;
-                                            var r = Math.min(width, height) / 2 - 0.5;
+                                            const cx = width / 2;
+                                            const cy = height / 2;
+                                            const r = Math.min(width, height) / 2 - 0.5;
 
                                             ctx.globalCompositeOperation = "source-over";
                                             ctx.fillStyle = maskBg;
@@ -2461,7 +2461,7 @@ Rectangle {
                                 Keys.onEscapePressed: root.cancelMessageEdit()
                                 Keys.onPressed: function (event) {
                                     if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
-                                            && (event.modifiers & Qt.ControlModifier)) {
+                                            && (event.modifiers & Qt.ControlModifier) !== 0) {
                                         root.saveMessageEdit();
                                         event.accepted = true;
                                     }
@@ -2619,11 +2619,11 @@ Rectangle {
                                     onVisibleChanged: if (visible) requestPaint()
                                     onAvailableChanged: if (available) requestPaint()
                                     onPaint: {
-                                        var ctx = getContext("2d");
+                                        const ctx = getContext("2d");
                                         ctx.reset();
-                                        var cx = width / 2;
-                                        var cy = height / 2;
-                                        var r = Math.min(width, height) / 2 - 0.5;
+                                        const cx = width / 2;
+                                        const cy = height / 2;
+                                        const r = Math.min(width, height) / 2 - 0.5;
 
                                         ctx.globalCompositeOperation = "source-over";
                                         ctx.fillStyle = "#0D1117";
@@ -2669,11 +2669,11 @@ Rectangle {
                                 Text {
                                     text: {
                                         if (!root.selectedCommit) return "";
-                                        var txt = "authored " + (root.selectedCommit.authorDateFormatted || root.selectedCommit.authorDate || "");
+                                        const authored = "authored " + (root.selectedCommit.authorDateFormatted || root.selectedCommit.authorDate || "");
                                         if (root.selectedCommit.committerName && root.selectedCommit.committerName !== root.selectedCommit.authorName) {
-                                            txt += " • committed by " + root.selectedCommit.committerName;
+                                            return authored + " • committed by " + root.selectedCommit.committerName;
                                         }
-                                        return txt;
+                                        return authored;
                                     }
                                     color: "#8B949E"
                                     font.pixelSize: 11
@@ -2692,7 +2692,7 @@ Rectangle {
                                 Text {
                                     text: {
                                         if (!root.selectedCommit || !root.selectedCommit.parents || root.selectedCommit.parents.length === 0) return "--";
-                                        var p = root.selectedCommit.parents[0];
+                                        const p = root.selectedCommit.parents[0];
                                         return p.length > 7 ? p.substring(0, 7) : p;
                                     }
                                     color: "#38BDF8"
@@ -2749,11 +2749,11 @@ Rectangle {
                                         onVisibleChanged: if (visible) requestPaint()
                                         onAvailableChanged: if (available) requestPaint()
                                         onPaint: {
-                                            var ctx = getContext("2d");
+                                            const ctx = getContext("2d");
                                             ctx.reset();
-                                            var cx = width / 2;
-                                            var cy = height / 2;
-                                            var r = Math.min(width, height) / 2 - 0.5;
+                                            const cx = width / 2;
+                                            const cy = height / 2;
+                                            const r = Math.min(width, height) / 2 - 0.5;
                                             ctx.globalCompositeOperation = "source-over";
                                             ctx.fillStyle = "#161B22";
                                             ctx.fillRect(0, 0, width, height);
@@ -3904,7 +3904,7 @@ Rectangle {
                                 }
                                 Text {
                                     text: {
-                                        var staged = (root.sessionVm && root.sessionVm.workingTree) ? root.sessionVm.workingTree.stagedCount : 0;
+                                        const staged = (root.sessionVm && root.sessionVm.workingTree) ? root.sessionVm.workingTree.stagedCount : 0;
                                         if (staged > 0) {
                                             return "Crea commit (" + staged + " file in staging)";
                                         }
@@ -4234,7 +4234,7 @@ Rectangle {
             visible: badgeContextMenu.badgeType !== "tag"
             font.pixelSize: 11
             onClicked: {
-                var current = (root.branchManager && root.branchManager.currentBranch && root.branchManager.currentBranch !== badgeContextMenu.targetName)
+                const current = (root.branchManager && root.branchManager.currentBranch && root.branchManager.currentBranch !== badgeContextMenu.targetName)
                     ? root.branchManager.currentBranch : "main";
                 root.createPullRequestRequested(badgeContextMenu.targetName, current);
             }
@@ -4276,7 +4276,7 @@ Rectangle {
             visible: badgeContextMenu.badgeType === "local"
             font.pixelSize: 11
             onClicked: {
-                renameBranchModal.openWithBranch(badgeContextMenu.targetName);
+                renameBranchModal.openRenameBranch(badgeContextMenu.targetName);
             }
         }
 
@@ -4285,7 +4285,7 @@ Rectangle {
             visible: badgeContextMenu.badgeType === "local" && !badgeContextMenu.isCurrentHead
             font.pixelSize: 11
             onClicked: {
-                deleteBranchConfirmDialog.openWithBranch(badgeContextMenu.targetName);
+                deleteBranchConfirmDialog.openDeleteBranch(badgeContextMenu.targetName);
             }
         }
 
@@ -4406,7 +4406,7 @@ Rectangle {
 
         property string targetBranch: ""
 
-        function openWithBranch(name) {
+        function openRenameBranch(name) {
             targetBranch = name;
             newBranchNameField.text = name;
             renameErrorText.text = "";
@@ -4560,7 +4560,7 @@ Rectangle {
                         verticalAlignment: Text.AlignVCenter
                     }
                     onClicked: {
-                        var newName = newBranchNameField.text.trim();
+                        const newName = newBranchNameField.text.trim();
                         if (!newName || newName === renameBranchModal.targetBranch) {
                             renameBranchModal.close();
                             return;
@@ -4595,7 +4595,7 @@ Rectangle {
 
         property string targetBranch: ""
 
-        function openWithBranch(name) {
+        function openDeleteBranch(name) {
             targetBranch = name;
             open();
         }
@@ -4819,13 +4819,13 @@ Rectangle {
         }
 
         function applyFilter(query) {
-            var q = query.trim().toLowerCase();
+            const q = query.trim().toLowerCase();
             if (q === "") {
                 filteredRepoFiles = allRepoFiles.slice(0, 200);
             } else {
-                var res = [];
-                for (var i = 0; i < allRepoFiles.length && res.length < 200; ++i) {
-                    var f = allRepoFiles[i];
+                const res = [];
+                for (let i = 0; i < allRepoFiles.length && res.length < 200; ++i) {
+                    const f = allRepoFiles[i];
                     if (f.toLowerCase().indexOf(q) !== -1) {
                         res.push(f);
                     }
@@ -4840,7 +4840,7 @@ Rectangle {
         }
 
         function confirmSelection() {
-            var path = "";
+            let path = "";
             if (fileHistoryResultsList.currentIndex >= 0 && fileHistoryResultsList.currentIndex < filteredRepoFiles.length) {
                 path = filteredRepoFiles[fileHistoryResultsList.currentIndex];
             } else if (fileHistorySearchField.text.trim().length > 0) {

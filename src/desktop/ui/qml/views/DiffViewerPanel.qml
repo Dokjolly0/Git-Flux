@@ -44,7 +44,7 @@ Rectangle {
     readonly property real blameMaxScroll: Math.max(0, maxCodeWidth - blameAvailWidth)
 
     readonly property real currentMaxScroll: {
-        var mode = root.diffViewer ? root.diffViewer.viewMode : "split";
+        const mode = root.diffViewer ? root.diffViewer.viewMode : "split";
         if (mode === "inline") return inlineMaxScroll;
         if (mode === "blame") return blameMaxScroll;
         return splitMaxScroll;
@@ -101,7 +101,7 @@ Rectangle {
 
     function copySelection() {
         if (!root.diffViewer || !root.hasSelection) return;
-        var text = root.diffViewer.extractSelectedText(
+        const text = root.diffViewer.extractSelectedText(
             root.selTarget, root.selStartRow, root.selStartCol, root.selEndRow, root.selEndCol, root.selHunkIndex);
         if (text && text.length > 0) {
             root.diffViewer.copyToClipboard(text);
@@ -110,7 +110,7 @@ Rectangle {
 
     function copyLine(target, row, hunkIdx) {
         if (!root.diffViewer || row < 0) return;
-        var text = root.diffViewer.extractSelectedText(
+        const text = root.diffViewer.extractSelectedText(
             target, row, 0, row, 1000000, hunkIdx !== undefined ? hunkIdx : -1);
         if (text !== undefined && text !== null) {
             root.diffViewer.copyToClipboard(text);
@@ -119,7 +119,7 @@ Rectangle {
 
     function selectAllInActiveView() {
         if (!root.diffViewer || root.diffViewer.isEmpty) return;
-        var mode = root.diffViewer.viewMode || "split";
+        const mode = root.diffViewer.viewMode || "split";
         if (mode === "inline" && inlineListView.count > 0) {
             selTarget = "inline";
             selHunkIndex = -1;
@@ -144,8 +144,8 @@ Rectangle {
             selFocusRow = splitListView.count - 1;
             selFocusCol = 1000000;
         } else if (mode === "hunk" && root.diffViewer.hunks && root.diffViewer.hunks.length > 0) {
-            var hIdx = (selHunkIndex >= 0 && selHunkIndex < root.diffViewer.hunks.length) ? selHunkIndex : 0;
-            var hLines = root.diffViewer.hunks[hIdx].lines;
+            const hIdx = (selHunkIndex >= 0 && selHunkIndex < root.diffViewer.hunks.length) ? selHunkIndex : 0;
+            const hLines = root.diffViewer.hunks[hIdx].lines;
             if (hLines && hLines.length > 0) {
                 selTarget = "hunk";
                 selHunkIndex = hIdx;
@@ -158,12 +158,12 @@ Rectangle {
     }
 
     function handleDiffKeys(event) {
-        if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_C) {
+        if ((event.modifiers & Qt.ControlModifier) !== 0 && event.key === Qt.Key_C) {
             if (root.hasSelection) {
                 root.copySelection();
                 event.accepted = true;
             }
-        } else if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_A) {
+        } else if ((event.modifiers & Qt.ControlModifier) !== 0 && event.key === Qt.Key_A) {
             root.selectAllInActiveView();
             event.accepted = true;
         } else if (event.key === Qt.Key_Escape && root.hasSelection) {
@@ -174,7 +174,7 @@ Rectangle {
 
     function syncCodeSelection(codeEdit, targetName, rowIndex, disabled, hunkIdx) {
         if (!codeEdit) return;
-        var matchTarget = (root.selTarget === targetName)
+        const matchTarget = (root.selTarget === targetName)
             && (hunkIdx === undefined || hunkIdx < 0 || root.selHunkIndex === hunkIdx);
         if (disabled || !root.hasSelection || !matchTarget || rowIndex < root.selStartRow || rowIndex > root.selEndRow) {
             if (codeEdit.selectionStart !== codeEdit.selectionEnd) {
@@ -182,9 +182,9 @@ Rectangle {
             }
             return;
         }
-        var len = codeEdit.length;
-        var s = (rowIndex === root.selStartRow) ? Math.min(root.selStartCol, len) : 0;
-        var e = (rowIndex === root.selEndRow) ? Math.min(root.selEndCol, len) : len;
+        const len = codeEdit.length;
+        const s = (rowIndex === root.selStartRow) ? Math.min(root.selStartCol, len) : 0;
+        const e = (rowIndex === root.selEndRow) ? Math.min(root.selEndCol, len) : len;
         if (e > s) {
             if (codeEdit.selectionStart !== s || codeEdit.selectionEnd !== e) {
                 codeEdit.select(s, e);
@@ -195,14 +195,14 @@ Rectangle {
     }
 
     function currentFileKey() {
-        var rev = (root.diffViewer && root.diffViewer.currentRevision) ? root.diffViewer.currentRevision : "";
-        var file = (root.diffViewer && root.diffViewer.filePath) ? root.diffViewer.filePath : "";
+        const rev = (root.diffViewer && root.diffViewer.currentRevision) ? root.diffViewer.currentRevision : "";
+        const file = (root.diffViewer && root.diffViewer.filePath) ? root.diffViewer.filePath : "";
         return rev + "::" + file;
     }
 
     function activeVerticalListView() {
         if (!root.diffViewer || root.showingMarkdownPreview) return null;
-        var mode = root.diffViewer.viewMode || "split";
+        const mode = root.diffViewer.viewMode || "split";
         if (mode === "inline") return inlineListView;
         if (mode === "hunk") return hunkListView;
         if (mode === "blame") return blameListView;
@@ -213,7 +213,7 @@ Rectangle {
         target: root.diffViewer
 
         function onContextLinesChanged() {
-            var lv = root.activeVerticalListView();
+            const lv = root.activeVerticalListView();
             if (lv && lv.contentHeight > lv.height) {
                 root.savedScrollRatio = Math.max(0, Math.min(1.0, lv.contentY / (lv.contentHeight - lv.height)));
                 root.savedScrollFileKey = root.currentFileKey();
@@ -223,7 +223,7 @@ Rectangle {
 
         function onDiffLoaded() {
             root.clearSelection();
-            var key = root.currentFileKey();
+            const key = root.currentFileKey();
             if (key !== root.lastLoadedFileKey) {
                 root.lastLoadedFileKey = key;
                 root.horizontalScrollX = 0;
@@ -234,10 +234,10 @@ Rectangle {
                     root.horizontalScrollX = root.currentMaxScroll;
                 }
                 if (root.pendingScrollRestore && key === root.savedScrollFileKey) {
-                    var ratio = root.savedScrollRatio;
+                    const ratio = root.savedScrollRatio;
                     root.pendingScrollRestore = false;
                     Qt.callLater(function () {
-                        var lv = root.activeVerticalListView();
+                        const lv = root.activeVerticalListView();
                         if (lv && lv.contentHeight > lv.height) {
                             lv.contentY = Math.max(0, Math.min(lv.contentHeight - lv.height, ratio * (lv.contentHeight - lv.height)));
                         }
@@ -275,7 +275,7 @@ Rectangle {
         FluxMenuItem {
             text: "Seleziona tutto"
             enabled: root.diffViewer && !root.diffViewer.isEmpty
-            onTriggered: root.selectAllInActiveView()
+            onTriggered: { root.selectAllInActiveView(); }
         }
         FluxMenuSeparator {
             visible: root.hasSelection
@@ -283,7 +283,7 @@ Rectangle {
         FluxMenuItem {
             text: "Deseleziona"
             visible: root.hasSelection
-            onTriggered: root.clearSelection()
+            onTriggered: { root.clearSelection(); }
         }
     }
 
@@ -311,9 +311,9 @@ Rectangle {
             root.syncCodeSelection(codeEdit, selTargetName, rowIndex, rowDisabled, hunkIdx);
         }
 
-        Component.onCompleted: syncSelection()
-        onRowIndexChanged: syncSelection()
-        onTextChanged: syncSelection()
+        Component.onCompleted: { syncSelection(); }
+        onRowIndexChanged: { syncSelection(); }
+        onTextChanged: { syncSelection(); }
 
         Rectangle {
             visible: !codeEdit.rowDisabled && root.hasSelection
@@ -358,7 +358,7 @@ Rectangle {
 
         function resolveTargetAt(mouseX) {
             if (viewType === "split") {
-                var mid = Math.floor(width / 2);
+                const mid = Math.floor(width / 2);
                 if (mouseX < 40) return "";
                 if (mouseX >= mid && mouseX < mid + 41) return "";
                 return (mouseX < mid) ? "split-left" : "split-right";
@@ -374,39 +374,39 @@ Rectangle {
 
         function hitTest(mouseX, mouseY, forcedTarget) {
             if (!listView || listView.count <= 0) return null;
-            var targetY = mouseY + listView.contentY;
-            var minY = listView.originY + 1;
-            var maxY = Math.max(minY, listView.originY + listView.contentHeight - 1);
-            var clampedY = Math.max(minY, Math.min(maxY, targetY));
-            var idx = listView.indexAt(Math.max(10, Math.min(width - 10, mouseX)), clampedY);
+            const targetY = mouseY + listView.contentY;
+            const minY = listView.originY + 1;
+            const maxY = Math.max(minY, listView.originY + listView.contentHeight - 1);
+            const clampedY = Math.max(minY, Math.min(maxY, targetY));
+            const idx = listView.indexAt(Math.max(10, Math.min(width - 10, mouseX)), clampedY);
             if (idx < 0) return null;
 
-            var rowItem = listView.itemAtIndex(idx);
+            const rowItem = listView.itemAtIndex(idx);
             if (!rowItem) return null;
             if (rowItem.isHeaderRow === true) {
                 return { index: idx, isHeader: true, col: 0, codeEdit: null, target: forcedTarget };
             }
 
-            var t = forcedTarget;
+            let t = forcedTarget;
             if (!t) t = resolveTargetAt(mouseX);
             if (!t) return { index: idx, isHeader: false, col: 0, codeEdit: null, target: "" };
 
-            var ce = null;
+            let ce = null;
             if (t === "split-left") ce = rowItem.leftCodeEdit;
             else if (t === "split-right") ce = rowItem.rightCodeEdit;
             else ce = rowItem.codeEdit;
 
             if (!ce) return { index: idx, isHeader: false, col: 0, codeEdit: null, target: t };
 
-            var pt = mapToItem(ce, mouseX, mouseY);
-            var cx = Math.max(0, Math.min(ce.width, pt.x));
-            var cy = Math.max(0, Math.min(Math.max(0, ce.height - 1), pt.y));
-            var col = ce.positionAt(cx, cy);
+            const pt = mapToItem(ce, mouseX, mouseY);
+            const cx = Math.max(0, Math.min(ce.width, pt.x));
+            const cy = Math.max(0, Math.min(Math.max(0, ce.height - 1), pt.y));
+            const col = ce.positionAt(cx, cy);
             return { index: idx, isHeader: false, col: col, codeEdit: ce, target: t };
         }
 
         function updateFocusFromMouse(mx, my) {
-            var hit = hitTest(mx, my, activeTarget);
+            const hit = hitTest(mx, my, activeTarget);
             if (!hit) return;
             root.selFocusRow = hit.index;
             root.selFocusCol = hit.isHeader ? 0 : hit.col;
@@ -421,19 +421,19 @@ Rectangle {
                 || selMouse.lastMouseY > selMouse.height - 14
             )
             onTriggered: {
-                var lv = selMouse.listView;
+                const lv = selMouse.listView;
                 if (!lv) return;
-                var maxScroll = Math.max(0, lv.contentHeight - lv.height);
+                const maxScroll = Math.max(0, lv.contentHeight - lv.height);
                 if (maxScroll <= 0) return;
-                var delta = 0;
+                let delta = 0;
                 if (selMouse.lastMouseY < 14) {
                     delta = -Math.max(12, (14 - selMouse.lastMouseY) * 0.8);
                 } else if (selMouse.lastMouseY > selMouse.height - 14) {
                     delta = Math.max(12, (selMouse.lastMouseY - (selMouse.height - 14)) * 0.8);
                 }
-                var minY = lv.originY;
+                const minY = lv.originY;
                 lv.contentY = Math.max(minY, Math.min(minY + maxScroll, lv.contentY + delta));
-                var clampedLocalY = Math.max(2, Math.min(selMouse.height - 2, selMouse.lastMouseY));
+                const clampedLocalY = Math.max(2, Math.min(selMouse.height - 2, selMouse.lastMouseY));
                 selMouse.updateFocusFromMouse(selMouse.lastMouseX, clampedLocalY);
             }
         }
@@ -446,7 +446,7 @@ Rectangle {
             listView.forceActiveFocus();
 
             if (mouse.button === Qt.RightButton) {
-                var rHit = hitTest(mouse.x, mouse.y, "");
+                const rHit = hitTest(mouse.x, mouse.y, "");
                 if (rHit && !rHit.isHeader && rHit.target !== "") {
                     root.contextMenuRow = rHit.index;
                     root.contextMenuTarget = rHit.target;
@@ -465,7 +465,7 @@ Rectangle {
                 return;
             }
 
-            var hit = hitTest(mouse.x, mouse.y, "");
+            const hit = hitTest(mouse.x, mouse.y, "");
             if (!hit || hit.isHeader || hit.target === "") {
                 mouse.accepted = false;
                 return;
@@ -476,7 +476,7 @@ Rectangle {
             activeTarget = hit.target;
             isSelecting = true;
 
-            if ((mouse.modifiers & Qt.ShiftModifier) && root.selTarget === hit.target && root.selAnchorRow >= 0) {
+            if ((mouse.modifiers & Qt.ShiftModifier) !== 0 && root.selTarget === hit.target && root.selAnchorRow >= 0) {
                 root.selFocusRow = hit.index;
                 root.selFocusCol = hit.col;
             } else {
@@ -491,11 +491,11 @@ Rectangle {
 
         onPositionChanged: (mouse) => {
             if (!isSelecting) {
-                var h = hitTest(mouse.x, mouse.y, "");
+                const h = hitTest(mouse.x, mouse.y, "");
                 hoveringHeader = (!h || h.isHeader || h.target === "");
                 return;
             }
-            if (!(mouse.buttons & Qt.LeftButton)) {
+            if ((mouse.buttons & Qt.LeftButton) === 0) {
                 isSelecting = false;
                 return;
             }
@@ -506,7 +506,7 @@ Rectangle {
 
         onDoubleClicked: (mouse) => {
             if (mouse.button !== Qt.LeftButton) return;
-            var hit = hitTest(mouse.x, mouse.y, "");
+            const hit = hitTest(mouse.x, mouse.y, "");
             if (!hit || hit.isHeader || !hit.codeEdit || hit.target === "") return;
             hit.codeEdit.cursorPosition = hit.col;
             hit.codeEdit.selectWord();
@@ -583,17 +583,17 @@ Rectangle {
                 property bool isDragging: false
 
                 onPressed: (mouse) => {
-                    var pt = mapToItem(hbar, mouse.x, mouse.y);
+                    const pt = mapToItem(hbar, mouse.x, mouse.y);
                     startThumbTrackX = pt.x;
                     startScroll = hbar.scrollValue;
                     isDragging = true;
                 }
                 onPositionChanged: (mouse) => {
                     if (isDragging && pressed) {
-                        var pt = mapToItem(hbar, mouse.x, mouse.y);
-                        var deltaX = pt.x - startThumbTrackX;
-                        var maxThumbX = Math.max(1, hbar.width - hThumb.width);
-                        var targetScroll = Math.max(0, Math.min(hbar.maxScroll, startScroll + (deltaX / maxThumbX) * hbar.maxScroll));
+                        const pt = mapToItem(hbar, mouse.x, mouse.y);
+                        const deltaX = pt.x - startThumbTrackX;
+                        const maxThumbX = Math.max(1, hbar.width - hThumb.width);
+                        const targetScroll = Math.max(0, Math.min(hbar.maxScroll, startScroll + (deltaX / maxThumbX) * hbar.maxScroll));
                         hbar.scrollRequested(targetScroll);
                     }
                 }
@@ -1315,7 +1315,7 @@ Rectangle {
                     maximumFlickVelocity: 6000
                     flickDeceleration: 1000
 
-                    Keys.onPressed: (event) => root.handleDiffKeys(event)
+                    Keys.onPressed: (event) => { root.handleDiffKeys(event); }
 
                     Keys.onLeftPressed: (event) => {
                         if (root.inlineMaxScroll > 0) {
@@ -1477,7 +1477,7 @@ Rectangle {
                         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
                         onWheel: (event) => {
                             if (root.inlineMaxScroll <= 0) return;
-                            var dx = 0;
+                            let dx = 0;
                             if (event.pixelDelta && event.pixelDelta.x !== 0) {
                                 dx = event.pixelDelta.x;
                             } else if (event.angleDelta && event.angleDelta.x !== 0) {
@@ -1498,7 +1498,7 @@ Rectangle {
                         acceptedModifiers: Qt.ShiftModifier
                         onWheel: (event) => {
                             if (root.inlineMaxScroll <= 0) return;
-                            var dy = 0;
+                            let dy = 0;
                             if (event.pixelDelta && event.pixelDelta.y !== 0) {
                                 dy = event.pixelDelta.y;
                             } else if (event.angleDelta && event.angleDelta.y !== 0) {
@@ -1665,7 +1665,7 @@ Rectangle {
                         maximumFlickVelocity: 6000
                         flickDeceleration: 1000
 
-                        Keys.onPressed: (event) => root.handleDiffKeys(event)
+                        Keys.onPressed: (event) => { root.handleDiffKeys(event); }
 
                         Keys.onLeftPressed: (event) => {
                             if (root.splitMaxScroll > 0) {
@@ -1891,7 +1891,7 @@ Rectangle {
                             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
                             onWheel: (event) => {
                                 if (root.splitMaxScroll <= 0) return;
-                                var dx = 0;
+                                let dx = 0;
                                 if (event.pixelDelta && event.pixelDelta.x !== 0) {
                                     dx = event.pixelDelta.x;
                                 } else if (event.angleDelta && event.angleDelta.x !== 0) {
@@ -1912,7 +1912,7 @@ Rectangle {
                             acceptedModifiers: Qt.ShiftModifier
                             onWheel: (event) => {
                                 if (root.splitMaxScroll <= 0) return;
-                                var dy = 0;
+                                let dy = 0;
                                 if (event.pixelDelta && event.pixelDelta.y !== 0) {
                                     dy = event.pixelDelta.y;
                                 } else if (event.angleDelta && event.angleDelta.y !== 0) {
@@ -1996,7 +1996,7 @@ Rectangle {
                     boundsBehavior: Flickable.StopAtBounds
                     maximumFlickVelocity: 6000
                     flickDeceleration: 1000
-                    Keys.onPressed: (event) => root.handleDiffKeys(event)
+                    Keys.onPressed: (event) => { root.handleDiffKeys(event); }
 
                     delegate: Rectangle {
                         id: hunkCardDelegate
@@ -2150,12 +2150,12 @@ Rectangle {
                                     property bool isSelecting: false
 
                                     function hitTestHunk(mouseX, mouseY) {
-                                        var count = hunkLinesRepeater.count;
+                                        const count = hunkLinesRepeater.count;
                                         if (count <= 0) return null;
-                                        var bestIdx = 0;
+                                        let bestIdx = 0;
                                         if (mouseY >= 0) {
-                                            for (var i = 0; i < count; ++i) {
-                                                var it = hunkLinesRepeater.itemAt(i);
+                                            for (let i = 0; i < count; ++i) {
+                                                const it = hunkLinesRepeater.itemAt(i);
                                                 if (!it) continue;
                                                 bestIdx = i;
                                                 if (mouseY <= it.y + it.height + 2) {
@@ -2163,18 +2163,18 @@ Rectangle {
                                                 }
                                             }
                                         }
-                                        var rowItem = hunkLinesRepeater.itemAt(bestIdx);
+                                        const rowItem = hunkLinesRepeater.itemAt(bestIdx);
                                         if (!rowItem || !rowItem.codeEdit) return null;
-                                        var ce = rowItem.codeEdit;
-                                        var pt = mapToItem(ce, mouseX, mouseY);
-                                        var cx = Math.max(0, Math.min(ce.width, pt.x));
-                                        var cy = Math.max(0, Math.min(Math.max(0, ce.height - 1), pt.y));
+                                        const ce = rowItem.codeEdit;
+                                        const pt = mapToItem(ce, mouseX, mouseY);
+                                        const cx = Math.max(0, Math.min(ce.width, pt.x));
+                                        const cy = Math.max(0, Math.min(Math.max(0, ce.height - 1), pt.y));
                                         return { index: bestIdx, col: ce.positionAt(cx, cy), codeEdit: ce };
                                     }
 
                                     onPressed: (mouse) => {
                                         hunkListView.forceActiveFocus();
-                                        var hit = hitTestHunk(mouse.x, mouse.y);
+                                        const hit = hitTestHunk(mouse.x, mouse.y);
                                         if (mouse.button === Qt.RightButton) {
                                             root.contextMenuRow = hit ? hit.index : -1;
                                             root.contextMenuTarget = "hunk";
@@ -2187,7 +2187,7 @@ Rectangle {
                                             return;
                                         }
                                         isSelecting = true;
-                                        if ((mouse.modifiers & Qt.ShiftModifier)
+                                        if ((mouse.modifiers & Qt.ShiftModifier) !== 0
                                                 && root.selTarget === "hunk"
                                                 && root.selHunkIndex === hunkCardDelegate.hunkIndex
                                                 && root.selAnchorRow >= 0) {
@@ -2205,11 +2205,11 @@ Rectangle {
 
                                     onPositionChanged: (mouse) => {
                                         if (!isSelecting) return;
-                                        if (!(mouse.buttons & Qt.LeftButton)) {
+                                        if ((mouse.buttons & Qt.LeftButton) === 0) {
                                             isSelecting = false;
                                             return;
                                         }
-                                        var hit = hitTestHunk(mouse.x, mouse.y);
+                                        const hit = hitTestHunk(mouse.x, mouse.y);
                                         if (!hit) return;
                                         root.selFocusRow = hit.index;
                                         root.selFocusCol = hit.col;
@@ -2217,7 +2217,7 @@ Rectangle {
 
                                     onDoubleClicked: (mouse) => {
                                         if (mouse.button !== Qt.LeftButton) return;
-                                        var hit = hitTestHunk(mouse.x, mouse.y);
+                                        const hit = hitTestHunk(mouse.x, mouse.y);
                                         if (!hit || !hit.codeEdit) return;
                                         hit.codeEdit.cursorPosition = hit.col;
                                         hit.codeEdit.selectWord();
@@ -2271,7 +2271,7 @@ Rectangle {
                     ScrollBar.vertical: FluxScrollBar {
                     }
 
-                    Keys.onPressed: (event) => root.handleDiffKeys(event)
+                    Keys.onPressed: (event) => { root.handleDiffKeys(event); }
 
                     Keys.onLeftPressed: (event) => {
                         if (root.blameMaxScroll > 0) {
@@ -2334,11 +2334,11 @@ Rectangle {
                                             onVisibleChanged: if (visible) requestPaint()
                                             onAvailableChanged: if (available) requestPaint()
                                             onPaint: {
-                                                var ctx = getContext("2d");
+                                                const ctx = getContext("2d");
                                                 ctx.reset();
-                                                var cx = width / 2;
-                                                var cy = height / 2;
-                                                var r = Math.min(width, height) / 2 - 0.5;
+                                                const cx = width / 2;
+                                                const cy = height / 2;
+                                                const r = Math.min(width, height) / 2 - 0.5;
 
                                                 ctx.globalCompositeOperation = "source-over";
                                                 ctx.fillStyle = "#0B0F19";
@@ -2440,7 +2440,7 @@ Rectangle {
                         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
                         onWheel: (event) => {
                             if (root.blameMaxScroll <= 0) return;
-                            var dx = 0;
+                            let dx = 0;
                             if (event.pixelDelta && event.pixelDelta.x !== 0) {
                                 dx = event.pixelDelta.x;
                             } else if (event.angleDelta && event.angleDelta.x !== 0) {
@@ -2461,7 +2461,7 @@ Rectangle {
                         acceptedModifiers: Qt.ShiftModifier
                         onWheel: (event) => {
                             if (root.blameMaxScroll <= 0) return;
-                            var dy = 0;
+                            let dy = 0;
                             if (event.pixelDelta && event.pixelDelta.y !== 0) {
                                 dy = event.pixelDelta.y;
                             } else if (event.angleDelta && event.angleDelta.y !== 0) {

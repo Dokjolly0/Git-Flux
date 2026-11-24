@@ -8,8 +8,16 @@
 // owns the running gesture is therefore tracked here, together with the
 // scroller attached to each Flickable.
 
-var owners = new Map();   // Flickable -> SmoothWheelScroller attached to it
-var active = null;        // scroller owning the gesture in progress
+const owners = new Map(); // Flickable -> SmoothWheelScroller attached to it
+let active = null;        // scroller owning the gesture in progress
+
+function activeScroller() {
+    return active;
+}
+
+function setActiveScroller(scroller) {
+    active = scroller;
+}
 
 function register(flickable, scroller) {
     if (flickable) {

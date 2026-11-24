@@ -6,9 +6,9 @@ T.Menu {
     id: control
 
     function computeMaxItemWidth() {
-        var maxW = 220;
-        for (var i = 0; i < control.count; ++i) {
-            var it = control.itemAt(i);
+        let maxW = 220;
+        for (let i = 0; i < control.count; ++i) {
+            const it = control.itemAt(i);
             if (it && it.visible && it.implicitWidth > maxW) {
                 maxW = it.implicitWidth;
             }

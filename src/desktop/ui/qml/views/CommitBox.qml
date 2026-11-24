@@ -87,7 +87,7 @@ Rectangle {
                     }
 
                     Keys.onReturnPressed: function (event) {
-                        if (event.modifiers & Qt.ControlModifier) {
+                        if ((event.modifiers & Qt.ControlModifier) !== 0) {
                             doCommit();
                             event.accepted = true;
                         } else {
@@ -149,8 +149,8 @@ Rectangle {
 
                 Text {
                     text: {
-                        var b = (workingTree && workingTree.branchName !== "") ? (" to " + workingTree.branchName) : "";
-                        var count = (workingTree) ? workingTree.stagedCount : 0;
+                        const b = (workingTree && workingTree.branchName !== "") ? (" to " + workingTree.branchName) : "";
+                        const count = (workingTree) ? workingTree.stagedCount : 0;
                         if (amendCheck.checked) return "Amend Commit" + b;
                         return "Commit " + (count > 0 ? ("(" + count + ")") : "") + b;
                     }

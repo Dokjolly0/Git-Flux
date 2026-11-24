@@ -17,21 +17,13 @@ Dialog {
 
     // Operations are asynchronous: remember which one this dialog started and react to its
     // outcome only (another queued operation may complete first).
-    property int pendingOperationId: 0
+    property alias pendingOperationId: opWatcher.pendingOperationId
 
-    Connections {
-        target: root.branchManager
-        enabled: root.pendingOperationId !== 0
-
-        function onOperationFinished(operationId, success, message) {
-            if (operationId !== root.pendingOperationId) return;
-            root.pendingOperationId = 0;
-            if (success) {
-                root.close();
-            } else {
-                errorText.text = message;
-            }
-        }
+    FluxBranchOpWatcher {
+        id: opWatcher
+        branchManager: root.branchManager
+        onSucceeded: root.close()
+        onFailed: (message) => { errorText.text = message; }
     }
     property string targetCommit: ""
 
@@ -44,84 +36,11 @@ Dialog {
         tagNameField.forceActiveFocus();
     }
 
-    background: Rectangle {
-        color: "#111824"
-        radius: 14
-        border.color: "#28374E"
-        border.width: 1
+    background: FluxModalBackground {}
 
-        Rectangle {
-            z: -2
-            anchors.fill: parent
-            anchors.margins: -8
-            radius: 20
-            color: "#000000"
-            opacity: 0.30
-        }
-        Rectangle {
-            z: -1
-            anchors.fill: parent
-            anchors.margins: -2
-            radius: 16
-            color: "#000000"
-            opacity: 0.40
-        }
-    }
-
-    header: Rectangle {
-        color: "#161F2E"
-        height: 46
-        radius: 14
-
-        Rectangle {
-            anchors.bottom: parent.bottom
-            width: parent.width
-            height: 14
-            color: "#161F2E"
-        }
-
-        Rectangle {
-            anchors.bottom: parent.bottom
-            width: parent.width
-            height: 1
-            color: "#222F42"
-        }
-
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 14
-
-            Text {
-                text: "🏷 Crea Nuovo Tag"
-                color: "#F8FAFC"
-                font.bold: true
-                font.pixelSize: 13
-            }
-
-            Item {
-                Layout.fillWidth: true
-            }
-
-            Button {
-                text: "✕"
-                Layout.preferredWidth: 26
-                Layout.preferredHeight: 26
-                hoverEnabled: true
-                background: Rectangle {
-                    radius: 7
-                    color: parent.hovered ? "#243247" : "transparent"
-                }
-                contentItem: Text {
-                    text: "✕"
-                    color: parent.hovered ? "#F8FAFC" : "#94A3B8"
-                    font.bold: true
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-                onClicked: root.close()
-            }
-        }
+    header: FluxModalHeader {
+        titleText: "🏷 Crea Nuovo Tag"
+        onCloseRequested: root.close()
     }
 
     contentItem: ColumnLayout {
@@ -276,64 +195,27 @@ Dialog {
                 Layout.fillWidth: true
             }
 
-            Button {
+            FluxActionButton {
                 text: "Annulla"
                 Layout.preferredHeight: 34
-                leftPadding: 14
-                rightPadding: 14
-                hoverEnabled: true
-                background: Rectangle {
-                    color: parent.hovered ? "#1E2B3E" : "#151E2C"
-                    radius: 8
-                    border.color: "#28374E"
-                    border.width: 1
-
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: 120
-                        }
-                    }
-                }
-                contentItem: Text {
-                    text: "Annulla"
-                    color: "#CBD5E1"
-                    font.pixelSize: 12
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
+                fontPixelSize: 12
                 onClicked: root.close()
             }
 
-            Button {
+            FluxActionButton {
                 id: createBtn
                 text: "🏷 Crea Tag"
                 Layout.preferredHeight: 34
                 Layout.preferredWidth: 124
                 enabled: tagNameField.text.trim().length > 0
-                hoverEnabled: true
-
-                background: Rectangle {
-                    color: createBtn.enabled ? (createBtn.hovered ? "#0EA5E9" : "#0284C7") : "#161F2E"
-                    radius: 8
-                    border.color: createBtn.enabled ? "#38BDF8" : "#222F42"
-                    border.width: 1
-
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: 120
-                        }
-                    }
-                }
-                contentItem: Text {
-                    text: "🏷 Crea Tag"
-                    color: createBtn.enabled ? "#FFFFFF" : "#475569"
-                    font.pixelSize: 12
-                    font.bold: true
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
+                baseColor: "#0284C7"
+                hoverColor: "#0EA5E9"
+                baseBorderColor: "#38BDF8"
+                textColor: "#FFFFFF"
+                fontPixelSize: 12
+                fontBold: true
                 onClicked: {
-                    var name = tagNameField.text.trim();
+                    const name = tagNameField.text.trim();
                     if (!name) {
                         errorText.text = "Inserisci un nome per il tag";
                         return;

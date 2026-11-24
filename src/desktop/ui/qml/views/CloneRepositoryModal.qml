@@ -33,8 +33,8 @@ Dialog {
     // Re-points the URL field at the selected repository after a protocol change (SSH <-> HTTPS).
     function refreshSelectedRepoUrl() {
         if (!root.profilesVm || root.selectedRepoFullName.length === 0) return;
-        for (var i = 0; i < repoListView.count; ++i) {
-            var r = root.profilesVm.remoteReposModel.getRepoAt(i);
+        for (let i = 0; i < repoListView.count; ++i) {
+            const r = root.profilesVm.remoteReposModel.getRepoAt(i);
             if (r.fullName === root.selectedRepoFullName) {
                 urlField.text = r.activeCloneUrl;
                 break;
@@ -387,7 +387,7 @@ Dialog {
     function openWithDefaultFolder(defaultParentFolder) {
         root.resetFormAndCache();
 
-        var initialFolder = "";
+        let initialFolder = "";
         if (defaultParentFolder && defaultParentFolder.length > 0) {
             initialFolder = defaultParentFolder;
         } else if (root.effectiveHubVm && root.effectiveHubVm.lastCloneDestinationPath && root.effectiveHubVm.lastCloneDestinationPath.length > 0) {
@@ -413,7 +413,7 @@ Dialog {
     Connections {
         target: root.effectiveHubVm
 
-        function onCloneCompleted(success, message) {
+        function onCloneCompleted(success) {
             if (success) {
                 root.resetFormAndCache();
                 root.close();
@@ -430,7 +430,7 @@ Dialog {
                 ? ("file://" + root.effectiveHubVm.lastCloneDestinationPath)
                 : "")
         onAccepted: {
-            var selected = cloneParentFolderDialog.selectedFolder.toString();
+            let selected = cloneParentFolderDialog.selectedFolder.toString();
             if (selected.startsWith("file://")) {
                 selected = selected.substring(7);
             }
@@ -445,8 +445,8 @@ Dialog {
     // True when the selected provider is a self-hosted server added by hand (can be removed).
     readonly property bool activeProfileRemovable: {
         if (!root.profilesVm) return false;
-        var list = root.profilesVm.profiles;
-        for (var i = 0; i < list.length; ++i) {
+        const list = root.profilesVm.profiles;
+        for (let i = 0; i < list.length; ++i) {
             if (list[i].id === root.profilesVm.activeProfileId) return list[i].removable === true;
         }
         return false;
@@ -563,7 +563,7 @@ Dialog {
                     onAccepted: customNameField.forceActiveFocus()
                     // A full URL with a port/path is most likely the API base: reuse it.
                     onEditingFinished: {
-                        var t = text.trim();
+                        const t = text.trim();
                         if (customApiField.text.trim().length === 0 && t.indexOf("://") > 0) {
                             customApiField.text = t;
                         }
@@ -1071,8 +1071,8 @@ Dialog {
                                                 root.profilesVm.setSelectedProtocol("ssh");
                                                 if (root.selectedRepoFullName.length > 0) {
                                                     // refresh active clone url in field
-                                                    for (var i = 0; i < repoListView.count; ++i) {
-                                                        var r = root.profilesVm.remoteReposModel.getRepoAt(i);
+                                                    for (let i = 0; i < repoListView.count; ++i) {
+                                                        const r = root.profilesVm.remoteReposModel.getRepoAt(i);
                                                         if (r.fullName === root.selectedRepoFullName) {
                                                             urlField.text = r.activeCloneUrl;
                                                             break;
@@ -1105,8 +1105,8 @@ Dialog {
                                             if (root.profilesVm) {
                                                 root.profilesVm.setSelectedProtocol("https");
                                                 if (root.selectedRepoFullName.length > 0) {
-                                                    for (var i = 0; i < repoListView.count; ++i) {
-                                                        var r = root.profilesVm.remoteReposModel.getRepoAt(i);
+                                                    for (let i = 0; i < repoListView.count; ++i) {
+                                                        const r = root.profilesVm.remoteReposModel.getRepoAt(i);
                                                         if (r.fullName === root.selectedRepoFullName) {
                                                             urlField.text = r.activeCloneUrl;
                                                             break;
@@ -1229,13 +1229,13 @@ Dialog {
                                     color: sshCheckCard.isIssue ? "#FCD34D" : (sshCheckCard.checkState === "ok" ? "#6EE7B7" : "#93C5FD")
                                     text: {
                                         if (!root.profilesVm) return "";
-                                        var host = root.profilesVm.activeProfileHost;
+                                        const host = root.profilesVm.activeProfileHost;
                                         if (sshCheckCard.checkState === "checking") return "⏳ Verifica della chiave SSH su " + host + "…";
                                         if (sshCheckCard.checkState === "ok") {
-                                            var acc = root.profilesVm.sshCheckAccount;
+                                            const acc = root.profilesVm.sshCheckAccount;
                                             return "✔ Chiave SSH accettata da " + host + (acc.length > 0 ? " (account @" + acc + ")" : "");
                                         }
-                                        var g = root.profilesVm.troubleshootingGuide(sshCheckCard.checkState, "");
+                                        const g = root.profilesVm.troubleshootingGuide(sshCheckCard.checkState, "");
                                         return "⚠️ " + g.title + (root.profilesVm.sshAutoSwitchedToHttps ? " — per ora uso HTTPS" : "");
                                     }
                                 }
@@ -1737,8 +1737,8 @@ Dialog {
                                             anchors.centerIn: parent
                                             text: {
                                                 if (!root.profilesVm || !root.profilesVm.remoteReposModel) return "0 repo";
-                                                var filtered = root.profilesVm.remoteReposModel.filteredCount;
-                                                var total = root.profilesVm.remoteReposModel.totalCount;
+                                                const filtered = root.profilesVm.remoteReposModel.filteredCount;
+                                                const total = root.profilesVm.remoteReposModel.totalCount;
                                                 return filtered + " di " + total + " repo";
                                             }
                                             color: "#38BDF8"
@@ -1898,7 +1898,7 @@ Dialog {
                                                 onClicked: {
                                                     root.selectedRepoFullName = model.fullName;
                                                     root.selectedRepoIsPrivate = model.isPrivate;
-                                                    var targetUrl = model.activeCloneUrl;
+                                                    let targetUrl = model.activeCloneUrl;
                                                     if (!targetUrl || targetUrl.length === 0) {
                                                         targetUrl = (root.profilesVm && root.profilesVm.selectedProtocol === "ssh") ? model.sshUrl : model.httpsUrl;
                                                     }
@@ -1907,7 +1907,7 @@ Dialog {
                                                     }
                                                     urlField.text = targetUrl;
 
-                                                    var defaultName = model.fullName ? model.fullName.split("/").pop() : model.name;
+                                                    const defaultName = model.fullName ? model.fullName.split("/").pop() : model.name;
                                                     dirNameField.text = defaultName;
                                                     dirNameField.propertyModified = true;
                                                     root.showRepoPicker = false;
@@ -1969,7 +1969,7 @@ Dialog {
                             onTextChanged: {
                                 if (root.urlMissing && text.trim().length > 0) root.urlMissing = false;
                                 if (root.effectiveHubVm && text.length > 0 && root.profilesVm && root.profilesVm.activeProfileId === "url") {
-                                    var extracted = root.effectiveHubVm.extractRepoNameFromUrl(text);
+                                    const extracted = root.effectiveHubVm.extractRepoNameFromUrl(text);
                                     if (dirNameField.text.length === 0 || dirNameField.propertyModified !== true) {
                                         dirNameField.text = extracted;
                                     }
@@ -2503,7 +2503,7 @@ Dialog {
                         root.repoTouched = false;
                         root.destFolderMissing = false;
                         root.urlMissing = false;
-                        var vm = root.effectiveHubVm;
+                        const vm = root.effectiveHubVm;
                         if (vm) {
                             console.log("[CloneModal] Invocazione cloneRepositoryAsync su ViewModel per: " + urlField.text.trim());
                             vm.cloneRepositoryAsync(

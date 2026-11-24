@@ -23,84 +23,11 @@ Dialog {
         }
     }
 
-    background: Rectangle {
-        color: "#111824"
-        radius: 14
-        border.color: "#28374E"
-        border.width: 1
+    background: FluxModalBackground {}
 
-        Rectangle {
-            z: -2
-            anchors.fill: parent
-            anchors.margins: -8
-            radius: 20
-            color: "#000000"
-            opacity: 0.30
-        }
-        Rectangle {
-            z: -1
-            anchors.fill: parent
-            anchors.margins: -2
-            radius: 16
-            color: "#000000"
-            opacity: 0.40
-        }
-    }
-
-    header: Rectangle {
-        color: "#161F2E"
-        height: 46
-        radius: 14
-
-        Rectangle {
-            anchors.bottom: parent.bottom
-            width: parent.width
-            height: 14
-            color: "#161F2E"
-        }
-
-        Rectangle {
-            anchors.bottom: parent.bottom
-            width: parent.width
-            height: 1
-            color: "#222F42"
-        }
-
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 14
-
-            Text {
-                text: "📦 Gestione Stash"
-                color: "#F8FAFC"
-                font.bold: true
-                font.pixelSize: 13
-            }
-
-            Item {
-                Layout.fillWidth: true
-            }
-
-            Button {
-                text: "✕"
-                Layout.preferredWidth: 26
-                Layout.preferredHeight: 26
-                hoverEnabled: true
-                background: Rectangle {
-                    radius: 7
-                    color: parent.hovered ? "#243247" : "transparent"
-                }
-                contentItem: Text {
-                    text: "✕"
-                    color: parent.hovered ? "#F8FAFC" : "#94A3B8"
-                    font.bold: true
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-                onClicked: root.close()
-            }
-        }
+    header: FluxModalHeader {
+        titleText: "📦 Gestione Stash"
+        onCloseRequested: root.close()
     }
 
     contentItem: ColumnLayout {
@@ -371,31 +298,20 @@ Dialog {
                             }
 
                             // Actions
-                            Button {
+                            FluxActionButton {
                                 text: "Apply"
                                 Layout.preferredHeight: 28
                                 leftPadding: 10
                                 rightPadding: 10
-                                hoverEnabled: true
-                                background: Rectangle {
-                                    color: parent.hovered ? "#0284C7" : "#182334"
-                                    radius: 7
-                                    border.color: parent.hovered ? "#38BDF8" : "#29384D"
-                                    border.width: 1
-                                    Behavior on color {
-                                        ColorAnimation {
-                                            duration: 110
-                                        }
-                                    }
-                                }
-                                contentItem: Text {
-                                    text: parent.text
-                                    color: parent.hovered ? "#FFFFFF" : "#E2E8F0"
-                                    font.pixelSize: 11
-                                    font.bold: true
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
+                                cornerRadius: 7
+                                baseColor: "#182334"
+                                hoverColor: "#0284C7"
+                                baseBorderColor: "#29384D"
+                                hoverBorderColor: "#38BDF8"
+                                textColor: "#E2E8F0"
+                                hoverTextColor: "#FFFFFF"
+                                fontBold: true
+                                animDuration: 110
                                 onClicked: {
                                     if (root.stashManager) {
                                         root.stashManager.apply(model.stashIndex, false);
@@ -403,31 +319,20 @@ Dialog {
                                 }
                             }
 
-                            Button {
+                            FluxActionButton {
                                 text: "Pop"
                                 Layout.preferredHeight: 28
                                 leftPadding: 10
                                 rightPadding: 10
-                                hoverEnabled: true
-                                background: Rectangle {
-                                    color: parent.hovered ? "#10B981" : "#182334"
-                                    radius: 7
-                                    border.color: parent.hovered ? "#34D399" : "#29384D"
-                                    border.width: 1
-                                    Behavior on color {
-                                        ColorAnimation {
-                                            duration: 110
-                                        }
-                                    }
-                                }
-                                contentItem: Text {
-                                    text: parent.text
-                                    color: parent.hovered ? "#FFFFFF" : "#E2E8F0"
-                                    font.pixelSize: 11
-                                    font.bold: true
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
+                                cornerRadius: 7
+                                baseColor: "#182334"
+                                hoverColor: "#10B981"
+                                baseBorderColor: "#29384D"
+                                hoverBorderColor: "#34D399"
+                                textColor: "#E2E8F0"
+                                hoverTextColor: "#FFFFFF"
+                                fontBold: true
+                                animDuration: 110
                                 onClicked: {
                                     if (root.stashManager) {
                                         root.stashManager.pop(model.stashIndex, false);
@@ -505,31 +410,13 @@ Dialog {
                 elide: Text.ElideRight
             }
 
-            Button {
+            FluxActionButton {
                 text: "Chiudi"
                 Layout.preferredHeight: 32
                 leftPadding: 16
                 rightPadding: 16
-                hoverEnabled: true
-                background: Rectangle {
-                    color: parent.hovered ? "#1E2B3E" : "#151E2C"
-                    radius: 8
-                    border.color: "#28374E"
-                    border.width: 1
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: 120
-                        }
-                    }
-                }
-                contentItem: Text {
-                    text: parent.text
-                    color: "#E2E8F0"
-                    font.pixelSize: 11
-                    font.bold: true
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
+                textColor: "#E2E8F0"
+                fontBold: true
                 onClicked: root.close()
             }
         }

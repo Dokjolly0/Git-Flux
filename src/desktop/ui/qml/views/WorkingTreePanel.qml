@@ -21,6 +21,35 @@ Rectangle {
 
     signal viewHistoryRequested()
 
+    component StageFileButton: Button {
+        id: stageBtn
+        property string filePath: ""
+
+        text: "+"
+        Layout.preferredWidth: 22
+        Layout.preferredHeight: 22
+        hoverEnabled: true
+        background: Rectangle {
+            color: stageBtn.hovered ? "#10B981" : "#26354A"
+            radius: 6
+            Behavior on color {
+                ColorAnimation {
+                    duration: 100
+                }
+            }
+        }
+        contentItem: Text {
+            text: "+"
+            color: "white"
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            font.bold: true
+        }
+        onClicked: {
+            workingTree.stageFile(root.activeRepoPath, stageBtn.filePath);
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -559,31 +588,9 @@ Rectangle {
                             }
 
                             // Stage button
-                            Button {
-                                text: "+"
-                                Layout.preferredWidth: 22
-                                Layout.preferredHeight: 22
+                            StageFileButton {
                                 visible: mouseAreaUnstaged.containsMouse
-                                hoverEnabled: true
-                                background: Rectangle {
-                                    color: parent.hovered ? "#10B981" : "#26354A"
-                                    radius: 6
-                                    Behavior on color {
-                                        ColorAnimation {
-                                            duration: 100
-                                        }
-                                    }
-                                }
-                                contentItem: Text {
-                                    text: "+"
-                                    color: "white"
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                    font.bold: true
-                                }
-                                onClicked: {
-                                    workingTree.stageFile(root.activeRepoPath, model.path);
-                                }
+                                filePath: model.path
                             }
                         }
 
@@ -719,31 +726,9 @@ Rectangle {
                             }
 
                             // Stage untracked
-                            Button {
-                                text: "+"
-                                Layout.preferredWidth: 22
-                                Layout.preferredHeight: 22
+                            StageFileButton {
                                 visible: mouseAreaUntracked.containsMouse
-                                hoverEnabled: true
-                                background: Rectangle {
-                                    color: parent.hovered ? "#10B981" : "#26354A"
-                                    radius: 6
-                                    Behavior on color {
-                                        ColorAnimation {
-                                            duration: 100
-                                        }
-                                    }
-                                }
-                                contentItem: Text {
-                                    text: "+"
-                                    color: "white"
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                    font.bold: true
-                                }
-                                onClicked: {
-                                    workingTree.stageFile(root.activeRepoPath, model.path);
-                                }
+                                filePath: model.path
                             }
                         }
 

@@ -38,84 +38,11 @@ Dialog {
         return root.branchManager.buildPullRequestUrl(root.sourceBranch, root.targetBranch, titleField.text, descField.text);
     }
 
-    background: Rectangle {
-        color: "#111824"
-        radius: 14
-        border.color: "#28374E"
-        border.width: 1
+    background: FluxModalBackground {}
 
-        Rectangle {
-            z: -2
-            anchors.fill: parent
-            anchors.margins: -8
-            radius: 20
-            color: "#000000"
-            opacity: 0.30
-        }
-        Rectangle {
-            z: -1
-            anchors.fill: parent
-            anchors.margins: -2
-            radius: 16
-            color: "#000000"
-            opacity: 0.40
-        }
-    }
-
-    header: Rectangle {
-        color: "#161F2E"
-        height: 46
-        radius: 14
-
-        Rectangle {
-            anchors.bottom: parent.bottom
-            width: parent.width
-            height: 14
-            color: "#161F2E"
-        }
-
-        Rectangle {
-            anchors.bottom: parent.bottom
-            width: parent.width
-            height: 1
-            color: "#222F42"
-        }
-
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 14
-
-            Text {
-                text: "🚀 Crea Pull Request"
-                color: "#F8FAFC"
-                font.bold: true
-                font.pixelSize: 13
-            }
-
-            Item {
-                Layout.fillWidth: true
-            }
-
-            Button {
-                text: "✕"
-                Layout.preferredWidth: 26
-                Layout.preferredHeight: 26
-                hoverEnabled: true
-                background: Rectangle {
-                    radius: 7
-                    color: parent.hovered ? "#243247" : "transparent"
-                }
-                contentItem: Text {
-                    text: "✕"
-                    color: parent.hovered ? "#F8FAFC" : "#94A3B8"
-                    font.bold: true
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-                onClicked: root.close()
-            }
-        }
+    header: FluxModalHeader {
+        titleText: "🚀 Crea Pull Request"
+        onCloseRequested: root.close()
     }
 
     contentItem: ColumnLayout {
@@ -342,64 +269,27 @@ Dialog {
                 Layout.fillWidth: true
             }
 
-            Button {
+            FluxActionButton {
                 text: "Annulla"
                 Layout.preferredHeight: 34
-                leftPadding: 14
-                rightPadding: 14
-                hoverEnabled: true
-                background: Rectangle {
-                    color: parent.hovered ? "#1E2B3E" : "#151E2C"
-                    radius: 8
-                    border.color: "#28374E"
-                    border.width: 1
-
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: 120
-                        }
-                    }
-                }
-                contentItem: Text {
-                    text: "Annulla"
-                    color: "#CBD5E1"
-                    font.pixelSize: 12
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
+                fontPixelSize: 12
                 onClicked: root.close()
             }
 
-            Button {
+            FluxActionButton {
                 id: openBrowserBtn
                 text: "🌐 Apri nel Browser"
                 Layout.preferredHeight: 34
                 Layout.preferredWidth: 160
                 enabled: root.calculatedPrUrl.length > 0
-                hoverEnabled: true
-
-                background: Rectangle {
-                    color: openBrowserBtn.enabled ? (openBrowserBtn.hovered ? "#0EA5E9" : "#0284C7") : "#161F2E"
-                    radius: 8
-                    border.color: openBrowserBtn.enabled ? "#38BDF8" : "#222F42"
-                    border.width: 1
-
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: 120
-                        }
-                    }
-                }
-                contentItem: Text {
-                    text: "🌐 Apri nel Browser"
-                    color: openBrowserBtn.enabled ? "#FFFFFF" : "#475569"
-                    font.pixelSize: 12
-                    font.bold: true
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
+                baseColor: "#0284C7"
+                hoverColor: "#0EA5E9"
+                baseBorderColor: "#38BDF8"
+                textColor: "#FFFFFF"
+                fontPixelSize: 12
+                fontBold: true
                 onClicked: {
-                    var url = root.calculatedPrUrl;
+                    const url = root.calculatedPrUrl;
                     if (url && url.length > 0) {
                         Qt.openUrlExternally(url);
                         root.close();
