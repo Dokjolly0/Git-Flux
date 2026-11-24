@@ -455,16 +455,6 @@ namespace gf::desktop
             return QStringLiteral("ELF %1-bit %2 (%3)").arg(bits).arg(machStr, typeStr);
         }
 
-        QString escapeHtmlChar(unsigned char c)
-        {
-            if (c < 32 || c > 126) return QStringLiteral(".");
-            if (c == '<') return QStringLiteral("&lt;");
-            if (c == '>') return QStringLiteral("&gt;");
-            if (c == '&') return QStringLiteral("&amp;");
-            if (c == '"') return QStringLiteral("&quot;");
-            return QString(QChar(c));
-        }
-
         void buildHexRows(const std::string& oldBytes, bool hasOld,
                           const std::string& newBytes, bool hasNew,
                           qint64 oldTotal, qint64 newTotal,
@@ -554,7 +544,6 @@ namespace gf::desktop
                         newRich += QStringLiteral("   ");
                         newAscii += QLatin1Char(' ');
                     }
-                    (void)escapeHtmlChar;
                 }
 
                 if (rowDiff) ++outChangedRows;

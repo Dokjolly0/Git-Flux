@@ -365,6 +365,11 @@ if (GF_BUILD_DESKTOP)
             Qt6::Network
     )
     gf_apply_compiler_warnings(git_flux)
+    # MSVC ignores /external:W0 for backend warning C4702 emitted in Qt 6.6
+    # headers when compiling qmlcachegen-generated units with optimizations.
+    target_compile_options(git_flux PRIVATE
+            $<$<CXX_COMPILER_ID:MSVC>:/wd4702>
+    )
     gf_deploy_runtime_dlls(git_flux)
 
     # Installation rules
