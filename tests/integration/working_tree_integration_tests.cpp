@@ -16,7 +16,7 @@ using namespace gf::infra::git;
 
 namespace
 {
-    void writeTestFile(const std::filesystem::path& path, std::string_view content)
+    void writeTestFile(const std::filesystem::path& path, const std::string_view content)
     {
         std::ofstream out(path, std::ios::binary);
         out << content;
@@ -54,7 +54,7 @@ namespace
             std::filesystem::remove_all(repoDir, ec);
         }
 
-        void runGit(std::vector<std::string> args)
+        void runGit(std::vector<std::string> args) const
         {
             GitCommand cmd{
                 .args = std::move(args),

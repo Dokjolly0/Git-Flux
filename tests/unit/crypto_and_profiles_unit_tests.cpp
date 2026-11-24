@@ -36,7 +36,7 @@ TEST_CASE (
 
     // Tampered ciphertext must fail authentication
     auto tamperedSecret = secret;
-    tamperedSecret.ciphertextHex[0] = (tamperedSecret.ciphertextHex[0] == 'a') ? 'b' : 'a';
+    tamperedSecret.ciphertextHex[0] = tamperedSecret.ciphertextHex[0] == 'a' ? 'b' : 'a';
     auto tamperedRes = gf::infra::security::CryptoVault::decryptWithMasterSecret(tamperedSecret, masterSecret);
     CHECK(!tamperedRes.has_value());
 }
@@ -181,7 +181,7 @@ namespace
     const gf::core::git::bo::GitProviderProfile* findById(
         const std::vector<gf::core::git::bo::GitProviderProfile>& profiles, const std::string& id)
     {
-        const auto it = std::find_if(profiles.begin(), profiles.end(), [&](const auto& p) { return p.id == id; });
+        const auto it = std::ranges::find_if(profiles, [&](const auto& p) { return p.id == id; });
         return it == profiles.end() ? nullptr : &*it;
     }
 } // namespace

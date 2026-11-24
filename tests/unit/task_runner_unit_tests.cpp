@@ -22,7 +22,7 @@ TEST_CASE (
     BackgroundTaskRunner runner(2);
 
     SECTION("Executes successful task and reports completion") {
-        std::atomic<bool> executed{false};
+        std::atomic executed{false};
         TaskReport finalReport;
 
         std::string taskId = runner.postTask(
@@ -119,13 +119,13 @@ TEST_CASE (
     BackgroundTaskRunner runner(2);
 
     SECTION("Cancels running task via stop_token") {
-        std::atomic<bool> started{false};
-        std::atomic<bool> cancelledObserved{false};
+        std::atomic started{false};
+        std::atomic cancelledObserved{false};
         TaskReport finalReport;
 
         std::string taskId = runner.postTask(
             "Long running task",
-            [&](ITaskProgressSink& sink) -> std::expected<void, std::string> {
+            [&](const ITaskProgressSink& sink) -> std::expected<void, std::string> {
                 started.store(true);
                 while (!sink.isCancelled()) {
                     std::this_thread::sleep_for(5ms);
@@ -155,7 +155,7 @@ TEST_CASE (
 
     SECTION("Cancels queued task before it starts") {
         // Saturate the runner with 2 long tasks
-        std::atomic<bool> blockWorkers{true};
+        std::atomic blockWorkers{true};
         runner.postTask("Blocker 1", [&](ITaskProgressSink&) -> std::expected<void, std::string> {
             while (blockWorkers.load()) std::this_thread::sleep_for(5ms);
             return {};
@@ -166,7 +166,7 @@ TEST_CASE (
         });
 
         // Post queued task
-        std::atomic<bool> queuedExecuted{false};
+        std::atomic queuedExecuted{false};
         TaskReport queuedReport;
         std::string queuedId = runner.postTask(
             "Queued Task",
@@ -194,7 +194,7 @@ TEST_CASE (
     }
 
     SECTION("Stress test with 50 concurrent fast tasks") {
-        std::atomic<int> completedCount{0};
+        std::atomic completedCount{0};
 
         for (int i = 0; i < 50; ++i) {
             runner.postTask(

@@ -95,7 +95,7 @@ namespace
         }
 
         std::expected<void, gf::git::ports::GitOpsError>
-        stashDrop(const std::filesystem::path&, std::size_t stashIndex) override
+        stashDrop(const std::filesystem::path&, const std::size_t stashIndex) override
         {
             stashDropCalled = true;
             lastDropIndex = stashIndex;

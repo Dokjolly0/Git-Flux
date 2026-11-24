@@ -28,23 +28,23 @@ namespace
             std::filesystem::remove_all(root, ec);
         }
 
-        void writeFile(const std::string& relativePath, const std::string& content)
+        void writeFile(const std::string& relativePath, const std::string& content) const
         {
-            auto filePath = root / relativePath;
+            const auto filePath = root / relativePath;
             std::filesystem::create_directories(filePath.parent_path());
             std::ofstream ofs(filePath, std::ios::trunc);
             ofs << content;
         }
 
-        std::string readFile(const std::string& relativePath)
+        [[nodiscard]] std::string readFile(const std::string& relativePath) const
         {
-            auto filePath = root / relativePath;
+            const auto filePath = root / relativePath;
             std::ifstream ifs(filePath);
-            return std::string((std::istreambuf_iterator<char>(ifs)),
+            return std::string(std::istreambuf_iterator(ifs),
                                std::istreambuf_iterator<char>());
         }
 
-        void removeFile(const std::string& relativePath)
+        void removeFile(const std::string& relativePath) const
         {
             std::filesystem::remove(root / relativePath);
         }
@@ -248,6 +248,6 @@ TEST_CASE (
         auto logRes = executor.execute(logCmd);
         REQUIRE(logRes.has_value());
         REQUIRE(logRes->exitCode == 0);
-        CHECK(logRes->stdoutBytes.starts_with("1"));
+        CHECK(logRes->stdoutBytes.starts_with('1'));
     }
 }

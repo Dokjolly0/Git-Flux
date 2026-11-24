@@ -57,7 +57,7 @@ TEST_CASE (
 )
  {
     std::string payload;
-    auto addRec = [&](std::string_view s) {
+    auto addRec = [&](const std::string_view s) {
         payload.append(s);
         payload.push_back('\0');
     };
@@ -114,8 +114,8 @@ TEST_CASE (
 
     OperationCoordinator coordinator(4);
 
-    std::atomic<int> activeOnRepoA{0};
-    std::atomic<int> maxConcurrentOnRepoA{0};
+    std::atomic activeOnRepoA{0};
+    std::atomic maxConcurrentOnRepoA{0};
 
     std::vector<std::future<void>> futures;
     // 8 concurrent mutations on the SAME RepositoryId("repo-A")
@@ -124,7 +124,7 @@ TEST_CASE (
             RepositoryId("repo-A"),
             OperationKind::Mutating,
             TaskPriority::NormalBackground,
-            [&]() {
+            [&] {
                 const int now = activeOnRepoA.fetch_add(1) + 1;
                 int prev = maxConcurrentOnRepoA.load();
                 while (now > prev && !maxConcurrentOnRepoA.compare_exchange_weak(prev, now)) {}
@@ -139,7 +139,7 @@ TEST_CASE (
             RepositoryId("other-" + std::to_string(i)),
             OperationKind::PassiveRead,
             TaskPriority::NormalBackground,
-            []() { std::this_thread::sleep_for(10ms); }));
+            [] { std::this_thread::sleep_for(10ms); }));
     }
 
     for (auto& f : futures) {
@@ -176,7 +176,7 @@ TEST_CASE (
     // Task 0 occupies the only worker until the gate is opened
     auto blocker = coordinator.submit(
         RepositoryId("r0"), OperationKind::PassiveRead, TaskPriority::NormalBackground,
-        [gateFuture]() { gateFuture.wait(); });
+        [gateFuture] { gateFuture.wait(); });
 
     // Enqueue 5 NormalBackground tasks (id 1..5)
     std::vector<std::future<void>> bgFutures;
@@ -185,7 +185,7 @@ TEST_CASE (
             RepositoryId("bg-" + std::to_string(i)),
             OperationKind::PassiveRead,
             TaskPriority::NormalBackground,
-            [i, &executionOrder, &orderMutex]() {
+            [i, &executionOrder, &orderMutex] {
                 std::scoped_lock lk(orderMutex);
                 executionOrder.push_back(i);
             }));
@@ -196,7 +196,7 @@ TEST_CASE (
         RepositoryId("active-repo"),
         OperationKind::PassiveRead,
         TaskPriority::HighActiveRepo,
-        [&executionOrder, &orderMutex]() {
+        [&executionOrder, &orderMutex] {
             std::scoped_lock lk(orderMutex);
             executionOrder.push_back(99);
         });

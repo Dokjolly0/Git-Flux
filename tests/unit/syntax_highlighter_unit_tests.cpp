@@ -98,12 +98,12 @@ TEST_CASE (
         bool foundVar = false;
         bool foundComment = false;
 
-        for (const auto& t : tokens) {
-            if (t.type == TokenType::Keyword && t.text == "return") foundKeyword = true;
-            if (t.type == TokenType::Function && t.text == "calculateTotal") foundFunc = true;
-            if (t.type == TokenType::Type && t.text == "int") foundType = true;
-            if (t.type == TokenType::Variable && t.text == "count") foundVar = true;
-            if (t.type == TokenType::Comment && t.text.find("// helper") != std::string::npos) foundComment = true;
+        for (const auto& [type, text] : tokens) {
+            if (type == TokenType::Keyword && text == "return") foundKeyword = true;
+            if (type == TokenType::Function && text == "calculateTotal") foundFunc = true;
+            if (type == TokenType::Type && text == "int") foundType = true;
+            if (type == TokenType::Variable && text == "count") foundVar = true;
+            if (type == TokenType::Comment && text.find("// helper") != std::string::npos) foundComment = true;
         }
 
         REQUIRE(foundKeyword);
@@ -122,11 +122,11 @@ TEST_CASE (
         bool foundMemberVar = false;
         bool foundConstant = false;
 
-        for (const auto& t : tokens) {
-            if (t.type == TokenType::Keyword && t.text == "class") foundClassDecl = true;
-            if (t.type == TokenType::Type && t.text == "SessionManager") foundClassName = true;
-            if (t.type == TokenType::Variable && t.text == "m_activeCount") foundMemberVar = true;
-            if (t.type == TokenType::Constant && t.text == "MAX_LIMIT") foundConstant = true;
+        for (const auto& [type, text] : tokens) {
+            if (type == TokenType::Keyword && text == "class") foundClassDecl = true;
+            if (type == TokenType::Type && text == "SessionManager") foundClassName = true;
+            if (type == TokenType::Variable && text == "m_activeCount") foundMemberVar = true;
+            if (type == TokenType::Constant && text == "MAX_LIMIT") foundConstant = true;
         }
 
         REQUIRE(foundClassDecl);
@@ -140,8 +140,9 @@ TEST_CASE (
         auto tokens = SyntaxHighlighter::tokenize(line, Language::Cpp);
 
         int numCount = 0;
-        for (const auto& t : tokens) {
-            if (t.type == TokenType::Number) ++numCount;
+        for (const auto& [type, text] : tokens) {
+            (void)text;
+            if (type == TokenType::Number) ++numCount;
         }
         REQUIRE(numCount == 3);
     }
@@ -151,8 +152,8 @@ TEST_CASE (
         auto tokens = SyntaxHighlighter::tokenize(line, Language::Cpp);
 
         bool foundStr = false;
-        for (const auto& t : tokens) {
-            if (t.type == TokenType::String && t.text == "\"Hello, World!\"") foundStr = true;
+        for (const auto& [type, text] : tokens) {
+            if (type == TokenType::String && text == "\"Hello, World!\"") foundStr = true;
         }
         REQUIRE(foundStr);
     }
@@ -165,10 +166,10 @@ TEST_CASE (
         bool foundAge = false;
         bool foundWeight = false;
 
-        for (const auto& t : tokens) {
-            if (t.type == TokenType::Property && t.text == "profile") foundProfile = true;
-            if (t.type == TokenType::Property && t.text == "age") foundAge = true;
-            if (t.type == TokenType::Property && t.text == "weight") foundWeight = true;
+        for (const auto& [type, text] : tokens) {
+            if (type == TokenType::Property && text == "profile") foundProfile = true;
+            if (type == TokenType::Property && text == "age") foundAge = true;
+            if (type == TokenType::Property && text == "weight") foundWeight = true;
         }
 
         REQUIRE(foundProfile);
@@ -192,10 +193,10 @@ TEST_CASE (
         bool foundFunc = false;
         bool foundComment = false;
 
-        for (const auto& t : tokens) {
-            if (t.type == TokenType::Keyword && t.text == "def") foundDef = true;
-            if (t.type == TokenType::Function && t.text == "process_data") foundFunc = true;
-            if (t.type == TokenType::Comment) foundComment = true;
+        for (const auto& [type, text] : tokens) {
+            if (type == TokenType::Keyword && text == "def") foundDef = true;
+            if (type == TokenType::Function && text == "process_data") foundFunc = true;
+            if (type == TokenType::Comment) foundComment = true;
         }
 
         REQUIRE(foundDef);
@@ -211,10 +212,10 @@ TEST_CASE (
         bool foundFrom = false;
         bool foundWhere = false;
 
-        for (const auto& t : tokens) {
-            if (t.type == TokenType::Keyword && t.text == "SELECT") foundSelect = true;
-            if (t.type == TokenType::Keyword && t.text == "FROM") foundFrom = true;
-            if (t.type == TokenType::Keyword && t.text == "WHERE") foundWhere = true;
+        for (const auto& [type, text] : tokens) {
+            if (type == TokenType::Keyword && text == "SELECT") foundSelect = true;
+            if (type == TokenType::Keyword && text == "FROM") foundFrom = true;
+            if (type == TokenType::Keyword && text == "WHERE") foundWhere = true;
         }
 
         REQUIRE(foundSelect);
@@ -232,12 +233,12 @@ TEST_CASE (
         bool foundStringVal = false;
         bool foundTextContent = false;
 
-        for (const auto& t : tokens) {
-            if (t.type == TokenType::Type && t.text == "Button") foundTag = true;
-            if (t.type == TokenType::Property && t.text == "x:Name") foundNameAttr = true;
-            if (t.type == TokenType::Property && t.text == "Click") foundClickAttr = true;
-            if (t.type == TokenType::String && t.text == "\"SubmitBtn\"") foundStringVal = true;
-            if (t.type == TokenType::PlainText && t.text == "Click Me") foundTextContent = true;
+        for (const auto& [type, text] : tokens) {
+            if (type == TokenType::Type && text == "Button") foundTag = true;
+            if (type == TokenType::Property && text == "x:Name") foundNameAttr = true;
+            if (type == TokenType::Property && text == "Click") foundClickAttr = true;
+            if (type == TokenType::String && text == "\"SubmitBtn\"") foundStringVal = true;
+            if (type == TokenType::PlainText && text == "Click Me") foundTextContent = true;
         }
 
         REQUIRE(foundTag);
@@ -265,10 +266,10 @@ TEST_CASE (
         bool foundId = false;
         bool foundActive = false;
 
-        for (const auto& t : tagTokens) {
-            if (t.type == TokenType::Type && t.text == "User") foundUser = true;
-            if (t.type == TokenType::Property && t.text == "id") foundId = true;
-            if (t.type == TokenType::Property && t.text == "active") foundActive = true;
+        for (const auto& [type, text] : tagTokens) {
+            if (type == TokenType::Type && text == "User") foundUser = true;
+            if (type == TokenType::Property && text == "id") foundId = true;
+            if (type == TokenType::Property && text == "active") foundActive = true;
         }
 
         REQUIRE(foundUser);
@@ -378,15 +379,15 @@ TEST_CASE (
 
         std::string reconstructed;
         bool foundBoxDrawingGroup = false;
-        for (const auto& t : tokens) {
-            reconstructed.append(t.text);
-            REQUIRE(t.type != TokenType::Comment);
-            REQUIRE(t.type != TokenType::Keyword);
-            REQUIRE(t.type != TokenType::Type);
-            REQUIRE(t.type != TokenType::String);
-            REQUIRE(t.type != TokenType::Function);
-            REQUIRE(t.type != TokenType::Preprocessor);
-            if (t.text.find("├──") != std::string::npos) {
+        for (const auto& [type, text] : tokens) {
+            reconstructed.append(text);
+            REQUIRE(type != TokenType::Comment);
+            REQUIRE(type != TokenType::Keyword);
+            REQUIRE(type != TokenType::Type);
+            REQUIRE(type != TokenType::String);
+            REQUIRE(type != TokenType::Function);
+            REQUIRE(type != TokenType::Preprocessor);
+            if (text.find("├──") != std::string::npos) {
                 foundBoxDrawingGroup = true;
             }
         }
@@ -434,13 +435,13 @@ TEST_CASE (
         std::string reconstructed;
         bool foundCode = false;
         bool foundLink = false;
-        for (const auto& t : tokens) {
-            reconstructed.append(t.text);
-            REQUIRE(t.type != TokenType::Keyword);
-            REQUIRE(t.type != TokenType::String);
-            REQUIRE(t.type != TokenType::Comment);
-            if (t.type == TokenType::MarkdownCode) foundCode = true;
-            if (t.type == TokenType::MarkdownLink) foundLink = true;
+        for (const auto& [type, text] : tokens) {
+            reconstructed.append(text);
+            REQUIRE(type != TokenType::Keyword);
+            REQUIRE(type != TokenType::String);
+            REQUIRE(type != TokenType::Comment);
+            if (type == TokenType::MarkdownCode) foundCode = true;
+            if (type == TokenType::MarkdownLink) foundLink = true;
         }
         REQUIRE(reconstructed == line);
         REQUIRE(foundCode);
@@ -471,9 +472,10 @@ TEST_CASE (
         REQUIRE(goLineHtml.find("#C678DD") != std::string::npos);
 
         MarkdownLineState outsideState = states[4];
-        auto proseTokens = SyntaxHighlighter::tokenizeMarkdownLine("Prosa con import class return", outsideState);
-        for (const auto& t : proseTokens) {
-            REQUIRE(t.type != TokenType::Keyword);
+        for (const auto proseTokens = SyntaxHighlighter::tokenizeMarkdownLine("Prosa con import class return", outsideState);
+             const auto& [type, text] : proseTokens) {
+            (void)text;
+            REQUIRE(type != TokenType::Keyword);
         }
     }
 }
@@ -518,11 +520,11 @@ TEST_CASE (
             "| :--- | :---: | ---: |\n"
             "| API | **Attivo** | `8080` |\n";
 
-        auto parsed = MarkdownParser::parse(md);
-        REQUIRE(parsed.toc.size() == 2);
-        CHECK(parsed.toc[0].title == "Panoramica del Servizio");
-        CHECK(parsed.toc[0].anchor == "panoramica-del-servizio");
-        CHECK(parsed.toc[1].anchor == "panoramica-del-servizio-1");
+        const auto [blocks, toc] = MarkdownParser::parse(md);
+        REQUIRE(toc.size() == 2);
+        CHECK(toc[0].title == "Panoramica del Servizio");
+        CHECK(toc[0].anchor == "panoramica-del-servizio");
+        CHECK(toc[1].anchor == "panoramica-del-servizio-1");
 
         bool hasBadgeRow = false;
         bool hasAlert = false;
@@ -530,7 +532,7 @@ TEST_CASE (
         bool hasTable = false;
         int taskCount = 0;
 
-        for (const auto& blk : parsed.blocks) {
+        for (const auto& blk : blocks) {
             if (blk.kind == MarkdownBlockKind::BadgeRow) {
                 hasBadgeRow = true;
                 CHECK(blk.centered);
@@ -591,20 +593,21 @@ TEST_CASE (
         };
         diff.hunks.push_back(std::move(hunk));
 
-        auto doc = MarkdownParser::parseWithDiff(newMd, &diff);
-        REQUIRE(doc.blocks.size() >= 3);
+        const auto [blocks, toc] = MarkdownParser::parseWithDiff(newMd, &diff);
+        (void)toc;
+        REQUIRE(blocks.size() >= 3);
 
-        CHECK(doc.blocks[0].changeStatus == MarkdownChangeStatus::Unchanged);
-        CHECK(doc.blocks[1].changeStatus == MarkdownChangeStatus::Modified);
-        CHECK(doc.blocks[1].addedLineCount == 1);
-        CHECK(doc.blocks[1].deletedLineCount == 1);
-        REQUIRE(doc.blocks[1].deletedLines.size() == 1);
-        CHECK(doc.blocks[1].deletedLines[0] == "Paragrafo originale");
+        CHECK(blocks[0].changeStatus == MarkdownChangeStatus::Unchanged);
+        CHECK(blocks[1].changeStatus == MarkdownChangeStatus::Modified);
+        CHECK(blocks[1].addedLineCount == 1);
+        CHECK(blocks[1].deletedLineCount == 1);
+        REQUIRE(blocks[1].deletedLines.size() == 1);
+        CHECK(blocks[1].deletedLines[0] == "Paragrafo originale");
 
-        CHECK(doc.blocks[2].changeStatus == MarkdownChangeStatus::Added);
+        CHECK(blocks[2].changeStatus == MarkdownChangeStatus::Added);
 
         bool foundEofDeletedSnippet = false;
-        for (const auto& blk : doc.blocks) {
+        for (const auto& blk : blocks) {
             if (blk.kind == MarkdownBlockKind::DeletedSnippet) {
                 foundEofDeletedSnippet = true;
                 REQUIRE(blk.deletedLines.size() == 1);
@@ -625,13 +628,13 @@ TEST_CASE (
             "\n"
             "    - sottoelemento lista\n";
 
-        auto doc = MarkdownParser::parse(md);
-        REQUIRE(doc.toc.size() == 1);
-        CHECK(doc.toc[0].title == "Struttura");
+        const auto [blocks, toc] = MarkdownParser::parse(md);
+        REQUIRE(toc.size() == 1);
+        CHECK(toc[0].title == "Struttura");
 
         bool foundIndentedTree = false;
         bool foundListItem = false;
-        for (const auto& blk : doc.blocks) {
+        for (const auto& blk : blocks) {
             if (blk.kind == MarkdownBlockKind::CodeBlock) {
                 foundIndentedTree = true;
                 CHECK(blk.detectedLanguage == Language::Unknown);

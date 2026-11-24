@@ -1,6 +1,5 @@
 #include "core/modules/git/bl/git_diff_service.hpp"
 #include "core/modules/git/bl/git_staging_service.hpp"
-#include "core/modules/git/bl/git_working_tree_service.hpp"
 #include "infrastructure/git/git_discovery.hpp"
 #include "infrastructure/git/native/native_git_executor.hpp"
 #include "infrastructure/git/native/native_repository_git_ops.hpp"
@@ -29,15 +28,15 @@ namespace
             std::filesystem::remove_all(root, ec);
         }
 
-        void writeFile(const std::string& relativePath, const std::string& content)
+        void writeFile(const std::string& relativePath, const std::string& content) const
         {
-            auto filePath = root / relativePath;
+            const auto filePath = root / relativePath;
             std::filesystem::create_directories(filePath.parent_path());
             std::ofstream ofs(filePath, std::ios::trunc);
             ofs << content;
         }
 
-        void removeFile(const std::string& relativePath)
+        void removeFile(const std::string& relativePath) const
         {
             std::filesystem::remove(root / relativePath);
         }
@@ -121,14 +120,14 @@ TEST_CASE (
         const auto& lines = diffRes->hunks[0].lines;
         bool foundDeletion = false;
         bool foundAddition = false;
-        for (const auto& l : lines) {
-            if (l.kind == gf::git::bo::DiffLineKind::Deletion && l.content == "int b = 2;") {
+        for (const auto& [kind, oldLineNumber, newLineNumber, content] : lines) {
+            if (kind == gf::git::bo::DiffLineKind::Deletion && content == "int b = 2;") {
                 foundDeletion = true;
-                CHECK(l.oldLineNumber == 2);
+                CHECK(oldLineNumber == 2);
             }
-            if (l.kind == gf::git::bo::DiffLineKind::Addition && l.content == "int b = 200;") {
+            if (kind == gf::git::bo::DiffLineKind::Addition && content == "int b = 200;") {
                 foundAddition = true;
-                CHECK(l.newLineNumber == 2);
+                CHECK(newLineNumber == 2);
             }
         }
         CHECK(foundDeletion);
@@ -221,7 +220,7 @@ TEST_CASE (
         }
     }
     {
-        auto filePath = sandbox.root / "docs/manual.md";
+        const auto filePath = sandbox.root / "docs/manual.md";
         std::ofstream ofs(filePath, std::ios::binary | std::ios::trunc);
         ofs.write(updated.data(), static_cast<std::streamsize>(updated.size()));
     }

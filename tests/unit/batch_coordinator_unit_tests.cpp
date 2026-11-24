@@ -13,7 +13,6 @@
 #include "infrastructure/persistence/workspaces/sqlite_workspace_store.hpp"
 
 #include <atomic>
-#include <chrono>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -407,7 +406,7 @@ TEST_CASE (
     REQUIRE(targets.size() == 2);
 
     SECTION("Asynchronously executes batch status and delivers completion report") {
-        std::atomic<bool> completed{false};
+        std::atomic completed{false};
         BatchOperationReport capturedReport;
 
         std::string opId = coordinator.executeBatchStatusAsync(

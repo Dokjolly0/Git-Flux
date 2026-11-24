@@ -5,6 +5,7 @@
 #include "core/modules/git/bl/git_repository_watcher_service.hpp"
 #include "core/modules/git/ports/fs_watcher_port.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <string>
@@ -187,34 +188,37 @@ TEST_CASE (
     }
 }
 
-class MockFsWatcherPort final : public IFsWatcherPort
+namespace
 {
-public:
-    std::vector<std::filesystem::path> watchedRepos;
-    FsRawEventCallback callback;
-
-    std::expected<void, FsWatcherError> watchRepository(const std::filesystem::path& repoPath) override
+    class MockFsWatcherPort final : public IFsWatcherPort
     {
-        watchedRepos.push_back(repoPath);
-        return {};
-    }
+    public:
+        std::vector<std::filesystem::path> watchedRepos;
+        FsRawEventCallback callback;
 
-    std::expected<void, FsWatcherError> unwatchRepository(const std::filesystem::path& repoPath) override
-    {
-        std::erase(watchedRepos, repoPath);
-        return {};
-    }
+        std::expected<void, FsWatcherError> watchRepository(const std::filesystem::path& repoPath) override
+        {
+            watchedRepos.push_back(repoPath);
+            return {};
+        }
 
-    bool isWatching(const std::filesystem::path& repoPath) const override
-    {
-        return std::find(watchedRepos.begin(), watchedRepos.end(), repoPath) != watchedRepos.end();
-    }
+        std::expected<void, FsWatcherError> unwatchRepository(const std::filesystem::path& repoPath) override
+        {
+            std::erase(watchedRepos, repoPath);
+            return {};
+        }
 
-    void setEventCallback(FsRawEventCallback cb) override
-    {
-        callback = std::move(cb);
-    }
-};
+        [[nodiscard]] bool isWatching(const std::filesystem::path& repoPath) const override
+        {
+            return std::ranges::find(watchedRepos, repoPath) != watchedRepos.end();
+        }
+
+        void setEventCallback(FsRawEventCallback cb) override
+        {
+            callback = std::move(cb);
+        }
+    };
+} // namespace
 
 TEST_CASE (
 "GitRepositoryWatcherService orchestrates port, debouncer and notifications"

@@ -11,9 +11,9 @@
 #include <vector>
 // std::system() runs through cmd.exe on Windows, where /dev/null does not exist.
 #ifdef _WIN32
-static const std::string kQuietRedirect = " > NUL 2>&1";
+static constexpr auto kQuietRedirect = " > NUL 2>&1";
 #else
-static const std::string kQuietRedirect = " > /dev/null 2>&1";
+static constexpr auto kQuietRedirect = " > /dev/null 2>&1";
 #endif
 
 using namespace gf::git::bl;
@@ -37,9 +37,9 @@ namespace
             std::string initCmd = "git -C \"" + path.string() + "\" init -b main" + kQuietRedirect;
             [[maybe_unused]] int r1 = std::system(initCmd.c_str());
 
-            std::string configUser = "git -C \"" + path.string() + "\" config user.name \"Watcher Tester\"";
+            std::string configUser = "git -C \"" + path.string() + R"(" config user.name "Watcher Tester")";
             [[maybe_unused]] int r2 = std::system(configUser.c_str());
-            std::string configEmail = "git -C \"" + path.string() + "\" config user.email \"watcher@test.com\"";
+            std::string configEmail = "git -C \"" + path.string() + R"(" config user.email "watcher@test.com")";
             [[maybe_unused]] int r3 = std::system(configEmail.c_str());
 
             // Initial commit
@@ -49,7 +49,7 @@ namespace
 
             std::string addCmd = "git -C \"" + path.string() + "\" add initial.txt" + kQuietRedirect;
             [[maybe_unused]] int r4 = std::system(addCmd.c_str());
-            std::string commitCmd = "git -C \"" + path.string() + "\" commit -m \"Initial\"" + kQuietRedirect;
+            std::string commitCmd = "git -C \"" + path.string() + R"(" commit -m "Initial")" + kQuietRedirect;
             [[maybe_unused]] int r5 = std::system(commitCmd.c_str());
         }
 

@@ -42,7 +42,7 @@ namespace
         }
 
         std::expected<std::string, gf::git::ports::GitOpsError>
-        getFileStageContent(const std::filesystem::path&, const std::string& filePath, int stage) override
+        getFileStageContent(const std::filesystem::path&, const std::string& filePath, const int stage) override
         {
             getFileStageContentCalled = true;
             lastConflictFilePath = filePath;

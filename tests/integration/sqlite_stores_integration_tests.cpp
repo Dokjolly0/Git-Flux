@@ -32,7 +32,7 @@ namespace
     {
         auto connRes = SqliteConnection::openInMemory();
         REQUIRE(connRes.has_value());
-        auto migRes = SchemaMigrator::migrateToLatest(*connRes);
+        const auto migRes = SchemaMigrator::migrateToLatest(*connRes);
         REQUIRE(migRes.has_value());
         return std::move(*connRes);
     }
@@ -52,7 +52,7 @@ TEST_CASE (
     REQUIRE(v0.has_value());
     REQUIRE(*v0 == 0);
 
-    auto migRes = SchemaMigrator::migrateToLatest(conn);
+    const auto migRes = SchemaMigrator::migrateToLatest(conn);
     REQUIRE(migRes.has_value());
 
     auto v1 = SchemaMigrator::getCurrentVersion(conn);

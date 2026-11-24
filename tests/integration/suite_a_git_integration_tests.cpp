@@ -131,14 +131,14 @@ TEST_CASE (
         }
         REQUIRE(created.has_value());
 
-        std::atomic<bool> stopPolling{false};
-        std::atomic<int> pollSuccesses{0};
-        std::atomic<int> pollFailures{0};
+        std::atomic stopPolling{false};
+        std::atomic pollSuccesses{0};
+        std::atomic pollFailures{0};
 
-        auto pollerFn = [&]() {
+        auto pollerFn = [&] {
             gf::infra::git::NativeGitCommandExecutor pollExec(gitInfo->directBinaryPath);
             while (!stopPolling.load(std::memory_order_acquire)) {
-                auto r = pollExec.execute({
+                const auto r = pollExec.execute({
                     .args = {"status", "--porcelain=v2", "-z", "--branch"},
                     .workingDirectory = repoPath,
                     .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks

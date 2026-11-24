@@ -34,7 +34,7 @@ namespace
     {
         std::filesystem::path dir;
 
-        ScopedSandbox(std::string_view name)
+        explicit ScopedSandbox(const std::string_view name)
         {
             dir = std::filesystem::temp_directory_path() / name;
             std::error_code ec;

@@ -25,9 +25,9 @@
 #include <vector>
 // std::system() runs through cmd.exe on Windows, where /dev/null does not exist.
 #ifdef _WIN32
-static const std::string kQuietRedirect = " > NUL 2>&1";
+static constexpr auto kQuietRedirect = " > NUL 2>&1";
 #else
-static const std::string kQuietRedirect = " > /dev/null 2>&1";
+static constexpr auto kQuietRedirect = " > /dev/null 2>&1";
 #endif
 
 using namespace gf::git::bl;
@@ -78,9 +78,9 @@ namespace
             // Init repo 1
             std::string init1 = "git -C \"" + repoDir1.string() + "\" init -b main" + kQuietRedirect;
             [[maybe_unused]] int r3 = std::system(init1.c_str());
-            std::string cfgU1 = "git -C \"" + repoDir1.string() + "\" config user.name \"Batch Tester\"";
+            std::string cfgU1 = "git -C \"" + repoDir1.string() + R"(" config user.name "Batch Tester")";
             [[maybe_unused]] int r4 = std::system(cfgU1.c_str());
-            std::string cfgE1 = "git -C \"" + repoDir1.string() + "\" config user.email \"batch@test.com\"";
+            std::string cfgE1 = "git -C \"" + repoDir1.string() + R"(" config user.email "batch@test.com")";
             [[maybe_unused]] int r5 = std::system(cfgE1.c_str());
 
             std::ofstream f1(repoDir1 / "f1.txt");
@@ -88,7 +88,7 @@ namespace
             f1.close();
             std::string a1 = "git -C \"" + repoDir1.string() + "\" add f1.txt" + kQuietRedirect;
             [[maybe_unused]] int r6 = std::system(a1.c_str());
-            std::string c1 = "git -C \"" + repoDir1.string() + "\" commit -m \"Init 1\"" + kQuietRedirect;
+            std::string c1 = "git -C \"" + repoDir1.string() + R"(" commit -m "Init 1")" + kQuietRedirect;
             [[maybe_unused]] int r7 = std::system(c1.c_str());
             std::string rem1 = "git -C \"" + repoDir1.string() + "\" remote add origin \"" + bareOrigin1.string() +
                 "\"" + kQuietRedirect;
@@ -99,9 +99,9 @@ namespace
             // Init repo 2
             std::string init2 = "git -C \"" + repoDir2.string() + "\" init -b main" + kQuietRedirect;
             [[maybe_unused]] int r10 = std::system(init2.c_str());
-            std::string cfgU2 = "git -C \"" + repoDir2.string() + "\" config user.name \"Batch Tester\"";
+            std::string cfgU2 = "git -C \"" + repoDir2.string() + R"(" config user.name "Batch Tester")";
             [[maybe_unused]] int r11 = std::system(cfgU2.c_str());
-            std::string cfgE2 = "git -C \"" + repoDir2.string() + "\" config user.email \"batch@test.com\"";
+            std::string cfgE2 = "git -C \"" + repoDir2.string() + R"(" config user.email "batch@test.com")";
             [[maybe_unused]] int r12 = std::system(cfgE2.c_str());
 
             std::ofstream f2(repoDir2 / "f2.txt");
@@ -109,7 +109,7 @@ namespace
             f2.close();
             std::string a2 = "git -C \"" + repoDir2.string() + "\" add f2.txt" + kQuietRedirect;
             [[maybe_unused]] int r13 = std::system(a2.c_str());
-            std::string c2 = "git -C \"" + repoDir2.string() + "\" commit -m \"Init 2\"" + kQuietRedirect;
+            std::string c2 = "git -C \"" + repoDir2.string() + R"(" commit -m "Init 2")" + kQuietRedirect;
             [[maybe_unused]] int r14 = std::system(c2.c_str());
             std::string rem2 = "git -C \"" + repoDir2.string() + "\" remote add origin \"" + bareOrigin2.string() +
                 "\"" + kQuietRedirect;
@@ -179,7 +179,7 @@ TEST_CASE (
     );
 
     SECTION("Executes asynchronous group fetch across all real repositories") {
-        std::atomic<bool> done{false};
+        std::atomic done{false};
         BatchOperationReport capturedReport;
         std::vector<BatchProgressUpdate> updates;
 

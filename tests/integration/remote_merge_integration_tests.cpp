@@ -36,20 +36,20 @@ namespace
             std::filesystem::remove_all(root, ec);
         }
 
-        void writeFile(const std::filesystem::path& repoRoot, const std::string& relativePath,
-                       const std::string& content)
+        static void writeFile(const std::filesystem::path& repoRoot, const std::string& relativePath,
+                              const std::string& content)
         {
-            auto filePath = repoRoot / relativePath;
+            const auto filePath = repoRoot / relativePath;
             std::filesystem::create_directories(filePath.parent_path());
             std::ofstream ofs(filePath, std::ios::trunc);
             ofs << content;
         }
 
-        std::string readFile(const std::filesystem::path& repoRoot, const std::string& relativePath)
+        [[nodiscard]] static std::string readFile(const std::filesystem::path& repoRoot, const std::string& relativePath)
         {
-            auto filePath = repoRoot / relativePath;
+            const auto filePath = repoRoot / relativePath;
             std::ifstream ifs(filePath);
-            return std::string((std::istreambuf_iterator<char>(ifs)),
+            return std::string(std::istreambuf_iterator(ifs),
                                std::istreambuf_iterator<char>());
         }
     };

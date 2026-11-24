@@ -28,19 +28,19 @@ namespace
             std::filesystem::remove_all(root, ec);
         }
 
-        void writeFile(const std::string& relativePath, const std::string& content)
+        void writeFile(const std::string& relativePath, const std::string& content) const
         {
-            auto filePath = root / relativePath;
+            const auto filePath = root / relativePath;
             std::filesystem::create_directories(filePath.parent_path());
             std::ofstream ofs(filePath, std::ios::trunc);
             ofs << content;
         }
 
-        std::string readFile(const std::string& relativePath)
+        [[nodiscard]] std::string readFile(const std::string& relativePath) const
         {
-            auto filePath = root / relativePath;
+            const auto filePath = root / relativePath;
             std::ifstream ifs(filePath);
-            return std::string((std::istreambuf_iterator<char>(ifs)),
+            return std::string(std::istreambuf_iterator(ifs),
                                std::istreambuf_iterator<char>());
         }
     };
@@ -287,7 +287,7 @@ TEST_CASE (
     SECTION("8. Filtraggio getLocalBranches vs getRemoteBranches") {
         auto locals = branchService.getLocalBranches(sandbox.root);
         REQUIRE(locals.has_value());
-        CHECK(locals->size() >= 1);
+        CHECK_FALSE(locals->empty());
 
         auto remotes = branchService.getRemoteBranches(sandbox.root);
         REQUIRE(remotes.has_value());

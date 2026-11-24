@@ -16,9 +16,9 @@
 #include <thread>
 // std::system() runs through cmd.exe on Windows, where /dev/null does not exist.
 #ifdef _WIN32
-static const std::string kQuietRedirect = " > NUL 2>&1";
+static constexpr auto kQuietRedirect = " > NUL 2>&1";
 #else
-static const std::string kQuietRedirect = " > /dev/null 2>&1";
+static constexpr auto kQuietRedirect = " > /dev/null 2>&1";
 #endif
 
 using namespace gf::git::bl;
@@ -54,9 +54,9 @@ namespace
             std::string initLocal = "git -C \"" + localPath.string() + "\" init -b main" + kQuietRedirect;
             [[maybe_unused]] int r2 = std::system(initLocal.c_str());
 
-            std::string cfgUser = "git -C \"" + localPath.string() + "\" config user.name \"Async Tester\"";
+            std::string cfgUser = "git -C \"" + localPath.string() + R"(" config user.name "Async Tester")";
             [[maybe_unused]] int r3 = std::system(cfgUser.c_str());
-            std::string cfgEmail = "git -C \"" + localPath.string() + "\" config user.email \"async@test.com\"";
+            std::string cfgEmail = "git -C \"" + localPath.string() + R"(" config user.email "async@test.com")";
             [[maybe_unused]] int r4 = std::system(cfgEmail.c_str());
 
             // File 1
@@ -66,7 +66,7 @@ namespace
 
             std::string addCmd = "git -C \"" + localPath.string() + "\" add file.txt" + kQuietRedirect;
             [[maybe_unused]] int r5 = std::system(addCmd.c_str());
-            std::string commitCmd = "git -C \"" + localPath.string() + "\" commit -m \"Init\"" + kQuietRedirect;
+            std::string commitCmd = "git -C \"" + localPath.string() + R"(" commit -m "Init")" + kQuietRedirect;
             [[maybe_unused]] int r6 = std::system(commitCmd.c_str());
 
             std::string remoteAdd = "git -C \"" + localPath.string() + "\" remote add origin \"" + originPath.string() +
@@ -108,8 +108,8 @@ TEST_CASE (
     AsyncGitService asyncGit(taskRunner, remoteMergeService, workingTreeService);
 
     SECTION("Asynchronously scans working tree and streams progress") {
-        std::atomic<bool> done{false};
-        std::atomic<int> progressCount{0};
+        std::atomic done{false};
+        std::atomic progressCount{0};
         std::expected<RepoWorkingTreeStatus, gf::git::ports::GitOpsError> capturedStatus =
             std::unexpected(gf::git::ports::GitOpsError{.kind = gf::git::ports::GitOpsError::Kind::InvalidOperation, .exitCode = -1, .message = "", .command = ""});
 
@@ -135,7 +135,7 @@ TEST_CASE (
     }
 
     SECTION("Asynchronously fetches from remote origin") {
-        std::atomic<bool> done{false};
+        std::atomic done{false};
         std::expected<RemoteOperationResult, gf::git::ports::GitOpsError> capturedResult =
             std::unexpected(gf::git::ports::GitOpsError{.kind = gf::git::ports::GitOpsError::Kind::InvalidOperation, .exitCode = -1, .message = "", .command = ""});
 
@@ -162,7 +162,7 @@ TEST_CASE (
 
     SECTION("Cancels long-running async operation") {
         // Block the runner with 2 tasks to allow cancelling the 3rd while queued
-        std::atomic<bool> holdWorkers{true};
+        std::atomic holdWorkers{true};
         taskRunner.postTask("Hold 1", [&](ITaskProgressSink&) -> std::expected<void, std::string> {
             while (holdWorkers.load()) std::this_thread::sleep_for(5ms);
             return {};
@@ -172,11 +172,11 @@ TEST_CASE (
             return {};
         });
 
-        std::atomic<bool> cancelCbInvoked{false};
+        std::atomic cancelCbInvoked{false};
         std::string fetchTaskId = asyncGit.fetchRemoteAsync(
             fixture.localPath,
             RemoteOperationOptions{.remoteName = "origin"},
-            [&](std::expected<RemoteOperationResult, gf::git::ports::GitOpsError> res) {
+            [&](const std::expected<RemoteOperationResult, gf::git::ports::GitOpsError>& res) {
                 if (!res.has_value()) {
                     cancelCbInvoked.store(true);
                 }

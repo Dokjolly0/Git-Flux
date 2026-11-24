@@ -104,7 +104,7 @@ namespace
         std::expected<void, gf::git::ports::GitOpsError>
         deleteBranch(const std::filesystem::path&,
                      const std::string& branchName,
-                     bool force) override
+                     const bool force) override
         {
             deleteCalled = true;
             lastDeleteBranchName = branchName;

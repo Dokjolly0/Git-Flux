@@ -61,7 +61,7 @@ namespace
         std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
         getFileDiff(const std::filesystem::path& repoPath,
                     const std::string& filePath,
-                    gf::git::bo::DiffScope scope) override
+                    const gf::git::bo::DiffScope scope) override
         {
             getFileDiffCalled = true;
             lastRepoPath = repoPath;
@@ -77,12 +77,12 @@ namespace
 
         std::expected<std::vector<gf::git::bo::FileDiff>, gf::git::ports::GitOpsError>
         getAllDiffs(const std::filesystem::path& repoPath,
-                    gf::git::bo::DiffScope scope) override
+                    const gf::git::bo::DiffScope scope) override
         {
             getAllDiffsCalled = true;
             lastRepoPath = repoPath;
             lastScope = scope;
-            return std::vector<gf::git::bo::FileDiff>{
+            return std::vector{
                 gf::git::bo::FileDiff{.oldPath = "a.txt", .newPath = "a.txt"}
             };
         }

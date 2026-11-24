@@ -28,20 +28,20 @@ namespace
             std::filesystem::remove_all(root, ec);
         }
 
-        void writeFile(const std::string& relativePath, const std::string& content)
+        void writeFile(const std::string& relativePath, const std::string& content) const
         {
-            auto filePath = root / relativePath;
+            const auto filePath = root / relativePath;
             std::filesystem::create_directories(filePath.parent_path());
             // Binary mode: keep exact LF line endings on Windows too
             std::ofstream ofs(filePath, std::ios::binary | std::ios::trunc);
             ofs << content;
         }
 
-        [[nodiscard]] std::string readFile(const std::string& relativePath)
+        [[nodiscard]] std::string readFile(const std::string& relativePath) const
         {
-            auto filePath = root / relativePath;
+            const auto filePath = root / relativePath;
             std::ifstream ifs(filePath, std::ios::binary);
-            return std::string((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+            return std::string(std::istreambuf_iterator(ifs), std::istreambuf_iterator<char>());
         }
     };
 } // namespace

@@ -426,16 +426,16 @@ TEST_CASE (
     std::filesystem::create_directories(tempPathB);
 
     SECTION("Lock su percorsi distinti non bloccano in parallelo") {
-        std::atomic<bool> threadAEntered{false};
-        std::atomic<bool> threadBEntered{false};
+        std::atomic threadAEntered{false};
+        std::atomic threadBEntered{false};
 
-        auto futA = std::async(std::launch::async, [&]() {
+        auto futA = std::async(std::launch::async, [&] {
             auto lock = coordinator.acquire(tempPathA);
             threadAEntered = true;
             std::this_thread::sleep_for(std::chrono::milliseconds{50});
         });
 
-        auto futB = std::async(std::launch::async, [&]() {
+        auto futB = std::async(std::launch::async, [&] {
             // Should acquire immediately without waiting for threadA
             while (!threadAEntered.load()) {
                 std::this_thread::yield();
@@ -452,11 +452,11 @@ TEST_CASE (
     }
 
     SECTION("Lock sullo stesso percorso serializza l'accesso") {
-        std::atomic<int> sequenceCounter{0};
+        std::atomic sequenceCounter{0};
         std::vector<int> executionOrder;
         std::mutex orderMutex;
 
-        auto worker = [&](int id) {
+        auto worker = [&](const int id) {
             auto lock = coordinator.acquire(tempPathA);
             {
                 std::scoped_lock lk(orderMutex);

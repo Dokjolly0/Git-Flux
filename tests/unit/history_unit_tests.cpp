@@ -326,23 +326,24 @@ TEST_CASE (
         auto commits = CommitLogParser::parse(raw);
         REQUIRE(commits.size() == 1);
 
-        const auto& c = commits.front();
-        CHECK(c.sha == "e5a32b1c8f4d9e0a1b2c3d4e5f6a7b8c9d0e1f2a");
-        CHECK(c.shortSha == "e5a32b1");
-        REQUIRE(c.parents.size() == 1);
-        CHECK(c.parents[0] == "1111222233334444555566667777888899990000");
-        CHECK(c.authorName == "Mario Rossi");
-        CHECK(c.authorEmail == "mario@example.com");
-        CHECK(c.authorDateIso == "2026-11-07T10:00:00+01:00");
-        CHECK(c.committerName == "GitFlux Bot");
-        CHECK(c.committerEmail == "bot@example.com");
-        CHECK(c.committerDateIso == "2026-11-07T10:05:00+01:00");
-        REQUIRE(c.refDecorations.size() == 3);
-        CHECK(c.refDecorations[0] == "HEAD -> main");
-        CHECK(c.refDecorations[1] == "tag: v1.0.0");
-        CHECK(c.refDecorations[2] == "origin/main");
-        CHECK(c.subject == "feat(core): initial release");
-        CHECK(c.body == "First line of body\nSecond line of body");
+        const auto& [sha, shortSha, parents, authorName, authorEmail, authorDateIso,
+                     committerName, committerEmail, committerDateIso, subject, body, refDecorations] = commits.front();
+        CHECK(sha == "e5a32b1c8f4d9e0a1b2c3d4e5f6a7b8c9d0e1f2a");
+        CHECK(shortSha == "e5a32b1");
+        REQUIRE(parents.size() == 1);
+        CHECK(parents[0] == "1111222233334444555566667777888899990000");
+        CHECK(authorName == "Mario Rossi");
+        CHECK(authorEmail == "mario@example.com");
+        CHECK(authorDateIso == "2026-11-07T10:00:00+01:00");
+        CHECK(committerName == "GitFlux Bot");
+        CHECK(committerEmail == "bot@example.com");
+        CHECK(committerDateIso == "2026-11-07T10:05:00+01:00");
+        REQUIRE(refDecorations.size() == 3);
+        CHECK(refDecorations[0] == "HEAD -> main");
+        CHECK(refDecorations[1] == "tag: v1.0.0");
+        CHECK(refDecorations[2] == "origin/main");
+        CHECK(subject == "feat(core): initial release");
+        CHECK(body == "First line of body\nSecond line of body");
     }
 
     SECTION("Parsing di merge commit con 2 genitori e nessun body") {

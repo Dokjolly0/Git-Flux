@@ -231,16 +231,15 @@ namespace
         std::filesystem::path tempDir;
 
         CloneTestSetup()
-            : conn([]()
+            : conn([]
               {
                   auto c = gf::infra::persistence::sqlite::SqliteConnection::openInMemory();
-                  auto migRes = gf::infra::persistence::sqlite::SchemaMigrator::migrateToLatest(*c);
+                  const auto migRes = gf::infra::persistence::sqlite::SchemaMigrator::migrateToLatest(*c);
                   (void)migRes;
                   return std::move(*c);
               }()),
               repoStore(conn),
               repoService(repoStore),
-              mockGitOps(),
               cloneService(mockGitOps, repoService),
               tempDir(std::filesystem::temp_directory_path() / ("gf_clone_unit_" + std::to_string(
                   std::chrono::steady_clock::now().time_since_epoch().count())))

@@ -27,9 +27,9 @@ namespace
             std::filesystem::remove_all(root, ec);
         }
 
-        void writeFile(const std::string& relativePath, const std::string& content)
+        void writeFile(const std::string& relativePath, const std::string& content) const
         {
-            auto filePath = root / relativePath;
+            const auto filePath = root / relativePath;
             std::filesystem::create_directories(filePath.parent_path());
             std::ofstream ofs(filePath, std::ios::trunc);
             ofs << content;

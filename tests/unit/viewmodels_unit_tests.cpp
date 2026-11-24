@@ -4191,11 +4191,12 @@ TEST_CASE (
         restarted.initialize();
         REQUIRE(restarted.waitForIdle());
         const auto list = restarted.profiles();
-        const auto found = std::find_if(list.begin(), list.end(), [](const QVariant& v)
+        const auto found = std::ranges::find_if(list, [](const QVariant& v)
         {
             return v.toMap().value("id").toString() == "manual_code.example.com";
         });
-        REQUIRE(found != list.end());
+        const bool foundProfile = found != list.end();
+        REQUIRE(foundProfile);
         CHECK(found->toMap().value("removable").toBool());
     }
 
