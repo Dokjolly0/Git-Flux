@@ -34,11 +34,11 @@ namespace gf::infra::persistence::workspaces
 
     private:
         [[nodiscard]] std::expected<std::vector<gf::groups::bo::GroupId>, gf::workspaces::ports::WorkspaceStoreError>
-        loadWorkspaceGroupIds(const gf::workspaces::bo::WorkspaceId& wsId);
+        loadWorkspaceGroupIds(const gf::workspaces::bo::WorkspaceId& wsId) const;
 
         [[nodiscard]] std::expected<std::vector<gf::repositories::bo::RepositoryId>,
                                     gf::workspaces::ports::WorkspaceStoreError>
-        loadWorkspaceDirectRepoIds(const gf::workspaces::bo::WorkspaceId& wsId);
+        loadWorkspaceDirectRepoIds(const gf::workspaces::bo::WorkspaceId& wsId) const;
 
         sqlite::SqliteConnection& conn_;
     };

@@ -8,7 +8,18 @@ namespace gf::infra::persistence::groups
     using gf::groups::bo::Group;
     using gf::groups::bo::GroupId;
     using gf::groups::ports::GroupStoreError;
-    using gf::repositories::bo::RepositoryId;
+    using repositories::bo::RepositoryId;
+
+    namespace
+    {
+        GroupStoreError makeStorageError(const sqlite::SqliteError& err)
+        {
+            return GroupStoreError{
+                .kind = GroupStoreError::Kind::StorageError,
+                .message = err.message
+            };
+        }
+    } // namespace
 
     SqliteGroupStore::SqliteGroupStore(sqlite::SqliteConnection& conn) noexcept
         : conn_(conn)
@@ -16,7 +27,7 @@ namespace gf::infra::persistence::groups
     }
 
     std::expected<std::vector<RepositoryId>, GroupStoreError>
-    SqliteGroupStore::loadRepositoryIds(const GroupId& groupId)
+    SqliteGroupStore::loadRepositoryIds(const GroupId& groupId) const
     {
         constexpr std::string_view kSql = R"(
 SELECT repository_id
@@ -28,23 +39,21 @@ ORDER BY sort_order ASC;
         auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
         if (!stmtRes)
         {
-            return std::unexpected(GroupStoreError{
-                .kind = GroupStoreError::Kind::StorageError,
-                .message = stmtRes.error().message
-            });
+            return std::unexpected(makeStorageError(stmtRes.error()));
         }
 
-        (void)stmtRes->bindText(1, groupId.value());
+        if (const auto bindRes = stmtRes->bindText(1, groupId.value()); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+
         std::vector<RepositoryId> ids;
         while (true)
         {
             auto stepRes = stmtRes->step();
             if (!stepRes)
             {
-                return std::unexpected(GroupStoreError{
-                    .kind = GroupStoreError::Kind::StorageError,
-                    .message = stepRes.error().message
-                });
+                return std::unexpected(makeStorageError(stepRes.error()));
             }
             if (!*stepRes)
             {
@@ -69,10 +78,7 @@ ORDER BY sort_order ASC;
         auto tx = sqlite::SqliteTransaction::begin(conn_);
         if (!tx)
         {
-            return std::unexpected(GroupStoreError{
-                .kind = GroupStoreError::Kind::StorageError,
-                .message = tx.error().message
-            });
+            return std::unexpected(makeStorageError(tx.error()));
         }
 
         constexpr std::string_view kUpsertGroupSql = R"(
@@ -86,19 +92,27 @@ ON CONFLICT(id) DO UPDATE SET
         auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kUpsertGroupSql);
         if (!stmtRes)
         {
-            return std::unexpected(GroupStoreError{
-                .kind = GroupStoreError::Kind::StorageError,
-                .message = stmtRes.error().message
-            });
+            return std::unexpected(makeStorageError(stmtRes.error()));
         }
 
-        (void)stmtRes->bindText(1, group.id.value());
-        (void)stmtRes->bindText(2, group.name);
-        (void)stmtRes->bindInt64(3, group.createdAtUnixEpochMs);
-        (void)stmtRes->bindInt64(4, group.updatedAtUnixEpochMs);
+        if (const auto bindRes = stmtRes->bindText(1, group.id.value()); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindText(2, group.name); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindInt64(3, group.createdAtUnixEpochMs); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindInt64(4, group.updatedAtUnixEpochMs); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
 
-        auto stepRes = stmtRes->step();
-        if (!stepRes)
+        if (const auto stepRes = stmtRes->step(); !stepRes)
         {
             if (stepRes.error().code == SQLITE_CONSTRAINT_UNIQUE || stepRes.error().code == SQLITE_CONSTRAINT)
             {
@@ -107,10 +121,7 @@ ON CONFLICT(id) DO UPDATE SET
                     .message = "Nome gruppo già esistente"
                 });
             }
-            return std::unexpected(GroupStoreError{
-                .kind = GroupStoreError::Kind::StorageError,
-                .message = stepRes.error().message
-            });
+            return std::unexpected(makeStorageError(stepRes.error()));
         }
 
         // Rebuild ordered repository associations
@@ -118,19 +129,15 @@ ON CONFLICT(id) DO UPDATE SET
             conn_, "DELETE FROM group_repositories WHERE group_id = ?;");
         if (!delStmtRes)
         {
-            return std::unexpected(GroupStoreError{
-                .kind = GroupStoreError::Kind::StorageError,
-                .message = delStmtRes.error().message
-            });
+            return std::unexpected(makeStorageError(delStmtRes.error()));
         }
-        (void)delStmtRes->bindText(1, group.id.value());
-        auto delStepRes = delStmtRes->step();
-        if (!delStepRes)
+        if (const auto bindRes = delStmtRes->bindText(1, group.id.value()); !bindRes)
         {
-            return std::unexpected(GroupStoreError{
-                .kind = GroupStoreError::Kind::StorageError,
-                .message = delStepRes.error().message
-            });
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto delStepRes = delStmtRes->step(); !delStepRes)
+        {
+            return std::unexpected(makeStorageError(delStepRes.error()));
         }
 
         if (!group.repositoryIds.empty())
@@ -139,21 +146,26 @@ ON CONFLICT(id) DO UPDATE SET
                 conn_, "INSERT INTO group_repositories (group_id, repository_id, sort_order) VALUES (?, ?, ?);");
             if (!insStmtRes)
             {
-                return std::unexpected(GroupStoreError{
-                    .kind = GroupStoreError::Kind::StorageError,
-                    .message = insStmtRes.error().message
-                });
+                return std::unexpected(makeStorageError(insStmtRes.error()));
             }
 
             for (int i = 0; i < static_cast<int>(group.repositoryIds.size()); ++i)
             {
                 insStmtRes->reset();
                 insStmtRes->clearBindings();
-                (void)insStmtRes->bindText(1, group.id.value());
-                (void)insStmtRes->bindText(2, group.repositoryIds[static_cast<std::size_t>(i)].value());
-                (void)insStmtRes->bindInt(3, i);
-                auto insStep = insStmtRes->step();
-                if (!insStep)
+                if (const auto bindRes = insStmtRes->bindText(1, group.id.value()); !bindRes)
+                {
+                    return std::unexpected(makeStorageError(bindRes.error()));
+                }
+                if (const auto bindRes = insStmtRes->bindText(2, group.repositoryIds[static_cast<std::size_t>(i)].value()); !bindRes)
+                {
+                    return std::unexpected(makeStorageError(bindRes.error()));
+                }
+                if (const auto bindRes = insStmtRes->bindInt(3, i); !bindRes)
+                {
+                    return std::unexpected(makeStorageError(bindRes.error()));
+                }
+                if (const auto insStep = insStmtRes->step(); !insStep)
                 {
                     return std::unexpected(GroupStoreError{
                         .kind = GroupStoreError::Kind::StorageError,
@@ -163,13 +175,9 @@ ON CONFLICT(id) DO UPDATE SET
             }
         }
 
-        auto commitRes = tx->commit();
-        if (!commitRes)
+        if (const auto commitRes = tx->commit(); !commitRes)
         {
-            return std::unexpected(GroupStoreError{
-                .kind = GroupStoreError::Kind::StorageError,
-                .message = commitRes.error().message
-            });
+            return std::unexpected(makeStorageError(commitRes.error()));
         }
 
         return {};
@@ -187,20 +195,17 @@ WHERE id = ?;
         auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
         if (!stmtRes)
         {
-            return std::unexpected(GroupStoreError{
-                .kind = GroupStoreError::Kind::StorageError,
-                .message = stmtRes.error().message
-            });
+            return std::unexpected(makeStorageError(stmtRes.error()));
         }
 
-        (void)stmtRes->bindText(1, id.value());
+        if (const auto bindRes = stmtRes->bindText(1, id.value()); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
         auto stepRes = stmtRes->step();
         if (!stepRes)
         {
-            return std::unexpected(GroupStoreError{
-                .kind = GroupStoreError::Kind::StorageError,
-                .message = stepRes.error().message
-            });
+            return std::unexpected(makeStorageError(stepRes.error()));
         }
 
         if (!*stepRes)
@@ -236,10 +241,7 @@ ORDER BY name COLLATE NOCASE ASC;
         auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
         if (!stmtRes)
         {
-            return std::unexpected(GroupStoreError{
-                .kind = GroupStoreError::Kind::StorageError,
-                .message = stmtRes.error().message
-            });
+            return std::unexpected(makeStorageError(stmtRes.error()));
         }
 
         std::vector<Group> groups;
@@ -248,10 +250,7 @@ ORDER BY name COLLATE NOCASE ASC;
             auto stepRes = stmtRes->step();
             if (!stepRes)
             {
-                return std::unexpected(GroupStoreError{
-                    .kind = GroupStoreError::Kind::StorageError,
-                    .message = stepRes.error().message
-                });
+                return std::unexpected(makeStorageError(stepRes.error()));
             }
             if (!*stepRes)
             {
@@ -287,20 +286,16 @@ ORDER BY name COLLATE NOCASE ASC;
         auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
         if (!stmtRes)
         {
-            return std::unexpected(GroupStoreError{
-                .kind = GroupStoreError::Kind::StorageError,
-                .message = stmtRes.error().message
-            });
+            return std::unexpected(makeStorageError(stmtRes.error()));
         }
 
-        (void)stmtRes->bindText(1, id.value());
-        auto stepRes = stmtRes->step();
-        if (!stepRes)
+        if (const auto bindRes = stmtRes->bindText(1, id.value()); !bindRes)
         {
-            return std::unexpected(GroupStoreError{
-                .kind = GroupStoreError::Kind::StorageError,
-                .message = stepRes.error().message
-            });
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto stepRes = stmtRes->step(); !stepRes)
+        {
+            return std::unexpected(makeStorageError(stepRes.error()));
         }
 
         return conn_.changes() > 0;
@@ -320,23 +315,20 @@ ORDER BY g.name COLLATE NOCASE ASC;
         auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
         if (!stmtRes)
         {
-            return std::unexpected(GroupStoreError{
-                .kind = GroupStoreError::Kind::StorageError,
-                .message = stmtRes.error().message
-            });
+            return std::unexpected(makeStorageError(stmtRes.error()));
         }
 
-        (void)stmtRes->bindText(1, repoId.value());
+        if (const auto bindRes = stmtRes->bindText(1, repoId.value()); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
         std::vector<Group> groups;
         while (true)
         {
             auto stepRes = stmtRes->step();
             if (!stepRes)
             {
-                return std::unexpected(GroupStoreError{
-                    .kind = GroupStoreError::Kind::StorageError,
-                    .message = stepRes.error().message
-                });
+                return std::unexpected(makeStorageError(stepRes.error()));
             }
             if (!*stepRes)
             {

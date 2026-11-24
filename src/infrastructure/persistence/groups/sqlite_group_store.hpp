@@ -28,7 +28,7 @@ namespace gf::infra::persistence::groups
 
     private:
         [[nodiscard]] std::expected<std::vector<gf::repositories::bo::RepositoryId>, gf::groups::ports::GroupStoreError>
-        loadRepositoryIds(const gf::groups::bo::GroupId& groupId);
+        loadRepositoryIds(const gf::groups::bo::GroupId& groupId) const;
 
         sqlite::SqliteConnection& conn_;
     };

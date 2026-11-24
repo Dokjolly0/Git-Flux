@@ -13,12 +13,20 @@ namespace gf::infra::persistence::repositories
 
     namespace
     {
-        Repository rowToRepository(sqlite::SqliteStatement& stmt)
+        RepositoryStoreError makeStorageError(const sqlite::SqliteError& err)
+        {
+            return RepositoryStoreError{
+                .kind = RepositoryStoreError::Kind::StorageError,
+                .message = err.message
+            };
+        }
+
+        Repository rowToRepository(const sqlite::SqliteStatement& stmt)
         {
             Repository repo;
             repo.id = RepositoryId(stmt.getText(0));
             repo.displayName = stmt.getText(1);
-            repo.localPath = gf::core::utf8ToPath(stmt.getText(2));
+            repo.localPath = core::utf8ToPath(stmt.getText(2));
             repo.pathStatus = static_cast<RepositoryPathStatus>(stmt.getInt(3));
             repo.registeredAtUnixEpochMs = stmt.getInt64(4);
             repo.lastAccessedAtUnixEpochMs = stmt.getInt64(5);
@@ -55,21 +63,35 @@ ON CONFLICT(id) DO UPDATE SET
         auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
         if (!stmtRes)
         {
-            return std::unexpected(RepositoryStoreError{
-                .kind = RepositoryStoreError::Kind::StorageError,
-                .message = stmtRes.error().message
-            });
+            return std::unexpected(makeStorageError(stmtRes.error()));
         }
 
-        (void)stmtRes->bindText(1, repo.id.value());
-        (void)stmtRes->bindText(2, repo.displayName);
-        (void)stmtRes->bindText(3, gf::core::pathToUtf8(repo.localPath));
-        (void)stmtRes->bindInt(4, static_cast<int>(repo.pathStatus));
-        (void)stmtRes->bindInt64(5, repo.registeredAtUnixEpochMs);
-        (void)stmtRes->bindInt64(6, repo.lastAccessedAtUnixEpochMs);
+        if (const auto bindRes = stmtRes->bindText(1, repo.id.value()); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindText(2, repo.displayName); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindText(3, core::pathToUtf8(repo.localPath)); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindInt(4, static_cast<int>(repo.pathStatus)); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindInt64(5, repo.registeredAtUnixEpochMs); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindInt64(6, repo.lastAccessedAtUnixEpochMs); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
 
-        auto stepRes = stmtRes->step();
-        if (!stepRes)
+        if (const auto stepRes = stmtRes->step(); !stepRes)
         {
             if (stepRes.error().code == SQLITE_CONSTRAINT_UNIQUE || stepRes.error().code == SQLITE_CONSTRAINT)
             {
@@ -78,10 +100,7 @@ ON CONFLICT(id) DO UPDATE SET
                     .message = "Percorso già associato a un altro repository"
                 });
             }
-            return std::unexpected(RepositoryStoreError{
-                .kind = RepositoryStoreError::Kind::StorageError,
-                .message = stepRes.error().message
-            });
+            return std::unexpected(makeStorageError(stepRes.error()));
         }
 
         return {};
@@ -99,20 +118,17 @@ WHERE id = ?;
         auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
         if (!stmtRes)
         {
-            return std::unexpected(RepositoryStoreError{
-                .kind = RepositoryStoreError::Kind::StorageError,
-                .message = stmtRes.error().message
-            });
+            return std::unexpected(makeStorageError(stmtRes.error()));
         }
 
-        (void)stmtRes->bindText(1, id.value());
+        if (const auto bindRes = stmtRes->bindText(1, id.value()); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
         auto stepRes = stmtRes->step();
         if (!stepRes)
         {
-            return std::unexpected(RepositoryStoreError{
-                .kind = RepositoryStoreError::Kind::StorageError,
-                .message = stepRes.error().message
-            });
+            return std::unexpected(makeStorageError(stepRes.error()));
         }
 
         if (*stepRes)
@@ -134,20 +150,17 @@ WHERE local_path = ?;
         auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
         if (!stmtRes)
         {
-            return std::unexpected(RepositoryStoreError{
-                .kind = RepositoryStoreError::Kind::StorageError,
-                .message = stmtRes.error().message
-            });
+            return std::unexpected(makeStorageError(stmtRes.error()));
         }
 
-        (void)stmtRes->bindText(1, gf::core::pathToUtf8(path));
+        if (const auto bindRes = stmtRes->bindText(1, core::pathToUtf8(path)); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
         auto stepRes = stmtRes->step();
         if (!stepRes)
         {
-            return std::unexpected(RepositoryStoreError{
-                .kind = RepositoryStoreError::Kind::StorageError,
-                .message = stepRes.error().message
-            });
+            return std::unexpected(makeStorageError(stepRes.error()));
         }
 
         if (*stepRes)
@@ -169,10 +182,7 @@ ORDER BY display_name COLLATE NOCASE ASC;
         auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
         if (!stmtRes)
         {
-            return std::unexpected(RepositoryStoreError{
-                .kind = RepositoryStoreError::Kind::StorageError,
-                .message = stmtRes.error().message
-            });
+            return std::unexpected(makeStorageError(stmtRes.error()));
         }
 
         std::vector<Repository> results;
@@ -181,10 +191,7 @@ ORDER BY display_name COLLATE NOCASE ASC;
             auto stepRes = stmtRes->step();
             if (!stepRes)
             {
-                return std::unexpected(RepositoryStoreError{
-                    .kind = RepositoryStoreError::Kind::StorageError,
-                    .message = stepRes.error().message
-                });
+                return std::unexpected(makeStorageError(stepRes.error()));
             }
             if (!*stepRes)
             {
@@ -204,20 +211,16 @@ ORDER BY display_name COLLATE NOCASE ASC;
         auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
         if (!stmtRes)
         {
-            return std::unexpected(RepositoryStoreError{
-                .kind = RepositoryStoreError::Kind::StorageError,
-                .message = stmtRes.error().message
-            });
+            return std::unexpected(makeStorageError(stmtRes.error()));
         }
 
-        (void)stmtRes->bindText(1, id.value());
-        auto stepRes = stmtRes->step();
-        if (!stepRes)
+        if (const auto bindRes = stmtRes->bindText(1, id.value()); !bindRes)
         {
-            return std::unexpected(RepositoryStoreError{
-                .kind = RepositoryStoreError::Kind::StorageError,
-                .message = stepRes.error().message
-            });
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto stepRes = stmtRes->step(); !stepRes)
+        {
+            return std::unexpected(makeStorageError(stepRes.error()));
         }
 
         return conn_.changes() > 0;
@@ -235,18 +238,23 @@ WHERE id = ?;
         auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
         if (!stmtRes)
         {
-            return std::unexpected(RepositoryStoreError{
-                .kind = RepositoryStoreError::Kind::StorageError,
-                .message = stmtRes.error().message
-            });
+            return std::unexpected(makeStorageError(stmtRes.error()));
         }
 
-        (void)stmtRes->bindText(1, gf::core::pathToUtf8(newPath));
-        (void)stmtRes->bindInt(2, static_cast<int>(RepositoryPathStatus::Valid));
-        (void)stmtRes->bindText(3, id.value());
+        if (const auto bindRes = stmtRes->bindText(1, core::pathToUtf8(newPath)); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindInt(2, static_cast<int>(RepositoryPathStatus::Valid)); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindText(3, id.value()); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
 
-        auto stepRes = stmtRes->step();
-        if (!stepRes)
+        if (const auto stepRes = stmtRes->step(); !stepRes)
         {
             if (stepRes.error().code == SQLITE_CONSTRAINT_UNIQUE || stepRes.error().code == SQLITE_CONSTRAINT)
             {
@@ -255,10 +263,7 @@ WHERE id = ?;
                     .message = "Il nuovo percorso è già utilizzato da un altro repository"
                 });
             }
-            return std::unexpected(RepositoryStoreError{
-                .kind = RepositoryStoreError::Kind::StorageError,
-                .message = stepRes.error().message
-            });
+            return std::unexpected(makeStorageError(stepRes.error()));
         }
 
         if (conn_.changes() == 0)

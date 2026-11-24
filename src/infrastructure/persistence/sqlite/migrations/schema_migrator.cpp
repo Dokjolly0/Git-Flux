@@ -116,8 +116,7 @@ CREATE INDEX IF NOT EXISTS idx_git_provider_host ON git_provider_profiles(host);
     std::expected<int, SqliteError>
     SchemaMigrator::getCurrentVersion(SqliteConnection& conn)
     {
-        auto initRes = conn.execute(kCreateMigrationTableSql);
-        if (!initRes)
+        if (const auto initRes = conn.execute(kCreateMigrationTableSql); !initRes)
         {
             return std::unexpected(initRes.error());
         }
@@ -158,8 +157,7 @@ CREATE INDEX IF NOT EXISTS idx_git_provider_host ON git_provider_profiles(host);
                 return std::unexpected(tx.error());
             }
 
-            auto execRes = conn.execute(kMigrationV1Sql);
-            if (!execRes)
+            if (const auto execRes = conn.execute(kMigrationV1Sql); !execRes)
             {
                 return std::unexpected(execRes.error());
             }
@@ -174,19 +172,16 @@ CREATE INDEX IF NOT EXISTS idx_git_provider_host ON git_provider_profiles(host);
             {
                 return std::unexpected(recordStmt.error());
             }
-            auto bindRes = recordStmt->bindInt64(1, nowMs);
-            if (!bindRes)
+            if (const auto bindRes = recordStmt->bindInt64(1, nowMs); !bindRes)
             {
                 return std::unexpected(bindRes.error());
             }
-            auto stepRes = recordStmt->step();
-            if (!stepRes)
+            if (const auto stepRes = recordStmt->step(); !stepRes)
             {
                 return std::unexpected(stepRes.error());
             }
 
-            auto commitRes = tx->commit();
-            if (!commitRes)
+            if (const auto commitRes = tx->commit(); !commitRes)
             {
                 return std::unexpected(commitRes.error());
             }
@@ -200,8 +195,7 @@ CREATE INDEX IF NOT EXISTS idx_git_provider_host ON git_provider_profiles(host);
                 return std::unexpected(tx.error());
             }
 
-            auto execRes = conn.execute(kMigrationV2Sql);
-            if (!execRes)
+            if (const auto execRes = conn.execute(kMigrationV2Sql); !execRes)
             {
                 return std::unexpected(execRes.error());
             }
@@ -216,19 +210,16 @@ CREATE INDEX IF NOT EXISTS idx_git_provider_host ON git_provider_profiles(host);
             {
                 return std::unexpected(recordStmt.error());
             }
-            auto bindRes = recordStmt->bindInt64(1, nowMs);
-            if (!bindRes)
+            if (const auto bindRes = recordStmt->bindInt64(1, nowMs); !bindRes)
             {
                 return std::unexpected(bindRes.error());
             }
-            auto stepRes = recordStmt->step();
-            if (!stepRes)
+            if (const auto stepRes = recordStmt->step(); !stepRes)
             {
                 return std::unexpected(stepRes.error());
             }
 
-            auto commitRes = tx->commit();
-            if (!commitRes)
+            if (const auto commitRes = tx->commit(); !commitRes)
             {
                 return std::unexpected(commitRes.error());
             }

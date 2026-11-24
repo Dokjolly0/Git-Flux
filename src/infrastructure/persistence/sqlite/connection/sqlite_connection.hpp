@@ -1,8 +1,8 @@
 #pragma once
 
+#include <cstdint>
 #include <expected>
 #include <filesystem>
-#include <memory>
 #include <string>
 #include <string_view>
 
@@ -40,7 +40,7 @@ namespace gf::infra::persistence::sqlite
         [[nodiscard]] sqlite3* rawHandle() const noexcept { return db_; }
 
         [[nodiscard]] std::expected<void, SqliteError>
-        execute(std::string_view sql);
+        execute(std::string_view sql) const;
 
         [[nodiscard]] std::int64_t lastInsertRowId() const noexcept;
         [[nodiscard]] int changes() const noexcept;

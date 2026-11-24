@@ -24,17 +24,17 @@ namespace gf::infra::persistence::sqlite
         SqliteStatement& operator=(SqliteStatement&& other) noexcept;
 
         [[nodiscard]] static std::expected<SqliteStatement, SqliteError>
-        prepare(SqliteConnection& conn, std::string_view sql);
+        prepare(const SqliteConnection& conn, std::string_view sql);
 
         [[nodiscard]] bool isValid() const noexcept { return stmt_ != nullptr; }
 
-        [[nodiscard]] std::expected<void, SqliteError> bindText(int index, std::string_view text);
-        [[nodiscard]] std::expected<void, SqliteError> bindInt64(int index, std::int64_t value);
-        [[nodiscard]] std::expected<void, SqliteError> bindInt(int index, int value);
-        [[nodiscard]] std::expected<void, SqliteError> bindDouble(int index, double value);
-        [[nodiscard]] std::expected<void, SqliteError> bindNull(int index);
+        [[nodiscard]] std::expected<void, SqliteError> bindText(int index, std::string_view text) const;
+        [[nodiscard]] std::expected<void, SqliteError> bindInt64(int index, std::int64_t value) const;
+        [[nodiscard]] std::expected<void, SqliteError> bindInt(int index, int value) const;
+        [[nodiscard]] std::expected<void, SqliteError> bindDouble(int index, double value) const;
+        [[nodiscard]] std::expected<void, SqliteError> bindNull(int index) const;
 
-        [[nodiscard]] std::expected<bool, SqliteError> step();
+        [[nodiscard]] std::expected<bool, SqliteError> step() const;
 
         [[nodiscard]] bool isNull(int colIndex) const noexcept;
         [[nodiscard]] std::string getText(int colIndex) const;
@@ -42,8 +42,8 @@ namespace gf::infra::persistence::sqlite
         [[nodiscard]] int getInt(int colIndex) const noexcept;
         [[nodiscard]] double getDouble(int colIndex) const noexcept;
 
-        void reset() noexcept;
-        void clearBindings() noexcept;
+        void reset() const noexcept;
+        void clearBindings() const noexcept;
 
     private:
         explicit SqliteStatement(sqlite3_stmt* stmt) noexcept;

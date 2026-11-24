@@ -36,12 +36,10 @@ namespace gf::infra::persistence::sqlite
     SqliteConnection::open(const std::filesystem::path& dbPath)
     {
         sqlite3* db = nullptr;
-        const std::string pathUtf8 = gf::core::pathToUtf8(dbPath);
+        const std::string pathUtf8 = core::pathToUtf8(dbPath);
 
-        const int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_NOMUTEX;
-        const int rc = sqlite3_open_v2(pathUtf8.c_str(), &db, flags, nullptr);
-
-        if (rc != SQLITE_OK)
+        constexpr int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_NOMUTEX;
+        if (const int rc = sqlite3_open_v2(pathUtf8.c_str(), &db, flags, nullptr); rc != SQLITE_OK)
         {
             std::string err = db ? sqlite3_errmsg(db) : "Apertura database SQLite fallita";
             if (db)
@@ -60,8 +58,7 @@ namespace gf::infra::persistence::sqlite
         sqlite3_busy_timeout(db, 5000);
 
         // Enable foreign key constraints (required in SQLite)
-        auto fkRes = conn.execute("PRAGMA foreign_keys = ON;");
-        if (!fkRes)
+        if (const auto fkRes = conn.execute("PRAGMA foreign_keys = ON;"); !fkRes)
         {
             return std::unexpected(fkRes.error());
         }
@@ -69,8 +66,7 @@ namespace gf::infra::persistence::sqlite
         // For on-disk databases, enable WAL mode and NORMAL synchronous for maximum performance and durability
         if (pathUtf8 != ":memory:")
         {
-            auto walRes = conn.execute("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;");
-            if (!walRes)
+            if (const auto walRes = conn.execute("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;"); !walRes)
             {
                 return std::unexpected(walRes.error());
             }
@@ -100,7 +96,7 @@ namespace gf::infra::persistence::sqlite
     }
 
     std::expected<void, SqliteError>
-    SqliteConnection::execute(std::string_view sql)
+    SqliteConnection::execute(const std::string_view sql) const
     {
         if (!db_)
         {
@@ -111,10 +107,8 @@ namespace gf::infra::persistence::sqlite
         }
 
         char* errMsg = nullptr;
-        std::string sqlStr(sql);
-        const int rc = sqlite3_exec(db_, sqlStr.c_str(), nullptr, nullptr, &errMsg);
-
-        if (rc != SQLITE_OK)
+        const std::string sqlStr(sql);
+        if (const int rc = sqlite3_exec(db_, sqlStr.c_str(), nullptr, nullptr, &errMsg); rc != SQLITE_OK)
         {
             std::string msg = errMsg ? errMsg : sqlite3_errmsg(db_);
             if (errMsg)
@@ -132,7 +126,7 @@ namespace gf::infra::persistence::sqlite
 
     std::int64_t SqliteConnection::lastInsertRowId() const noexcept
     {
-        return db_ ? static_cast<std::int64_t>(sqlite3_last_insert_rowid(db_)) : 0;
+        return db_ ? sqlite3_last_insert_rowid(db_) : 0;
     }
 
     int SqliteConnection::changes() const noexcept
@@ -150,10 +144,9 @@ namespace gf::infra::persistence::sqlite
     }
 
     std::expected<SqliteTransaction, SqliteError>
-    SqliteTransaction::begin(SqliteConnection& conn, bool immediate)
+    SqliteTransaction::begin(SqliteConnection& conn, const bool immediate)
     {
-        auto res = conn.execute(immediate ? "BEGIN IMMEDIATE TRANSACTION;" : "BEGIN TRANSACTION;");
-        if (!res)
+        if (const auto res = conn.execute(immediate ? "BEGIN IMMEDIATE TRANSACTION;" : "BEGIN TRANSACTION;"); !res)
         {
             return std::unexpected(res.error());
         }
@@ -200,7 +193,10 @@ namespace gf::infra::persistence::sqlite
     {
         if (conn_ && !committed_)
         {
-            (void)conn_->execute("ROLLBACK;");
+            if (conn_->isOpen())
+            {
+                sqlite3_exec(conn_->rawHandle(), "ROLLBACK;", nullptr, nullptr, nullptr);
+            }
             committed_ = true;
         }
     }

@@ -39,7 +39,7 @@ namespace gf::infra::persistence::sqlite
     }
 
     std::expected<SqliteStatement, SqliteError>
-    SqliteStatement::prepare(SqliteConnection& conn, std::string_view sql)
+    SqliteStatement::prepare(const SqliteConnection& conn, const std::string_view sql)
     {
         if (!conn.isOpen())
         {
@@ -50,14 +50,13 @@ namespace gf::infra::persistence::sqlite
         }
 
         sqlite3_stmt* stmt = nullptr;
-        const int rc = sqlite3_prepare_v2(
-            conn.rawHandle(),
-            sql.data(),
-            static_cast<int>(sql.size()),
-            &stmt,
-            nullptr);
-
-        if (rc != SQLITE_OK)
+        if (const int rc = sqlite3_prepare_v2(
+                conn.rawHandle(),
+                sql.data(),
+                static_cast<int>(sql.size()),
+                &stmt,
+                nullptr);
+            rc != SQLITE_OK)
         {
             std::string err = sqlite3_errmsg(conn.rawHandle());
             if (stmt)
@@ -74,15 +73,15 @@ namespace gf::infra::persistence::sqlite
     }
 
     std::expected<void, SqliteError>
-    SqliteStatement::bindText(int index, std::string_view text)
+    SqliteStatement::bindText(const int index, const std::string_view text) const
     {
-        const int rc = sqlite3_bind_text(
-            stmt_,
-            index,
-            text.data(),
-            static_cast<int>(text.size()),
-            SQLITE_TRANSIENT);
-        if (rc != SQLITE_OK)
+        if (const int rc = sqlite3_bind_text(
+                stmt_,
+                index,
+                text.data(),
+                static_cast<int>(text.size()),
+                SQLITE_TRANSIENT);
+            rc != SQLITE_OK)
         {
             return std::unexpected(SqliteError{
                 .code = rc,
@@ -93,10 +92,9 @@ namespace gf::infra::persistence::sqlite
     }
 
     std::expected<void, SqliteError>
-    SqliteStatement::bindInt64(int index, std::int64_t value)
+    SqliteStatement::bindInt64(const int index, const std::int64_t value) const
     {
-        const int rc = sqlite3_bind_int64(stmt_, index, static_cast<sqlite3_int64>(value));
-        if (rc != SQLITE_OK)
+        if (const int rc = sqlite3_bind_int64(stmt_, index, value); rc != SQLITE_OK)
         {
             return std::unexpected(SqliteError{
                 .code = rc,
@@ -107,10 +105,9 @@ namespace gf::infra::persistence::sqlite
     }
 
     std::expected<void, SqliteError>
-    SqliteStatement::bindInt(int index, int value)
+    SqliteStatement::bindInt(const int index, const int value) const
     {
-        const int rc = sqlite3_bind_int(stmt_, index, value);
-        if (rc != SQLITE_OK)
+        if (const int rc = sqlite3_bind_int(stmt_, index, value); rc != SQLITE_OK)
         {
             return std::unexpected(SqliteError{
                 .code = rc,
@@ -121,10 +118,9 @@ namespace gf::infra::persistence::sqlite
     }
 
     std::expected<void, SqliteError>
-    SqliteStatement::bindDouble(int index, double value)
+    SqliteStatement::bindDouble(const int index, const double value) const
     {
-        const int rc = sqlite3_bind_double(stmt_, index, value);
-        if (rc != SQLITE_OK)
+        if (const int rc = sqlite3_bind_double(stmt_, index, value); rc != SQLITE_OK)
         {
             return std::unexpected(SqliteError{
                 .code = rc,
@@ -135,10 +131,9 @@ namespace gf::infra::persistence::sqlite
     }
 
     std::expected<void, SqliteError>
-    SqliteStatement::bindNull(int index)
+    SqliteStatement::bindNull(const int index) const
     {
-        const int rc = sqlite3_bind_null(stmt_, index);
-        if (rc != SQLITE_OK)
+        if (const int rc = sqlite3_bind_null(stmt_, index); rc != SQLITE_OK)
         {
             return std::unexpected(SqliteError{
                 .code = rc,
@@ -149,7 +144,7 @@ namespace gf::infra::persistence::sqlite
     }
 
     std::expected<bool, SqliteError>
-    SqliteStatement::step()
+    SqliteStatement::step() const
     {
         const int rc = sqlite3_step(stmt_);
         if (rc == SQLITE_ROW)
@@ -166,12 +161,12 @@ namespace gf::infra::persistence::sqlite
         });
     }
 
-    bool SqliteStatement::isNull(int colIndex) const noexcept
+    bool SqliteStatement::isNull(const int colIndex) const noexcept
     {
         return sqlite3_column_type(stmt_, colIndex) == SQLITE_NULL;
     }
 
-    std::string SqliteStatement::getText(int colIndex) const
+    std::string SqliteStatement::getText(const int colIndex) const
     {
         const auto textPtr = reinterpret_cast<const char*>(sqlite3_column_text(stmt_, colIndex));
         const int bytes = sqlite3_column_bytes(stmt_, colIndex);
@@ -182,22 +177,22 @@ namespace gf::infra::persistence::sqlite
         return std::string(textPtr, static_cast<std::size_t>(bytes));
     }
 
-    std::int64_t SqliteStatement::getInt64(int colIndex) const noexcept
+    std::int64_t SqliteStatement::getInt64(const int colIndex) const noexcept
     {
-        return static_cast<std::int64_t>(sqlite3_column_int64(stmt_, colIndex));
+        return sqlite3_column_int64(stmt_, colIndex);
     }
 
-    int SqliteStatement::getInt(int colIndex) const noexcept
+    int SqliteStatement::getInt(const int colIndex) const noexcept
     {
         return sqlite3_column_int(stmt_, colIndex);
     }
 
-    double SqliteStatement::getDouble(int colIndex) const noexcept
+    double SqliteStatement::getDouble(const int colIndex) const noexcept
     {
         return sqlite3_column_double(stmt_, colIndex);
     }
 
-    void SqliteStatement::reset() noexcept
+    void SqliteStatement::reset() const noexcept
     {
         if (stmt_)
         {
@@ -205,7 +200,7 @@ namespace gf::infra::persistence::sqlite
         }
     }
 
-    void SqliteStatement::clearBindings() noexcept
+    void SqliteStatement::clearBindings() const noexcept
     {
         if (stmt_)
         {

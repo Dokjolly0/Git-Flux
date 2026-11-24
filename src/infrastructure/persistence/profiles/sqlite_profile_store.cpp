@@ -46,7 +46,7 @@ ORDER BY created_at_ms ASC;
 DELETE FROM git_provider_profiles WHERE id = ?;
 )";
 
-        core::git::bo::GitProviderProfile mapProfileRow(sqlite::SqliteStatement& stmt)
+        core::git::bo::GitProviderProfile mapProfileRow(const sqlite::SqliteStatement& stmt)
         {
             core::git::bo::GitProviderProfile p;
             p.id = stmt.getText(0);
@@ -73,7 +73,7 @@ DELETE FROM git_provider_profiles WHERE id = ?;
     }
 
     std::expected<void, sqlite::SqliteError>
-    SqliteProfileStore::saveProfile(const core::git::bo::GitProviderProfile& profile)
+    SqliteProfileStore::saveProfile(const core::git::bo::GitProviderProfile& profile) const
     {
         auto stmtRes = sqlite::SqliteStatement::prepare(m_conn, kUpsertSql);
         if (!stmtRes) return std::unexpected(stmtRes.error());
@@ -82,34 +82,34 @@ DELETE FROM git_provider_profiles WHERE id = ?;
             std::chrono::system_clock::now().time_since_epoch()).count();
         const auto createdAt = profile.createdAtMs > 0 ? profile.createdAtMs : now;
 
-        if (auto b = stmtRes->bindText(1, profile.id); !b) return std::unexpected(b.error());
-        if (auto b = stmtRes->bindText(2, core::git::bo::gitProviderTypeToString(profile.providerType)); !b) return
-            std::unexpected(b.error());
-        if (auto b = stmtRes->bindText(3, profile.displayName); !b) return std::unexpected(b.error());
-        if (auto b = stmtRes->bindText(4, profile.host); !b) return std::unexpected(b.error());
-        if (auto b = stmtRes->bindText(5, profile.username); !b) return std::unexpected(b.error());
-        if (auto b = stmtRes->bindText(6, profile.tokenSecret.ciphertextHex); !b) return std::unexpected(b.error());
-        if (auto b = stmtRes->bindText(7, profile.tokenSecret.saltHex); !b) return std::unexpected(b.error());
-        if (auto b = stmtRes->bindText(8, profile.tokenSecret.ivHex); !b) return std::unexpected(b.error());
-        if (auto b = stmtRes->bindText(9, profile.tokenSecret.tagHex); !b) return std::unexpected(b.error());
-        if (auto b = stmtRes->bindText(10, profile.preferredProtocol.empty() ? "ssh" : profile.preferredProtocol); !b)
+        if (const auto b = stmtRes->bindText(1, profile.id); !b) return std::unexpected(b.error());
+        if (const auto b = stmtRes->bindText(2, core::git::bo::gitProviderTypeToString(profile.providerType)); !b)
             return std::unexpected(b.error());
-        if (auto b = stmtRes->bindText(11, profile.customApiUrl); !b) return std::unexpected(b.error());
-        if (auto b = stmtRes->bindInt64(12, createdAt); !b) return std::unexpected(b.error());
-        if (auto b = stmtRes->bindInt64(13, now); !b) return std::unexpected(b.error());
+        if (const auto b = stmtRes->bindText(3, profile.displayName); !b) return std::unexpected(b.error());
+        if (const auto b = stmtRes->bindText(4, profile.host); !b) return std::unexpected(b.error());
+        if (const auto b = stmtRes->bindText(5, profile.username); !b) return std::unexpected(b.error());
+        if (const auto b = stmtRes->bindText(6, profile.tokenSecret.ciphertextHex); !b) return std::unexpected(b.error());
+        if (const auto b = stmtRes->bindText(7, profile.tokenSecret.saltHex); !b) return std::unexpected(b.error());
+        if (const auto b = stmtRes->bindText(8, profile.tokenSecret.ivHex); !b) return std::unexpected(b.error());
+        if (const auto b = stmtRes->bindText(9, profile.tokenSecret.tagHex); !b) return std::unexpected(b.error());
+        if (const auto b = stmtRes->bindText(10, profile.preferredProtocol.empty() ? "ssh" : profile.preferredProtocol);
+            !b)
+            return std::unexpected(b.error());
+        if (const auto b = stmtRes->bindText(11, profile.customApiUrl); !b) return std::unexpected(b.error());
+        if (const auto b = stmtRes->bindInt64(12, createdAt); !b) return std::unexpected(b.error());
+        if (const auto b = stmtRes->bindInt64(13, now); !b) return std::unexpected(b.error());
 
-        auto stepRes = stmtRes->step();
-        if (!stepRes) return std::unexpected(stepRes.error());
+        if (const auto stepRes = stmtRes->step(); !stepRes) return std::unexpected(stepRes.error());
         return {};
     }
 
     std::expected<std::optional<core::git::bo::GitProviderProfile>, sqlite::SqliteError>
-    SqliteProfileStore::getProfile(const std::string& id)
+    SqliteProfileStore::getProfile(const std::string& id) const
     {
         auto stmtRes = sqlite::SqliteStatement::prepare(m_conn, kSelectByIdSql);
         if (!stmtRes) return std::unexpected(stmtRes.error());
 
-        if (auto b = stmtRes->bindText(1, id); !b) return std::unexpected(b.error());
+        if (const auto b = stmtRes->bindText(1, id); !b) return std::unexpected(b.error());
 
         auto stepRes = stmtRes->step();
         if (!stepRes) return std::unexpected(stepRes.error());
@@ -119,7 +119,7 @@ DELETE FROM git_provider_profiles WHERE id = ?;
     }
 
     std::expected<std::vector<core::git::bo::GitProviderProfile>, sqlite::SqliteError>
-    SqliteProfileStore::getAllProfiles()
+    SqliteProfileStore::getAllProfiles() const
     {
         auto stmtRes = sqlite::SqliteStatement::prepare(m_conn, kSelectAllSql);
         if (!stmtRes) return std::unexpected(stmtRes.error());
@@ -136,14 +136,13 @@ DELETE FROM git_provider_profiles WHERE id = ?;
     }
 
     std::expected<bool, sqlite::SqliteError>
-    SqliteProfileStore::deleteProfile(const std::string& id)
+    SqliteProfileStore::deleteProfile(const std::string& id) const
     {
         auto stmtRes = sqlite::SqliteStatement::prepare(m_conn, kDeleteSql);
         if (!stmtRes) return std::unexpected(stmtRes.error());
 
-        if (auto b = stmtRes->bindText(1, id); !b) return std::unexpected(b.error());
-        auto stepRes = stmtRes->step();
-        if (!stepRes) return std::unexpected(stepRes.error());
+        if (const auto b = stmtRes->bindText(1, id); !b) return std::unexpected(b.error());
+        if (const auto stepRes = stmtRes->step(); !stepRes) return std::unexpected(stepRes.error());
         return m_conn.changes() > 0;
     }
 } // namespace gf::infra::persistence::profiles

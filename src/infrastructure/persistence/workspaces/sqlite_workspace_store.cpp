@@ -6,8 +6,8 @@
 
 namespace gf::infra::persistence::workspaces
 {
-    using gf::groups::bo::GroupId;
-    using gf::repositories::bo::RepositoryId;
+    using groups::bo::GroupId;
+    using repositories::bo::RepositoryId;
     using gf::workspaces::bo::PanelLayoutState;
     using gf::workspaces::bo::Workspace;
     using gf::workspaces::bo::WorkspaceId;
@@ -16,6 +16,14 @@ namespace gf::infra::persistence::workspaces
 
     namespace
     {
+        WorkspaceStoreError makeStorageError(const sqlite::SqliteError& err)
+        {
+            return WorkspaceStoreError{
+                .kind = WorkspaceStoreError::Kind::StorageError,
+                .message = err.message
+            };
+        }
+
         std::string serializeRepoIds(const std::vector<RepositoryId>& ids)
         {
             std::string result;
@@ -30,7 +38,7 @@ namespace gf::infra::persistence::workspaces
             return result;
         }
 
-        std::vector<RepositoryId> deserializeRepoIds(std::string_view sv)
+        std::vector<RepositoryId> deserializeRepoIds(const std::string_view sv)
         {
             std::vector<RepositoryId> ids;
             if (sv.empty())
@@ -40,7 +48,7 @@ namespace gf::infra::persistence::workspaces
             std::size_t start = 0;
             while (start < sv.size())
             {
-                auto end = sv.find(';', start);
+                const auto end = sv.find(';', start);
                 if (end == std::string_view::npos)
                 {
                     ids.emplace_back(sv.substr(start));
@@ -59,7 +67,7 @@ namespace gf::infra::persistence::workspaces
     }
 
     std::expected<std::vector<GroupId>, WorkspaceStoreError>
-    SqliteWorkspaceStore::loadWorkspaceGroupIds(const WorkspaceId& wsId)
+    SqliteWorkspaceStore::loadWorkspaceGroupIds(const WorkspaceId& wsId) const
     {
         constexpr std::string_view kSql = R"(
 SELECT group_id
@@ -71,23 +79,20 @@ ORDER BY sort_order ASC;
         auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
         if (!stmtRes)
         {
-            return std::unexpected(WorkspaceStoreError{
-                .kind = WorkspaceStoreError::Kind::StorageError,
-                .message = stmtRes.error().message
-            });
+            return std::unexpected(makeStorageError(stmtRes.error()));
         }
 
-        (void)stmtRes->bindText(1, wsId.value());
+        if (const auto bindRes = stmtRes->bindText(1, wsId.value()); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
         std::vector<GroupId> ids;
         while (true)
         {
             auto stepRes = stmtRes->step();
             if (!stepRes)
             {
-                return std::unexpected(WorkspaceStoreError{
-                    .kind = WorkspaceStoreError::Kind::StorageError,
-                    .message = stepRes.error().message
-                });
+                return std::unexpected(makeStorageError(stepRes.error()));
             }
             if (!*stepRes)
             {
@@ -99,7 +104,7 @@ ORDER BY sort_order ASC;
     }
 
     std::expected<std::vector<RepositoryId>, WorkspaceStoreError>
-    SqliteWorkspaceStore::loadWorkspaceDirectRepoIds(const WorkspaceId& wsId)
+    SqliteWorkspaceStore::loadWorkspaceDirectRepoIds(const WorkspaceId& wsId) const
     {
         constexpr std::string_view kSql = R"(
 SELECT repository_id
@@ -111,23 +116,20 @@ ORDER BY sort_order ASC;
         auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
         if (!stmtRes)
         {
-            return std::unexpected(WorkspaceStoreError{
-                .kind = WorkspaceStoreError::Kind::StorageError,
-                .message = stmtRes.error().message
-            });
+            return std::unexpected(makeStorageError(stmtRes.error()));
         }
 
-        (void)stmtRes->bindText(1, wsId.value());
+        if (const auto bindRes = stmtRes->bindText(1, wsId.value()); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
         std::vector<RepositoryId> ids;
         while (true)
         {
             auto stepRes = stmtRes->step();
             if (!stepRes)
             {
-                return std::unexpected(WorkspaceStoreError{
-                    .kind = WorkspaceStoreError::Kind::StorageError,
-                    .message = stepRes.error().message
-                });
+                return std::unexpected(makeStorageError(stepRes.error()));
             }
             if (!*stepRes)
             {
@@ -152,10 +154,7 @@ ORDER BY sort_order ASC;
         auto tx = sqlite::SqliteTransaction::begin(conn_);
         if (!tx)
         {
-            return std::unexpected(WorkspaceStoreError{
-                .kind = WorkspaceStoreError::Kind::StorageError,
-                .message = tx.error().message
-            });
+            return std::unexpected(makeStorageError(tx.error()));
         }
 
         constexpr std::string_view kUpsertWsSql = R"(
@@ -169,19 +168,27 @@ ON CONFLICT(id) DO UPDATE SET
         auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kUpsertWsSql);
         if (!stmtRes)
         {
-            return std::unexpected(WorkspaceStoreError{
-                .kind = WorkspaceStoreError::Kind::StorageError,
-                .message = stmtRes.error().message
-            });
+            return std::unexpected(makeStorageError(stmtRes.error()));
         }
 
-        (void)stmtRes->bindText(1, workspace.id.value());
-        (void)stmtRes->bindText(2, workspace.name);
-        (void)stmtRes->bindInt64(3, workspace.createdAtUnixEpochMs);
-        (void)stmtRes->bindInt64(4, workspace.updatedAtUnixEpochMs);
+        if (const auto bindRes = stmtRes->bindText(1, workspace.id.value()); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindText(2, workspace.name); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindInt64(3, workspace.createdAtUnixEpochMs); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindInt64(4, workspace.updatedAtUnixEpochMs); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
 
-        auto stepRes = stmtRes->step();
-        if (!stepRes)
+        if (const auto stepRes = stmtRes->step(); !stepRes)
         {
             if (stepRes.error().code == SQLITE_CONSTRAINT_UNIQUE || stepRes.error().code == SQLITE_CONSTRAINT)
             {
@@ -190,10 +197,7 @@ ON CONFLICT(id) DO UPDATE SET
                     .message = "Nome workspace già esistente"
                 });
             }
-            return std::unexpected(WorkspaceStoreError{
-                .kind = WorkspaceStoreError::Kind::StorageError,
-                .message = stepRes.error().message
-            });
+            return std::unexpected(makeStorageError(stepRes.error()));
         }
 
         // 1. workspace_groups
@@ -201,13 +205,16 @@ ON CONFLICT(id) DO UPDATE SET
             conn_, "DELETE FROM workspace_groups WHERE workspace_id = ?;");
         if (!delGroupsStmt)
         {
-            return std::unexpected(WorkspaceStoreError{
-                .kind = WorkspaceStoreError::Kind::StorageError,
-                .message = delGroupsStmt.error().message
-            });
+            return std::unexpected(makeStorageError(delGroupsStmt.error()));
         }
-        (void)delGroupsStmt->bindText(1, workspace.id.value());
-        (void)delGroupsStmt->step();
+        if (const auto bindRes = delGroupsStmt->bindText(1, workspace.id.value()); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto delStepRes = delGroupsStmt->step(); !delStepRes)
+        {
+            return std::unexpected(makeStorageError(delStepRes.error()));
+        }
 
         if (!workspace.groupIds.empty())
         {
@@ -215,21 +222,26 @@ ON CONFLICT(id) DO UPDATE SET
                 conn_, "INSERT INTO workspace_groups (workspace_id, group_id, sort_order) VALUES (?, ?, ?);");
             if (!insGrpStmt)
             {
-                return std::unexpected(WorkspaceStoreError{
-                    .kind = WorkspaceStoreError::Kind::StorageError,
-                    .message = insGrpStmt.error().message
-                });
+                return std::unexpected(makeStorageError(insGrpStmt.error()));
             }
 
             for (int i = 0; i < static_cast<int>(workspace.groupIds.size()); ++i)
             {
                 insGrpStmt->reset();
                 insGrpStmt->clearBindings();
-                (void)insGrpStmt->bindText(1, workspace.id.value());
-                (void)insGrpStmt->bindText(2, workspace.groupIds[static_cast<std::size_t>(i)].value());
-                (void)insGrpStmt->bindInt(3, i);
-                auto insStep = insGrpStmt->step();
-                if (!insStep)
+                if (const auto bindRes = insGrpStmt->bindText(1, workspace.id.value()); !bindRes)
+                {
+                    return std::unexpected(makeStorageError(bindRes.error()));
+                }
+                if (const auto bindRes = insGrpStmt->bindText(2, workspace.groupIds[static_cast<std::size_t>(i)].value()); !bindRes)
+                {
+                    return std::unexpected(makeStorageError(bindRes.error()));
+                }
+                if (const auto bindRes = insGrpStmt->bindInt(3, i); !bindRes)
+                {
+                    return std::unexpected(makeStorageError(bindRes.error()));
+                }
+                if (const auto insStep = insGrpStmt->step(); !insStep)
                 {
                     return std::unexpected(WorkspaceStoreError{
                         .kind = WorkspaceStoreError::Kind::StorageError,
@@ -244,13 +256,16 @@ ON CONFLICT(id) DO UPDATE SET
             conn_, "DELETE FROM workspace_repositories WHERE workspace_id = ?;");
         if (!delReposStmt)
         {
-            return std::unexpected(WorkspaceStoreError{
-                .kind = WorkspaceStoreError::Kind::StorageError,
-                .message = delReposStmt.error().message
-            });
+            return std::unexpected(makeStorageError(delReposStmt.error()));
         }
-        (void)delReposStmt->bindText(1, workspace.id.value());
-        (void)delReposStmt->step();
+        if (const auto bindRes = delReposStmt->bindText(1, workspace.id.value()); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto delStepRes = delReposStmt->step(); !delStepRes)
+        {
+            return std::unexpected(makeStorageError(delStepRes.error()));
+        }
 
         if (!workspace.directRepositoryIds.empty())
         {
@@ -259,21 +274,26 @@ ON CONFLICT(id) DO UPDATE SET
                 "INSERT INTO workspace_repositories (workspace_id, repository_id, sort_order) VALUES (?, ?, ?);");
             if (!insRepoStmt)
             {
-                return std::unexpected(WorkspaceStoreError{
-                    .kind = WorkspaceStoreError::Kind::StorageError,
-                    .message = insRepoStmt.error().message
-                });
+                return std::unexpected(makeStorageError(insRepoStmt.error()));
             }
 
             for (int i = 0; i < static_cast<int>(workspace.directRepositoryIds.size()); ++i)
             {
                 insRepoStmt->reset();
                 insRepoStmt->clearBindings();
-                (void)insRepoStmt->bindText(1, workspace.id.value());
-                (void)insRepoStmt->bindText(2, workspace.directRepositoryIds[static_cast<std::size_t>(i)].value());
-                (void)insRepoStmt->bindInt(3, i);
-                auto insStep = insRepoStmt->step();
-                if (!insStep)
+                if (const auto bindRes = insRepoStmt->bindText(1, workspace.id.value()); !bindRes)
+                {
+                    return std::unexpected(makeStorageError(bindRes.error()));
+                }
+                if (const auto bindRes = insRepoStmt->bindText(2, workspace.directRepositoryIds[static_cast<std::size_t>(i)].value()); !bindRes)
+                {
+                    return std::unexpected(makeStorageError(bindRes.error()));
+                }
+                if (const auto bindRes = insRepoStmt->bindInt(3, i); !bindRes)
+                {
+                    return std::unexpected(makeStorageError(bindRes.error()));
+                }
+                if (const auto insStep = insRepoStmt->step(); !insStep)
                 {
                     return std::unexpected(WorkspaceStoreError{
                         .kind = WorkspaceStoreError::Kind::StorageError,
@@ -283,13 +303,9 @@ ON CONFLICT(id) DO UPDATE SET
             }
         }
 
-        auto commitRes = tx->commit();
-        if (!commitRes)
+        if (const auto commitRes = tx->commit(); !commitRes)
         {
-            return std::unexpected(WorkspaceStoreError{
-                .kind = WorkspaceStoreError::Kind::StorageError,
-                .message = commitRes.error().message
-            });
+            return std::unexpected(makeStorageError(commitRes.error()));
         }
 
         return {};
@@ -307,20 +323,17 @@ WHERE id = ?;
         auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
         if (!stmtRes)
         {
-            return std::unexpected(WorkspaceStoreError{
-                .kind = WorkspaceStoreError::Kind::StorageError,
-                .message = stmtRes.error().message
-            });
+            return std::unexpected(makeStorageError(stmtRes.error()));
         }
 
-        (void)stmtRes->bindText(1, id.value());
+        if (const auto bindRes = stmtRes->bindText(1, id.value()); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
         auto stepRes = stmtRes->step();
         if (!stepRes)
         {
-            return std::unexpected(WorkspaceStoreError{
-                .kind = WorkspaceStoreError::Kind::StorageError,
-                .message = stepRes.error().message
-            });
+            return std::unexpected(makeStorageError(stepRes.error()));
         }
 
         if (!*stepRes)
@@ -363,10 +376,7 @@ ORDER BY name COLLATE NOCASE ASC;
         auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
         if (!stmtRes)
         {
-            return std::unexpected(WorkspaceStoreError{
-                .kind = WorkspaceStoreError::Kind::StorageError,
-                .message = stmtRes.error().message
-            });
+            return std::unexpected(makeStorageError(stmtRes.error()));
         }
 
         std::vector<Workspace> list;
@@ -375,10 +385,7 @@ ORDER BY name COLLATE NOCASE ASC;
             auto stepRes = stmtRes->step();
             if (!stepRes)
             {
-                return std::unexpected(WorkspaceStoreError{
-                    .kind = WorkspaceStoreError::Kind::StorageError,
-                    .message = stepRes.error().message
-                });
+                return std::unexpected(makeStorageError(stepRes.error()));
             }
             if (!*stepRes)
             {
@@ -421,20 +428,16 @@ ORDER BY name COLLATE NOCASE ASC;
         auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
         if (!stmtRes)
         {
-            return std::unexpected(WorkspaceStoreError{
-                .kind = WorkspaceStoreError::Kind::StorageError,
-                .message = stmtRes.error().message
-            });
+            return std::unexpected(makeStorageError(stmtRes.error()));
         }
 
-        (void)stmtRes->bindText(1, id.value());
-        auto stepRes = stmtRes->step();
-        if (!stepRes)
+        if (const auto bindRes = stmtRes->bindText(1, id.value()); !bindRes)
         {
-            return std::unexpected(WorkspaceStoreError{
-                .kind = WorkspaceStoreError::Kind::StorageError,
-                .message = stepRes.error().message
-            });
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto stepRes = stmtRes->step(); !stepRes)
+        {
+            return std::unexpected(makeStorageError(stepRes.error()));
         }
 
         return conn_.changes() > 0;
@@ -473,33 +476,65 @@ ON CONFLICT(workspace_id) DO UPDATE SET
         auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
         if (!stmtRes)
         {
-            return std::unexpected(WorkspaceStoreError{
-                .kind = WorkspaceStoreError::Kind::StorageError,
-                .message = stmtRes.error().message
-            });
+            return std::unexpected(makeStorageError(stmtRes.error()));
         }
 
-        (void)stmtRes->bindText(1, session.workspaceId.value());
-        (void)stmtRes->bindInt(2, session.schemaVersion);
-        (void)stmtRes->bindText(3, serializeRepoIds(session.openedRepositoryIds));
+        if (const auto bindRes = stmtRes->bindText(1, session.workspaceId.value()); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindInt(2, session.schemaVersion); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindText(3, serializeRepoIds(session.openedRepositoryIds)); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
         if (session.activeRepositoryId)
         {
-            (void)stmtRes->bindText(4, session.activeRepositoryId->value());
+            if (const auto bindRes = stmtRes->bindText(4, session.activeRepositoryId->value()); !bindRes)
+            {
+                return std::unexpected(makeStorageError(bindRes.error()));
+            }
         }
         else
         {
-            (void)stmtRes->bindNull(4);
+            if (const auto bindRes = stmtRes->bindNull(4); !bindRes)
+            {
+                return std::unexpected(makeStorageError(bindRes.error()));
+            }
         }
-        (void)stmtRes->bindInt(5, session.layout.leftSidebarCollapsed ? 1 : 0);
-        (void)stmtRes->bindInt(6, session.layout.rightSidebarCollapsed ? 1 : 0);
-        (void)stmtRes->bindDouble(7, session.layout.leftSidebarWidth);
-        (void)stmtRes->bindDouble(8, session.layout.rightSidebarWidth);
-        (void)stmtRes->bindText(9, session.layout.activeView);
-        (void)stmtRes->bindText(10, session.customStateJson.empty() ? "{}" : session.customStateJson);
-        (void)stmtRes->bindInt64(11, session.updatedAtUnixEpochMs);
+        if (const auto bindRes = stmtRes->bindInt(5, session.layout.leftSidebarCollapsed ? 1 : 0); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindInt(6, session.layout.rightSidebarCollapsed ? 1 : 0); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindDouble(7, session.layout.leftSidebarWidth); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindDouble(8, session.layout.rightSidebarWidth); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindText(9, session.layout.activeView); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindText(10, session.customStateJson.empty() ? "{}" : session.customStateJson); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindInt64(11, session.updatedAtUnixEpochMs); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
 
-        auto stepRes = stmtRes->step();
-        if (!stepRes)
+        if (const auto stepRes = stmtRes->step(); !stepRes)
         {
             return std::unexpected(WorkspaceStoreError{
                 .kind = WorkspaceStoreError::Kind::StorageError,
@@ -525,20 +560,17 @@ WHERE workspace_id = ?;
         auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
         if (!stmtRes)
         {
-            return std::unexpected(WorkspaceStoreError{
-                .kind = WorkspaceStoreError::Kind::StorageError,
-                .message = stmtRes.error().message
-            });
+            return std::unexpected(makeStorageError(stmtRes.error()));
         }
 
-        (void)stmtRes->bindText(1, id.value());
+        if (const auto bindRes = stmtRes->bindText(1, id.value()); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
         auto stepRes = stmtRes->step();
         if (!stepRes)
         {
-            return std::unexpected(WorkspaceStoreError{
-                .kind = WorkspaceStoreError::Kind::StorageError,
-                .message = stepRes.error().message
-            });
+            return std::unexpected(makeStorageError(stepRes.error()));
         }
 
         if (!*stepRes)
@@ -554,8 +586,8 @@ WHERE workspace_id = ?;
         {
             s.activeRepositoryId = RepositoryId(stmtRes->getText(3));
         }
-        s.layout.leftSidebarCollapsed = (stmtRes->getInt(4) != 0);
-        s.layout.rightSidebarCollapsed = (stmtRes->getInt(5) != 0);
+        s.layout.leftSidebarCollapsed = stmtRes->getInt(4) != 0;
+        s.layout.rightSidebarCollapsed = stmtRes->getInt(5) != 0;
         s.layout.leftSidebarWidth = stmtRes->getDouble(6);
         s.layout.rightSidebarWidth = stmtRes->getDouble(7);
         s.layout.activeView = stmtRes->getText(8);
