@@ -1,9 +1,8 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <string_view>
-#include <vector>
-#include <cstdint>
 
 namespace gf::core::git::bo
 {
@@ -15,7 +14,7 @@ namespace gf::core::git::bo
         Custom
     };
 
-    [[nodiscard]] inline std::string gitProviderTypeToString(GitProviderType type)
+    [[nodiscard]] inline std::string gitProviderTypeToString(const GitProviderType type)
     {
         switch (type)
         {
@@ -140,7 +139,7 @@ namespace gf::core::git::bo
 
         auto lower = [](std::string s)
         {
-            for (auto& c : s) c = static_cast<char>((c >= 'A' && c <= 'Z') ? c - 'A' + 'a' : c);
+            for (auto& c : s) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
             return s;
         };
         if (host.empty() || lower(host) != lower(profile.host)) return url;

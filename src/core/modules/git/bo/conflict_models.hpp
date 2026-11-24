@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -59,18 +60,7 @@ namespace gf::git::bo
 
         [[nodiscard]] bool allHunksResolved() const noexcept
         {
-            if (hunks.empty())
-            {
-                return true;
-            }
-            for (const auto& hunk : hunks)
-            {
-                if (!hunk.isResolved)
-                {
-                    return false;
-                }
-            }
-            return true;
+            return std::ranges::all_of(hunks, [](const auto& hunk) { return hunk.isResolved; });
         }
 
         [[nodiscard]] std::size_t totalHunks() const noexcept

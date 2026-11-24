@@ -10,7 +10,7 @@ namespace gf::git::bl
 {
     using HttpsCredential = bo::HttpsCredential;
 
-    [[nodiscard]] inline bool isHttpRemoteUrl(std::string_view url) noexcept
+    [[nodiscard]] inline bool isHttpRemoteUrl(const std::string_view url) noexcept
     {
         return url.starts_with("https://") || url.starts_with("http://");
     }
@@ -44,7 +44,7 @@ namespace gf::git::bl
     inline void applyHttpsCredential(bo::GitCommand& command, const bo::HttpsCredentialLoader& loader)
     {
         if (!loader) return;
-        if (auto credential = loader(); credential && !credential->password.empty())
+        if (const auto credential = loader(); credential && !credential->password.empty())
         {
             applyHttpsCredential(command, *credential);
         }

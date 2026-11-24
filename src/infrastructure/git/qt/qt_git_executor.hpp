@@ -18,9 +18,11 @@ namespace gf::infra::git
 
         [[nodiscard]] std::string_view adapterName() const noexcept override { return label_; }
 
+        using IGitCommandExecutor::execute;
+
         [[nodiscard]] std::expected<gf::git::bo::GitProcessResult, gf::git::bo::GitExecutionError>
         execute(const gf::git::bo::GitCommand& command,
-                std::stop_token stopToken = {}) override;
+                std::stop_token stopToken) override;
 
     private:
         std::filesystem::path gitExecutablePath_;

@@ -15,7 +15,13 @@ namespace gf::git::ports
 
         [[nodiscard]] virtual std::string_view adapterName() const noexcept = 0;
 
+        [[nodiscard]] std::expected<bo::GitProcessResult, bo::GitExecutionError>
+        execute(const bo::GitCommand& command)
+        {
+            return execute(command, {});
+        }
+
         [[nodiscard]] virtual std::expected<bo::GitProcessResult, bo::GitExecutionError>
-        execute(const bo::GitCommand& command, std::stop_token stopToken = {}) = 0;
+        execute(const bo::GitCommand& command, std::stop_token stopToken) = 0;
     };
 } // namespace gf::git::ports

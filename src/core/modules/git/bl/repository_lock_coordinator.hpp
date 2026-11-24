@@ -24,14 +24,13 @@ namespace gf::git::bl
         [[nodiscard]] std::unique_lock<std::mutex> acquire(const std::filesystem::path& repoPath)
         {
             std::error_code ec;
-            auto canonicalPath = std::filesystem::weakly_canonical(repoPath, ec);
+            const auto canonicalPath = std::filesystem::weakly_canonical(repoPath, ec);
             std::string key = ec ? repoPath.lexically_normal().string() : canonicalPath.string();
 
             std::shared_ptr<std::mutex> repoMutex;
             {
                 std::scoped_lock lock(m_mapMutex);
-                auto it = m_locks.find(key);
-                if (it == m_locks.end())
+                if (const auto it = m_locks.find(key); it == m_locks.end())
                 {
                     repoMutex = std::make_shared<std::mutex>();
                     m_locks.emplace(std::move(key), repoMutex);
@@ -42,7 +41,7 @@ namespace gf::git::bl
                 }
             }
 
-            return std::unique_lock<std::mutex>(*repoMutex);
+            return std::unique_lock(*repoMutex);
         }
 
         void clear()

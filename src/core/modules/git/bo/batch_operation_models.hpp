@@ -65,7 +65,7 @@ namespace gf::git::bo
         [[nodiscard]] int percentage() const noexcept
         {
             if (totalCount == 0) return 100;
-            return static_cast<int>((completedCount * 100) / totalCount);
+            return static_cast<int>(completedCount * 100 / totalCount);
         }
     };
 

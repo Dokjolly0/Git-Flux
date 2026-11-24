@@ -19,7 +19,7 @@ namespace gf::git::bo
         Conflicted
     };
 
-    [[nodiscard]] constexpr std::string_view fileChangeKindToString(FileChangeKind kind) noexcept
+    [[nodiscard]] constexpr std::string_view fileChangeKindToString(const FileChangeKind kind) noexcept
     {
         switch (kind)
         {

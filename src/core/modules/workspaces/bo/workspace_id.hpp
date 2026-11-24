@@ -8,5 +8,5 @@ namespace gf::workspaces::bo
     {
     };
 
-    using WorkspaceId = gf::core::StrongId<WorkspaceIdTag>;
+    using WorkspaceId = core::StrongId<WorkspaceIdTag>;
 } // namespace gf::workspaces::bo

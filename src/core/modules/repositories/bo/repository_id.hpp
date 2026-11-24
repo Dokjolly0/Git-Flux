@@ -8,5 +8,5 @@ namespace gf::repositories::bo
     {
     };
 
-    using RepositoryId = gf::core::StrongId<RepositoryIdTag>;
+    using RepositoryId = core::StrongId<RepositoryIdTag>;
 } // namespace gf::repositories::bo

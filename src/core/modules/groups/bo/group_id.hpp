@@ -8,5 +8,5 @@ namespace gf::groups::bo
     {
     };
 
-    using GroupId = gf::core::StrongId<GroupIdTag>;
+    using GroupId = core::StrongId<GroupIdTag>;
 } // namespace gf::groups::bo

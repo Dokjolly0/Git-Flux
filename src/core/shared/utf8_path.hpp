@@ -15,9 +15,9 @@ namespace gf::core
     }
 
     /// Constructs a std::filesystem::path from a valid UTF-8 string view.
-    [[nodiscard]] inline std::filesystem::path utf8ToPath(std::string_view utf8)
+    [[nodiscard]] inline std::filesystem::path utf8ToPath(const std::string_view utf8)
     {
         const std::u8string_view u8View(reinterpret_cast<const char8_t*>(utf8.data()), utf8.size());
-        return std::filesystem::path(u8View);
+        return {u8View};
     }
 } // namespace gf::core

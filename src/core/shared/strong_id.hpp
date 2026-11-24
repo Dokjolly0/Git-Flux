@@ -12,6 +12,8 @@ namespace gf::core
     class StrongId
     {
     public:
+        using tag_type = Tag;
+
         StrongId() = default;
 
         explicit StrongId(std::string value) noexcept
@@ -19,7 +21,7 @@ namespace gf::core
         {
         }
 
-        explicit StrongId(std::string_view value)
+        explicit StrongId(const std::string_view value)
             : value_(value)
         {
         }
@@ -39,14 +41,11 @@ namespace gf::core
     };
 } // namespace gf::core
 
-namespace std
+template <typename Tag>
+struct std::hash<gf::core::StrongId<Tag>>
 {
-    template <typename Tag>
-    struct hash<gf::core::StrongId<Tag>>
+    [[nodiscard]] size_t operator()(const gf::core::StrongId<Tag>& id) const noexcept
     {
-        [[nodiscard]] size_t operator()(const gf::core::StrongId<Tag>& id) const noexcept
-        {
-            return std::hash<std::string>{}(id.value());
-        }
-    };
-} // namespace std
+        return std::hash<std::string>{}(id.value());
+    }
+};

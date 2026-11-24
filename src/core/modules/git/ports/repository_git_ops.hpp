@@ -98,12 +98,14 @@ namespace gf::git::ports
                     const std::string& filePath,
                     bo::DiffScope scope) = 0;
 
+        static constexpr std::size_t kDefaultMaxBlobBytes = 16 * 1024 * 1024;
+
         /// Retrieves the diff for a specific file with a configurable number of unified context lines (`-U<n>`, or full file if `contextLines < 0`).
         [[nodiscard]] virtual std::expected<bo::FileDiff, GitOpsError>
         getFileDiffWithContext(const std::filesystem::path& repoPath,
                                const std::string& filePath,
-                               bo::DiffScope scope,
-                               int contextLines)
+                               const bo::DiffScope scope,
+                               const int contextLines)
         {
             (void)contextLines;
             return getFileDiff(repoPath, filePath, scope);
@@ -141,7 +143,7 @@ namespace gf::git::ports
         getCommitFileDiffWithContext(const std::filesystem::path& repoPath,
                                      const std::string& commitSha,
                                      const std::string& filePath,
-                                     int contextLines)
+                                     const int contextLines)
         {
             (void)contextLines;
             return getCommitFileDiff(repoPath, commitSha, filePath);
@@ -159,12 +161,21 @@ namespace gf::git::ports
             return std::string{};
         }
 
+        /// Retrieves raw binary-safe file bytes using the default maximum byte limit.
+        [[nodiscard]] std::expected<bo::FileBlob, GitOpsError>
+        getFileBlob(const std::filesystem::path& repoPath,
+                    const std::string& revision,
+                    const std::string& filePath)
+        {
+            return getFileBlob(repoPath, revision, filePath, kDefaultMaxBlobBytes);
+        }
+
         /// Retrieves raw binary-safe file bytes from working tree (empty / "WORKTREE"), index (":0" / "INDEX"), or a Git revision.
         [[nodiscard]] virtual std::expected<bo::FileBlob, GitOpsError>
         getFileBlob(const std::filesystem::path& repoPath,
                     const std::string& revision,
                     const std::string& filePath,
-                    std::size_t maxBytes = 16 * 1024 * 1024)
+                    const std::size_t maxBytes)
         {
             (void)repoPath;
             (void)revision;
