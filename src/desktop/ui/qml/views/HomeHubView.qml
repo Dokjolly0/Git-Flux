@@ -59,6 +59,7 @@ Item {
     property bool isDraggingGroup: false
     property string draggedGroupId: ""
     property string draggedGroupName: ""
+    property color draggedGroupColor: "#7C4DFF"
     property string hoveredGroupId: ""
     property string hoveredGroupName: ""
     property string hoveredWorkspaceId: ""
@@ -74,10 +75,11 @@ Item {
         draggedRepoName = repoName;
     }
 
-    function startDraggingGroup(groupId, groupName) {
+    function startDraggingGroup(groupId, groupName, groupColor) {
         isDraggingGroup = true;
         draggedGroupId = groupId;
         draggedGroupName = groupName;
+        draggedGroupColor = (groupColor && groupColor.length > 0) ? groupColor : "#7C4DFF";
     }
 
     function clearDragState() {
@@ -87,6 +89,7 @@ Item {
         isDraggingGroup = false;
         draggedGroupId = "";
         draggedGroupName = "";
+        draggedGroupColor = "#7C4DFF";
         hoveredGroupId = "";
         hoveredGroupName = "";
         hoveredWorkspaceId = "";
@@ -1395,25 +1398,30 @@ Item {
                                             ToolTip.text: "Apri tutti i progetti del gruppo (un progetto per scheda)"
                                             onClicked: homeHubVm.openGroup(grpCardRect.id)
                                             contentItem: RowLayout {
-                                                spacing: 4
+                                                spacing: 5
                                                 Text {
                                                     text: "▶"
                                                     font.pixelSize: 9
-                                                    color: "#FFFFFF"
+                                                    color: grpCardRect.accentColor
                                                 }
                                                 Text {
                                                     text: "Apri Gruppo"
-                                                    color: "#FFFFFF"
+                                                    color: "#F8FAFC"
                                                     font.pixelSize: 11
                                                     font.bold: true
                                                 }
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#9061F9" : "#7C4DFF"
+                                                color: Qt.alpha(grpCardRect.accentColor, parent.hovered ? 0.34 : 0.20)
                                                 radius: 7
-                                                border.color: "#A855F7"
+                                                border.color: Qt.alpha(grpCardRect.accentColor, parent.hovered ? 0.95 : 0.68)
                                                 border.width: 1
                                                 Behavior on color {
+                                                    ColorAnimation {
+                                                        duration: 110
+                                                    }
+                                                }
+                                                Behavior on border.color {
                                                     ColorAnimation {
                                                         duration: 110
                                                     }
@@ -1506,22 +1514,22 @@ Item {
                                         Layout.fillWidth: true
                                         height: 24
                                         visible: grpCardRect.isDropTarget
-                                        radius: 4
-                                        color: "#3B0764"
-                                        border.color: "#A855F7"
+                                        radius: 6
+                                        color: Qt.alpha(grpCardRect.accentColor, 0.20)
+                                        border.color: grpCardRect.accentColor
                                         Text {
                                             anchors.centerIn: parent
                                             text: "📥 Rilascia per aggiungere al gruppo '" + grpCardRect.name + "'"
-                                            color: "#E9D5FF"
+                                            color: "#F8FAFC"
                                             font.pixelSize: 10
                                             font.bold: true
                                         }
                                     }
 
-                                    // Bottom Row: Chips of projects inside this group
+                                    // Bottom Row: Chips of projects inside this group (styled with the group's accent color)
                                     Flow {
                                         Layout.fillWidth: true
-                                        spacing: 4
+                                        spacing: 5
                                         visible: grpCardRect.repositoryCount > 0
 
                                         Repeater {
@@ -1529,28 +1537,33 @@ Item {
 
                                             delegate: Rectangle {
                                                 height: 22
-                                                implicitWidth: chipRow.implicitWidth + 10
-                                                radius: 4
-                                                color: "#21262D"
-                                                border.color: "#30363D"
+                                                implicitWidth: chipRow.implicitWidth + 12
+                                                radius: 6
+                                                color: Qt.alpha(grpCardRect.accentColor, 0.11)
+                                                border.color: Qt.alpha(grpCardRect.accentColor, 0.36)
+                                                border.width: 1
 
                                                 RowLayout {
                                                     id: chipRow
                                                     anchors.centerIn: parent
-                                                    spacing: 4
+                                                    spacing: 5
 
-                                                    Text {
-                                                        text: "📁"
-                                                        font.pixelSize: 9
+                                                    Rectangle {
+                                                        width: 6
+                                                        height: 6
+                                                        radius: 3
+                                                        color: grpCardRect.accentColor
                                                     }
 
                                                     Text {
                                                         text: modelData
-                                                        color: "#CBD5E1"
+                                                        color: "#E2E8F0"
                                                         font.pixelSize: 10
+                                                        font.bold: true
                                                     }
 
                                                     MouseArea {
+                                                        id: removeRepoFromGrpMa
                                                         width: 14
                                                         height: 14
                                                         hoverEnabled: true
@@ -1560,7 +1573,7 @@ Item {
                                                         Text {
                                                             anchors.centerIn: parent
                                                             text: "×"
-                                                            color: parent.containsMouse ? "#EF4444" : "#64748B"
+                                                            color: removeRepoFromGrpMa.containsMouse ? "#EF4444" : Qt.alpha(grpCardRect.accentColor, 0.85)
                                                             font.pixelSize: 11
                                                             font.bold: true
                                                         }
@@ -1600,7 +1613,7 @@ Item {
                                             const dx = mouse.x - pressPoint.x;
                                             const dy = mouse.y - pressPoint.y;
                                             if (!root.isDraggingGroup && !root.isDraggingRepo && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
-                                                root.startDraggingGroup(grpCardRect.id, grpCardRect.name);
+                                                root.startDraggingGroup(grpCardRect.id, grpCardRect.name, grpCardRect.groupColor);
                                             }
                                             if (root.isDraggingGroup) {
                                                 const pt = mapToItem(root, mouse.x, mouse.y);
@@ -1755,6 +1768,7 @@ Item {
                                 required property var repositoryNames
                                 required property var groupIds
                                 required property var groupNames
+                                required property var groupColors
 
                                 property string wsCardId: wsCardRect.id
                                 property string wsCardName: wsCardRect.name
@@ -1765,8 +1779,8 @@ Item {
                                 width: wsListView.width
                                 implicitHeight: wsColLayout.implicitHeight + 18
                                 radius: 10
-                                color: isDropTarget ? (root.isDraggingGroup ? "#2E1065" : "#063B2C") : (wsHover.containsMouse ? "#182334" : "#121A27")
-                                border.color: isDropTarget ? (root.isDraggingGroup ? "#C084FC" : "#34D399") : (wsHover.containsMouse ? "#10B981" : "#1F2C3F")
+                                color: isDropTarget ? (root.isDraggingGroup ? Qt.alpha(root.draggedGroupColor, 0.22) : "#063B2C") : (wsHover.containsMouse ? "#182334" : "#121A27")
+                                border.color: isDropTarget ? (root.isDraggingGroup ? root.draggedGroupColor : "#34D399") : (wsHover.containsMouse ? "#10B981" : "#1F2C3F")
                                 border.width: isDropTarget ? 2 : 1
                                 scale: isDropTarget ? 1.02 : 1.0
                                 Behavior on scale {
@@ -1946,54 +1960,62 @@ Item {
                                         Layout.fillWidth: true
                                         height: 24
                                         visible: wsCardRect.isDropTarget
-                                        radius: 4
-                                        color: root.isDraggingGroup ? "#3B0764" : "#052E16"
-                                        border.color: root.isDraggingGroup ? "#A855F7" : "#22C55E"
+                                        radius: 6
+                                        color: root.isDraggingGroup ? Qt.alpha(root.draggedGroupColor, 0.22) : "#052E16"
+                                        border.color: root.isDraggingGroup ? root.draggedGroupColor : "#22C55E"
                                         Text {
                                             anchors.centerIn: parent
                                             text: root.isDraggingGroup
                                                 ? ("📥 Rilascia per aggiungere il gruppo '" + root.draggedGroupName + "' al workspace")
                                                 : ("📥 Rilascia per aggiungere il repository '" + root.draggedRepoName + "' al workspace")
-                                            color: root.isDraggingGroup ? "#E9D5FF" : "#86EFAC"
+                                            color: root.isDraggingGroup ? "#F8FAFC" : "#86EFAC"
                                             font.pixelSize: 10
                                             font.bold: true
                                         }
                                     }
 
-                                    // Groups inside this workspace
+                                    // Groups inside this workspace (each styled with its own group color)
                                     Flow {
                                         Layout.fillWidth: true
-                                        spacing: 4
+                                        spacing: 5
                                         visible: wsCardRect.groupIds && wsCardRect.groupIds.length > 0
 
                                         Repeater {
                                             model: wsCardRect.groupNames || []
 
                                             delegate: Rectangle {
+                                                id: wsGrpChip
+                                                readonly property color chipColor: (wsCardRect.groupColors && index < wsCardRect.groupColors.length && wsCardRect.groupColors[index].length > 0)
+                                                    ? wsCardRect.groupColors[index]
+                                                    : "#7C4DFF"
                                                 height: 22
-                                                implicitWidth: wsGrpChipRow.implicitWidth + 10
-                                                radius: 4
-                                                color: "#2E1065"
-                                                border.color: "#7C4DFF"
+                                                implicitWidth: wsGrpChipRow.implicitWidth + 12
+                                                radius: 6
+                                                color: Qt.alpha(chipColor, 0.16)
+                                                border.color: Qt.alpha(chipColor, 0.62)
+                                                border.width: 1
 
                                                 RowLayout {
                                                     id: wsGrpChipRow
                                                     anchors.centerIn: parent
-                                                    spacing: 4
+                                                    spacing: 5
 
-                                                    Text {
-                                                        text: "🗂️"
-                                                        font.pixelSize: 9
+                                                    Rectangle {
+                                                        width: 7
+                                                        height: 7
+                                                        radius: 3.5
+                                                        color: wsGrpChip.chipColor
                                                     }
 
                                                     Text {
                                                         text: modelData
-                                                        color: "#E9D5FF"
+                                                        color: "#F8FAFC"
                                                         font.pixelSize: 10
                                                         font.bold: true
                                                     }
 
                                                     MouseArea {
+                                                        id: removeGrpFromWsMa
                                                         width: 14
                                                         height: 14
                                                         hoverEnabled: true
@@ -2003,7 +2025,7 @@ Item {
                                                         Text {
                                                             anchors.centerIn: parent
                                                             text: "×"
-                                                            color: parent.containsMouse ? "#EF4444" : "#A855F7"
+                                                            color: removeGrpFromWsMa.containsMouse ? "#EF4444" : Qt.alpha(wsGrpChip.chipColor, 0.85)
                                                             font.pixelSize: 11
                                                             font.bold: true
                                                         }
@@ -2226,7 +2248,7 @@ Item {
                 height: 36
                 color: "#0A0E15"
                 radius: 8
-                border.color: groupNameInput.activeFocus ? "#7C4DFF" : "#222F42"
+                border.color: groupNameInput.activeFocus ? (addGroupDialog.selectedColor.length > 0 ? addGroupDialog.selectedColor : "#7C4DFF") : "#222F42"
                 border.width: 1
                 Behavior on border.color { ColorAnimation { duration: 120 } }
                 TextInput {
@@ -2277,8 +2299,9 @@ Item {
                     width: newGrpRepoList.width
                     height: 34
                     radius: 8
-                    color: isChecked ? "#1A163A" : "#0D131D"
-                    border.color: isChecked ? "#7C4DFF" : "#1F2C3F"
+                    readonly property color grpSelCol: addGroupDialog.selectedColor.length > 0 ? addGroupDialog.selectedColor : "#7C4DFF"
+                    color: isChecked ? Qt.alpha(grpSelCol, 0.16) : "#0D131D"
+                    border.color: isChecked ? grpSelCol : "#1F2C3F"
                     border.width: 1
 
                     property bool isChecked: addGroupDialog.selectedRepoIds.indexOf(model.id) !== -1
@@ -2351,8 +2374,9 @@ Item {
                     leftPadding: 16
                     rightPadding: 16
                     hoverEnabled: true
-                    background: Rectangle { color: parent.hovered ? "#9061F9" : "#7C4DFF"; radius: 8; border.color: "#A855F7"; border.width: 1 }
-                    contentItem: Text { text: parent.text; color: "#FFFFFF"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    readonly property color btnAccent: addGroupDialog.selectedColor.length > 0 ? addGroupDialog.selectedColor : "#7C4DFF"
+                    background: Rectangle { color: Qt.alpha(parent.btnAccent, parent.hovered ? 0.36 : 0.24); radius: 8; border.color: parent.btnAccent; border.width: 1 }
+                    contentItem: Text { text: parent.text; color: "#F8FAFC"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                     onClicked: addGroupDialog.accept()
                 }
             }
@@ -2602,8 +2626,9 @@ Item {
                 }
                 Button {
                     text: "✓ Salva"; Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
-                    background: Rectangle { color: parent.hovered ? "#9061F9" : "#7C4DFF"; radius: 8; border.color: "#A855F7"; border.width: 1 }
-                    contentItem: Text { text: parent.text; color: "#FFFFFF"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    readonly property color btnAccent: renameGroupDialog.selectedColor.length > 0 ? renameGroupDialog.selectedColor : "#7C4DFF"
+                    background: Rectangle { color: Qt.alpha(parent.btnAccent, parent.hovered ? 0.36 : 0.24); radius: 8; border.color: parent.btnAccent; border.width: 1 }
+                    contentItem: Text { text: parent.text; color: "#F8FAFC"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                     onClicked: renameGroupDialog.accept()
                 }
             }
@@ -2708,11 +2733,14 @@ Item {
                 ScrollBar.vertical: FluxScrollBar {}
 
                 delegate: Rectangle {
+                    id: addToGrpRow
                     width: groupPickList.width
                     height: 36
                     radius: 8
-                    color: (addToGroupDialog.selectedGroupId === modelData.id) ? "#23124A" : (grpPickHover.containsMouse ? "#172233" : "#0D131D")
-                    border.color: (addToGroupDialog.selectedGroupId === modelData.id) ? "#7C4DFF" : "#222F42"
+                    readonly property color grpAccent: (modelData.groupColor && modelData.groupColor.length > 0) ? modelData.groupColor : "#7C4DFF"
+                    readonly property bool isChosen: addToGroupDialog.selectedGroupId === modelData.id
+                    color: isChosen ? Qt.alpha(grpAccent, 0.20) : (grpPickHover.containsMouse ? "#172233" : "#0D131D")
+                    border.color: isChosen ? grpAccent : "#222F42"
                     border.width: 1
 
                     Behavior on color { ColorAnimation { duration: 110 } }
@@ -2733,13 +2761,18 @@ Item {
                         anchors.rightMargin: 10
                         spacing: 8
 
-                        Text { text: "🗂️"; font.pixelSize: 12 }
+                        Rectangle {
+                            width: 9
+                            height: 9
+                            radius: 4.5
+                            color: addToGrpRow.grpAccent
+                        }
 
                         Text {
                             text: modelData.name
                             color: "#F8FAFC"
                             font.pixelSize: 12
-                            font.bold: addToGroupDialog.selectedGroupId === modelData.id
+                            font.bold: addToGrpRow.isChosen
                             Layout.fillWidth: true
                         }
 
@@ -3225,11 +3258,14 @@ Item {
                 ScrollBar.vertical: FluxScrollBar {}
 
                 delegate: Rectangle {
+                    id: addGrpToWsRow
                     width: wsGrpPickList.width
                     height: 38
                     radius: 8
-                    color: (addGrpToWsDialog.selectedGroupId === modelData.id) ? "#23124A" : (wsGrpPickHover.containsMouse ? "#172233" : "#0D131D")
-                    border.color: (addGrpToWsDialog.selectedGroupId === modelData.id) ? "#7C4DFF" : "#222F42"
+                    readonly property color grpAccent: (modelData.groupColor && modelData.groupColor.length > 0) ? modelData.groupColor : "#7C4DFF"
+                    readonly property bool isChosen: addGrpToWsDialog.selectedGroupId === modelData.id
+                    color: isChosen ? Qt.alpha(grpAccent, 0.20) : (wsGrpPickHover.containsMouse ? "#172233" : "#0D131D")
+                    border.color: isChosen ? grpAccent : "#222F42"
                     border.width: 1
 
                     Behavior on color { ColorAnimation { duration: 110 } }
@@ -3250,7 +3286,12 @@ Item {
                         anchors.rightMargin: 10
                         spacing: 8
 
-                        Text { text: "🗂️"; font.pixelSize: 12 }
+                        Rectangle {
+                            width: 9
+                            height: 9
+                            radius: 4.5
+                            color: addGrpToWsRow.grpAccent
+                        }
 
                         Text {
                             text: modelData.name
@@ -3601,8 +3642,8 @@ Item {
         width: 220
         height: 38
         radius: 9
-        color: "#2E1065"
-        border.color: "#A855F7"
+        color: Qt.alpha(root.draggedGroupColor, 0.24)
+        border.color: root.draggedGroupColor
         border.width: 1.5
         z: 99999
         opacity: 0.95
@@ -3612,8 +3653,11 @@ Item {
             anchors.fill: parent
             anchors.margins: 8
             spacing: 8
-            Text {
-                text: "🗂️"; font.pixelSize: 15
+            Rectangle {
+                width: 10
+                height: 10
+                radius: 5
+                color: root.draggedGroupColor
             }
             Text {
                 text: root.draggedGroupName

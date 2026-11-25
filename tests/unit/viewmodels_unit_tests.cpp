@@ -5282,6 +5282,14 @@ TEST_CASE("WorkspaceSessionViewModel clusters tabs by group and exposes multi-gr
                                               {grpBackend.id, grpPos.id},
                                               {rSolo.id}).value();
 
+    // WorkspaceListModel exposes groupColors matching each group's resolved color
+    homeVm.refreshAll();
+    const auto wsItem = homeVm.workspaceModel()->findById(QString::fromStdString(ws.id.value()));
+    REQUIRE(wsItem.has_value());
+    REQUIRE(wsItem->groupColors.size() == 2);
+    CHECK(wsItem->groupColors[0] == QStringLiteral("#38BDF8"));
+    CHECK(wsItem->groupColors[1] == QStringLiteral("#34D399"));
+
     sessionVm.openWorkspace(QString::fromStdString(ws.id.value()));
     CHECK(sessionVm.sessionKind() == QStringLiteral("workspace"));
     CHECK(sessionVm.tabs().size() == 4);

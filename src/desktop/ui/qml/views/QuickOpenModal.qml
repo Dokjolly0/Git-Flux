@@ -225,16 +225,22 @@ Item {
                             spacing: 6
 
                             delegate: Rectangle {
+                                id: qoGrpRow
                                 width: groupSelectListView.width
                                 height: 44
                                 radius: 9
-                                color: isSelected ? "#15263B" : (mouseArea.containsMouse ? "#172233" : "#111926")
-                                border.color: isSelected ? "#38BDF8" : (mouseArea.containsMouse ? "#283952" : "#1D283A")
+                                readonly property color grpAccent: (model.groupColor && model.groupColor.length > 0) ? model.groupColor : "#38BDF8"
+                                readonly property bool isSelected: quickOpenVm.selectedGroupIds.indexOf(model.id) !== -1
+                                color: isSelected ? Qt.alpha(grpAccent, 0.16) : (mouseArea.containsMouse ? "#172233" : "#111926")
+                                border.color: isSelected ? grpAccent : (mouseArea.containsMouse ? Qt.alpha(grpAccent, 0.50) : "#1D283A")
                                 border.width: 1
 
-                                readonly property bool isSelected: quickOpenVm.selectedGroupIds.indexOf(model.id) !== -1
-
                                 Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
+                                Behavior on border.color {
                                     ColorAnimation {
                                         duration: 110
                                     }
@@ -258,9 +264,9 @@ Item {
                                         width: 18
                                         height: 18
                                         radius: 6
-                                        color: isSelected ? "#0284C7" : "#0A0E15"
-                                        border.color: isSelected ? "#38BDF8" : "#334155"
-                                        border.width: 1
+                                        color: qoGrpRow.isSelected ? qoGrpRow.grpAccent : "#0A0E15"
+                                        border.color: qoGrpRow.isSelected ? qoGrpRow.grpAccent : Qt.alpha(qoGrpRow.grpAccent, 0.55)
+                                        border.width: 1.5
 
                                         Behavior on color {
                                             ColorAnimation {
@@ -271,18 +277,25 @@ Item {
                                         Text {
                                             anchors.centerIn: parent
                                             text: "✓"
-                                            color: "#FFFFFF"
+                                            color: "#0A0E15"
                                             font.pixelSize: 11
                                             font.bold: true
-                                            visible: isSelected
+                                            visible: qoGrpRow.isSelected
                                         }
+                                    }
+
+                                    Rectangle {
+                                        width: 8
+                                        height: 8
+                                        radius: 4
+                                        color: qoGrpRow.grpAccent
                                     }
 
                                     Text {
                                         text: model.name
                                         color: "#F8FAFC"
                                         font.pixelSize: 13
-                                        font.bold: isSelected
+                                        font.bold: qoGrpRow.isSelected
                                         Layout.fillWidth: true
                                         elide: Text.ElideRight
                                     }
@@ -291,15 +304,15 @@ Item {
                                         height: 20
                                         width: countText.implicitWidth + 14
                                         radius: 10
-                                        color: "#182334"
-                                        border.color: "#28374E"
+                                        color: Qt.alpha(qoGrpRow.grpAccent, 0.14)
+                                        border.color: Qt.alpha(qoGrpRow.grpAccent, 0.45)
                                         border.width: 1
 
                                         Text {
                                             id: countText
                                             anchors.centerIn: parent
                                             text: model.repositoryCount + " repo"
-                                            color: "#94A3B8"
+                                            color: "#E2E8F0"
                                             font.pixelSize: 10
                                             font.bold: true
                                         }

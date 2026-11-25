@@ -105,6 +105,8 @@ namespace gf::desktop
             return item.groupIds;
         case GroupNamesRole:
             return item.groupNames;
+        case GroupColorsRole:
+            return item.groupColors;
         case Qt::DisplayRole:
             return item.name;
         default:
@@ -125,7 +127,8 @@ namespace gf::desktop
             {RepositoryIdsRole, "repositoryIds"},
             {RepositoryNamesRole, "repositoryNames"},
             {GroupIdsRole, "groupIds"},
-            {GroupNamesRole, "groupNames"}
+            {GroupNamesRole, "groupNames"},
+            {GroupColorsRole, "groupColors"}
         };
     }
 
@@ -154,15 +157,21 @@ namespace gf::desktop
                     if (grpOpt && grpOpt->has_value())
                     {
                         item.groupNames.append(QString::fromStdString((*grpOpt)->name));
+                        const auto col = (*grpOpt)->resolvedColor();
+                        item.groupColors.append(QString::fromUtf8(col.data(), static_cast<qsizetype>(col.size())));
                     }
                     else
                     {
                         item.groupNames.append(QString::fromStdString(gId.value()));
+                        const auto col = gf::groups::bo::defaultGroupColorForId(gId.value());
+                        item.groupColors.append(QString::fromUtf8(col.data(), static_cast<qsizetype>(col.size())));
                     }
                 }
                 else
                 {
                     item.groupNames.append(QString::fromStdString(gId.value()));
+                    const auto col = gf::groups::bo::defaultGroupColorForId(gId.value());
+                    item.groupColors.append(QString::fromUtf8(col.data(), static_cast<qsizetype>(col.size())));
                 }
             }
 

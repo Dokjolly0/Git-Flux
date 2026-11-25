@@ -1276,6 +1276,8 @@ namespace gf::desktop
                 QVariantMap map;
                 map[QStringLiteral("id")] = QString::fromStdString(grp.id.value());
                 map[QStringLiteral("name")] = QString::fromStdString(grp.name);
+                const auto col = grp.resolvedColor();
+                map[QStringLiteral("groupColor")] = QString::fromUtf8(col.data(), static_cast<qsizetype>(col.size()));
                 map[QStringLiteral("repositoryCount")] = static_cast<int>(grp.repositoryIds.size());
                 list.append(map);
             }
@@ -1462,6 +1464,8 @@ namespace gf::desktop
                 QVariantMap map;
                 map[QStringLiteral("id")] = QString::fromStdString(grp.id.value());
                 map[QStringLiteral("name")] = QString::fromStdString(grp.name);
+                const auto col = grp.resolvedColor();
+                map[QStringLiteral("groupColor")] = QString::fromUtf8(col.data(), static_cast<qsizetype>(col.size()));
                 map[QStringLiteral("repositoryCount")] = static_cast<int>(grp.repositoryIds.size());
                 list.append(map);
             }

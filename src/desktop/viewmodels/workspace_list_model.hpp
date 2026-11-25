@@ -35,6 +35,7 @@ namespace gf::desktop
         QStringList repositoryNames;
         QStringList groupIds;
         QStringList groupNames;
+        QStringList groupColors;
     };
 
     class WorkspaceListModel : public QAbstractListModel
@@ -54,7 +55,8 @@ namespace gf::desktop
             RepositoryIdsRole,
             RepositoryNamesRole,
             GroupIdsRole,
-            GroupNamesRole
+            GroupNamesRole,
+            GroupColorsRole
         };
 
         explicit WorkspaceListModel(QObject* parent = nullptr);
