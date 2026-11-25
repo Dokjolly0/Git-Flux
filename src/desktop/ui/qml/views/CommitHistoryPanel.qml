@@ -393,8 +393,112 @@ Rectangle {
     }
 
     property int maxGraphLanes: (root.branchManager && root.branchManager.commitHistory) ? root.branchManager.commitHistory.maxLanes : 1
-    property int graphColWidth: Math.max(50, Math.min(260, 24 + root.maxGraphLanes * 22))
-    property int branchTagColWidth: 230
+    readonly property int autoGraphColWidth: Math.max(60, Math.min(260, 24 + root.maxGraphLanes * 22))
+    property int customGraphColWidth: -1
+    property int branchTagColWidth: 220
+    readonly property int graphColWidth: customGraphColWidth > 0 ? customGraphColWidth : autoGraphColWidth
+    property int authorColWidth: 130
+    property int dateColWidth: 155
+    property string activeResizingCol: ""
+
+    readonly property real commitTableTotalWidth: Math.max(480, commitTableListView.width)
+    readonly property var effectiveColWidths: {
+        const minBranch = 90;
+        const minGraph = 48;
+        const minMsg = 140;
+        const minAuthor = 70;
+        const minDate = 95;
+        const availFixed = Math.max(minBranch + minGraph + minAuthor + minDate, root.commitTableTotalWidth - minMsg);
+        const wantBranch = Math.max(minBranch, root.branchTagColWidth);
+        const wantGraph = Math.max(minGraph, root.graphColWidth);
+        const wantAuthor = Math.max(minAuthor, root.authorColWidth);
+        const wantDate = Math.max(minDate, root.dateColWidth);
+        const wantSum = wantBranch + wantGraph + wantAuthor + wantDate;
+        if (wantSum <= availFixed) {
+            return { branch: wantBranch, graph: wantGraph, author: wantAuthor, date: wantDate };
+        }
+        const excess = wantSum - availFixed;
+        const shrinkable = (wantBranch - minBranch) + (wantGraph - minGraph)
+            + (wantAuthor - minAuthor) + (wantDate - minDate);
+        const ratio = shrinkable > 0 ? Math.min(1.0, excess / shrinkable) : 0;
+        return {
+            branch: Math.round(wantBranch - (wantBranch - minBranch) * ratio),
+            graph: Math.round(wantGraph - (wantGraph - minGraph) * ratio),
+            author: Math.round(wantAuthor - (wantAuthor - minAuthor) * ratio),
+            date: Math.round(wantDate - (wantDate - minDate) * ratio)
+        };
+    }
+    readonly property int effBranchTagWidth: effectiveColWidths.branch
+    readonly property int effGraphWidth: effectiveColWidths.graph
+    readonly property int effAuthorWidth: effectiveColWidths.author
+    readonly property int effDateWidth: effectiveColWidths.date
+
+    function resetTableColumnWidths() {
+        branchTagColWidth = 220;
+        customGraphColWidth = -1;
+        authorColWidth = 130;
+        dateColWidth = 155;
+    }
+
+    component ColumnResizeHandle: MouseArea {
+        id: resizerHandle
+        property string colKey: ""
+        property int currentWidth: 100
+        property int minWidth: 60
+        property int maxWidth: 400
+        property bool invertDelta: false
+        property string tooltipText: "Trascina per ridimensionare • Doppio click per ripristinare"
+        signal widthUpdated(int newWidth)
+        signal resetRequested()
+
+        width: 9
+        hoverEnabled: true
+        cursorShape: Qt.SplitHCursor
+        z: 5
+
+        property real pressX: 0
+        property int startWidth: 0
+
+        onPressed: function (mouse) {
+            pressX = mapToItem(root, mouse.x, 0).x;
+            startWidth = currentWidth;
+            root.activeResizingCol = colKey;
+        }
+        onPositionChanged: function (mouse) {
+            if (!pressed) return;
+            const rawDx = mapToItem(root, mouse.x, 0).x - pressX;
+            const dx = invertDelta ? -rawDx : rawDx;
+            const nextW = Math.max(minWidth, Math.min(maxWidth, Math.round(startWidth + dx)));
+            widthUpdated(nextW);
+        }
+        onReleased: {
+            if (root.activeResizingCol === colKey) {
+                root.activeResizingCol = "";
+            }
+        }
+        onCanceled: {
+            if (root.activeResizingCol === colKey) {
+                root.activeResizingCol = "";
+            }
+        }
+        onDoubleClicked: resetRequested()
+
+        ToolTip.visible: containsMouse && !pressed
+        ToolTip.delay: 500
+        ToolTip.text: tooltipText
+
+        Rectangle {
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.topMargin: (resizerHandle.containsMouse || resizerHandle.pressed) ? 0 : 6
+            anchors.bottomMargin: (resizerHandle.containsMouse || resizerHandle.pressed) ? 0 : 6
+            width: (resizerHandle.containsMouse || resizerHandle.pressed) ? 2 : 1
+            color: (resizerHandle.containsMouse || resizerHandle.pressed) ? "#38BDF8" : "#2B3647"
+
+            Behavior on color { ColorAnimation { duration: 100 } }
+        }
+    }
 
     // Keyboard navigation and shortcuts
     focus: true
@@ -1148,88 +1252,118 @@ Rectangle {
                     }
                 }
 
-                // Table Header Bar (matching GitKraken header)
+                // Table Header Bar (aligned 1:1 with commit rows, resizable on all column boundaries)
                 Rectangle {
+                    id: tableHeaderBar
                     Layout.fillWidth: true
                     Layout.preferredHeight: 32
                     color: "#161B22"
-                    border.color: "#21262D"
-                    border.width: 1
+
+                    Rectangle {
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        height: 1
+                        color: "#21262D"
+                    }
+                    Rectangle {
+                        anchors.bottom: parent.bottom
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        height: 1
+                        color: "#21262D"
+                    }
 
                     RowLayout {
-                        anchors.fill: parent
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        anchors.left: parent.left
+                        width: commitTableListView.width > 0 ? commitTableListView.width : parent.width
                         spacing: 0
 
                         // Col 1: BRANCH / TAG
-                        Rectangle {
-                            Layout.preferredWidth: root.branchTagColWidth
+                        Item {
+                            Layout.preferredWidth: root.effBranchTagWidth
+                            Layout.minimumWidth: root.effBranchTagWidth
+                            Layout.maximumWidth: root.effBranchTagWidth
                             Layout.fillHeight: true
-                            color: "transparent"
+
                             Text {
+                                anchors.left: parent.left
+                                anchors.leftMargin: 10
                                 anchors.right: parent.right
-                                anchors.rightMargin: 8
+                                anchors.rightMargin: 10
                                 anchors.verticalCenter: parent.verticalCenter
+                                horizontalAlignment: Text.AlignRight
+                                elide: Text.ElideRight
                                 text: "BRANCH / TAG"
                                 color: "#8B949E"
                                 font.pixelSize: 10
                                 font.bold: true
                             }
 
-                            // Drag handle to resize the BRANCH / TAG column
-                            MouseArea {
-                                id: branchColResizer
+                            ColumnResizeHandle {
                                 anchors.right: parent.right
+                                anchors.rightMargin: -4
                                 anchors.top: parent.top
                                 anchors.bottom: parent.bottom
-                                width: 6
-                                hoverEnabled: true
-                                cursorShape: Qt.SplitHCursor
-                                property real pressX: 0
-                                property int startWidth: 0
-                                onPressed: function (mouse) {
-                                    pressX = mapToItem(root, mouse.x, 0).x;
-                                    startWidth = root.branchTagColWidth;
-                                }
-                                onPositionChanged: function (mouse) {
-                                    if (!pressed) return;
-                                    const dx = mapToItem(root, mouse.x, 0).x - pressX;
-                                    root.branchTagColWidth = Math.max(100, Math.min(520, Math.round(startWidth + dx)));
-                                }
-                                onDoubleClicked: root.branchTagColWidth = 230
-
-                                Rectangle {
-                                    anchors.right: parent.right
-                                    anchors.top: parent.top
-                                    anchors.bottom: parent.bottom
-                                    width: 2
-                                    color: (branchColResizer.containsMouse || branchColResizer.pressed) ? "#38BDF8" : "transparent"
-                                }
+                                colKey: "branch"
+                                currentWidth: root.effBranchTagWidth
+                                minWidth: 90
+                                maxWidth: 520
+                                onWidthUpdated: function (w) { root.branchTagColWidth = w; }
+                                onResetRequested: root.branchTagColWidth = 220
                             }
                         }
 
                         // Col 2: GRAPH
-                        Rectangle {
-                            Layout.preferredWidth: root.graphColWidth
+                        Item {
+                            Layout.preferredWidth: root.effGraphWidth
+                            Layout.minimumWidth: root.effGraphWidth
+                            Layout.maximumWidth: root.effGraphWidth
                             Layout.fillHeight: true
-                            color: "transparent"
+
                             Text {
-                                anchors.centerIn: parent
+                                anchors.left: parent.left
+                                anchors.leftMargin: 10
+                                anchors.right: parent.right
+                                anchors.rightMargin: 8
+                                anchors.verticalCenter: parent.verticalCenter
+                                elide: Text.ElideRight
                                 text: "GRAPH"
                                 color: "#8B949E"
                                 font.pixelSize: 10
                                 font.bold: true
                             }
+
+                            ColumnResizeHandle {
+                                anchors.right: parent.right
+                                anchors.rightMargin: -4
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                colKey: "graph"
+                                currentWidth: root.effGraphWidth
+                                minWidth: 48
+                                maxWidth: 360
+                                tooltipText: "Trascina per ridimensionare il grafo • Doppio click per auto-adattare"
+                                onWidthUpdated: function (w) { root.customGraphColWidth = w; }
+                                onResetRequested: root.customGraphColWidth = -1
+                            }
                         }
 
                         // Col 3: COMMIT MESSAGE
-                        Rectangle {
+                        Item {
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 140
                             Layout.fillHeight: true
-                            color: "transparent"
+
                             Text {
                                 anchors.left: parent.left
                                 anchors.leftMargin: 8
+                                anchors.right: parent.right
+                                anchors.rightMargin: 8
                                 anchors.verticalCenter: parent.verticalCenter
+                                elide: Text.ElideRight
                                 text: "COMMIT MESSAGE"
                                 color: "#8B949E"
                                 font.pixelSize: 10
@@ -1238,14 +1372,33 @@ Rectangle {
                         }
 
                         // Col 4: AUTHOR
-                        Rectangle {
-                            Layout.preferredWidth: 110
+                        Item {
+                            Layout.preferredWidth: root.effAuthorWidth
+                            Layout.minimumWidth: root.effAuthorWidth
+                            Layout.maximumWidth: root.effAuthorWidth
                             Layout.fillHeight: true
-                            color: "transparent"
+
+                            ColumnResizeHandle {
+                                anchors.left: parent.left
+                                anchors.leftMargin: -4
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                colKey: "author"
+                                currentWidth: root.effAuthorWidth
+                                minWidth: 70
+                                maxWidth: 320
+                                invertDelta: true
+                                onWidthUpdated: function (w) { root.authorColWidth = w; }
+                                onResetRequested: root.authorColWidth = 130
+                            }
+
                             Text {
                                 anchors.left: parent.left
                                 anchors.leftMargin: 8
+                                anchors.right: parent.right
+                                anchors.rightMargin: 8
                                 anchors.verticalCenter: parent.verticalCenter
+                                elide: Text.ElideRight
                                 text: "AUTHOR"
                                 color: "#8B949E"
                                 font.pixelSize: 10
@@ -1254,26 +1407,60 @@ Rectangle {
                         }
 
                         // Col 5: COMMIT DATE / TIME
-                        Rectangle {
-                            Layout.preferredWidth: 150
+                        Item {
+                            Layout.preferredWidth: root.effDateWidth
+                            Layout.minimumWidth: root.effDateWidth
+                            Layout.maximumWidth: root.effDateWidth
                             Layout.fillHeight: true
-                            color: "transparent"
+
+                            ColumnResizeHandle {
+                                anchors.left: parent.left
+                                anchors.leftMargin: -4
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                colKey: "date"
+                                currentWidth: root.effDateWidth
+                                minWidth: 95
+                                maxWidth: 300
+                                invertDelta: true
+                                onWidthUpdated: function (w) { root.dateColWidth = w; }
+                                onResetRequested: root.dateColWidth = 155
+                            }
+
                             RowLayout {
                                 anchors.fill: parent
                                 anchors.leftMargin: 8
-                                anchors.rightMargin: 12
+                                anchors.rightMargin: 10
                                 spacing: 4
                                 Text {
                                     text: "COMMIT DATE / TIME"
                                     color: "#8B949E"
                                     font.pixelSize: 10
                                     font.bold: true
+                                    elide: Text.ElideRight
                                     Layout.fillWidth: true
                                 }
-                                Text {
-                                    text: "⚙"
-                                    color: "#8B949E"
-                                    font.pixelSize: 11
+                                MouseArea {
+                                    id: resetColsBtn
+                                    Layout.preferredWidth: 18
+                                    Layout.preferredHeight: 18
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.resetTableColumnWidths()
+                                    ToolTip.visible: containsMouse
+                                    ToolTip.text: "Ripristina larghezze predefinite colonne"
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        radius: 4
+                                        color: resetColsBtn.containsMouse ? "#243247" : "transparent"
+                                    }
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "↺"
+                                        color: resetColsBtn.containsMouse ? "#38BDF8" : "#8B949E"
+                                        font.pixelSize: 12
+                                        font.bold: true
+                                    }
                                 }
                             }
                         }
@@ -1408,7 +1595,9 @@ Rectangle {
                             // ------------------------------------------
                             Item {
                                 id: branchTagCol
-                                Layout.preferredWidth: root.branchTagColWidth
+                                Layout.preferredWidth: root.effBranchTagWidth
+                                Layout.minimumWidth: root.effBranchTagWidth
+                                Layout.maximumWidth: root.effBranchTagWidth
                                 Layout.fillHeight: true
                                 clip: true
 
@@ -1825,12 +2014,16 @@ Rectangle {
                             // COL 2: GRAPH (Multi-Lane Git DAG Graph)
                             // ------------------------------------------
                             Item {
-                                Layout.preferredWidth: root.graphColWidth
+                                Layout.preferredWidth: root.effGraphWidth
+                                Layout.minimumWidth: root.effGraphWidth
+                                Layout.maximumWidth: root.effGraphWidth
                                 Layout.fillHeight: true
+                                clip: true
 
                                 Canvas {
                                     id: graphCanvas
                                     anchors.fill: parent
+                                    onWidthChanged: requestPaint()
                                     property var routes: commitRow.graphRoutes || []
                                     property int commitLane: commitRow.graphLane !== undefined ? commitRow.graphLane : 0
 
@@ -2027,6 +2220,7 @@ Rectangle {
                             // ------------------------------------------
                             Item {
                                 Layout.fillWidth: true
+                                Layout.minimumWidth: 140
                                 Layout.fillHeight: true
 
                                 Text {
@@ -2052,14 +2246,16 @@ Rectangle {
                             // COL 4: AUTHOR
                             // ------------------------------------------
                             Item {
-                                Layout.preferredWidth: 110
+                                Layout.preferredWidth: root.effAuthorWidth
+                                Layout.minimumWidth: root.effAuthorWidth
+                                Layout.maximumWidth: root.effAuthorWidth
                                 Layout.fillHeight: true
 
                                 Text {
                                     anchors.left: parent.left
                                     anchors.right: parent.right
                                     anchors.leftMargin: 8
-                                    anchors.rightMargin: 14
+                                    anchors.rightMargin: 8
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: (commitRow.sha === "WIP") ? "Modifiche locali" : (commitRow.authorName || "")
                                     color: (commitRow.sha === "WIP") ? "#F59E0B" : "#94A3B8"
@@ -2072,14 +2268,16 @@ Rectangle {
                             // COL 5: COMMIT DATE / TIME
                             // ------------------------------------------
                             Item {
-                                Layout.preferredWidth: 150
+                                Layout.preferredWidth: root.effDateWidth
+                                Layout.minimumWidth: root.effDateWidth
+                                Layout.maximumWidth: root.effDateWidth
                                 Layout.fillHeight: true
 
                                 Text {
                                     anchors.left: parent.left
                                     anchors.right: parent.right
                                     anchors.leftMargin: 8
-                                    anchors.rightMargin: 14
+                                    anchors.rightMargin: 10
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: (commitRow.sha === "WIP") ? "Adesso" : (commitRow.authorDateFormatted || commitRow.authorDate || "")
                                     color: "#94A3B8"
@@ -2087,6 +2285,24 @@ Rectangle {
                                     elide: Text.ElideRight
                                 }
                             }
+                        }
+                    }
+
+                    // Active column resize vertical guide overlay
+                    Rectangle {
+                        visible: root.activeResizingCol !== ""
+                        z: 20
+                        y: 0
+                        height: commitTableListView.height
+                        width: 1
+                        color: "#38BDF8"
+                        opacity: 0.55
+                        x: {
+                            if (root.activeResizingCol === "branch") return root.effBranchTagWidth;
+                            if (root.activeResizingCol === "graph") return root.effBranchTagWidth + root.effGraphWidth;
+                            if (root.activeResizingCol === "author") return Math.max(0, commitTableListView.width - root.effDateWidth - root.effAuthorWidth);
+                            if (root.activeResizingCol === "date") return Math.max(0, commitTableListView.width - root.effDateWidth);
+                            return 0;
                         }
                     }
 
