@@ -30,13 +30,21 @@ namespace gf::groups::bl
     }
 
     std::expected<Group, GroupServiceError>
-    GroupService::createGroup(std::string name, std::vector<RepositoryId> repoIds) const
+    GroupService::createGroup(std::string name, std::vector<RepositoryId> repoIds, std::string color) const
     {
         if (name.empty())
         {
             return std::unexpected(GroupServiceError{
                 .kind = GroupServiceError::Kind::InvalidName,
                 .message = "Il nome del gruppo non può essere vuoto"
+            });
+        }
+
+        if (!bo::isValidGroupColor(color))
+        {
+            return std::unexpected(GroupServiceError{
+                .kind = GroupServiceError::Kind::InvalidColor,
+                .message = "Colore gruppo non valido (atteso formato #RRGGBB)"
             });
         }
 
@@ -56,6 +64,7 @@ namespace gf::groups::bl
         Group g{
             .id = GroupId(core::generateUniqueId("grp")),
             .name = std::move(name),
+            .color = std::move(color),
             .repositoryIds = std::move(repoIds),
             .createdAtUnixEpochMs = now,
             .updatedAtUnixEpochMs = now
@@ -112,6 +121,41 @@ namespace gf::groups::bl
                     .message = "Esiste già un gruppo con questo nome"
                 });
             }
+            return std::unexpected(GroupServiceError{
+                .kind = GroupServiceError::Kind::StorageError,
+                .message = saveRes.error().message
+            });
+        }
+
+        return g;
+    }
+
+    std::expected<Group, GroupServiceError>
+    GroupService::updateGroupColor(const GroupId& id, std::string color) const
+    {
+        if (!bo::isValidGroupColor(color))
+        {
+            return std::unexpected(GroupServiceError{
+                .kind = GroupServiceError::Kind::InvalidColor,
+                .message = "Colore gruppo non valido (atteso formato #RRGGBB)"
+            });
+        }
+
+        auto existing = groupStore_.getById(id);
+        if (!existing || !existing->has_value())
+        {
+            return std::unexpected(GroupServiceError{
+                .kind = GroupServiceError::Kind::NotFound,
+                .message = "Gruppo non trovato: " + id.value()
+            });
+        }
+
+        auto g = std::move(**existing);
+        g.color = std::move(color);
+        g.updatedAtUnixEpochMs = currentUnixMs();
+
+        if (const auto saveRes = groupStore_.save(g); !saveRes)
+        {
             return std::unexpected(GroupServiceError{
                 .kind = GroupServiceError::Kind::StorageError,
                 .message = saveRes.error().message
@@ -246,6 +290,20 @@ namespace gf::groups::bl
     GroupService::getAllGroups() const
     {
         auto res = groupStore_.getAll();
+        if (!res)
+        {
+            return std::unexpected(GroupServiceError{
+                .kind = GroupServiceError::Kind::StorageError,
+                .message = res.error().message
+            });
+        }
+        return std::move(*res);
+    }
+
+    std::expected<std::vector<Group>, GroupServiceError>
+    GroupService::getGroupsForRepository(const RepositoryId& repoId) const
+    {
+        auto res = groupStore_.getGroupsContainingRepository(repoId);
         if (!res)
         {
             return std::unexpected(GroupServiceError{

@@ -82,10 +82,11 @@ ORDER BY sort_order ASC;
         }
 
         constexpr std::string_view kUpsertGroupSql = R"(
-INSERT INTO groups (id, name, created_at_ms, updated_at_ms)
-VALUES (?, ?, ?, ?)
+INSERT INTO groups (id, name, color, created_at_ms, updated_at_ms)
+VALUES (?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
     name = excluded.name,
+    color = excluded.color,
     updated_at_ms = excluded.updated_at_ms;
 )";
 
@@ -103,11 +104,15 @@ ON CONFLICT(id) DO UPDATE SET
         {
             return std::unexpected(makeStorageError(bindRes.error()));
         }
-        if (const auto bindRes = stmtRes->bindInt64(3, group.createdAtUnixEpochMs); !bindRes)
+        if (const auto bindRes = stmtRes->bindText(3, group.color); !bindRes)
         {
             return std::unexpected(makeStorageError(bindRes.error()));
         }
-        if (const auto bindRes = stmtRes->bindInt64(4, group.updatedAtUnixEpochMs); !bindRes)
+        if (const auto bindRes = stmtRes->bindInt64(4, group.createdAtUnixEpochMs); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindInt64(5, group.updatedAtUnixEpochMs); !bindRes)
         {
             return std::unexpected(makeStorageError(bindRes.error()));
         }
@@ -187,7 +192,7 @@ ON CONFLICT(id) DO UPDATE SET
     SqliteGroupStore::getById(const GroupId& id)
     {
         constexpr std::string_view kSql = R"(
-SELECT id, name, created_at_ms, updated_at_ms
+SELECT id, name, color, created_at_ms, updated_at_ms
 FROM groups
 WHERE id = ?;
 )";
@@ -216,8 +221,9 @@ WHERE id = ?;
         Group grp;
         grp.id = GroupId(stmtRes->getText(0));
         grp.name = stmtRes->getText(1);
-        grp.createdAtUnixEpochMs = stmtRes->getInt64(2);
-        grp.updatedAtUnixEpochMs = stmtRes->getInt64(3);
+        grp.color = stmtRes->getText(2);
+        grp.createdAtUnixEpochMs = stmtRes->getInt64(3);
+        grp.updatedAtUnixEpochMs = stmtRes->getInt64(4);
 
         auto reposRes = loadRepositoryIds(grp.id);
         if (!reposRes)
@@ -233,7 +239,7 @@ WHERE id = ?;
     SqliteGroupStore::getAll()
     {
         constexpr std::string_view kSql = R"(
-SELECT id, name, created_at_ms, updated_at_ms
+SELECT id, name, color, created_at_ms, updated_at_ms
 FROM groups
 ORDER BY name COLLATE NOCASE ASC;
 )";
@@ -260,8 +266,9 @@ ORDER BY name COLLATE NOCASE ASC;
             Group g;
             g.id = GroupId(stmtRes->getText(0));
             g.name = stmtRes->getText(1);
-            g.createdAtUnixEpochMs = stmtRes->getInt64(2);
-            g.updatedAtUnixEpochMs = stmtRes->getInt64(3);
+            g.color = stmtRes->getText(2);
+            g.createdAtUnixEpochMs = stmtRes->getInt64(3);
+            g.updatedAtUnixEpochMs = stmtRes->getInt64(4);
             groups.push_back(std::move(g));
         }
 
@@ -305,7 +312,7 @@ ORDER BY name COLLATE NOCASE ASC;
     SqliteGroupStore::getGroupsContainingRepository(const RepositoryId& repoId)
     {
         constexpr std::string_view kSql = R"(
-SELECT DISTINCT g.id, g.name, g.created_at_ms, g.updated_at_ms
+SELECT DISTINCT g.id, g.name, g.color, g.created_at_ms, g.updated_at_ms
 FROM groups g
 JOIN group_repositories gr ON g.id = gr.group_id
 WHERE gr.repository_id = ?
@@ -338,8 +345,9 @@ ORDER BY g.name COLLATE NOCASE ASC;
             Group g;
             g.id = GroupId(stmtRes->getText(0));
             g.name = stmtRes->getText(1);
-            g.createdAtUnixEpochMs = stmtRes->getInt64(2);
-            g.updatedAtUnixEpochMs = stmtRes->getInt64(3);
+            g.color = stmtRes->getText(2);
+            g.createdAtUnixEpochMs = stmtRes->getInt64(3);
+            g.updatedAtUnixEpochMs = stmtRes->getInt64(4);
             groups.push_back(std::move(g));
         }
 

@@ -111,6 +111,11 @@ CREATE TABLE IF NOT EXISTS git_provider_profiles (
 );
 CREATE INDEX IF NOT EXISTS idx_git_provider_host ON git_provider_profiles(host);
 )";
+
+        constexpr std::string_view kMigrationV3Sql = R"(
+-- 9. Optional custom accent color on repository groups
+ALTER TABLE groups ADD COLUMN color TEXT NOT NULL DEFAULT '';
+)";
     } // namespace
 
     std::expected<int, SqliteError>
@@ -206,6 +211,44 @@ CREATE INDEX IF NOT EXISTS idx_git_provider_host ON git_provider_profiles(host);
 
             auto recordStmt = SqliteStatement::prepare(
                 conn, "INSERT INTO schema_migrations (version, applied_at_ms) VALUES (2, ?);");
+            if (!recordStmt)
+            {
+                return std::unexpected(recordStmt.error());
+            }
+            if (const auto bindRes = recordStmt->bindInt64(1, nowMs); !bindRes)
+            {
+                return std::unexpected(bindRes.error());
+            }
+            if (const auto stepRes = recordStmt->step(); !stepRes)
+            {
+                return std::unexpected(stepRes.error());
+            }
+
+            if (const auto commitRes = tx->commit(); !commitRes)
+            {
+                return std::unexpected(commitRes.error());
+            }
+        }
+
+        if (*curVer < 3)
+        {
+            auto tx = SqliteTransaction::begin(conn);
+            if (!tx)
+            {
+                return std::unexpected(tx.error());
+            }
+
+            if (const auto execRes = conn.execute(kMigrationV3Sql); !execRes)
+            {
+                return std::unexpected(execRes.error());
+            }
+
+            const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch())
+                .count();
+
+            auto recordStmt = SqliteStatement::prepare(
+                conn, "INSERT INTO schema_migrations (version, applied_at_ms) VALUES (3, ?);");
             if (!recordStmt)
             {
                 return std::unexpected(recordStmt.error());

@@ -20,6 +20,7 @@ namespace gf::groups::bl
             DuplicateName,
             RepositoryNotFound,
             InvalidName,
+            InvalidColor,
             StorageError
         };
 
@@ -41,10 +42,15 @@ namespace gf::groups::bl
                      repositories::ports::IRepositoryStore& repoStore) noexcept;
 
         [[nodiscard]] std::expected<bo::Group, GroupServiceError>
-        createGroup(std::string name, std::vector<repositories::bo::RepositoryId> repoIds = {}) const;
+        createGroup(std::string name,
+                    std::vector<repositories::bo::RepositoryId> repoIds = {},
+                    std::string color = {}) const;
 
         [[nodiscard]] std::expected<bo::Group, GroupServiceError>
         renameGroup(const bo::GroupId& id, std::string newName) const;
+
+        [[nodiscard]] std::expected<bo::Group, GroupServiceError>
+        updateGroupColor(const bo::GroupId& id, std::string color) const;
 
         [[nodiscard]] std::expected<bo::Group, GroupServiceError>
         addRepositoryToGroup(const bo::GroupId& id, const repositories::bo::RepositoryId& repoId) const;
@@ -63,6 +69,9 @@ namespace gf::groups::bl
 
         [[nodiscard]] std::expected<std::vector<bo::Group>, GroupServiceError>
         getAllGroups() const;
+
+        [[nodiscard]] std::expected<std::vector<bo::Group>, GroupServiceError>
+        getGroupsForRepository(const repositories::bo::RepositoryId& repoId) const;
 
         [[nodiscard]] std::expected<QuickOpenContext, GroupServiceError>
         resolveQuickOpenContext(const std::vector<bo::GroupId>& selectedGroupIds) const;

@@ -57,7 +57,7 @@ TEST_CASE (
 
     auto v1 = SchemaMigrator::getCurrentVersion(conn);
     REQUIRE(v1.has_value());
-    REQUIRE(*v1 >= 2);
+    REQUIRE(*v1 >= 3);
 
     // Subsequent idempotent execution
     auto migAgain = SchemaMigrator::migrateToLatest(conn);
@@ -193,6 +193,7 @@ TEST_CASE (
     Group group{
         .id = GroupId("grp-core"),
         .name = "Core Services",
+        .color = "#A78BFA",
         .repositoryIds = {RepositoryId("r3"), RepositoryId("r1")}, // Specific order: r3 then r1
         .createdAtUnixEpochMs = 100,
         .updatedAtUnixEpochMs = 100
@@ -200,19 +201,21 @@ TEST_CASE (
 
     REQUIRE(groupStore.save(group).has_value());
 
-    // Verify ordering is preserved
+    // Verify ordering and custom color are preserved
     auto loaded = groupStore.getById(GroupId("grp-core"));
     REQUIRE(loaded.has_value());
     REQUIRE(loaded->has_value());
+    REQUIRE((*loaded)->color == "#A78BFA");
     REQUIRE((*loaded)->repositoryIds.size() == 2);
     REQUIRE((*loaded)->repositoryIds[0] == RepositoryId("r3"));
     REQUIRE((*loaded)->repositoryIds[1] == RepositoryId("r1"));
 
-    // Lookup groups containing r1
+    // Lookup groups containing r1 also preserves color
     auto containingR1 = groupStore.getGroupsContainingRepository(RepositoryId("r1"));
     REQUIRE(containingR1.has_value());
     REQUIRE(containingR1->size() == 1);
     REQUIRE((*containingR1)[0].id == GroupId("grp-core"));
+    REQUIRE((*containingR1)[0].color == "#A78BFA");
 
     // If r3 is deleted from catalog, ON DELETE CASCADE foreign key must remove it from group
     REQUIRE(repoStore.remove(RepositoryId("r3")).has_value());

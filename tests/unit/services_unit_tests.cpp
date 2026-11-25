@@ -325,3 +325,50 @@ TEST_CASE (
     REQUIRE(wsService.deleteWorkspace(wsId).value_or(false));
     REQUIRE(wsService.getAllWorkspaces()->empty());
 }
+
+TEST_CASE (
+"GroupService validates, persists, and resolves custom and fallback group colors"
+,
+"[unit][services][groups][color]"
+)
+ {
+    auto conn = createMemoryDb();
+    SqliteRepositoryStore repoStore(conn);
+    SqliteGroupStore groupStore(conn);
+    GroupService groupService(groupStore, repoStore);
+
+    // Custom valid hex color on creation
+    auto gColored = groupService.createGroup("POS", {}, "#34D399");
+    REQUIRE(gColored.has_value());
+    REQUIRE(gColored->color == "#34D399");
+    REQUIRE(gColored->resolvedColor() == "#34D399");
+
+    // Empty color uses deterministic palette fallback
+    auto gAuto = groupService.createGroup("Backend");
+    REQUIRE(gAuto.has_value());
+    REQUIRE(gAuto->color.empty());
+    const auto fallbackColor = gAuto->resolvedColor();
+    REQUIRE(fallbackColor.size() == 7);
+    REQUIRE(fallbackColor[0] == '#');
+    REQUIRE(gAuto->resolvedColor() == fallbackColor);
+
+    // Invalid hex color rejected on create and update
+    auto badCreate = groupService.createGroup("Bad", {}, "not-a-color");
+    REQUIRE_FALSE(badCreate.has_value());
+    REQUIRE(badCreate.error().kind == GroupServiceError::Kind::InvalidColor);
+
+    auto badUpdate = groupService.updateGroupColor(gAuto->id, "#12345");
+    REQUIRE_FALSE(badUpdate.has_value());
+    REQUIRE(badUpdate.error().kind == GroupServiceError::Kind::InvalidColor);
+
+    // Valid update persists across reload
+    auto updated = groupService.updateGroupColor(gAuto->id, "#FB7185");
+    REQUIRE(updated.has_value());
+    REQUIRE(updated->color == "#FB7185");
+
+    auto reloaded = groupService.getGroup(gAuto->id);
+    REQUIRE(reloaded.has_value());
+    REQUIRE(reloaded->has_value());
+    REQUIRE((*reloaded)->color == "#FB7185");
+    REQUIRE((*reloaded)->resolvedColor() == "#FB7185");
+}
