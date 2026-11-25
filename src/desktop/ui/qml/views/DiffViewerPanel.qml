@@ -1334,6 +1334,7 @@ Rectangle {
                         id: inlineRowDelegate
                         width: inlineListView.width
                         readonly property bool isHeaderRow: model.lineKind === "header"
+                        readonly property real textAreaWidth: Math.max(60, inlineRowDelegate.width - 108)
                         readonly property alias codeEdit: inlineCodeText
                         height: isHeaderRow
                             ? 28
@@ -1440,8 +1441,8 @@ Rectangle {
                                     x: root.effectiveWrap ? 6 : (6 - root.horizontalScrollX)
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: (root.effectiveWrap && !inlineRowDelegate.isHeaderRow)
-                                        ? Math.max(60, parent.width - 14)
-                                        : Math.max(parent.width - 6, root.maxCodeWidth)
+                                        ? Math.max(60, inlineRowDelegate.textAreaWidth - 14)
+                                        : Math.max(inlineRowDelegate.textAreaWidth - 6, root.maxCodeWidth)
                                     height: implicitHeight
                                     text: model.richContent || model.content || ""
                                     color: model.fgColor
@@ -1684,6 +1685,8 @@ Rectangle {
                             id: splitRow
                             width: splitListView.width
                             readonly property bool isHeaderRow: modelData.isHunkHeader === true
+                            readonly property real leftTextAreaWidth: Math.max(40, Math.floor(splitRow.width / 2) - 40)
+                            readonly property real rightTextAreaWidth: Math.max(40, splitRow.width - Math.floor(splitRow.width / 2) - 41)
                             readonly property alias leftCodeEdit: leftCodeText
                             readonly property alias rightCodeEdit: rightCodeText
                             height: isHeaderRow
@@ -1779,8 +1782,8 @@ Rectangle {
                                                 x: root.effectiveWrap ? 6 : (6 - root.horizontalScrollX)
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 width: root.effectiveWrap
-                                                    ? Math.max(40, parent.width - 12)
-                                                    : Math.max(parent.width - 6, root.maxCodeWidth)
+                                                    ? Math.max(40, splitRow.leftTextAreaWidth - 12)
+                                                    : Math.max(splitRow.leftTextAreaWidth - 6, root.maxCodeWidth)
                                                 height: implicitHeight
                                                 text: modelData.leftRichContent || modelData.leftContent || ""
                                                 color: modelData.leftFgColor || "#CBD5E1"
@@ -1859,8 +1862,8 @@ Rectangle {
                                                 x: root.effectiveWrap ? 6 : (6 - root.horizontalScrollX)
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 width: root.effectiveWrap
-                                                    ? Math.max(40, parent.width - 12)
-                                                    : Math.max(parent.width - 6, root.maxCodeWidth)
+                                                    ? Math.max(40, splitRow.rightTextAreaWidth - 12)
+                                                    : Math.max(splitRow.rightTextAreaWidth - 6, root.maxCodeWidth)
                                                 height: implicitHeight
                                                 text: modelData.rightRichContent || modelData.rightContent || ""
                                                 color: modelData.rightFgColor || "#CBD5E1"
@@ -2001,6 +2004,7 @@ Rectangle {
                     delegate: Rectangle {
                         id: hunkCardDelegate
                         readonly property int hunkIndex: index
+                        readonly property real hunkTextAreaWidth: Math.max(60, hunkCardDelegate.width - 125)
                         x: 12
                         width: hunkListView.width - 24
                         implicitHeight: hunkCol.implicitHeight + 16
@@ -2099,6 +2103,7 @@ Rectangle {
                                                 }
 
                                                 Text {
+                                                    Layout.preferredWidth: 12
                                                     Layout.alignment: root.effectiveWrap ? Qt.AlignTop : Qt.AlignVCenter
                                                     Layout.topMargin: root.effectiveWrap ? 2 : 0
                                                     text: {
@@ -2110,20 +2115,29 @@ Rectangle {
                                                     font.family: root.monoFont
                                                     font.pixelSize: 11
                                                     font.bold: true
+                                                    horizontalAlignment: Text.AlignHCenter
                                                 }
 
-                                                DiffCodeText {
-                                                    id: hunkLineText
-                                                    selTargetName: "hunk"
-                                                    hunkIdx: hunkCardDelegate.hunkIndex
-                                                    rowIndex: index
+                                                Item {
                                                     Layout.fillWidth: true
-                                                    Layout.preferredHeight: implicitHeight
-                                                    Layout.alignment: Qt.AlignVCenter
-                                                    text: modelData.richContent || modelData.content || ""
-                                                    color: modelData.fgColor || "#CBD5E1"
-                                                    font.pixelSize: 11
-                                                    wrapMode: root.effectiveWrap ? TextEdit.WrapAtWordBoundaryOrAnywhere : TextEdit.NoWrap
+                                                    Layout.fillHeight: true
+                                                    clip: true
+
+                                                    DiffCodeText {
+                                                        id: hunkLineText
+                                                        selTargetName: "hunk"
+                                                        hunkIdx: hunkCardDelegate.hunkIndex
+                                                        rowIndex: index
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        width: root.effectiveWrap
+                                                            ? hunkCardDelegate.hunkTextAreaWidth
+                                                            : Math.max(hunkCardDelegate.hunkTextAreaWidth, root.maxCodeWidth)
+                                                        height: implicitHeight
+                                                        text: modelData.richContent || modelData.content || ""
+                                                        color: modelData.fgColor || "#CBD5E1"
+                                                        font.pixelSize: 11
+                                                        wrapMode: root.effectiveWrap ? TextEdit.WrapAtWordBoundaryOrAnywhere : TextEdit.NoWrap
+                                                    }
                                                 }
                                             }
 

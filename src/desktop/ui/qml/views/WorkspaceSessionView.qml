@@ -133,6 +133,7 @@ Rectangle {
                 // Back to Home Hub button
                 Button {
                     Layout.preferredHeight: 30
+                    Layout.alignment: Qt.AlignVCenter
                     leftPadding: 10
                     rightPadding: 10
                     hoverEnabled: true
@@ -182,6 +183,7 @@ Rectangle {
                 Rectangle {
                     visible: root.sessionVm && root.sessionVm.currentGroupName && root.sessionVm.currentGroupName.length > 0
                     Layout.preferredHeight: 28
+                    Layout.alignment: Qt.AlignVCenter
                     implicitWidth: groupBadgeRow.implicitWidth + 16
                     radius: 14
                     color: "#221248"
@@ -238,17 +240,21 @@ Rectangle {
                 Rectangle {
                     Layout.preferredWidth: 1
                     Layout.preferredHeight: 20
+                    Layout.alignment: Qt.AlignVCenter
                     color: "#1E293B"
                 }
 
                 // Scrollable Tab Bar for Open Repositories
                 ScrollView {
+                    id: tabsScrollView
                     SmoothWheelScroller {}
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
+                    ScrollBar.vertical.policy: ScrollBar.AlwaysOff
 
                     RowLayout {
+                        height: tabsScrollView.availableHeight
                         spacing: 6
 
                         Repeater {
@@ -258,6 +264,7 @@ Rectangle {
                                 id: tabRect
                                 readonly property bool isActiveTab: Boolean(root.sessionVm && root.sessionVm.activeTabIndex === index)
                                 Layout.preferredHeight: 30
+                                Layout.alignment: Qt.AlignVCenter
                                 implicitWidth: tabRow.implicitWidth + 22
                                 radius: 8
                                 color: isActiveTab
@@ -374,6 +381,7 @@ Rectangle {
                         Button {
                             Layout.preferredHeight: 28
                             Layout.preferredWidth: 28
+                            Layout.alignment: Qt.AlignVCenter
                             hoverEnabled: true
                             background: Rectangle {
                                 color: parent.hovered ? "#1A2639" : "#111824"
