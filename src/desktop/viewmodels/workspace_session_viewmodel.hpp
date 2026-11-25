@@ -79,22 +79,22 @@ namespace gf::desktop
     public:
         struct TabGroupBadge
         {
-            QString id;
-            QString name;
-            QString color;
+            QString id{};
+            QString name{};
+            QString color{};
         };
 
         struct SessionTabItem
         {
-            QString repoId;
-            QString name;
-            QString path;
+            QString repoId{};
+            QString name{};
+            QString path{};
             bool isDirty = false;
-            QString branch;
-            std::vector<TabGroupBadge> groups;
-            QString primaryGroupId;
-            QString primaryGroupName;
-            QString primaryGroupColor;
+            QString branch{};
+            std::vector<TabGroupBadge> groups{};
+            QString primaryGroupId{};
+            QString primaryGroupName{};
+            QString primaryGroupColor{};
         };
 
         explicit WorkspaceSessionViewModel(repositories::bl::RepositoryService& repoService,

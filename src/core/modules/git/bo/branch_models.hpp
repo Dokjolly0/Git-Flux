@@ -13,11 +13,11 @@ namespace gf::git::bo
 
     struct GitBranch
     {
-        std::string name;
-        std::string shortName;
-        std::string fullName;
-        std::string targetCommitSha;
-        std::string upstream;
+        std::string name{};
+        std::string shortName{};
+        std::string fullName{};
+        std::string targetCommitSha{};
+        std::string upstream{};
         int ahead = 0;
         int behind = 0;
         bool isCurrent = false;

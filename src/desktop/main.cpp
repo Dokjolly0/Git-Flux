@@ -114,6 +114,10 @@ int main(int argc, char* argv[])
     QCoreApplication::setOrganizationName(QStringLiteral("GitFlux"));
     QCoreApplication::setApplicationName(QStringLiteral("GitFlux"));
     QCoreApplication::setApplicationVersion(QStringLiteral("0.1.0"));
+    QGuiApplication::setApplicationDisplayName(QStringLiteral("Git Flux"));
+    // Set desktopFileName before constructing QGuiApplication so xdg-desktop-portal
+    // registers the canonical "git-flux" app ID once instead of failing on a second registration.
+    QGuiApplication::setDesktopFileName(QStringLiteral("git-flux"));
 
     // Ensure smooth, fluid scrolling across all Flickables, ListViews, and ScrollViews (Qt 6.6+ physics)
     if (qEnvironmentVariableIsEmpty("QT_QUICK_FLICKABLE_WHEEL_DECELERATION"))
@@ -155,8 +159,6 @@ int main(int argc, char* argv[])
     }
 
     QGuiApplication app(argc, argv);
-    app.setApplicationDisplayName(QStringLiteral("Git Flux"));
-    app.setDesktopFileName(QStringLiteral("git-flux"));
 
     // Configure dark application palette so Qt Quick Controls Basic fallbacks and tooltips match FluxTheme
     {
@@ -225,6 +227,13 @@ int main(int argc, char* argv[])
     parser.addOption(smokeTestOption);
 
     parser.process(app);
+
+#ifndef _WIN32
+    if (parser.isSet(debugOption))
+    {
+        std::cout << "[DEBUG] Git Flux console logging enabled." << std::endl;
+    }
+#endif
 
     std::filesystem::path dbPath;
     if (parser.isSet(dbOption))

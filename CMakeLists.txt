@@ -229,7 +229,7 @@ if (GF_BUILD_DESKTOP)
             qt_policy(SET QTP0001 NEW)
         endif ()
         if (QT_KNOWN_POLICY_QTP0004)
-            qt_policy(SET QTP0004 OLD)
+            qt_policy(SET QTP0004 NEW)
         endif ()
     endif ()
 
@@ -355,6 +355,9 @@ if (GF_BUILD_DESKTOP)
             assets/icons/providers/server.png
             assets/icons/providers/url.png
     )
+    if (QT_SKIP_AUTO_QML_PLUGIN_INCLUSION)
+        set_target_properties(git_flux PROPERTIES QT_QML_MODULE_NO_IMPORT_SCAN ON)
+    endif ()
     target_include_directories(git_flux PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/src"
     )

@@ -21,8 +21,8 @@ namespace gf::git::bo
 
     struct GitCommand
     {
-        std::vector<std::string> args;
-        std::filesystem::path workingDirectory;
+        std::vector<std::string> args{};
+        std::filesystem::path workingDirectory{};
         GitLockPolicy lockPolicy = GitLockPolicy::NoOptionalLocks;
         std::chrono::milliseconds timeout{30'000};
         std::function<void(std::string_view)> onStderrChunk{};

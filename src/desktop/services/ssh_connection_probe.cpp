@@ -16,6 +16,20 @@ namespace gf::desktop::services
     {
     }
 
+    SshConnectionProbe::~SshConnectionProbe()
+    {
+        const auto children = findChildren<QProcess*>(QString(), Qt::FindDirectChildrenOnly);
+        for (auto* process : children)
+        {
+            process->disconnect(this);
+            if (process->state() != QProcess::NotRunning)
+            {
+                process->kill();
+                process->waitForFinished(500);
+            }
+        }
+    }
+
     QStringList SshConnectionProbe::arguments(const Request& request, int connectTimeoutSec)
     {
         QStringList args{

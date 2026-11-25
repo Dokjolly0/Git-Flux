@@ -61,10 +61,10 @@ namespace gf::groups::bo
 
     struct Group
     {
-        GroupId id;
-        std::string name;
-        std::string color; // Optional "#RRGGBB" custom color; empty uses deterministic palette fallback
-        std::vector<repositories::bo::RepositoryId> repositoryIds; // ordered list
+        GroupId id{};
+        std::string name{};
+        std::string color{}; // Optional "#RRGGBB" custom color; empty uses deterministic palette fallback
+        std::vector<repositories::bo::RepositoryId> repositoryIds{}; // ordered list
         std::int64_t createdAtUnixEpochMs = 0;
         std::int64_t updatedAtUnixEpochMs = 0;
 

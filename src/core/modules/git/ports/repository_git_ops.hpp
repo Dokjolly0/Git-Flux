@@ -55,8 +55,8 @@ namespace gf::git::ports
 
         Kind kind = Kind::ExecutionFailed;
         int exitCode = -1;
-        std::string message;
-        std::string command;
+        std::string message{};
+        std::string command{};
     };
 
     class IRepositoryGitOps

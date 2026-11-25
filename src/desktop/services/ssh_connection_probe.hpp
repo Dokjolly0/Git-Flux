@@ -26,6 +26,7 @@ namespace gf::desktop::services
         };
 
         explicit SshConnectionProbe(QObject* parent = nullptr);
+        ~SshConnectionProbe() override;
 
         /// Starts a probe; the result arrives through probeFinished(). `tag` is echoed back.
         void probe(const QString& tag, const Request& request);
