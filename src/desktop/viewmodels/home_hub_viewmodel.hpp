@@ -65,6 +65,7 @@ namespace gf::desktop
         Q_PROPERTY(bool showRepositories READ showRepositories WRITE setShowRepositories NOTIFY showRepositoriesChanged)
         Q_PROPERTY(bool showGroups READ showGroups WRITE setShowGroups NOTIFY showGroupsChanged)
         Q_PROPERTY(bool showWorkspaces READ showWorkspaces WRITE setShowWorkspaces NOTIFY showWorkspacesChanged)
+        Q_PROPERTY(QStringList groupColorPalette READ groupColorPalette CONSTANT)
 
     public:
         explicit HomeHubViewModel(gf::repositories::bl::RepositoryService& repoService,
@@ -132,8 +133,13 @@ namespace gf::desktop
     Q_INVOKABLE bool renameRepository(const QString& repoId, const QString& newDisplayName);
     Q_INVOKABLE bool removeRepository(const QString& repoId);
 
-    Q_INVOKABLE bool createGroup(const QString& name, const QStringList& repoIds = {});
+        [[nodiscard]] QStringList groupColorPalette() const;
+
+    Q_INVOKABLE bool createGroup(const QString& name,
+                                 const QStringList& repoIds = {},
+                                 const QString& color = QString());
     Q_INVOKABLE bool renameGroup(const QString& groupId, const QString& newName);
+    Q_INVOKABLE bool updateGroupColor(const QString& groupId, const QString& color);
     Q_INVOKABLE bool addRepositoryToGroup(const QString& groupId, const QString& repoId);
     Q_INVOKABLE bool removeRepositoryFromGroup(const QString& groupId, const QString& repoId);
     Q_INVOKABLE bool removeGroup(const QString& groupId);

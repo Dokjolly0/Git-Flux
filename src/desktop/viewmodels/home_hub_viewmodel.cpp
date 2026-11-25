@@ -737,7 +737,18 @@ namespace gf::desktop
         return true;
     }
 
-    bool HomeHubViewModel::createGroup(const QString& name, const QStringList& repoIds)
+    QStringList HomeHubViewModel::groupColorPalette() const
+    {
+        QStringList palette;
+        palette.reserve(static_cast<qsizetype>(gf::groups::bo::kDefaultGroupPalette.size()));
+        for (const auto hex : gf::groups::bo::kDefaultGroupPalette)
+        {
+            palette.append(QString::fromUtf8(hex.data(), static_cast<qsizetype>(hex.size())));
+        }
+        return palette;
+    }
+
+    bool HomeHubViewModel::createGroup(const QString& name, const QStringList& repoIds, const QString& color)
     {
         if (name.trimmed().isEmpty())
         {
@@ -752,7 +763,7 @@ namespace gf::desktop
             ids.push_back(gf::repositories::bo::RepositoryId{id.toStdString()});
         }
 
-        auto result = m_groupService.createGroup(name.trimmed().toStdString(), ids);
+        auto result = m_groupService.createGroup(name.trimmed().toStdString(), ids, color.trimmed().toStdString());
         if (!result)
         {
             if (result.error().kind == gf::groups::bl::GroupServiceError::Kind::DuplicateName)
@@ -986,6 +997,31 @@ namespace gf::desktop
         const QString successMsg = QStringLiteral("Gruppo rinominato in: %1").arg(QString::fromStdString(res->name));
         setLastSuccessMessage(successMsg);
         setStatus(successMsg);
+        refreshAll();
+        return true;
+    }
+
+    bool HomeHubViewModel::updateGroupColor(const QString& groupId, const QString& color)
+    {
+        if (groupId.trimmed().isEmpty())
+        {
+            return false;
+        }
+
+        auto res = m_groupService.updateGroupColor(
+            gf::groups::bo::GroupId{groupId.toStdString()},
+            color.trimmed().toStdString()
+        );
+        if (!res)
+        {
+            const QString err = QStringLiteral("Errore aggiornamento colore gruppo: ") +
+                QString::fromStdString(res.error().message);
+            setLastError(err);
+            emit errorOccurred(err);
+            return false;
+        }
+
+        setStatus(QStringLiteral("Colore del gruppo '%1' aggiornato").arg(QString::fromStdString(res->name)));
         refreshAll();
         return true;
     }

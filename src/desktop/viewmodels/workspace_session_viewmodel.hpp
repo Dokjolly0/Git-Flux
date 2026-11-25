@@ -21,6 +21,11 @@ namespace gf::repositories::bl
     class RepositoryService;
 }
 
+namespace gf::groups::bl
+{
+    class GroupService;
+}
+
 namespace gf::workspaces::bl
 {
     class WorkspaceService;
@@ -52,12 +57,15 @@ namespace gf::desktop
         Q_OBJECT
 
         Q_PROPERTY(QVariantList tabs READ tabs NOTIFY tabsChanged)
+        Q_PROPERTY(QVariantList tabClusters READ tabClusters NOTIFY tabsChanged)
         Q_PROPERTY(int activeTabIndex READ activeTabIndex WRITE setActiveTabIndex NOTIFY activeTabChanged)
         Q_PROPERTY(QString activeRepoId READ activeRepoId NOTIFY activeTabChanged)
         Q_PROPERTY(QString activeRepoName READ activeRepoName NOTIFY activeTabChanged)
         Q_PROPERTY(QString activeRepoPath READ activeRepoPath NOTIFY activeTabChanged)
         Q_PROPERTY(bool hasOpenTabs READ hasOpenTabs NOTIFY tabsChanged)
         Q_PROPERTY(QString currentGroupName READ currentGroupName NOTIFY currentGroupNameChanged)
+        Q_PROPERTY(QString currentGroupColor READ currentGroupColor NOTIFY currentGroupNameChanged)
+        Q_PROPERTY(QString sessionKind READ sessionKind NOTIFY currentGroupNameChanged)
 
         Q_PROPERTY(WorkingTreeViewModel* workingTree READ workingTree CONSTANT)
         Q_PROPERTY(CommitBoxViewModel* commitBox READ commitBox CONSTANT)
@@ -69,6 +77,13 @@ namespace gf::desktop
         Q_PROPERTY(bool isRebaseInProgress READ isRebaseInProgress NOTIFY rebaseStatusChanged)
 
     public:
+        struct TabGroupBadge
+        {
+            QString id;
+            QString name;
+            QString color;
+        };
+
         struct SessionTabItem
         {
             QString repoId;
@@ -76,6 +91,10 @@ namespace gf::desktop
             QString path;
             bool isDirty = false;
             QString branch;
+            std::vector<TabGroupBadge> groups;
+            QString primaryGroupId;
+            QString primaryGroupName;
+            QString primaryGroupColor;
         };
 
         explicit WorkspaceSessionViewModel(repositories::bl::RepositoryService& repoService,
@@ -93,7 +112,10 @@ namespace gf::desktop
                                            QObject* parent = nullptr);
         ~WorkspaceSessionViewModel() override = default;
 
+        void setGroupService(groups::bl::GroupService* groupService) noexcept { m_groupService = groupService; }
+
         [[nodiscard]] QVariantList tabs() const;
+        [[nodiscard]] QVariantList tabClusters() const;
         [[nodiscard]] int activeTabIndex() const noexcept { return m_activeTabIndex; }
         void setActiveTabIndex(int index);
 
@@ -102,6 +124,8 @@ namespace gf::desktop
         [[nodiscard]] QString activeRepoPath() const;
         [[nodiscard]] bool hasOpenTabs() const noexcept { return !m_tabs.empty(); }
         [[nodiscard]] QString currentGroupName() const noexcept { return m_currentGroupName; }
+        [[nodiscard]] QString currentGroupColor() const noexcept { return m_currentGroupColor; }
+        [[nodiscard]] QString sessionKind() const noexcept { return m_sessionKind; }
         [[nodiscard]] bool isRebaseInProgress() const noexcept { return m_isRebaseInProgress; }
 
         [[nodiscard]] WorkingTreeViewModel* workingTree() noexcept { return &m_workingTree; }
@@ -114,11 +138,14 @@ namespace gf::desktop
 
     Q_INVOKABLE void openRepository(const QString& repoId, const QString& name, const QString& path);
     Q_INVOKABLE void openRepositories(const QStringList& repoIds);
-    Q_INVOKABLE void openGroup(const QString& groupName, const QStringList& repoIds);
+    Q_INVOKABLE void openGroup(const QString& groupName,
+                               const QStringList& repoIds,
+                               const QString& groupId = QString());
     Q_INVOKABLE void openWorkspace(const QString& workspaceId);
     Q_INVOKABLE void closeTab(int index);
     Q_INVOKABLE void closeAllTabs();
     Q_INVOKABLE void refreshActiveTab();
+    Q_INVOKABLE void refreshTabGroups();
     Q_INVOKABLE void checkWorkingTreeUpdates();
 
         /// Test helper: processes events until this session and its viewmodels have no git work
@@ -146,6 +173,9 @@ namespace gf::desktop
         void rebaseFailed(const QString& message);
 
     private:
+        [[nodiscard]] QVariantMap buildTabVariantMap(const SessionTabItem& item, int tabIndex) const;
+        void populateTabGroups(SessionTabItem& item) const;
+        void rebuildAllTabGroups();
         void addTabInternal(const QString& repoId, const QString& name, const QString& path);
         void onCommitSucceeded(const QString& sha, const QString& summary);
         void onFsDebouncedBatch(const gf::git::bo::FsDebouncedBatch& batch);
@@ -157,6 +187,7 @@ namespace gf::desktop
 
         repositories::bl::RepositoryService& m_repoService;
         workspaces::bl::WorkspaceService& m_workspaceService;
+        groups::bl::GroupService* m_groupService{nullptr};
         gf::git::bl::GitRebaseService& m_rebaseService;
         gf::git::bl::GitRepositoryWatcherService* m_watcherService{nullptr};
 
@@ -169,9 +200,12 @@ namespace gf::desktop
         ConflictResolverViewModel m_conflictResolver;
 
         std::vector<SessionTabItem> m_tabs;
+        std::vector<QString> m_preferredGroupOrder;
         int m_activeTabIndex = -1;
         bool m_isRebaseInProgress{false};
         QString m_currentGroupName;
+        QString m_currentGroupColor;
+        QString m_sessionKind{QStringLiteral("single")};
 
         // HEAD/branch seen by the last working tree refresh of the active tab: a change means a
         // commit, checkout, reset... (from the app or an external git) and reloads the history.

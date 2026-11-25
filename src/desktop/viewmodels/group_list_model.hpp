@@ -22,6 +22,7 @@ namespace gf::desktop
     {
         QString id;
         QString name;
+        QString color;
         int repositoryCount{0};
         QStringList repositoryIds;
         QStringList repositoryNames;
@@ -36,6 +37,7 @@ namespace gf::desktop
         {
             IdRole = Qt::UserRole + 1,
             NameRole,
+            ColorRole,
             RepositoryCountRole,
             RepositoryIdsRole,
             RepositoryNamesRole

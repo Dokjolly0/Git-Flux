@@ -13,11 +13,13 @@
 #include "core/modules/git/bl/git_branch_service.hpp"
 #include "core/modules/git/bl/git_history_service.hpp"
 #include "core/modules/git/bl/git_remote_merge_service.hpp"
+#include "core/modules/groups/bl/group_service.hpp"
 #include "core/modules/repositories/bl/repository_service.hpp"
 #include "core/modules/workspaces/bl/workspace_service.hpp"
 
 #include <QMetaObject>
 #include <algorithm>
+#include <unordered_map>
 
 namespace gf::desktop
 {
@@ -88,21 +90,208 @@ namespace gf::desktop
         }
     }
 
+    QVariantMap WorkspaceSessionViewModel::buildTabVariantMap(const SessionTabItem& item, const int tabIndex) const
+    {
+        QVariantMap map;
+        map[QStringLiteral("tabIndex")] = tabIndex;
+        map[QStringLiteral("repoId")] = item.repoId;
+        map[QStringLiteral("name")] = item.name;
+        map[QStringLiteral("path")] = item.path;
+        map[QStringLiteral("isDirty")] = item.isDirty;
+        map[QStringLiteral("branch")] = item.branch;
+        map[QStringLiteral("primaryGroupId")] = item.primaryGroupId;
+        map[QStringLiteral("primaryGroupName")] = item.primaryGroupName;
+        map[QStringLiteral("primaryGroupColor")] = item.primaryGroupColor;
+
+        QVariantList groupsList;
+        groupsList.reserve(static_cast<qsizetype>(item.groups.size()));
+        QStringList groupIds;
+        groupIds.reserve(static_cast<qsizetype>(item.groups.size()));
+        for (const auto& g : item.groups)
+        {
+            QVariantMap gMap;
+            gMap[QStringLiteral("id")] = g.id;
+            gMap[QStringLiteral("name")] = g.name;
+            gMap[QStringLiteral("color")] = g.color;
+            groupsList.append(gMap);
+            groupIds.append(g.id);
+        }
+        map[QStringLiteral("groups")] = groupsList;
+        map[QStringLiteral("groupIds")] = groupIds;
+        return map;
+    }
+
+    void WorkspaceSessionViewModel::populateTabGroups(SessionTabItem& item) const
+    {
+        item.groups.clear();
+        item.primaryGroupId.clear();
+        item.primaryGroupName.clear();
+        item.primaryGroupColor.clear();
+
+        if (!m_groupService || item.repoId.isEmpty())
+        {
+            return;
+        }
+
+        const auto groupsRes = m_groupService->getGroupsForRepository(
+            repositories::bo::RepositoryId{item.repoId.toStdString()});
+        if (!groupsRes || groupsRes->empty())
+        {
+            return;
+        }
+
+        item.groups.reserve(groupsRes->size());
+        for (const auto& g : *groupsRes)
+        {
+            const auto col = g.resolvedColor();
+            item.groups.push_back(TabGroupBadge{
+                .id = QString::fromStdString(g.id.value()),
+                .name = QString::fromStdString(g.name),
+                .color = QString::fromUtf8(col.data(), static_cast<qsizetype>(col.size()))
+            });
+        }
+
+        auto orderRank = [this](const QString& groupId) -> std::size_t
+        {
+            const auto it = std::ranges::find(m_preferredGroupOrder, groupId);
+            return it != m_preferredGroupOrder.end()
+                       ? static_cast<std::size_t>(std::distance(m_preferredGroupOrder.begin(), it))
+                       : m_preferredGroupOrder.size();
+        };
+
+        std::ranges::stable_sort(item.groups, [&](const TabGroupBadge& a, const TabGroupBadge& b)
+        {
+            const auto rankA = orderRank(a.id);
+            const auto rankB = orderRank(b.id);
+            if (rankA != rankB)
+            {
+                return rankA < rankB;
+            }
+            return a.name.compare(b.name, Qt::CaseInsensitive) < 0;
+        });
+
+        item.primaryGroupId = item.groups.front().id;
+        item.primaryGroupName = item.groups.front().name;
+        item.primaryGroupColor = item.groups.front().color;
+    }
+
+    void WorkspaceSessionViewModel::rebuildAllTabGroups()
+    {
+        for (auto& tab : m_tabs)
+        {
+            populateTabGroups(tab);
+        }
+    }
+
+    void WorkspaceSessionViewModel::refreshTabGroups()
+    {
+        if (m_tabs.empty())
+        {
+            return;
+        }
+        rebuildAllTabGroups();
+
+        if (m_sessionKind == QStringLiteral("group") && m_groupService && !m_preferredGroupOrder.empty())
+        {
+            const auto gRes = m_groupService->getGroup(
+                groups::bo::GroupId{m_preferredGroupOrder.front().toStdString()});
+            if (gRes && gRes->has_value())
+            {
+                const auto col = (**gRes).resolvedColor();
+                m_currentGroupName = QString::fromStdString((**gRes).name);
+                m_currentGroupColor = QString::fromUtf8(col.data(), static_cast<qsizetype>(col.size()));
+                emit currentGroupNameChanged();
+            }
+        }
+
+        emit tabsChanged();
+    }
+
     QVariantList WorkspaceSessionViewModel::tabs() const
     {
         QVariantList list;
         list.reserve(static_cast<qsizetype>(m_tabs.size()));
-        for (const auto& item : m_tabs)
+        for (int i = 0; i < static_cast<int>(m_tabs.size()); ++i)
         {
-            QVariantMap map;
-            map[QStringLiteral("repoId")] = item.repoId;
-            map[QStringLiteral("name")] = item.name;
-            map[QStringLiteral("path")] = item.path;
-            map[QStringLiteral("isDirty")] = item.isDirty;
-            map[QStringLiteral("branch")] = item.branch;
-            list.append(map);
+            list.append(buildTabVariantMap(m_tabs[static_cast<std::size_t>(i)], i));
         }
         return list;
+    }
+
+    QVariantList WorkspaceSessionViewModel::tabClusters() const
+    {
+        struct ClusterBucket
+        {
+            QString groupId;
+            QString groupName;
+            QString groupColor;
+            bool isUngrouped = false;
+            std::vector<int> tabIndices;
+        };
+
+        std::vector<ClusterBucket> buckets;
+        std::unordered_map<std::string, std::size_t> keyToBucket;
+
+        for (int i = 0; i < static_cast<int>(m_tabs.size()); ++i)
+        {
+            const auto& tab = m_tabs[static_cast<std::size_t>(i)];
+            const std::string key = tab.primaryGroupId.toStdString();
+            if (const auto it = keyToBucket.find(key); it != keyToBucket.end())
+            {
+                buckets[it->second].tabIndices.push_back(i);
+            }
+            else
+            {
+                keyToBucket.emplace(key, buckets.size());
+                buckets.push_back(ClusterBucket{
+                    .groupId = tab.primaryGroupId,
+                    .groupName = tab.primaryGroupName,
+                    .groupColor = tab.primaryGroupColor,
+                    .isUngrouped = tab.primaryGroupId.isEmpty(),
+                    .tabIndices = {i}
+                });
+            }
+        }
+
+        auto clusterRank = [this](const ClusterBucket& b) -> std::size_t
+        {
+            if (b.isUngrouped)
+            {
+                return m_preferredGroupOrder.size() + 2;
+            }
+            const auto it = std::ranges::find(m_preferredGroupOrder, b.groupId);
+            if (it != m_preferredGroupOrder.end())
+            {
+                return static_cast<std::size_t>(std::distance(m_preferredGroupOrder.begin(), it));
+            }
+            return m_preferredGroupOrder.size() + 1;
+        };
+
+        std::ranges::stable_sort(buckets, [&](const ClusterBucket& a, const ClusterBucket& b)
+        {
+            return clusterRank(a) < clusterRank(b);
+        });
+
+        QVariantList result;
+        result.reserve(static_cast<qsizetype>(buckets.size()));
+        for (const auto& bucket : buckets)
+        {
+            QVariantMap cMap;
+            cMap[QStringLiteral("groupId")] = bucket.groupId;
+            cMap[QStringLiteral("groupName")] = bucket.groupName;
+            cMap[QStringLiteral("groupColor")] = bucket.groupColor;
+            cMap[QStringLiteral("isUngrouped")] = bucket.isUngrouped;
+
+            QVariantList cTabs;
+            cTabs.reserve(static_cast<qsizetype>(bucket.tabIndices.size()));
+            for (const int idx : bucket.tabIndices)
+            {
+                cTabs.append(buildTabVariantMap(m_tabs[static_cast<std::size_t>(idx)], idx));
+            }
+            cMap[QStringLiteral("tabs")] = cTabs;
+            result.append(cMap);
+        }
+        return result;
     }
 
     void WorkspaceSessionViewModel::setActiveTabIndex(int index)
@@ -179,13 +368,15 @@ namespace gf::desktop
                 QString::fromStdString(std::filesystem::path(resolvedPath.toStdString()).filename().string());
         }
 
-        m_tabs.push_back(SessionTabItem{
+        SessionTabItem newItem{
             .repoId = repoId,
             .name = resolvedName.isEmpty() ? QStringLiteral("Repository") : resolvedName,
             .path = resolvedPath,
             .isDirty = false,
             .branch = {}
-        });
+        };
+        populateTabGroups(newItem);
+        m_tabs.push_back(std::move(newItem));
 
         if (m_watcherService && !resolvedPath.isEmpty())
         {
@@ -278,10 +469,46 @@ namespace gf::desktop
         }
     }
 
-    void WorkspaceSessionViewModel::openGroup(const QString& groupName, const QStringList& repoIds)
+    void WorkspaceSessionViewModel::openGroup(const QString& groupName,
+                                              const QStringList& repoIds,
+                                              const QString& groupId)
     {
         closeAllTabs();
+        m_sessionKind = QStringLiteral("group");
         m_currentGroupName = groupName;
+        m_currentGroupColor.clear();
+        m_preferredGroupOrder.clear();
+
+        if (!groupId.isEmpty())
+        {
+            m_preferredGroupOrder.push_back(groupId);
+            if (m_groupService)
+            {
+                if (const auto gRes = m_groupService->getGroup(groups::bo::GroupId{groupId.toStdString()});
+                    gRes && gRes->has_value())
+                {
+                    const auto col = (**gRes).resolvedColor();
+                    m_currentGroupColor = QString::fromUtf8(col.data(), static_cast<qsizetype>(col.size()));
+                }
+            }
+        }
+        else if (m_groupService && !groupName.isEmpty())
+        {
+            if (const auto allRes = m_groupService->getAllGroups(); allRes)
+            {
+                for (const auto& g : *allRes)
+                {
+                    if (QString::fromStdString(g.name) == groupName)
+                    {
+                        m_preferredGroupOrder.push_back(QString::fromStdString(g.id.value()));
+                        const auto col = g.resolvedColor();
+                        m_currentGroupColor = QString::fromUtf8(col.data(), static_cast<qsizetype>(col.size()));
+                        break;
+                    }
+                }
+            }
+        }
+
         emit currentGroupNameChanged();
         openRepositories(repoIds);
     }
@@ -296,7 +523,15 @@ namespace gf::desktop
 
         closeAllTabs();
 
+        m_sessionKind = QStringLiteral("workspace");
         m_currentGroupName = QString::fromStdString((*wsOpt)->name);
+        m_currentGroupColor = QStringLiteral("#38BDF8");
+        m_preferredGroupOrder.clear();
+        m_preferredGroupOrder.reserve((*wsOpt)->groupIds.size());
+        for (const auto& gId : (*wsOpt)->groupIds)
+        {
+            m_preferredGroupOrder.push_back(QString::fromStdString(gId.value()));
+        }
         emit currentGroupNameChanged();
 
         auto reposRes = m_workspaceService.resolveWorkspaceRepositories(
@@ -340,9 +575,12 @@ namespace gf::desktop
 
         if (m_tabs.empty())
         {
-            if (!m_currentGroupName.isEmpty())
+            m_preferredGroupOrder.clear();
+            if (!m_currentGroupName.isEmpty() || !m_currentGroupColor.isEmpty() || m_sessionKind != QStringLiteral("single"))
             {
                 m_currentGroupName.clear();
+                m_currentGroupColor.clear();
+                m_sessionKind = QStringLiteral("single");
                 emit currentGroupNameChanged();
             }
             m_activeTabIndex = -1;
@@ -377,10 +615,13 @@ namespace gf::desktop
         }
 
         m_tabs.clear();
+        m_preferredGroupOrder.clear();
         m_activeTabIndex = -1;
-        if (!m_currentGroupName.isEmpty())
+        if (!m_currentGroupName.isEmpty() || !m_currentGroupColor.isEmpty() || m_sessionKind != QStringLiteral("single"))
         {
             m_currentGroupName.clear();
+            m_currentGroupColor.clear();
+            m_sessionKind = QStringLiteral("single");
             emit currentGroupNameChanged();
         }
         m_workingTree.refresh({});

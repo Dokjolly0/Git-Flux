@@ -5227,3 +5227,108 @@ TEST_CASE("DiffViewModel and DiffFileInspector preview images, archives, and bin
         CHECK_FALSE(insp.metadataRows.isEmpty());
     }
 }
+
+TEST_CASE("WorkspaceSessionViewModel clusters tabs by group and exposes multi-group badges", "[viewmodel][tabs][groups]")
+{
+    ensureQtApp();
+
+    gf::desktop::AppBootstrap bootstrap(":memory:");
+    bootstrap.initialize();
+
+    const auto baseDir = std::filesystem::temp_directory_path() / "gf-tab-groups-vm-test";
+    std::error_code ec;
+    std::filesystem::remove_all(baseDir, ec);
+    const auto repoApiDir = baseDir / "api";
+    const auto repoSharedDir = baseDir / "shared-core";
+    const auto repoPosDir = baseDir / "pos-ui";
+    const auto repoSoloDir = baseDir / "solo-tools";
+    for (const auto& dir : {repoApiDir, repoSharedDir, repoPosDir, repoSoloDir})
+    {
+        std::filesystem::create_directories(dir / ".git");
+    }
+
+    auto& repoService = bootstrap.repositoryService();
+    auto& groupService = bootstrap.groupService();
+    auto& wsService = bootstrap.workspaceService();
+    auto& homeVm = bootstrap.homeHubViewModel();
+    auto& sessionVm = bootstrap.workspaceSessionViewModel();
+
+    const auto rApi = repoService.registerRepository({.localPath = repoApiDir, .displayName = "api"}).value();
+    const auto rShared = repoService.registerRepository({.localPath = repoSharedDir, .displayName = "shared-core"}).value();
+    const auto rPos = repoService.registerRepository({.localPath = repoPosDir, .displayName = "pos-ui"}).value();
+    const auto rSolo = repoService.registerRepository({.localPath = repoSoloDir, .displayName = "solo-tools"}).value();
+
+    REQUIRE(homeVm.createGroup(QStringLiteral("Backend"),
+                               {QString::fromStdString(rApi.id.value()), QString::fromStdString(rShared.id.value())},
+                               QStringLiteral("#38BDF8")));
+    REQUIRE(homeVm.createGroup(QStringLiteral("POS"),
+                               {QString::fromStdString(rShared.id.value()), QString::fromStdString(rPos.id.value())},
+                               QStringLiteral("#34D399")));
+
+    const auto allGroups = groupService.getAllGroups().value();
+    REQUIRE(allGroups.size() == 2);
+    const auto grpBackend = allGroups[0].name == "Backend" ? allGroups[0] : allGroups[1];
+    const auto grpPos = allGroups[0].name == "POS" ? allGroups[0] : allGroups[1];
+
+    // GroupListModel exposes custom groupColor role
+    const auto* groupModel = homeVm.groupModel();
+    REQUIRE(groupModel->rowCount() == 2);
+    const auto backendItem = groupModel->findById(QString::fromStdString(grpBackend.id.value()));
+    REQUIRE(backendItem.has_value());
+    CHECK(backendItem->color == QStringLiteral("#38BDF8"));
+
+    // Create workspace with Backend, POS, and direct ungrouped repo solo-tools
+    const auto ws = wsService.createWorkspace("Workstation",
+                                              {grpBackend.id, grpPos.id},
+                                              {rSolo.id}).value();
+
+    sessionVm.openWorkspace(QString::fromStdString(ws.id.value()));
+    CHECK(sessionVm.sessionKind() == QStringLiteral("workspace"));
+    CHECK(sessionVm.tabs().size() == 4);
+
+    // Clusters: [Backend (api, shared-core)], [POS (pos-ui)], [Ungrouped (solo-tools)]
+    const auto clusters = sessionVm.tabClusters();
+    REQUIRE(clusters.size() == 3);
+
+    const auto c0 = clusters[0].toMap();
+    CHECK(c0.value("groupName").toString() == QStringLiteral("Backend"));
+    CHECK(c0.value("groupColor").toString() == QStringLiteral("#38BDF8"));
+    CHECK_FALSE(c0.value("isUngrouped").toBool());
+    const auto c0Tabs = c0.value("tabs").toList();
+    REQUIRE(c0Tabs.size() == 2);
+    CHECK(c0Tabs[0].toMap().value("name").toString() == QStringLiteral("api"));
+
+    // Shared repo sits in first opened group (Backend) and exposes BOTH groups for stacked dots + hover highlight
+    const auto sharedTab = c0Tabs[1].toMap();
+    CHECK(sharedTab.value("name").toString() == QStringLiteral("shared-core"));
+    CHECK(sharedTab.value("primaryGroupName").toString() == QStringLiteral("Backend"));
+    const auto sharedGroups = sharedTab.value("groups").toList();
+    REQUIRE(sharedGroups.size() == 2);
+    CHECK(sharedGroups[0].toMap().value("name").toString() == QStringLiteral("Backend"));
+    CHECK(sharedGroups[0].toMap().value("color").toString() == QStringLiteral("#38BDF8"));
+    CHECK(sharedGroups[1].toMap().value("name").toString() == QStringLiteral("POS"));
+    CHECK(sharedGroups[1].toMap().value("color").toString() == QStringLiteral("#34D399"));
+
+    const auto c1 = clusters[1].toMap();
+    CHECK(c1.value("groupName").toString() == QStringLiteral("POS"));
+    CHECK(c1.value("groupColor").toString() == QStringLiteral("#34D399"));
+    REQUIRE(c1.value("tabs").toList().size() == 1);
+    CHECK(c1.value("tabs").toList()[0].toMap().value("name").toString() == QStringLiteral("pos-ui"));
+
+    const auto c2 = clusters[2].toMap();
+    CHECK(c2.value("isUngrouped").toBool());
+    REQUIRE(c2.value("tabs").toList().size() == 1);
+    CHECK(c2.value("tabs").toList()[0].toMap().value("name").toString() == QStringLiteral("solo-tools"));
+
+    // Updating a group color via HomeHubViewModel refreshes open tabs automatically
+    REQUIRE(homeVm.updateGroupColor(QString::fromStdString(grpPos.id.value()), QStringLiteral("#FB7185")));
+    const auto updatedClusters = sessionVm.tabClusters();
+    REQUIRE(updatedClusters.size() == 3);
+    CHECK(updatedClusters[1].toMap().value("groupColor").toString() == QStringLiteral("#FB7185"));
+    const auto updatedSharedGroups = updatedClusters[0].toMap().value("tabs").toList()[1].toMap().value("groups").toList();
+    REQUIRE(updatedSharedGroups.size() == 2);
+    CHECK(updatedSharedGroups[1].toMap().value("color").toString() == QStringLiteral("#FB7185"));
+
+    sessionVm.closeAllTabs();
+    std::filesystem::remove_all(baseDir, ec);
+}
