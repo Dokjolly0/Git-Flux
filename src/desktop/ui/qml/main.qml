@@ -62,7 +62,7 @@ ApplicationWindow {
 
         onGroupOpened: function (groupId, groupName, repoIds) {
             if (typeof workspaceSessionVm !== "undefined") {
-                workspaceSessionVm.openGroup(groupName, repoIds);
+                workspaceSessionVm.openGroup(groupName, repoIds, groupId);
                 appWindow.currentView = "session";
             }
         }

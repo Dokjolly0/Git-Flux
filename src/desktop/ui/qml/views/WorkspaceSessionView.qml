@@ -7,12 +7,54 @@ Rectangle {
     color: "#080B10"
 
     property var sessionVm: null
+    property string hoveredGroupId: ""
+    property color hoveredGroupColor: "#38BDF8"
+    property var collapsedGroupIds: ({})
     // Network operation in progress ("fetch", "pull", "push" or ""): runs in the background, the
     // window stays usable; the buttons only wait for it (not for local operations or reloads).
     readonly property string remoteOperation: (sessionVm && sessionVm.branchManager) ? sessionVm.branchManager.remoteOperation : ""
     readonly property bool hasWipChanges: Boolean(sessionVm && sessionVm.workingTree && !sessionVm.workingTree.isClean)
     readonly property int stashCount: (sessionVm && sessionVm.stashManager) ? sessionVm.stashManager.stashCount : 0
     readonly property bool hasStashes: stashCount > 0
+
+    function isGroupCollapsed(groupId) {
+        return Boolean(groupId && collapsedGroupIds && collapsedGroupIds[groupId] === true);
+    }
+
+    function toggleGroupCollapsed(groupId) {
+        if (!groupId) return;
+        const next = Object.assign({}, collapsedGroupIds || {});
+        if (next[groupId]) {
+            delete next[groupId];
+        } else {
+            next[groupId] = true;
+        }
+        collapsedGroupIds = next;
+    }
+
+    function buildTabTooltipText(tabData) {
+        if (!tabData) return "";
+        const lines = [];
+        let header = tabData.name || "Repository";
+        if (tabData.branch && tabData.branch.length > 0) {
+            header += "  (" + tabData.branch + ")";
+        }
+        if (tabData.isDirty) {
+            header += "  • Modifiche locali";
+        }
+        lines.push(header);
+        if (tabData.groups && tabData.groups.length > 0) {
+            const names = [];
+            for (let i = 0; i < tabData.groups.length; ++i) {
+                names.push("● " + tabData.groups[i].name);
+            }
+            lines.push((tabData.groups.length > 1 ? "Gruppi condivisi: " : "Gruppo: ") + names.join("   "));
+        }
+        if (tabData.path && tabData.path.length > 0) {
+            lines.push(tabData.path);
+        }
+        return lines.join("\n");
+    }
 
     signal returnToHomeRequested()
 
@@ -110,11 +152,11 @@ Rectangle {
         spacing: 0
 
         // ==========================================
-        // 1. REPO TABS BAR (Upper Bar / Barra Superiore)
+        // 1. REPO TABS BAR (Upper Bar / Chrome & Arc Style Tab Groups)
         // ==========================================
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 42
+            Layout.preferredHeight: 44
             color: "#0A0E15"
 
             Rectangle {
@@ -179,35 +221,40 @@ Rectangle {
                     }
                 }
 
-                // Active Group Indicator Badge
+                // Active Workspace Indicator Badge (shown when a Workspace session is open;
+                // individual groups are represented directly by their colored Chrome/Arc cluster chips)
                 Rectangle {
-                    visible: root.sessionVm && root.sessionVm.currentGroupName && root.sessionVm.currentGroupName.length > 0
+                    visible: Boolean(root.sessionVm && root.sessionVm.sessionKind === "workspace"
+                        && root.sessionVm.currentGroupName && root.sessionVm.currentGroupName.length > 0)
                     Layout.preferredHeight: 28
                     Layout.alignment: Qt.AlignVCenter
-                    implicitWidth: groupBadgeRow.implicitWidth + 16
+                    implicitWidth: workspaceBadgeRow.implicitWidth + 16
                     radius: 14
-                    color: "#221248"
-                    border.color: "#7C4DFF"
+                    color: "#0E2238"
+                    border.color: "#1E4B7A"
                     border.width: 1
 
                     RowLayout {
-                        id: groupBadgeRow
+                        id: workspaceBadgeRow
                         anchors.centerIn: parent
                         spacing: 6
 
-                        Text {
-                            text: "🗂️"
-                            font.pixelSize: 11
+                        Rectangle {
+                            width: 7
+                            height: 7
+                            radius: 2
+                            color: "#38BDF8"
                         }
 
                         Text {
                             text: root.sessionVm ? root.sessionVm.currentGroupName : ""
-                            color: "#E9D5FF"
+                            color: "#BAE6FD"
                             font.bold: true
                             font.pixelSize: 11
                         }
 
                         MouseArea {
+                            id: closeWsBtn
                             width: 18
                             height: 18
                             hoverEnabled: true
@@ -215,17 +262,17 @@ Rectangle {
                             Rectangle {
                                 anchors.fill: parent
                                 radius: 9
-                                color: parent.containsMouse ? "#3B1219" : "transparent"
+                                color: closeWsBtn.containsMouse ? "#3B1219" : "transparent"
                             }
                             Text {
                                 anchors.centerIn: parent
                                 text: "×"
-                                color: parent.containsMouse ? "#EF4444" : "#C084FC"
+                                color: closeWsBtn.containsMouse ? "#EF4444" : "#7DD3FC"
                                 font.pixelSize: 12
                                 font.bold: true
                             }
-                            ToolTip.visible: containsMouse
-                            ToolTip.text: "Chiudi gruppo e torna alla Home"
+                            ToolTip.visible: closeWsBtn.containsMouse
+                            ToolTip.text: "Chiudi workspace e torna alla Home"
                             onClicked: {
                                 if (root.sessionVm) {
                                     root.sessionVm.closeAllTabs();
@@ -244,7 +291,7 @@ Rectangle {
                     color: "#1E293B"
                 }
 
-                // Scrollable Tab Bar for Open Repositories
+                // Scrollable Tab Bar with Chrome/Arc-style Colored Group Clusters & Multi-Group Dots
                 ScrollView {
                     id: tabsScrollView
                     SmoothWheelScroller {}
@@ -255,120 +302,298 @@ Rectangle {
 
                     RowLayout {
                         height: tabsScrollView.availableHeight
-                        spacing: 6
+                        spacing: 10
 
                         Repeater {
-                            model: root.sessionVm ? root.sessionVm.tabs : null
+                            model: root.sessionVm ? root.sessionVm.tabClusters : null
 
-                            delegate: Rectangle {
-                                id: tabRect
-                                readonly property bool isActiveTab: Boolean(root.sessionVm && root.sessionVm.activeTabIndex === index)
-                                Layout.preferredHeight: 30
+                            delegate: Item {
+                                id: clusterBox
+                                required property var modelData
+                                readonly property var clusterData: modelData
+                                readonly property bool isUngrouped: Boolean(clusterData && clusterData.isUngrouped)
+                                readonly property string clusterGroupId: (clusterData && clusterData.groupId) ? clusterData.groupId : ""
+                                readonly property string clusterGroupName: (clusterData && clusterData.groupName) ? clusterData.groupName : ""
+                                readonly property color clusterColor: (clusterData && clusterData.groupColor && clusterData.groupColor.length > 0)
+                                    ? clusterData.groupColor
+                                    : "#38BDF8"
+                                readonly property var clusterTabs: (clusterData && clusterData.tabs) ? clusterData.tabs : []
+                                readonly property bool isCollapsed: !isUngrouped && root.isGroupCollapsed(clusterGroupId)
+                                readonly property bool isClusterHovered: !isUngrouped && root.hoveredGroupId === clusterGroupId
+
+                                Layout.preferredHeight: 36
                                 Layout.alignment: Qt.AlignVCenter
-                                implicitWidth: tabRow.implicitWidth + 22
-                                radius: 8
-                                color: isActiveTab
-                                    ? "#152336"
-                                    : (tabMouseArea.containsMouse ? "#111927" : "transparent")
-                                border.color: isActiveTab
-                                    ? "#2A4B73"
-                                    : (tabMouseArea.containsMouse ? "#1F2C3F" : "transparent")
-                                border.width: 1
+                                implicitWidth: clusterRow.implicitWidth
 
-                                Behavior on color {
-                                    ColorAnimation {
-                                        duration: 120
-                                    }
-                                }
-                                Behavior on border.color {
-                                    ColorAnimation {
-                                        duration: 120
-                                    }
-                                }
-
-                                // Subtle active bottom pill accent
+                                // Continuous Chrome/Arc bottom accent bar uniting the group chip and its tabs
                                 Rectangle {
-                                    visible: tabRect.isActiveTab
+                                    visible: !clusterBox.isUngrouped
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
                                     anchors.bottom: parent.bottom
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    width: Math.max(16, parent.width - 20)
                                     height: 2
                                     radius: 1
-                                    color: "#38BDF8"
-                                }
+                                    color: clusterBox.clusterColor
+                                    opacity: clusterBox.isClusterHovered ? 0.95 : 0.45
 
-                                MouseArea {
-                                    id: tabMouseArea
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        if (root.sessionVm) {
-                                            root.sessionVm.activeTabIndex = index;
-                                        }
+                                    Behavior on opacity {
+                                        NumberAnimation { duration: 120 }
                                     }
                                 }
 
                                 RowLayout {
-                                    id: tabRow
-                                    anchors.centerIn: parent
-                                    spacing: 7
+                                    id: clusterRow
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    spacing: 5
 
-                                    // Dirty Indicator
+                                    // Colored Group Header Chip (clickable to collapse/expand, hoverable to highlight all member tabs)
                                     Rectangle {
-                                        width: 7
-                                        height: 7
-                                        radius: 3.5
-                                        color: modelData.isDirty ? "#F59E0B" : "transparent"
-                                        visible: modelData.isDirty
-                                    }
+                                        id: groupChip
+                                        visible: !clusterBox.isUngrouped
+                                        Layout.preferredHeight: 26
+                                        Layout.alignment: Qt.AlignVCenter
+                                        implicitWidth: groupChipRow.implicitWidth + 14
+                                        radius: 7
+                                        color: Qt.alpha(clusterBox.clusterColor, groupChipMa.containsMouse ? 0.28 : 0.14)
+                                        border.color: Qt.alpha(clusterBox.clusterColor, groupChipMa.containsMouse ? 0.90 : 0.48)
+                                        border.width: 1
 
-                                    Text {
-                                        text: "📁"
-                                        font.pixelSize: 11
-                                    }
+                                        Behavior on color { ColorAnimation { duration: 110 } }
+                                        Behavior on border.color { ColorAnimation { duration: 110 } }
 
-                                    Text {
-                                        text: modelData.name
-                                        color: tabRect.isActiveTab ? "#F8FAFC" : "#94A3B8"
-                                        font.bold: tabRect.isActiveTab
-                                        font.pixelSize: 11
-                                    }
+                                        RowLayout {
+                                            id: groupChipRow
+                                            anchors.centerIn: parent
+                                            spacing: 5
 
-                                    MouseArea {
-                                        id: closeTabBtn
-                                        z: 2
-                                        width: 18
-                                        height: 18
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
+                                            Rectangle {
+                                                width: 7
+                                                height: 7
+                                                radius: 3.5
+                                                color: clusterBox.clusterColor
+                                            }
 
-                                        Rectangle {
-                                            anchors.fill: parent
-                                            radius: 5
-                                            color: closeTabBtn.containsMouse ? "#3B1219" : "transparent"
-                                            Behavior on color {
-                                                ColorAnimation {
-                                                    duration: 100
+                                            Text {
+                                                text: clusterBox.clusterGroupName
+                                                color: "#F8FAFC"
+                                                font.pixelSize: 11
+                                                font.bold: true
+                                            }
+
+                                            // Collapsed count pill
+                                            Rectangle {
+                                                visible: clusterBox.isCollapsed && clusterBox.clusterTabs.length > 0
+                                                height: 15
+                                                implicitWidth: collapsedCountText.implicitWidth + 8
+                                                radius: 7.5
+                                                color: Qt.alpha(clusterBox.clusterColor, 0.28)
+                                                Text {
+                                                    id: collapsedCountText
+                                                    anchors.centerIn: parent
+                                                    text: String(clusterBox.clusterTabs.length)
+                                                    color: "#F8FAFC"
+                                                    font.pixelSize: 9
+                                                    font.bold: true
                                                 }
+                                            }
+
+                                            Text {
+                                                visible: clusterBox.isCollapsed || groupChipMa.containsMouse
+                                                text: clusterBox.isCollapsed ? "▸" : "▾"
+                                                color: Qt.alpha(clusterBox.clusterColor, 0.95)
+                                                font.pixelSize: 9
+                                                font.bold: true
                                             }
                                         }
 
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: "×"
-                                            color: parent.containsMouse ? "#F87171" : "#64748B"
-                                            font.pixelSize: 13
-                                            font.bold: true
+                                        MouseArea {
+                                            id: groupChipMa
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onEntered: {
+                                                root.hoveredGroupId = clusterBox.clusterGroupId;
+                                                root.hoveredGroupColor = clusterBox.clusterColor;
+                                            }
+                                            onExited: {
+                                                if (root.hoveredGroupId === clusterBox.clusterGroupId) {
+                                                    root.hoveredGroupId = "";
+                                                }
+                                            }
+                                            onClicked: {
+                                                root.toggleGroupCollapsed(clusterBox.clusterGroupId);
+                                            }
+                                            ToolTip.visible: containsMouse
+                                            ToolTip.text: clusterBox.isCollapsed
+                                                ? ("Espandi gruppo \"" + clusterBox.clusterGroupName + "\" (" + clusterBox.clusterTabs.length + " tab)")
+                                                : ("Comprimi gruppo \"" + clusterBox.clusterGroupName + "\" • Hover per evidenziare tutte le tab del gruppo")
                                         }
+                                    }
 
-                                        onClicked: {
-                                            const vm = root.sessionVm;
-                                            const target = root;
-                                            if (vm) {
-                                                vm.closeTab(index);
-                                                if (!vm.hasOpenTabs && target) {
-                                                    target.returnToHomeRequested();
+                                    // Tabs belonging to this cluster
+                                    Repeater {
+                                        model: clusterBox.clusterTabs
+
+                                        delegate: Rectangle {
+                                            id: tabRect
+                                            required property var modelData
+                                            readonly property var tabData: modelData
+                                            readonly property int realTabIndex: (tabData && tabData.tabIndex !== undefined) ? tabData.tabIndex : 0
+                                            readonly property bool isActiveTab: Boolean(root.sessionVm && root.sessionVm.activeTabIndex === realTabIndex)
+                                            readonly property var tabGroups: (tabData && tabData.groups) ? tabData.groups : []
+                                            readonly property var tabGroupIds: (tabData && tabData.groupIds) ? tabData.groupIds : []
+                                            readonly property color tabAccentColor: (tabData && tabData.primaryGroupColor && tabData.primaryGroupColor.length > 0)
+                                                ? tabData.primaryGroupColor
+                                                : "#38BDF8"
+                                            readonly property bool isMemberOfHoveredGroup: root.hoveredGroupId.length > 0
+                                                && tabGroupIds.indexOf(root.hoveredGroupId) !== -1
+                                            readonly property bool isDimmedByGroupHover: root.hoveredGroupId.length > 0
+                                                && !isMemberOfHoveredGroup
+
+                                            visible: !clusterBox.isCollapsed || isActiveTab
+                                            Layout.preferredHeight: 30
+                                            Layout.alignment: Qt.AlignVCenter
+                                            implicitWidth: tabRow.implicitWidth + 20
+                                            radius: 8
+                                            opacity: isDimmedByGroupHover ? 0.38 : 1.0
+                                            color: isMemberOfHoveredGroup
+                                                ? Qt.alpha(root.hoveredGroupColor, isActiveTab ? 0.24 : 0.16)
+                                                : (isActiveTab
+                                                    ? "#152336"
+                                                    : (tabMouseArea.containsMouse ? "#111927" : "transparent"))
+                                            border.color: isMemberOfHoveredGroup
+                                                ? root.hoveredGroupColor
+                                                : (isActiveTab
+                                                    ? Qt.alpha(tabAccentColor, 0.72)
+                                                    : (tabMouseArea.containsMouse ? "#1F2C3F" : "transparent"))
+                                            border.width: 1
+
+                                            Behavior on opacity { NumberAnimation { duration: 120 } }
+                                            Behavior on color { ColorAnimation { duration: 120 } }
+                                            Behavior on border.color { ColorAnimation { duration: 120 } }
+
+                                            // Active bottom pill accent in the tab's primary group color
+                                            Rectangle {
+                                                visible: tabRect.isActiveTab
+                                                anchors.bottom: parent.bottom
+                                                anchors.horizontalCenter: parent.horizontalCenter
+                                                width: Math.max(16, parent.width - 18)
+                                                height: 2
+                                                radius: 1
+                                                color: tabRect.tabAccentColor
+                                            }
+
+                                            MouseArea {
+                                                id: tabMouseArea
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                ToolTip.visible: containsMouse && !closeTabBtn.containsMouse
+                                                ToolTip.delay: 350
+                                                ToolTip.text: root.buildTabTooltipText(tabRect.tabData)
+                                                onClicked: {
+                                                    if (root.sessionVm) {
+                                                        root.sessionVm.activeTabIndex = tabRect.realTabIndex;
+                                                    }
+                                                }
+                                            }
+
+                                            RowLayout {
+                                                id: tabRow
+                                                anchors.centerIn: parent
+                                                spacing: 6
+
+                                                // Neutral dot when repository does not belong to any group
+                                                Rectangle {
+                                                    visible: tabRect.tabGroups.length === 0
+                                                    width: 7
+                                                    height: 7
+                                                    radius: 3.5
+                                                    color: tabRect.isActiveTab ? "#38BDF8" : "#475569"
+                                                }
+
+                                                // Single dot or Stacked Multi-Group Dots (up to 3 overlapping dots + "+N")
+                                                Row {
+                                                    visible: tabRect.tabGroups.length > 0
+                                                    spacing: -3
+                                                    Layout.alignment: Qt.AlignVCenter
+
+                                                    Repeater {
+                                                        model: tabRect.tabGroups.slice(0, 3)
+                                                        delegate: Rectangle {
+                                                            required property var modelData
+                                                            required property int index
+                                                            width: 9
+                                                            height: 9
+                                                            radius: 4.5
+                                                            z: 10 - index
+                                                            color: (modelData && modelData.color) ? modelData.color : "#38BDF8"
+                                                            border.color: tabRect.isActiveTab ? "#152336" : "#0A0E15"
+                                                            border.width: 1.5
+                                                        }
+                                                    }
+                                                }
+
+                                                Text {
+                                                    visible: tabRect.tabGroups.length > 3
+                                                    text: "+" + (tabRect.tabGroups.length - 3)
+                                                    color: "#94A3B8"
+                                                    font.pixelSize: 9
+                                                    font.bold: true
+                                                }
+
+                                                Text {
+                                                    text: tabRect.tabData ? (tabRect.tabData.name || "") : ""
+                                                    color: (tabRect.isActiveTab || tabRect.isMemberOfHoveredGroup) ? "#F8FAFC" : "#94A3B8"
+                                                    font.bold: tabRect.isActiveTab
+                                                    font.pixelSize: 11
+                                                }
+
+                                                // Uncommitted changes indicator (right side of name, distinct from group dots)
+                                                Rectangle {
+                                                    visible: Boolean(tabRect.tabData && tabRect.tabData.isDirty)
+                                                    width: 6
+                                                    height: 6
+                                                    radius: 3
+                                                    color: "#F59E0B"
+                                                }
+
+                                                MouseArea {
+                                                    id: closeTabBtn
+                                                    z: 2
+                                                    width: 18
+                                                    height: 18
+                                                    hoverEnabled: true
+                                                    cursorShape: Qt.PointingHandCursor
+
+                                                    Rectangle {
+                                                        anchors.fill: parent
+                                                        radius: 5
+                                                        color: closeTabBtn.containsMouse ? "#3B1219" : "transparent"
+                                                        Behavior on color {
+                                                            ColorAnimation { duration: 100 }
+                                                        }
+                                                    }
+
+                                                    Text {
+                                                        anchors.centerIn: parent
+                                                        text: "×"
+                                                        color: closeTabBtn.containsMouse ? "#F87171" : "#64748B"
+                                                        font.pixelSize: 13
+                                                        font.bold: true
+                                                    }
+
+                                                    onClicked: {
+                                                        const vm = root.sessionVm;
+                                                        const target = root;
+                                                        const closeIdx = tabRect.realTabIndex;
+                                                        if (vm) {
+                                                            vm.closeTab(closeIdx);
+                                                            if (!vm.hasOpenTabs && target) {
+                                                                target.returnToHomeRequested();
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -390,9 +615,7 @@ Rectangle {
                                 border.width: 1
 
                                 Behavior on color {
-                                    ColorAnimation {
-                                        duration: 120
-                                    }
+                                    ColorAnimation { duration: 120 }
                                 }
                             }
                             contentItem: Text {

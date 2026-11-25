@@ -8,6 +8,51 @@ Item {
 
     readonly property var homeHubVmRef: (typeof homeHubVm !== "undefined") ? homeHubVm : null
 
+    component GroupColorSwatchPicker: RowLayout {
+        id: swatchPicker
+        property string selectedColor: ""
+        readonly property var paletteColors: root.homeHubVmRef && root.homeHubVmRef.groupColorPalette
+            ? root.homeHubVmRef.groupColorPalette
+            : ["#38BDF8", "#A78BFA", "#34D399", "#FBBF24", "#FB7185", "#818CF8", "#2DD4BF", "#FB923C"]
+        spacing: 8
+
+        Repeater {
+            model: swatchPicker.paletteColors
+            delegate: Rectangle {
+                id: swatchRect
+                required property string modelData
+                readonly property bool isSelected: swatchPicker.selectedColor.toLowerCase() === modelData.toLowerCase()
+                width: 24
+                height: 24
+                radius: 12
+                color: modelData
+                border.color: isSelected ? "#F8FAFC" : (swatchMa.containsMouse ? "#CBD5E1" : "transparent")
+                border.width: isSelected ? 2.5 : 1.5
+                scale: isSelected ? 1.12 : (swatchMa.containsMouse ? 1.06 : 1.0)
+
+                Behavior on scale { NumberAnimation { duration: 100 } }
+                Behavior on border.color { ColorAnimation { duration: 100 } }
+
+                Text {
+                    anchors.centerIn: parent
+                    visible: swatchRect.isSelected
+                    text: "✓"
+                    color: "#0A0E15"
+                    font.pixelSize: 12
+                    font.bold: true
+                }
+
+                MouseArea {
+                    id: swatchMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: swatchPicker.selectedColor = swatchRect.modelData
+                }
+            }
+        }
+    }
+
     property bool isDraggingRepo: false
     property string draggedRepoId: ""
     property string draggedRepoName: ""
@@ -1218,19 +1263,21 @@ Item {
                                 id: grpCardRect
                                 required property string id
                                 required property string name
+                                required property string groupColor
                                 required property int repositoryCount
                                 required property var repositoryIds
                                 required property var repositoryNames
 
                                 property string grpCardId: grpCardRect.id
                                 property string grpCardName: grpCardRect.name
+                                readonly property color accentColor: grpCardRect.groupColor.length > 0 ? grpCardRect.groupColor : "#7C4DFF"
                                 readonly property bool isDropTarget: root.isDraggingRepo && (root.hoveredGroupId === grpCardRect.id)
 
                                 width: groupListView.width
                                 implicitHeight: grpColLayout.implicitHeight + 18
                                 radius: 10
-                                color: isDropTarget ? "#2E1065" : (grpHover.containsMouse ? "#182334" : "#121A27")
-                                border.color: isDropTarget ? "#C084FC" : (grpHover.containsMouse ? "#7C4DFF" : "#1F2C3F")
+                                color: isDropTarget ? Qt.alpha(accentColor, 0.22) : (grpHover.containsMouse ? "#182334" : "#121A27")
+                                border.color: isDropTarget ? accentColor : (grpHover.containsMouse ? Qt.alpha(accentColor, 0.72) : "#1F2C3F")
                                 border.width: isDropTarget ? 2 : 1
                                 scale: isDropTarget ? 1.02 : 1.0
                                 Behavior on scale {
@@ -1249,10 +1296,24 @@ Item {
                                     }
                                 }
 
+                                // Left vertical color identity stripe
+                                Rectangle {
+                                    anchors.left: parent.left
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
+                                    anchors.topMargin: 7
+                                    anchors.bottomMargin: 7
+                                    anchors.leftMargin: 3
+                                    width: 3
+                                    radius: 1.5
+                                    color: grpCardRect.accentColor
+                                }
+
                                 ColumnLayout {
                                     id: grpColLayout
                                     anchors.fill: parent
                                     anchors.margins: 10
+                                    anchors.leftMargin: 13
                                     spacing: 6
 
                                     // Top Row: Group name, count badge, Open Group button, action icons
@@ -1262,15 +1323,36 @@ Item {
 
                                         Text {
                                             text: "⋮⋮"
-                                            color: grpHover.containsMouse ? "#C084FC" : "#475569"
+                                            color: grpHover.containsMouse ? grpCardRect.accentColor : "#475569"
                                             font.pixelSize: 13
                                             ToolTip.visible: grpHover.containsMouse && !root.isDraggingGroup
                                             ToolTip.text: "Trascina su un workspace per associarlo"
                                         }
 
-                                        Text {
-                                            text: "🗂️"
-                                            font.pixelSize: 15
+                                        // Color indicator dot (click to customize group color & name)
+                                        Rectangle {
+                                            width: 11
+                                            height: 11
+                                            radius: 5.5
+                                            color: grpCardRect.accentColor
+                                            border.color: colorDotMa.containsMouse ? "#F8FAFC" : Qt.alpha(grpCardRect.accentColor, 0.35)
+                                            border.width: colorDotMa.containsMouse ? 1.5 : 1
+
+                                            MouseArea {
+                                                id: colorDotMa
+                                                anchors.fill: parent
+                                                anchors.margins: -4
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                ToolTip.visible: containsMouse
+                                                ToolTip.text: "Cambia colore o rinomina gruppo"
+                                                onClicked: {
+                                                    renameGroupDialog.groupId = grpCardRect.id;
+                                                    renameGroupDialog.initialName = grpCardRect.name;
+                                                    renameGroupDialog.initialColor = grpCardRect.groupColor;
+                                                    renameGroupDialog.open();
+                                                }
+                                            }
                                         }
 
                                         Text {
@@ -1286,14 +1368,14 @@ Item {
                                             height: 18
                                             implicitWidth: grpBadgeText.implicitWidth + 10
                                             radius: 9
-                                            color: "#2E1065"
-                                            border.color: "#7C4DFF"
+                                            color: Qt.alpha(grpCardRect.accentColor, 0.16)
+                                            border.color: Qt.alpha(grpCardRect.accentColor, 0.55)
                                             border.width: 1
                                             Text {
                                                 id: grpBadgeText
                                                 anchors.centerIn: parent
                                                 text: grpCardRect.repositoryCount + (grpCardRect.repositoryCount === 1 ? " progetto" : " progetti")
-                                                color: "#E9D5FF"
+                                                color: "#F0F6FC"
                                                 font.pixelSize: 10
                                                 font.bold: true
                                             }
@@ -1361,16 +1443,17 @@ Item {
                                             }
                                         }
 
-                                        // Rename Group Button
+                                        // Edit Group (Name & Color) Button
                                         Button {
                                             Layout.preferredWidth: 26
                                             Layout.preferredHeight: 26
                                             hoverEnabled: true
                                             ToolTip.visible: hovered
-                                            ToolTip.text: "Rinomina gruppo"
+                                            ToolTip.text: "Modifica nome e colore gruppo"
                                             onClicked: {
                                                 renameGroupDialog.groupId = grpCardRect.id;
                                                 renameGroupDialog.initialName = grpCardRect.name;
+                                                renameGroupDialog.initialColor = grpCardRect.groupColor;
                                                 renameGroupDialog.open();
                                             }
                                             contentItem: Text {
@@ -2088,6 +2171,7 @@ Item {
         title: "Crea Nuovo Gruppo"
 
         property var selectedRepoIds: []
+        property string selectedColor: "#38BDF8"
 
         background: Rectangle {
             color: "#111824"
@@ -2156,6 +2240,19 @@ Item {
                     selectByMouse: true
                     onAccepted: addGroupDialog.accept()
                 }
+            }
+
+            Text {
+                text: "Colore del gruppo:"
+                color: "#CBD5E1"
+                font.bold: true
+                font.pixelSize: 12
+            }
+
+            GroupColorSwatchPicker {
+                id: addGroupColorPicker
+                selectedColor: addGroupDialog.selectedColor
+                onSelectedColorChanged: addGroupDialog.selectedColor = selectedColor
             }
 
             Text {
@@ -2264,11 +2361,15 @@ Item {
         onAboutToShow: {
             groupNameInput.text = "";
             selectedRepoIds = [];
+            const pal = addGroupColorPicker.paletteColors;
+            const idx = (root.homeHubVmRef ? root.homeHubVmRef.groupsCount : 0) % pal.length;
+            selectedColor = pal[idx];
+            addGroupColorPicker.selectedColor = selectedColor;
             groupNameInput.forceActiveFocus();
         }
 
         onAccepted: {
-            if (homeHubVm.createGroup(groupNameInput.text, selectedRepoIds)) {
+            if (homeHubVm.createGroup(groupNameInput.text, selectedRepoIds, selectedColor)) {
                 groupNameInput.text = "";
                 selectedRepoIds = [];
             }
@@ -2390,19 +2491,21 @@ Item {
         }
     }
 
-    // Dialog: Rename Group
+    // Dialog: Edit Group (Name & Color)
     Dialog {
         id: renameGroupDialog
         anchors.centerIn: Overlay.overlay
         modal: true
-        width: 400
+        width: 410
         padding: 18
         topPadding: 14
         bottomPadding: 14
-        title: "Rinomina Gruppo"
+        title: "Modifica Gruppo"
 
         property string groupId: ""
         property string initialName: ""
+        property string initialColor: ""
+        property string selectedColor: ""
 
         background: Rectangle {
             color: "#111824"
@@ -2423,7 +2526,7 @@ Item {
                 anchors.fill: parent
                 anchors.leftMargin: 16
                 anchors.rightMargin: 14
-                Text { text: "✏️ Rinomina Gruppo"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
+                Text { text: "✏️ Modifica Gruppo"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
                 Item { Layout.fillWidth: true }
                 Button {
                     text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
@@ -2435,10 +2538,10 @@ Item {
         }
 
         contentItem: ColumnLayout {
-            spacing: 10
+            spacing: 12
 
             Text {
-                text: "Nuovo nome gruppo:"
+                text: "Nome gruppo:"
                 color: "#CBD5E1"
                 font.bold: true
                 font.pixelSize: 12
@@ -2449,7 +2552,7 @@ Item {
                 height: 36
                 color: "#0A0E15"
                 radius: 8
-                border.color: renameGroupInput.activeFocus ? "#7C4DFF" : "#222F42"
+                border.color: renameGroupInput.activeFocus ? (renameGroupDialog.selectedColor.length > 0 ? renameGroupDialog.selectedColor : "#7C4DFF") : "#222F42"
                 border.width: 1
                 Behavior on border.color { ColorAnimation { duration: 120 } }
                 TextInput {
@@ -2463,6 +2566,19 @@ Item {
                     selectByMouse: true
                     onAccepted: renameGroupDialog.accept()
                 }
+            }
+
+            Text {
+                text: "Colore del gruppo:"
+                color: "#CBD5E1"
+                font.bold: true
+                font.pixelSize: 12
+            }
+
+            GroupColorSwatchPicker {
+                id: editGroupColorPicker
+                selectedColor: renameGroupDialog.selectedColor
+                onSelectedColorChanged: renameGroupDialog.selectedColor = selectedColor
             }
         }
 
@@ -2495,12 +2611,18 @@ Item {
 
         onAboutToShow: {
             renameGroupInput.text = initialName;
+            selectedColor = initialColor;
+            editGroupColorPicker.selectedColor = initialColor;
             renameGroupInput.forceActiveFocus();
         }
 
         onAccepted: {
-            if (groupId.length > 0 && renameGroupInput.text.trim().length > 0) {
-                homeHubVm.renameGroup(groupId, renameGroupInput.text.trim());
+            const trimmedName = renameGroupInput.text.trim();
+            if (groupId.length > 0 && trimmedName.length > 0 && trimmedName !== initialName) {
+                homeHubVm.renameGroup(groupId, trimmedName);
+            }
+            if (groupId.length > 0 && selectedColor.length > 0 && selectedColor !== initialColor) {
+                homeHubVm.updateGroupColor(groupId, selectedColor);
             }
         }
     }
