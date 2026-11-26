@@ -2,6 +2,7 @@
 
 #include <QAbstractListModel>
 #include <QString>
+#include <QVariantList>
 #include <optional>
 #include <vector>
 
@@ -33,6 +34,8 @@ namespace gf::desktop
         QString lastOpenedAt;
         QStringList repositoryIds;
         QStringList repositoryNames;
+        QVariantList repositoryGroupColors;
+        QVariantList repositoryGroupNames;
         QStringList groupIds;
         QStringList groupNames;
         QStringList groupColors;
@@ -54,6 +57,8 @@ namespace gf::desktop
             LastOpenedAtRole,
             RepositoryIdsRole,
             RepositoryNamesRole,
+            RepositoryGroupColorsRole,
+            RepositoryGroupNamesRole,
             GroupIdsRole,
             GroupNamesRole,
             GroupColorsRole

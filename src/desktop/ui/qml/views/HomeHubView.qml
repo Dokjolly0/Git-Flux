@@ -1766,6 +1766,8 @@ Item {
                                 required property int totalRepoCount
                                 required property var repositoryIds
                                 required property var repositoryNames
+                                required property var repositoryGroupColors
+                                required property var repositoryGroupNames
                                 required property var groupIds
                                 required property var groupNames
                                 required property var groupColors
@@ -2039,54 +2041,108 @@ Item {
                                         }
                                     }
 
-                                    // Bottom Row: Chips of projects inside this workspace
+                                    // Bottom Row: Chips of projects inside this workspace (styled with their group accent colors)
                                     Flow {
                                         Layout.fillWidth: true
-                                        spacing: 4
+                                        spacing: 5
                                         visible: wsCardRect.totalRepoCount > 0
 
                                         Repeater {
                                             model: wsCardRect.repositoryNames || []
 
                                             delegate: Rectangle {
+                                                id: wsRepoChip
+                                                required property string modelData
+                                                required property int index
+                                                readonly property var repoColors: (wsCardRect.repositoryGroupColors && wsRepoChip.index < wsCardRect.repositoryGroupColors.length && wsCardRect.repositoryGroupColors[wsRepoChip.index])
+                                                    ? wsCardRect.repositoryGroupColors[wsRepoChip.index]
+                                                    : []
+                                                readonly property var repoGroupNames: (wsCardRect.repositoryGroupNames && wsRepoChip.index < wsCardRect.repositoryGroupNames.length && wsCardRect.repositoryGroupNames[wsRepoChip.index])
+                                                    ? wsCardRect.repositoryGroupNames[wsRepoChip.index]
+                                                    : []
+                                                readonly property bool hasGroupColor: repoColors.length > 0
+                                                readonly property color primaryGroupColor: hasGroupColor ? repoColors[0] : "#64748B"
+
                                                 height: 22
-                                                implicitWidth: wsChipRow.implicitWidth + 10
-                                                radius: 4
-                                                color: "#21262D"
-                                                border.color: "#30363D"
+                                                implicitWidth: wsChipRow.implicitWidth + 12
+                                                radius: 6
+                                                color: hasGroupColor ? Qt.alpha(primaryGroupColor, 0.11) : "#21262D"
+                                                border.color: hasGroupColor ? Qt.alpha(primaryGroupColor, 0.36) : "#30363D"
+                                                border.width: 1
 
                                                 RowLayout {
                                                     id: wsChipRow
                                                     anchors.centerIn: parent
-                                                    spacing: 4
+                                                    spacing: 5
 
-                                                    Text {
-                                                        text: "📁"
-                                                        font.pixelSize: 9
+                                                    // Neutral dot for direct/ungrouped repositories inside the workspace
+                                                    Rectangle {
+                                                        visible: !wsRepoChip.hasGroupColor
+                                                        width: 6
+                                                        height: 6
+                                                        radius: 3
+                                                        color: "#64748B"
+                                                    }
+
+                                                    // Single dot or stacked multi-group dots for repositories belonging to workspace groups
+                                                    Row {
+                                                        visible: wsRepoChip.hasGroupColor
+                                                        spacing: -3
+                                                        Layout.alignment: Qt.AlignVCenter
+
+                                                        Repeater {
+                                                            model: wsRepoChip.repoColors.slice(0, 3)
+
+                                                            delegate: Rectangle {
+                                                                required property var modelData
+                                                                required property int index
+                                                                width: wsRepoChip.repoColors.length > 1 ? 8 : 6
+                                                                height: wsRepoChip.repoColors.length > 1 ? 8 : 6
+                                                                radius: wsRepoChip.repoColors.length > 1 ? 4 : 3
+                                                                z: 10 - index
+                                                                color: modelData
+                                                                border.color: "#121A27"
+                                                                border.width: wsRepoChip.repoColors.length > 1 ? 1 : 0
+                                                            }
+                                                        }
                                                     }
 
                                                     Text {
-                                                        text: modelData
-                                                        color: "#CBD5E1"
+                                                        visible: wsRepoChip.repoColors.length > 3
+                                                        text: "+" + (wsRepoChip.repoColors.length - 3)
+                                                        color: "#94A3B8"
+                                                        font.pixelSize: 9
+                                                        font.bold: true
+                                                    }
+
+                                                    Text {
+                                                        text: wsRepoChip.modelData
+                                                        color: wsRepoChip.hasGroupColor ? "#E2E8F0" : "#CBD5E1"
                                                         font.pixelSize: 10
+                                                        font.bold: wsRepoChip.hasGroupColor
                                                     }
 
                                                     MouseArea {
+                                                        id: removeRepoFromWsMa
                                                         width: 14
                                                         height: 14
                                                         hoverEnabled: true
                                                         cursorShape: Qt.PointingHandCursor
                                                         ToolTip.visible: containsMouse
-                                                        ToolTip.text: "Rimuovi dal workspace"
+                                                        ToolTip.text: wsRepoChip.hasGroupColor
+                                                            ? ("Gruppo: " + wsRepoChip.repoGroupNames.join(", ") + " • Rimuovi dal workspace")
+                                                            : "Rimuovi dal workspace"
                                                         Text {
                                                             anchors.centerIn: parent
                                                             text: "×"
-                                                            color: parent.containsMouse ? "#EF4444" : "#64748B"
+                                                            color: removeRepoFromWsMa.containsMouse
+                                                                ? "#EF4444"
+                                                                : (wsRepoChip.hasGroupColor ? Qt.alpha(wsRepoChip.primaryGroupColor, 0.85) : "#64748B")
                                                             font.pixelSize: 11
                                                             font.bold: true
                                                         }
                                                         onClicked: {
-                                                            const repoId = wsCardRect.repositoryIds[index];
+                                                            const repoId = wsCardRect.repositoryIds[wsRepoChip.index];
                                                             homeHubVm.removeRepositoryFromWorkspace(wsCardRect.id, repoId);
                                                         }
                                                     }

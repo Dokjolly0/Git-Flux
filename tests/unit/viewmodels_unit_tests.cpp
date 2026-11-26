@@ -5283,12 +5283,31 @@ TEST_CASE("WorkspaceSessionViewModel clusters tabs by group and exposes multi-gr
                                               {rSolo.id}).value();
 
     // WorkspaceListModel exposes groupColors matching each group's resolved color
+    // and per-repository group colors/names for repos inside the workspace
     homeVm.refreshAll();
     const auto wsItem = homeVm.workspaceModel()->findById(QString::fromStdString(ws.id.value()));
     REQUIRE(wsItem.has_value());
     REQUIRE(wsItem->groupColors.size() == 2);
     CHECK(wsItem->groupColors[0] == QStringLiteral("#38BDF8"));
     CHECK(wsItem->groupColors[1] == QStringLiteral("#34D399"));
+    REQUIRE(wsItem->repositoryNames == QStringList({QStringLiteral("api"),
+                                                    QStringLiteral("shared-core"),
+                                                    QStringLiteral("pos-ui"),
+                                                    QStringLiteral("solo-tools")}));
+    REQUIRE(wsItem->repositoryGroupColors.size() == 4);
+    CHECK(wsItem->repositoryGroupColors[0].toStringList() == QStringList({QStringLiteral("#38BDF8")}));
+    CHECK(wsItem->repositoryGroupColors[1].toStringList() == QStringList({QStringLiteral("#38BDF8"), QStringLiteral("#34D399")}));
+    CHECK(wsItem->repositoryGroupColors[2].toStringList() == QStringList({QStringLiteral("#34D399")}));
+    CHECK(wsItem->repositoryGroupColors[3].toStringList().isEmpty());
+    REQUIRE(wsItem->repositoryGroupNames.size() == 4);
+    CHECK(wsItem->repositoryGroupNames[0].toStringList() == QStringList({QStringLiteral("Backend")}));
+    CHECK(wsItem->repositoryGroupNames[1].toStringList() == QStringList({QStringLiteral("Backend"), QStringLiteral("POS")}));
+    CHECK(wsItem->repositoryGroupNames[2].toStringList() == QStringList({QStringLiteral("POS")}));
+    CHECK(wsItem->repositoryGroupNames[3].toStringList().isEmpty());
+
+    const QModelIndex wsIdx = homeVm.workspaceModel()->index(0, 0);
+    CHECK(homeVm.workspaceModel()->data(wsIdx, WorkspaceListModel::RepositoryGroupColorsRole).toList().size() == 4);
+    CHECK(homeVm.workspaceModel()->data(wsIdx, WorkspaceListModel::RepositoryGroupNamesRole).toList().size() == 4);
 
     sessionVm.openWorkspace(QString::fromStdString(ws.id.value()));
     CHECK(sessionVm.sessionKind() == QStringLiteral("workspace"));
@@ -5328,8 +5347,13 @@ TEST_CASE("WorkspaceSessionViewModel clusters tabs by group and exposes multi-gr
     REQUIRE(c2.value("tabs").toList().size() == 1);
     CHECK(c2.value("tabs").toList()[0].toMap().value("name").toString() == QStringLiteral("solo-tools"));
 
-    // Updating a group color via HomeHubViewModel refreshes open tabs automatically
+    // Updating a group color via HomeHubViewModel refreshes open tabs and workspace repo colors automatically
     REQUIRE(homeVm.updateGroupColor(QString::fromStdString(grpPos.id.value()), QStringLiteral("#FB7185")));
+    const auto updatedWsItem = homeVm.workspaceModel()->findById(QString::fromStdString(ws.id.value()));
+    REQUIRE(updatedWsItem.has_value());
+    REQUIRE(updatedWsItem->repositoryGroupColors.size() == 4);
+    CHECK(updatedWsItem->repositoryGroupColors[1].toStringList() == QStringList({QStringLiteral("#38BDF8"), QStringLiteral("#FB7185")}));
+    CHECK(updatedWsItem->repositoryGroupColors[2].toStringList() == QStringList({QStringLiteral("#FB7185")}));
     const auto updatedClusters = sessionVm.tabClusters();
     REQUIRE(updatedClusters.size() == 3);
     CHECK(updatedClusters[1].toMap().value("groupColor").toString() == QStringLiteral("#FB7185"));

@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <ctime>
+#include <unordered_set>
 
 namespace gf::desktop
 {
@@ -101,6 +102,10 @@ namespace gf::desktop
             return item.repositoryIds;
         case RepositoryNamesRole:
             return item.repositoryNames;
+        case RepositoryGroupColorsRole:
+            return item.repositoryGroupColors;
+        case RepositoryGroupNamesRole:
+            return item.repositoryGroupNames;
         case GroupIdsRole:
             return item.groupIds;
         case GroupNamesRole:
@@ -126,6 +131,8 @@ namespace gf::desktop
             {LastOpenedAtRole, "lastOpenedAt"},
             {RepositoryIdsRole, "repositoryIds"},
             {RepositoryNamesRole, "repositoryNames"},
+            {RepositoryGroupColorsRole, "repositoryGroupColors"},
+            {RepositoryGroupNamesRole, "repositoryGroupNames"},
             {GroupIdsRole, "groupIds"},
             {GroupNamesRole, "groupNames"},
             {GroupColorsRole, "groupColors"}
@@ -140,6 +147,13 @@ namespace gf::desktop
         m_items.clear();
         m_items.reserve(workspaces.size());
 
+        struct WorkspaceGroupMeta
+        {
+            QString name;
+            QString color;
+            std::unordered_set<std::string> repoIds;
+        };
+
         for (const auto& ws : workspaces)
         {
             WorkspaceItem item;
@@ -148,31 +162,43 @@ namespace gf::desktop
             item.groupCount = static_cast<int>(ws.groupIds.size());
             item.directRepoCount = static_cast<int>(ws.directRepositoryIds.size());
 
+            std::vector<WorkspaceGroupMeta> workspaceGroups;
+            workspaceGroups.reserve(ws.groupIds.size());
+
             for (const auto& gId : ws.groupIds)
             {
                 item.groupIds.append(QString::fromStdString(gId.value()));
+                WorkspaceGroupMeta meta;
                 if (groupService)
                 {
                     auto grpOpt = groupService->getGroup(gId);
                     if (grpOpt && grpOpt->has_value())
                     {
-                        item.groupNames.append(QString::fromStdString((*grpOpt)->name));
+                        meta.name = QString::fromStdString((*grpOpt)->name);
                         const auto col = (*grpOpt)->resolvedColor();
-                        item.groupColors.append(QString::fromUtf8(col.data(), static_cast<qsizetype>(col.size())));
+                        meta.color = QString::fromUtf8(col.data(), static_cast<qsizetype>(col.size()));
+                        meta.repoIds.reserve((*grpOpt)->repositoryIds.size());
+                        for (const auto& rId : (*grpOpt)->repositoryIds)
+                        {
+                            meta.repoIds.insert(rId.value());
+                        }
                     }
                     else
                     {
-                        item.groupNames.append(QString::fromStdString(gId.value()));
+                        meta.name = QString::fromStdString(gId.value());
                         const auto col = gf::groups::bo::defaultGroupColorForId(gId.value());
-                        item.groupColors.append(QString::fromUtf8(col.data(), static_cast<qsizetype>(col.size())));
+                        meta.color = QString::fromUtf8(col.data(), static_cast<qsizetype>(col.size()));
                     }
                 }
                 else
                 {
-                    item.groupNames.append(QString::fromStdString(gId.value()));
+                    meta.name = QString::fromStdString(gId.value());
                     const auto col = gf::groups::bo::defaultGroupColorForId(gId.value());
-                    item.groupColors.append(QString::fromUtf8(col.data(), static_cast<qsizetype>(col.size())));
+                    meta.color = QString::fromUtf8(col.data(), static_cast<qsizetype>(col.size()));
                 }
+                item.groupNames.append(meta.name);
+                item.groupColors.append(meta.color);
+                workspaceGroups.push_back(std::move(meta));
             }
 
             auto resolved = workspaceService.resolveWorkspaceRepositories(ws.id);
@@ -183,6 +209,19 @@ namespace gf::desktop
                 {
                     item.repositoryIds.append(QString::fromStdString(r.id.value()));
                     item.repositoryNames.append(QString::fromStdString(r.displayName));
+
+                    QStringList repoGroupColors;
+                    QStringList repoGroupNames;
+                    for (const auto& gMeta : workspaceGroups)
+                    {
+                        if (gMeta.repoIds.contains(r.id.value()))
+                        {
+                            repoGroupColors.append(gMeta.color);
+                            repoGroupNames.append(gMeta.name);
+                        }
+                    }
+                    item.repositoryGroupColors.append(repoGroupColors);
+                    item.repositoryGroupNames.append(repoGroupNames);
                 }
             }
             else
