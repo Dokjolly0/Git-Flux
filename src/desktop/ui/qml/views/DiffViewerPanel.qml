@@ -81,6 +81,8 @@ Rectangle {
     property string contextMenuTarget: ""
     property int contextMenuHunkIndex: -1
 
+    signal selectionStateChanged()
+
     readonly property bool hasSelection: selTarget !== "" && selAnchorRow >= 0 && selFocusRow >= 0
         && (selAnchorRow !== selFocusRow || selAnchorCol !== selFocusCol)
     readonly property bool selForward: (selAnchorRow < selFocusRow)
@@ -91,12 +93,16 @@ Rectangle {
     readonly property int selEndCol: selForward ? selFocusCol : selAnchorCol
 
     function clearSelection() {
+        const hadAny = (selTarget !== "" || selHunkIndex !== -1 || selAnchorRow !== -1
+            || selAnchorCol !== 0 || selFocusRow !== -1 || selFocusCol !== 0);
+        if (!hadAny) return;
         selTarget = "";
         selHunkIndex = -1;
         selAnchorRow = -1;
         selAnchorCol = 0;
         selFocusRow = -1;
         selFocusCol = 0;
+        root.selectionStateChanged();
     }
 
     function copySelection() {
@@ -155,6 +161,7 @@ Rectangle {
                 selFocusCol = 1000000;
             }
         }
+        root.selectionStateChanged();
     }
 
     function handleDiffKeys(event) {
@@ -293,6 +300,7 @@ Rectangle {
         property int rowIndex: -1
         property int hunkIdx: -1
         property bool rowDisabled: false
+        property bool _syncingSelection: false
 
         readOnly: true
         selectByMouse: false
@@ -308,7 +316,14 @@ Rectangle {
         font.family: root.monoFont
 
         function syncSelection() {
-            root.syncCodeSelection(codeEdit, selTargetName, rowIndex, rowDisabled, hunkIdx);
+            if (_syncingSelection) return;
+            if (!root.hasSelection && codeEdit.selectionStart === codeEdit.selectionEnd) return;
+            _syncingSelection = true;
+            try {
+                root.syncCodeSelection(codeEdit, selTargetName, rowIndex, rowDisabled, hunkIdx);
+            } finally {
+                _syncingSelection = false;
+            }
         }
 
         Component.onCompleted: { syncSelection(); }
@@ -330,12 +345,7 @@ Rectangle {
 
         Connections {
             target: root
-            function onSelTargetChanged() { codeEdit.syncSelection(); }
-            function onSelHunkIndexChanged() { codeEdit.syncSelection(); }
-            function onSelAnchorRowChanged() { codeEdit.syncSelection(); }
-            function onSelAnchorColChanged() { codeEdit.syncSelection(); }
-            function onSelFocusRowChanged() { codeEdit.syncSelection(); }
-            function onSelFocusColChanged() { codeEdit.syncSelection(); }
+            function onSelectionStateChanged() { codeEdit.syncSelection(); }
         }
     }
 
@@ -408,8 +418,13 @@ Rectangle {
         function updateFocusFromMouse(mx, my) {
             const hit = hitTest(mx, my, activeTarget);
             if (!hit) return;
-            root.selFocusRow = hit.index;
-            root.selFocusCol = hit.isHeader ? 0 : hit.col;
+            const nextRow = hit.index;
+            const nextCol = hit.isHeader ? 0 : hit.col;
+            if (root.selFocusRow !== nextRow || root.selFocusCol !== nextCol) {
+                root.selFocusRow = nextRow;
+                root.selFocusCol = nextCol;
+                root.selectionStateChanged();
+            }
         }
 
         Timer {
@@ -487,6 +502,7 @@ Rectangle {
                 root.selFocusRow = hit.index;
                 root.selFocusCol = hit.col;
             }
+            root.selectionStateChanged();
         }
 
         onPositionChanged: (mouse) => {
@@ -516,6 +532,7 @@ Rectangle {
             root.selAnchorCol = hit.codeEdit.selectionStart;
             root.selFocusRow = hit.index;
             root.selFocusCol = hit.codeEdit.selectionEnd;
+            root.selectionStateChanged();
             isSelecting = false;
         }
 
@@ -733,13 +750,38 @@ Rectangle {
                 }
 
                 Text {
-                    text: (root.diffViewer && root.diffViewer.filePath !== "") ? root.diffViewer.filePath : "Nessun file selezionato"
+                    text: {
+                        if (!root.diffViewer) return "Nessun file selezionato";
+                        if (root.diffViewer.isLoading && root.diffViewer.loadingFilePath && root.diffViewer.loadingFilePath !== "") {
+                            return root.diffViewer.loadingFilePath;
+                        }
+                        return root.diffViewer.filePath !== "" ? root.diffViewer.filePath : "Nessun file selezionato";
+                    }
                     color: "#F1F5F9"
                     font.bold: true
                     font.pixelSize: 13
                     elide: Text.ElideMiddle
                     Layout.fillWidth: true
                     Layout.minimumWidth: 80
+                }
+
+                // Loading indicator badge during async file switch
+                Rectangle {
+                    visible: Boolean(root.diffViewer && root.diffViewer.isLoading)
+                    Layout.preferredHeight: 22
+                    implicitWidth: loadingBadgeTxt.implicitWidth + 14
+                    radius: 6
+                    color: "#152336"
+                    border.color: "#38BDF8"
+                    border.width: 1
+                    Text {
+                        id: loadingBadgeTxt
+                        anchors.centerIn: parent
+                        text: "⏳ Caricamento..."
+                        color: "#7DD3FC"
+                        font.pixelSize: 10
+                        font.bold: true
+                    }
                 }
 
                 // Type Badge (NEW, DELETED, RENAMED, BINARY, MODIFIED)
@@ -1310,7 +1352,7 @@ Rectangle {
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: inlineHScrollBar.visible ? 12 : 0
                     focus: true
-                    model: (!root.showingMarkdownPreview && root.diffViewer && root.diffViewer.viewMode === "inline") ? root.diffViewer.linesModel : null
+                    model: (!root.showingMarkdownPreview && !root.showingRichPreview && root.diffViewer && root.diffViewer.viewMode === "inline") ? root.diffViewer.linesModel : null
                     boundsBehavior: Flickable.StopAtBounds
                     maximumFlickVelocity: 6000
                     flickDeceleration: 1000
@@ -1661,7 +1703,7 @@ Rectangle {
                         anchors.bottom: parent.bottom
                         anchors.bottomMargin: splitHScrollBar.visible ? 12 : 0
                         focus: true
-                        model: (!root.showingMarkdownPreview && root.diffViewer && (root.diffViewer.viewMode === "split" || root.diffViewer.viewMode === "")) ? root.diffViewer.splitLines : null
+                        model: (!root.showingMarkdownPreview && !root.showingRichPreview && root.diffViewer && (root.diffViewer.viewMode === "split" || root.diffViewer.viewMode === "")) ? root.diffViewer.splitLines : null
                         boundsBehavior: Flickable.StopAtBounds
                         maximumFlickVelocity: 6000
                         flickDeceleration: 1000
@@ -1994,7 +2036,7 @@ Rectangle {
                     SmoothWheelScroller {}
                     focus: true
                     width: root.effectiveWrap ? hunkScrollView.width : Math.max(hunkScrollView.width, root.maxCodeWidth + 120)
-                    model: (!root.showingMarkdownPreview && root.diffViewer && root.diffViewer.viewMode === "hunk") ? root.diffViewer.hunks : null
+                    model: (!root.showingMarkdownPreview && !root.showingRichPreview && root.diffViewer && root.diffViewer.viewMode === "hunk") ? root.diffViewer.hunks : null
                     spacing: 12
                     boundsBehavior: Flickable.StopAtBounds
                     maximumFlickVelocity: 6000
@@ -2215,6 +2257,7 @@ Rectangle {
                                             root.selFocusRow = hit.index;
                                             root.selFocusCol = hit.col;
                                         }
+                                        root.selectionStateChanged();
                                     }
 
                                     onPositionChanged: (mouse) => {
@@ -2225,8 +2268,11 @@ Rectangle {
                                         }
                                         const hit = hitTestHunk(mouse.x, mouse.y);
                                         if (!hit) return;
-                                        root.selFocusRow = hit.index;
-                                        root.selFocusCol = hit.col;
+                                        if (root.selFocusRow !== hit.index || root.selFocusCol !== hit.col) {
+                                            root.selFocusRow = hit.index;
+                                            root.selFocusCol = hit.col;
+                                            root.selectionStateChanged();
+                                        }
                                     }
 
                                     onDoubleClicked: (mouse) => {
@@ -2241,6 +2287,7 @@ Rectangle {
                                         root.selAnchorCol = hit.codeEdit.selectionStart;
                                         root.selFocusRow = hit.index;
                                         root.selFocusCol = hit.codeEdit.selectionEnd;
+                                        root.selectionStateChanged();
                                         isSelecting = false;
                                     }
 
@@ -2278,7 +2325,7 @@ Rectangle {
                     anchors.fill: parent
                     anchors.bottomMargin: blameHScrollBar.visible ? 12 : 0
                     focus: true
-                    model: (!root.showingMarkdownPreview && root.diffViewer && root.diffViewer.viewMode === "blame") ? root.diffViewer.blameLines : null
+                    model: (!root.showingMarkdownPreview && !root.showingRichPreview && root.diffViewer && root.diffViewer.viewMode === "blame") ? root.diffViewer.blameLines : null
                     boundsBehavior: Flickable.StopAtBounds
                     maximumFlickVelocity: 6000
                     flickDeceleration: 1000

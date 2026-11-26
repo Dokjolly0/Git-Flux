@@ -1644,7 +1644,9 @@ Rectangle {
             root.conflictResolveRequested(file.path);
             return;
         }
-        if (root.isDiffOpen && root.selectedFile && file && root.selectedFile.path === file.path && root.selectedFile.isStaged === file.isStaged) {
+        if (root.isDiffOpen && root.selectedFile && file
+                && root.selectedFile.path === file.path
+                && (!root.isWipSelected || Boolean(root.selectedFile.isStaged) === Boolean(file.isStaged))) {
             root.closeFileDiff();
             return;
         }

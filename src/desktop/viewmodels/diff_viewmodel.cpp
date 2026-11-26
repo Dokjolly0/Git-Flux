@@ -484,6 +484,25 @@ namespace gf::desktop
         }
     }
 
+    void DiffViewModel::setLoadingFilePath(const QString& filePath)
+    {
+        if (m_loadingFilePath != filePath)
+        {
+            m_loadingFilePath = filePath;
+            emit loadingFilePathChanged();
+        }
+    }
+
+    void DiffViewModel::cancelPendingBlame()
+    {
+        m_blameRequest.invalidate();
+        if (m_isBlameLoading)
+        {
+            m_isBlameLoading = false;
+            emit blameLoaded();
+        }
+    }
+
     bool DiffViewModel::waitForIdle(int timeoutMs)
     {
         QElapsedTimer timer;
@@ -886,7 +905,8 @@ namespace gf::desktop
 
     void DiffViewModel::prepareFileDiff(const gf::git::bo::FileDiff& diff,
                                         const std::vector<gf::core::syntax::MarkdownLineState>* newFileSeedStates,
-                                        PreparedDiff& out)
+                                        PreparedDiff& out,
+                                        const std::function<bool()>& isCurrent)
     {
         std::string pathForDetect = diff.displayPath();
         auto langInfo = gf::core::syntax::LanguageDetector::detect(pathForDetect);
@@ -918,6 +938,11 @@ namespace gf::desktop
 
         for (const auto& hunk : diff.hunks)
         {
+            if (isCurrent && !isCurrent())
+            {
+                out.prepared = false;
+                return;
+            }
             if (totalProcessedLines >= kMaxRenderedDiffLines)
             {
                 truncated = true;
@@ -942,6 +967,11 @@ namespace gf::desktop
 
             for (const auto& line : hunk.lines)
             {
+                if (isCurrent && (totalProcessedLines & 63U) == 0 && !isCurrent())
+                {
+                    out.prepared = false;
+                    return;
+                }
                 if (totalProcessedLines >= kMaxRenderedDiffLines)
                 {
                     truncated = true;
@@ -1394,8 +1424,13 @@ namespace gf::desktop
         }
     }
 
-    void DiffViewModel::prepareFetch(DiffFetch& fetch)
+    void DiffViewModel::prepareFetch(DiffFetch& fetch, const std::function<bool()>& isCurrent)
     {
+        if (isCurrent && !isCurrent())
+        {
+            fetch.skipped = true;
+            return;
+        }
         if (!fetch.diff || !*fetch.diff)
         {
             return;
@@ -1413,14 +1448,37 @@ namespace gf::desktop
         std::vector<gf::core::syntax::MarkdownLineState> seedStates;
         if (fetch.markdownContent)
         {
+            if (isCurrent && !isCurrent())
+            {
+                fetch.skipped = true;
+                fetch.prepared.reset();
+                return;
+            }
             prepareMarkdown(*fetch.markdownContent, fetch.deletedNotice, diff, *fetch.prepared, seedStates);
         }
         if (fetch.inspectedRichFile)
         {
+            if (isCurrent && !isCurrent())
+            {
+                fetch.skipped = true;
+                fetch.prepared.reset();
+                return;
+            }
             fetch.prepared->inspection = DiffFileInspector::inspect(
                 fetch.inspectPath, fetch.oldBlob, fetch.newBlob);
         }
-        prepareFileDiff(diff, seedStates.empty() ? nullptr : &seedStates, *fetch.prepared);
+        if (isCurrent && !isCurrent())
+        {
+            fetch.skipped = true;
+            fetch.prepared.reset();
+            return;
+        }
+        prepareFileDiff(diff, seedStates.empty() ? nullptr : &seedStates, *fetch.prepared, isCurrent);
+        if (!fetch.prepared->prepared)
+        {
+            fetch.skipped = true;
+            fetch.prepared.reset();
+        }
     }
 
     bool DiffViewModel::isShowingDiff(const QString& repoPath, const QString& filePath, const QString& revision,
@@ -1454,6 +1512,8 @@ namespace gf::desktop
         }
 
         const auto id = m_diffRequest.next();
+        cancelPendingBlame();
+        setLoadingFilePath(filePath);
         setLoading(true);
 
         auto& service = m_diffService;
@@ -1473,6 +1533,11 @@ namespace gf::desktop
                                     return fetch;
                                 }
                                 fetch.diff = service.getFileDiff(rPath, fPath, diffScope, contextLines);
+                                if (!isCurrent())
+                                {
+                                    fetch.skipped = true;
+                                    return fetch;
+                                }
                                 if (*fetch.diff)
                                 {
                                     const auto& diff = **fetch.diff;
@@ -1493,6 +1558,11 @@ namespace gf::desktop
                                             fetch.deletedNotice =
                                                 "File eliminato nella working tree — visualizzata l'ultima versione tracciata.";
                                         }
+                                        if (!isCurrent())
+                                        {
+                                            fetch.skipped = true;
+                                            return fetch;
+                                        }
                                     }
                                     if (shouldInspectRichFile(diff, fPath))
                                     {
@@ -1511,6 +1581,11 @@ namespace gf::desktop
                                             {
                                                 fetch.oldBlob = readSideBlob(service, rPath, "HEAD", "", oldP);
                                             }
+                                            if (!isCurrent())
+                                            {
+                                                fetch.skipped = true;
+                                                return fetch;
+                                            }
                                             if (!diff.isDeletedFile)
                                             {
                                                 fetch.newBlob = readSideBlob(service, rPath, ":0", "", newP);
@@ -1522,14 +1597,24 @@ namespace gf::desktop
                                             {
                                                 fetch.oldBlob = readSideBlob(service, rPath, ":0", "HEAD", oldP);
                                             }
+                                            if (!isCurrent())
+                                            {
+                                                fetch.skipped = true;
+                                                return fetch;
+                                            }
                                             if (!diff.isDeletedFile)
                                             {
                                                 fetch.newBlob = readSideBlob(service, rPath, "WORKTREE", "", newP);
                                             }
                                         }
+                                        if (!isCurrent())
+                                        {
+                                            fetch.skipped = true;
+                                            return fetch;
+                                        }
                                     }
                                 }
-                                prepareFetch(fetch);
+                                prepareFetch(fetch, isCurrent);
                                 return fetch;
                             },
                             [this, id, repoPath, filePath, scope, contextLines](DiffFetch fetch)
@@ -1546,6 +1631,7 @@ namespace gf::desktop
     void DiffViewModel::applyFetchedDiff(const QString& repoPath, const QString& filePath, const QString& revision,
                                          const QString& scope, int contextLines, DiffFetch& fetch)
     {
+        setLoadingFilePath({});
         setLoading(false);
         auto& result = *fetch.diff;
         if (!result)
@@ -1596,6 +1682,8 @@ namespace gf::desktop
         }
 
         const auto id = m_diffRequest.next();
+        cancelPendingBlame();
+        setLoadingFilePath(filePath);
         setLoading(true);
 
         auto& service = m_diffService;
@@ -1616,6 +1704,11 @@ namespace gf::desktop
                                     return fetch;
                                 }
                                 fetch.diff = service.getCommitFileDiff(rPath, shaStr, fPath, contextLines);
+                                if (!isCurrent())
+                                {
+                                    fetch.skipped = true;
+                                    return fetch;
+                                }
                                 if (*fetch.diff)
                                 {
                                     const auto& diff = **fetch.diff;
@@ -1625,6 +1718,11 @@ namespace gf::desktop
                                             service, rPath, fPath, diff, diff.isDeletedFile ? (shaStr + "^") : shaStr, "");
                                         fetch.deletedNotice =
                                             "File eliminato in questo commit — visualizzata la versione del commit precedente.";
+                                        if (!isCurrent())
+                                        {
+                                            fetch.skipped = true;
+                                            return fetch;
+                                        }
                                     }
                                     if (shouldInspectRichFile(diff, fPath))
                                     {
@@ -1636,13 +1734,23 @@ namespace gf::desktop
                                         {
                                             fetch.oldBlob = readSideBlob(service, rPath, shaStr + "^", "", oldP);
                                         }
+                                        if (!isCurrent())
+                                        {
+                                            fetch.skipped = true;
+                                            return fetch;
+                                        }
                                         if (!diff.isDeletedFile)
                                         {
                                             fetch.newBlob = readSideBlob(service, rPath, shaStr, "", newP);
                                         }
+                                        if (!isCurrent())
+                                        {
+                                            fetch.skipped = true;
+                                            return fetch;
+                                        }
                                     }
                                 }
-                                prepareFetch(fetch);
+                                prepareFetch(fetch, isCurrent);
                                 return fetch;
                             },
                             [this, id, repoPath, commitSha, filePath, contextLines](DiffFetch fetch)
@@ -1684,6 +1792,11 @@ namespace gf::desktop
                                     return fetch;
                                 }
                                 auto result = service.getFileBlame(rPath, rev, path);
+                                if (!isCurrent())
+                                {
+                                    fetch.skipped = true;
+                                    return fetch;
+                                }
                                 if (!result)
                                 {
                                     return fetch;
@@ -1701,6 +1814,12 @@ namespace gf::desktop
                                 gf::core::syntax::MarkdownLineState mdState{};
                                 for (std::size_t idx = 0; idx < count; ++idx)
                                 {
+                                    if ((idx & 63U) == 0 && !isCurrent())
+                                    {
+                                        fetch.skipped = true;
+                                        fetch.lines.clear();
+                                        return fetch;
+                                    }
                                     const auto& bl = (*result)[idx];
                                     int visualLen = 0;
                                     for (char c : bl.content)
@@ -1766,6 +1885,7 @@ namespace gf::desktop
         // Drop the reads still in flight: they belong to what is being cleared.
         m_diffRequest.invalidate();
         m_blameRequest.invalidate();
+        setLoadingFilePath({});
         setLoading(false);
 
         const bool hadMarkdown = m_isMarkdown;

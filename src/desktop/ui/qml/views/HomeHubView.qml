@@ -3086,6 +3086,7 @@ Item {
             ListView {
                 id: repoPickList
                 SmoothWheelScroller {}
+                visible: count > 0
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.min(200, count * 42)
                 clip: true
@@ -3142,6 +3143,8 @@ Item {
 
             Text {
                 visible: addRepoToGroupDialog.availableRepos.length === 0
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
                 text: (homeHubVm && homeHubVm.repositoriesCount === 0)
                     ? "Nessun repository registrato."
                     : "Tutti i repository registrati fanno già parte di questo gruppo."
@@ -3261,6 +3264,7 @@ Item {
             ListView {
                 id: wsRepoPickList
                 SmoothWheelScroller {}
+                visible: count > 0
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.min(200, count * 42)
                 clip: true
@@ -3317,6 +3321,8 @@ Item {
 
             Text {
                 visible: addRepoToWsDialog.availableRepos.length === 0
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
                 text: (homeHubVm && homeHubVm.repositoriesCount === 0)
                     ? "Nessun repository registrato."
                     : "Tutti i repository registrati fanno già parte di questo workspace."

@@ -5,6 +5,7 @@
 #include <QVariantList>
 #include <expected>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -52,6 +53,7 @@ namespace gf::desktop
         // A diff requested by loadDiff / loadCommitFileDiff is being read (the previous one stays
         // visible meanwhile).
         Q_PROPERTY(bool isLoading READ isLoading NOTIFY isLoadingChanged)
+        Q_PROPERTY(QString loadingFilePath READ loadingFilePath NOTIFY loadingFilePathChanged)
 
         // Diff context control (`-U<n>`, default 10, -1 for full file)
         Q_PROPERTY(int contextLines READ contextLines WRITE setContextLines NOTIFY contextLinesChanged)
@@ -136,6 +138,7 @@ namespace gf::desktop
         [[nodiscard]] QVariantList blameLines() const noexcept { return m_blameLines; }
         [[nodiscard]] bool isBlameLoading() const noexcept { return m_isBlameLoading; }
         [[nodiscard]] bool isLoading() const noexcept { return m_isLoading; }
+        [[nodiscard]] QString loadingFilePath() const noexcept { return m_loadingFilePath; }
 
         [[nodiscard]] int contextLines() const noexcept { return m_contextLines; }
         [[nodiscard]] bool isFullContext() const noexcept { return m_contextLines < 0; }
@@ -230,6 +233,7 @@ namespace gf::desktop
         void showMarkdownRichDiffChanged();
         void richPreviewRenderedChanged();
         void isLoadingChanged();
+        void loadingFilePathChanged();
         void loadFailed(const QString& errorMessage);
 
     private:
@@ -238,11 +242,12 @@ namespace gf::desktop
         struct BlameFetch;
 
         // Worker thread (pure functions of their inputs): builds what the view shows for a fetched
-        // diff, unless it equals fetch.comparedWith.
-        static void prepareFetch(DiffFetch& fetch);
+        // diff, unless it equals fetch.comparedWith or `isCurrent` returns false.
+        static void prepareFetch(DiffFetch& fetch, const std::function<bool()>& isCurrent = {});
         static void prepareFileDiff(const gf::git::bo::FileDiff& diff,
                                     const std::vector<gf::core::syntax::MarkdownLineState>* newFileSeedStates,
-                                    PreparedDiff& out);
+                                    PreparedDiff& out,
+                                    const std::function<bool()>& isCurrent = {});
         // `contentRes` is the full file content, read on the worker (see DiffFetch).
         static void prepareMarkdown(const std::expected<std::string, gf::git::ports::GitOpsError>& contentRes,
                                     const std::string& deletedFallbackNotice,
@@ -261,6 +266,8 @@ namespace gf::desktop
         [[nodiscard]] bool isShowingDiff(const QString& repoPath, const QString& filePath, const QString& revision,
                                          const QString& scope, int contextLines) const;
         void setLoading(bool loading);
+        void setLoadingFilePath(const QString& filePath);
+        void cancelPendingBlame();
         void releaseTemporaryFonts();
         void clearRichPreviewState();
 
@@ -348,6 +355,7 @@ namespace gf::desktop
         bool m_canRevealInFileManager = false;
 
         bool m_isLoading = false;
+        QString m_loadingFilePath;
         LatestRequest m_diffRequest;
         LatestRequest m_blameRequest;
         // Private read lane: selection reads never wait behind the session's mutations.

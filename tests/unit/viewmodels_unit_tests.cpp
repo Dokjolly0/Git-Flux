@@ -60,7 +60,9 @@
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
 #include <QQmlEngine>
+#include <QQuickItem>
 #include <QQuickStyle>
+#include <QQuickWindow>
 #include <QSignalSpy>
 #include <QElapsedTimer>
 #include <QTest>
@@ -4956,15 +4958,61 @@ TEST_CASE("Flux UI Kit QML components load and instantiate cleanly", "[qml][ui]"
         REQUIRE(diffVm.waitForIdle());
 
         auto panelObj = requireValidComponent(qmlBaseDir / "views" / "DiffViewerPanel.qml");
+        QQuickWindow window;
+        window.resize(1200, 800);
+        auto* panelItem = qobject_cast<QQuickItem*>(panelObj.get());
+        REQUIRE(panelItem != nullptr);
+        panelItem->setParentItem(window.contentItem());
+        panelItem->setSize(QSizeF(1200, 800));
+        window.show();
+        QCoreApplication::processEvents();
+
+        static thread_local int s_rangeErrorCount = 0;
+        s_rangeErrorCount = 0;
+        const auto prevHandler = qInstallMessageHandler(
+            [](QtMsgType type, const QMessageLogContext& ctx, const QString& msg)
+            {
+                if (msg.contains(QStringLiteral("RangeError")) || msg.contains(QStringLiteral("Maximum call stack")))
+                {
+                    ++s_rangeErrorCount;
+                }
+                (void)type;
+                (void)ctx;
+            });
+
         panelObj->setProperty("diffViewer", QVariant::fromValue(static_cast<QObject*>(&diffVm)));
+        QCoreApplication::processEvents();
 
         CHECK_FALSE(panelObj->property("hasSelection").toBool());
         QMetaObject::invokeMethod(panelObj.get(), "selectAllInActiveView");
+        QCoreApplication::processEvents();
         CHECK(panelObj->property("hasSelection").toBool());
         CHECK(panelObj->property("selTarget").toString() == "split-right");
+        CHECK(s_rangeErrorCount == 0);
+
+        // Rapid file switching with active selection and mixed modes must not recurse or stall
+        const QString repoStr = QString::fromStdString(std::filesystem::temp_directory_path().string());
+        for (int i = 0; i < 6; ++i)
+        {
+            const QString nextPath = (i % 2 == 0) ? QStringLiteral("doc_%1.md").arg(i) : QStringLiteral("src_%1.cpp").arg(i);
+            mockOps.diffToReturn.oldPath = nextPath.toStdString();
+            mockOps.diffToReturn.newPath = nextPath.toStdString();
+            REQUIRE(diffVm.loadDiff(repoStr, nextPath, "unstaged"));
+            CHECK(diffVm.loadingFilePath() == nextPath);
+        }
+        REQUIRE(diffVm.waitForIdle());
+        QCoreApplication::processEvents();
+        CHECK(diffVm.filePath() == "src_5.cpp");
+        CHECK(diffVm.loadingFilePath().isEmpty());
+        CHECK(s_rangeErrorCount == 0);
 
         QMetaObject::invokeMethod(panelObj.get(), "clearSelection");
+        QCoreApplication::processEvents();
         CHECK_FALSE(panelObj->property("hasSelection").toBool());
+        CHECK(s_rangeErrorCount == 0);
+
+        qInstallMessageHandler(prevHandler);
+        panelItem->setParentItem(nullptr);
     }
 }
 
