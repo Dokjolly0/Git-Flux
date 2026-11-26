@@ -556,12 +556,30 @@ Rectangle {
 
                     color: isSelected
                         ? "#1E3A8A55"
-                        : (fileRowMouse.containsMouse ? "#1F242C" : "transparent")
+                        : ((fileRowMouse.containsMouse || unstageBtnMouse.containsMouse || stageBtnMouse.containsMouse || discardBtnMouse.containsMouse) ? "#1F242C" : "transparent")
 
                     border.color: isSelected ? "#38BDF8" : "transparent"
                     border.width: 1
 
+                    MouseArea {
+                        id: fileRowMouse
+                        z: -1
+                        anchors.fill: parent
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: function (mouse) {
+                            if (mouse.button === Qt.RightButton) {
+                                changedFileContextMenu.targetPath = fDelegate.modelData.path;
+                                changedFileContextMenu.popup();
+                            } else {
+                                root.openFileDiff(fDelegate.modelData);
+                            }
+                        }
+                    }
+
                     RowLayout {
+                        z: 1
                         anchors.fill: parent
                         anchors.leftMargin: 8
                         anchors.rightMargin: 8
@@ -650,6 +668,10 @@ Rectangle {
                             // Unstage button (-)
                             Rectangle {
                                 visible: modelData.isStaged === true
+                                Layout.preferredWidth: 20
+                                Layout.preferredHeight: 20
+                                implicitWidth: 20
+                                implicitHeight: 20
                                 width: 20
                                 height: 20
                                 radius: 3
@@ -679,6 +701,10 @@ Rectangle {
                             // Stage button (+)
                             Rectangle {
                                 visible: modelData.isStaged !== true
+                                Layout.preferredWidth: 20
+                                Layout.preferredHeight: 20
+                                implicitWidth: 20
+                                implicitHeight: 20
                                 width: 20
                                 height: 20
                                 radius: 3
@@ -710,6 +736,10 @@ Rectangle {
                             // Discard button (trash)
                             Rectangle {
                                 visible: modelData.isStaged !== true
+                                Layout.preferredWidth: 20
+                                Layout.preferredHeight: 20
+                                implicitWidth: 20
+                                implicitHeight: 20
                                 width: 20
                                 height: 20
                                 radius: 3
@@ -734,23 +764,6 @@ Rectangle {
                                         }
                                     }
                                 }
-                            }
-                        }
-                    }
-
-                    MouseArea {
-                        id: fileRowMouse
-                        z: 0
-                        anchors.fill: parent
-                        acceptedButtons: Qt.LeftButton | Qt.RightButton
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: function (mouse) {
-                            if (mouse.button === Qt.RightButton) {
-                                changedFileContextMenu.targetPath = fDelegate.modelData.path;
-                                changedFileContextMenu.popup();
-                            } else {
-                                root.openFileDiff(fDelegate.modelData);
                             }
                         }
                     }
@@ -791,12 +804,32 @@ Rectangle {
 
                     color: isSelected
                         ? "#1E3A8A55"
-                        : (treeRowMouse.containsMouse ? "#1F242C" : "transparent")
+                        : ((treeRowMouse.containsMouse || treeUnstageBtnMouse.containsMouse || treeStageBtnMouse.containsMouse || treeDiscardBtnMouse.containsMouse) ? "#1F242C" : "transparent")
 
                     border.color: isSelected ? "#38BDF8" : "transparent"
                     border.width: 1
 
+                    MouseArea {
+                        id: treeRowMouse
+                        z: -1
+                        anchors.fill: parent
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: function (mouse) {
+                            if (mouse.button === Qt.RightButton && !treeDelegate.isFolder && treeDelegate.modelData.file) {
+                                changedFileContextMenu.targetPath = treeDelegate.modelData.file.path;
+                                changedFileContextMenu.popup();
+                            } else if (treeDelegate.isFolder) {
+                                root.toggleFolder(listBody.treeScope + treeDelegate.modelData.fullPath);
+                            } else {
+                                root.openFileDiff(treeDelegate.modelData.file);
+                            }
+                        }
+                    }
+
                     RowLayout {
+                        z: 1
                         anchors.fill: parent
                         anchors.leftMargin: 6 + (treeDelegate.isFolder ? (modelData.depth * 14) : ((modelData.depth + 1) * 14))
                         anchors.rightMargin: 8
@@ -918,6 +951,10 @@ Rectangle {
 
                             Rectangle {
                                 visible: modelData.isStaged === true
+                                Layout.preferredWidth: 20
+                                Layout.preferredHeight: 20
+                                implicitWidth: 20
+                                implicitHeight: 20
                                 width: 20
                                 height: 20
                                 radius: 3
@@ -946,6 +983,10 @@ Rectangle {
 
                             Rectangle {
                                 visible: modelData.isStaged !== true
+                                Layout.preferredWidth: 20
+                                Layout.preferredHeight: 20
+                                implicitWidth: 20
+                                implicitHeight: 20
                                 width: 20
                                 height: 20
                                 radius: 3
@@ -976,6 +1017,10 @@ Rectangle {
 
                             Rectangle {
                                 visible: modelData.isStaged !== true
+                                Layout.preferredWidth: 20
+                                Layout.preferredHeight: 20
+                                implicitWidth: 20
+                                implicitHeight: 20
                                 width: 20
                                 height: 20
                                 radius: 3
@@ -1000,25 +1045,6 @@ Rectangle {
                                         }
                                     }
                                 }
-                            }
-                        }
-                    }
-
-                    MouseArea {
-                        id: treeRowMouse
-                        z: 0
-                        anchors.fill: parent
-                        acceptedButtons: Qt.LeftButton | Qt.RightButton
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: function (mouse) {
-                            if (mouse.button === Qt.RightButton && !treeDelegate.isFolder && treeDelegate.modelData.file) {
-                                changedFileContextMenu.targetPath = treeDelegate.modelData.file.path;
-                                changedFileContextMenu.popup();
-                            } else if (treeDelegate.isFolder) {
-                                root.toggleFolder(listBody.treeScope + treeDelegate.modelData.fullPath);
-                            } else {
-                                root.openFileDiff(treeDelegate.modelData.file);
                             }
                         }
                     }
@@ -1081,6 +1107,7 @@ Rectangle {
 
                 MouseArea {
                     id: sectionHeaderMouse
+                    z: -1
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
@@ -1088,6 +1115,7 @@ Rectangle {
                 }
 
                 RowLayout {
+                    z: 1
                     anchors.fill: parent
                     anchors.leftMargin: 10
                     anchors.rightMargin: 8
