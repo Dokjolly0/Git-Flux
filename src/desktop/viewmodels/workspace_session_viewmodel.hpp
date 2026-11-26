@@ -176,6 +176,7 @@ namespace gf::desktop
         [[nodiscard]] QVariantMap buildTabVariantMap(const SessionTabItem& item, int tabIndex) const;
         void populateTabGroups(SessionTabItem& item) const;
         void rebuildAllTabGroups();
+        void persistWorkspaceSession() const;
         void addTabInternal(const QString& repoId, const QString& name, const QString& path);
         void onCommitSucceeded(const QString& sha, const QString& summary);
         void onFsDebouncedBatch(const gf::git::bo::FsDebouncedBatch& batch);
@@ -205,6 +206,7 @@ namespace gf::desktop
         bool m_isRebaseInProgress{false};
         QString m_currentGroupName;
         QString m_currentGroupColor;
+        QString m_currentWorkspaceId;
         QString m_sessionKind{QStringLiteral("single")};
 
         // HEAD/branch seen by the last working tree refresh of the active tab: a change means a

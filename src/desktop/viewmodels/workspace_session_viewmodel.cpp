@@ -19,6 +19,7 @@
 
 #include <QMetaObject>
 #include <algorithm>
+#include <chrono>
 #include <unordered_map>
 
 namespace gf::desktop
@@ -311,8 +312,55 @@ namespace gf::desktop
         {
             m_activeTabIndex = clamped;
             refreshActiveTab();
+            persistWorkspaceSession();
             emit activeTabChanged();
         }
+    }
+
+    void WorkspaceSessionViewModel::persistWorkspaceSession() const
+    {
+        if (m_sessionKind != QStringLiteral("workspace") || m_currentWorkspaceId.isEmpty() || m_tabs.empty())
+        {
+            return;
+        }
+
+        const workspaces::bo::WorkspaceId wsId{m_currentWorkspaceId.toStdString()};
+        auto sessionRes = m_workspaceService.loadOrCreateSession(wsId);
+        workspaces::bo::WorkspaceSession session{};
+        if (sessionRes)
+        {
+            session = *sessionRes;
+        }
+        else
+        {
+            session.schemaVersion = 1;
+        }
+
+        session.workspaceId = wsId;
+        session.openedRepositoryIds.clear();
+        session.openedRepositoryIds.reserve(m_tabs.size());
+        for (const auto& tab : m_tabs)
+        {
+            if (!tab.repoId.isEmpty())
+            {
+                session.openedRepositoryIds.emplace_back(tab.repoId.toStdString());
+            }
+        }
+
+        const QString currentActiveId = activeRepoId();
+        if (!currentActiveId.isEmpty())
+        {
+            session.activeRepositoryId = repositories::bo::RepositoryId{currentActiveId.toStdString()};
+        }
+        else
+        {
+            session.activeRepositoryId.reset();
+        }
+
+        session.updatedAtUnixEpochMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+
+        [[maybe_unused]] auto saveRes = m_workspaceService.saveSession(session);
     }
 
     QString WorkspaceSessionViewModel::activeRepoId() const
@@ -521,9 +569,12 @@ namespace gf::desktop
             return;
         }
 
+        const auto savedSessionRes = m_workspaceService.loadOrCreateSession((*wsOpt)->id);
+
         closeAllTabs();
 
         m_sessionKind = QStringLiteral("workspace");
+        m_currentWorkspaceId = workspaceId;
         m_currentGroupName = QString::fromStdString((*wsOpt)->name);
         m_currentGroupColor = QStringLiteral("#38BDF8");
         m_preferredGroupOrder.clear();
@@ -553,7 +604,20 @@ namespace gf::desktop
 
         if (!m_tabs.empty())
         {
-            setActiveTabIndex(0);
+            int targetIndex = 0;
+            if (savedSessionRes && savedSessionRes->activeRepositoryId.has_value())
+            {
+                const QString savedRepoId = QString::fromStdString(savedSessionRes->activeRepositoryId->value());
+                for (int i = 0; i < static_cast<int>(m_tabs.size()); ++i)
+                {
+                    if (m_tabs[static_cast<std::size_t>(i)].repoId == savedRepoId)
+                    {
+                        targetIndex = i;
+                        break;
+                    }
+                }
+            }
+            setActiveTabIndex(targetIndex);
         }
     }
 
@@ -575,6 +639,7 @@ namespace gf::desktop
 
         if (m_tabs.empty())
         {
+            m_currentWorkspaceId.clear();
             m_preferredGroupOrder.clear();
             if (!m_currentGroupName.isEmpty() || !m_currentGroupColor.isEmpty() || m_sessionKind != QStringLiteral("single"))
             {
@@ -589,6 +654,12 @@ namespace gf::desktop
             m_branchManager.setRepositoryPath({});
             emit activeTabChanged();
         }
+        else if (index < m_activeTabIndex)
+        {
+            --m_activeTabIndex;
+            persistWorkspaceSession();
+            emit activeTabChanged();
+        }
         else if (m_activeTabIndex >= static_cast<int>(m_tabs.size()))
         {
             setActiveTabIndex(static_cast<int>(m_tabs.size() - 1));
@@ -596,7 +667,12 @@ namespace gf::desktop
         else if (m_activeTabIndex == index)
         {
             refreshActiveTab();
+            persistWorkspaceSession();
             emit activeTabChanged();
+        }
+        else
+        {
+            persistWorkspaceSession();
         }
     }
 
@@ -615,6 +691,7 @@ namespace gf::desktop
         }
 
         m_tabs.clear();
+        m_currentWorkspaceId.clear();
         m_preferredGroupOrder.clear();
         m_activeTabIndex = -1;
         if (!m_currentGroupName.isEmpty() || !m_currentGroupColor.isEmpty() || m_sessionKind != QStringLiteral("single"))

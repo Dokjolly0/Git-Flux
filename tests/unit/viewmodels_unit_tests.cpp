@@ -5361,6 +5361,37 @@ TEST_CASE("WorkspaceSessionViewModel clusters tabs by group and exposes multi-gr
     REQUIRE(updatedSharedGroups.size() == 2);
     CHECK(updatedSharedGroups[1].toMap().value("color").toString() == QStringLiteral("#FB7185"));
 
+    // Switching active tab inside workspace persists across close + reopen (and across other sessions)
+    CHECK(sessionVm.activeTabIndex() == 0);
+    sessionVm.setActiveTabIndex(2);
+    CHECK(sessionVm.activeRepoName() == QStringLiteral("pos-ui"));
+    sessionVm.closeAllTabs();
+
+    // Opening a single repository must not overwrite the workspace's last active repository
+    sessionVm.openRepository(QString::fromStdString(rApi.id.value()),
+                             QString::fromStdString(rApi.displayName),
+                             QString::fromStdString(rApi.localPath.string()));
+    CHECK(sessionVm.activeRepoName() == QStringLiteral("api"));
+
+    sessionVm.openWorkspace(QString::fromStdString(ws.id.value()));
+    CHECK(sessionVm.tabs().size() == 4);
+    CHECK(sessionVm.activeTabIndex() == 2);
+    CHECK(sessionVm.activeRepoName() == QStringLiteral("pos-ui"));
+
+    // Switching to the direct repo, closing an earlier tab, closing all, and reopening restores solo-tools
+    sessionVm.setActiveTabIndex(3);
+    CHECK(sessionVm.activeRepoName() == QStringLiteral("solo-tools"));
+    sessionVm.closeTab(0);
+    CHECK(sessionVm.tabs().size() == 3);
+    CHECK(sessionVm.activeTabIndex() == 2);
+    CHECK(sessionVm.activeRepoName() == QStringLiteral("solo-tools"));
+    sessionVm.closeAllTabs();
+
+    sessionVm.openWorkspace(QString::fromStdString(ws.id.value()));
+    CHECK(sessionVm.tabs().size() == 4);
+    CHECK(sessionVm.activeTabIndex() == 3);
+    CHECK(sessionVm.activeRepoName() == QStringLiteral("solo-tools"));
+
     sessionVm.closeAllTabs();
     std::filesystem::remove_all(baseDir, ec);
 }
