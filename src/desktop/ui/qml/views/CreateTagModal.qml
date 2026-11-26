@@ -7,10 +7,24 @@ Dialog {
     title: "Crea Nuovo Tag"
     modal: true
     width: 460
-    height: 310
+    height: 325
+    padding: 18
+    topPadding: 14
+    bottomPadding: 14
     anchors.centerIn: Overlay.overlay
 
     property var branchManager: null
+
+    // Operations are asynchronous: remember which one this dialog started and react to its
+    // outcome only (another queued operation may complete first).
+    property alias pendingOperationId: opWatcher.pendingOperationId
+
+    FluxBranchOpWatcher {
+        id: opWatcher
+        branchManager: root.branchManager
+        onSucceeded: root.close()
+        onFailed: (message) => { errorText.text = message; }
+    }
     property string targetCommit: ""
 
     function openWithCommit(sha) {
@@ -22,48 +36,11 @@ Dialog {
         tagNameField.forceActiveFocus();
     }
 
-    background: Rectangle {
-        color: "#0F172A"
-        radius: 8
-        border.color: "#334155"
-        border.width: 1
-    }
+    background: FluxModalBackground {}
 
-    header: Rectangle {
-        color: "#1E293B"
-        height: 44
-        radius: 8
-
-        Rectangle {
-            anchors.bottom: parent.bottom
-            width: parent.width
-            height: 8
-            color: "#1E293B"
-        }
-
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 16
-
-            Text {
-                text: "🏷 Crea Nuovo Tag"
-                color: "#F8FAFC"
-                font.bold: true
-                font.pixelSize: 13
-            }
-
-            Item { Layout.fillWidth: true }
-
-            Button {
-                text: "✕"
-                Layout.preferredWidth: 24
-                Layout.preferredHeight: 24
-                background: Rectangle { color: "transparent" }
-                contentItem: Text { text: "✕"; color: "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter }
-                onClicked: root.close()
-            }
-        }
+    header: FluxModalHeader {
+        titleText: "🏷 Crea Nuovo Tag"
+        onCloseRequested: root.close()
     }
 
     contentItem: ColumnLayout {
@@ -72,15 +49,16 @@ Dialog {
         // Commit target indicator
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 34
-            color: "#161B22"
-            radius: 4
-            border.color: "#30363D"
+            Layout.preferredHeight: 36
+            color: "#0D131D"
+            radius: 9
+            border.color: "#222F42"
+            border.width: 1
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 10
-                anchors.rightMargin: 10
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
                 spacing: 8
 
                 Text {
@@ -104,11 +82,11 @@ Dialog {
         // Tag name
         ColumnLayout {
             Layout.fillWidth: true
-            spacing: 4
+            spacing: 5
 
             Text {
                 text: "Nome del Tag (es. v1.0.0):"
-                color: "#94A3B8"
+                color: "#CBD5E1"
                 font.pixelSize: 11
                 font.bold: true
             }
@@ -116,18 +94,24 @@ Dialog {
             TextField {
                 id: tagNameField
                 Layout.fillWidth: true
-                Layout.preferredHeight: 34
+                Layout.preferredHeight: 36
                 color: "#F8FAFC"
                 font.pixelSize: 12
                 placeholderText: "Inserisci il nome del tag..."
-                placeholderTextColor: "#475569"
+                placeholderTextColor: "#64748B"
                 selectByMouse: true
 
                 background: Rectangle {
-                    color: "#020617"
-                    radius: 4
-                    border.color: tagNameField.activeFocus ? "#38BDF8" : "#334155"
+                    color: "#0A0E15"
+                    radius: 8
+                    border.color: tagNameField.activeFocus ? "#38BDF8" : "#222F42"
                     border.width: 1
+
+                    Behavior on border.color {
+                        ColorAnimation {
+                            duration: 120
+                        }
+                    }
                 }
 
                 onAccepted: createBtn.clicked()
@@ -137,7 +121,7 @@ Dialog {
         // Tag message (optional)
         ColumnLayout {
             Layout.fillWidth: true
-            spacing: 4
+            spacing: 5
 
             Text {
                 text: "Messaggio (opzionale, crea tag annotato):"
@@ -148,18 +132,24 @@ Dialog {
             TextField {
                 id: tagMessageField
                 Layout.fillWidth: true
-                Layout.preferredHeight: 34
+                Layout.preferredHeight: 36
                 color: "#F8FAFC"
                 font.pixelSize: 12
                 placeholderText: "Messaggio descrittivo del tag..."
-                placeholderTextColor: "#475569"
+                placeholderTextColor: "#64748B"
                 selectByMouse: true
 
                 background: Rectangle {
-                    color: "#020617"
-                    radius: 4
-                    border.color: tagMessageField.activeFocus ? "#38BDF8" : "#334155"
+                    color: "#0A0E15"
+                    radius: 8
+                    border.color: tagMessageField.activeFocus ? "#38BDF8" : "#222F42"
                     border.width: 1
+
+                    Behavior on border.color {
+                        ColorAnimation {
+                            duration: 120
+                        }
+                    }
                 }
 
                 onAccepted: createBtn.clicked()
@@ -177,73 +167,62 @@ Dialog {
     }
 
     footer: Rectangle {
-        color: "#1E293B"
-        height: 52
-        radius: 8
+        color: "#161F2E"
+        height: 54
+        radius: 14
 
         Rectangle {
             anchors.top: parent.top
             width: parent.width
-            height: 8
-            color: "#1E293B"
+            height: 14
+            color: "#161F2E"
+        }
+
+        Rectangle {
+            anchors.top: parent.top
+            width: parent.width
+            height: 1
+            color: "#222F42"
         }
 
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 16
+            anchors.leftMargin: 18
+            anchors.rightMargin: 18
             spacing: 10
 
-            Item { Layout.fillWidth: true }
+            Item {
+                Layout.fillWidth: true
+            }
 
-            Button {
+            FluxActionButton {
                 text: "Annulla"
-                Layout.preferredHeight: 32
-                background: Rectangle {
-                    color: parent.hovered ? "#334155" : "transparent"
-                    radius: 4
-                    border.color: "#475569"
-                    border.width: 1
-                }
-                contentItem: Text {
-                    text: "Annulla"
-                    color: "#94A3B8"
-                    font.pixelSize: 12
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
+                Layout.preferredHeight: 34
+                fontPixelSize: 12
                 onClicked: root.close()
             }
 
-            Button {
+            FluxActionButton {
                 id: createBtn
                 text: "🏷 Crea Tag"
-                Layout.preferredHeight: 32
-                Layout.preferredWidth: 120
+                Layout.preferredHeight: 34
+                Layout.preferredWidth: 124
                 enabled: tagNameField.text.trim().length > 0
-
-                background: Rectangle {
-                    color: createBtn.enabled ? (createBtn.hovered ? "#0284C7" : "#0369A1") : "#334155"
-                    radius: 4
-                }
-                contentItem: Text {
-                    text: "🏷 Crea Tag"
-                    color: createBtn.enabled ? "#FFFFFF" : "#64748B"
-                    font.pixelSize: 12
-                    font.bold: true
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
+                baseColor: "#0284C7"
+                hoverColor: "#0EA5E9"
+                baseBorderColor: "#38BDF8"
+                textColor: "#FFFFFF"
+                fontPixelSize: 12
+                fontBold: true
                 onClicked: {
-                    var name = tagNameField.text.trim();
+                    const name = tagNameField.text.trim();
                     if (!name) {
                         errorText.text = "Inserisci un nome per il tag";
                         return;
                     }
-                    if (root.branchManager) {
-                        var ok = root.branchManager.createTag(name, root.targetCommit, tagMessageField.text.trim());
-                        if (ok) {
-                            root.close();
+                    if (root.branchManager && root.pendingOperationId === 0) {
+                        if (root.branchManager.createTag(name, root.targetCommit, tagMessageField.text.trim())) {
+                            root.pendingOperationId = root.branchManager.lastOperationId;
                         } else {
                             errorText.text = root.branchManager.statusMessage;
                         }

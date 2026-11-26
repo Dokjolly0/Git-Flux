@@ -9,13 +9,23 @@ Rectangle {
     property var sessionVm: null
     property var diffViewer: (sessionVm && sessionVm.diffViewer) ? sessionVm.diffViewer : null
     property bool showBackButton: false
+
     signal backRequested()
+
+    readonly property string monoFont: (typeof gfMonoFont !== "undefined" && gfMonoFont) ? gfMonoFont : "Consolas"
+    property bool wrapMarkdown: true
+    property bool wrapCode: false
+    readonly property bool isMarkdown: (root.diffViewer && root.diffViewer.isMarkdown === true)
+    readonly property bool isSvgPreviewable: (root.diffViewer && root.diffViewer.isSvgPreviewable === true)
+    readonly property bool effectiveWrap: isMarkdown ? wrapMarkdown : wrapCode
+    readonly property bool showingMarkdownPreview: (root.diffViewer && root.diffViewer.isMarkdownRendered === true && !root.diffViewer.isBinary && !root.diffViewer.isEmpty)
+    readonly property bool showingRichPreview: (root.diffViewer && !root.diffViewer.isEmpty && (root.diffViewer.isBinary || root.diffViewer.isRichPreviewRendered === true))
 
     property real horizontalScrollX: 0
 
     TextMetrics {
         id: monoMetrics
-        font.family: "monospace"
+        font.family: root.monoFont
         font.pixelSize: 12
         text: "M"
     }
@@ -24,17 +34,17 @@ Rectangle {
     readonly property int maxLineLength: (root.diffViewer && root.diffViewer.maxLineLength > 0) ? root.diffViewer.maxLineLength : 0
     readonly property real maxCodeWidth: maxLineLength > 0 ? (maxLineLength * charWidth + 80) : 0
 
-    readonly property real inlineAvailWidth: Math.max(100, root.width - 108)
-    readonly property real inlineMaxScroll: Math.max(0, maxCodeWidth - inlineAvailWidth)
+    readonly property real inlineAvailWidth: Math.max(100, root.width - 108 - inlineOverviewBar.width)
+    readonly property real inlineMaxScroll: root.effectiveWrap ? 0 : Math.max(0, maxCodeWidth - inlineAvailWidth)
 
-    readonly property real splitAvailWidth: Math.max(100, Math.floor(root.width / 2) - 44)
-    readonly property real splitMaxScroll: Math.max(0, maxCodeWidth - splitAvailWidth)
+    readonly property real splitAvailWidth: Math.max(100, Math.floor((root.width - splitOverviewBar.width) / 2) - 44)
+    readonly property real splitMaxScroll: root.effectiveWrap ? 0 : Math.max(0, maxCodeWidth - splitAvailWidth)
 
     readonly property real blameAvailWidth: Math.max(100, root.width - 320)
     readonly property real blameMaxScroll: Math.max(0, maxCodeWidth - blameAvailWidth)
 
     readonly property real currentMaxScroll: {
-        var mode = root.diffViewer ? root.diffViewer.viewMode : "split";
+        const mode = root.diffViewer ? root.diffViewer.viewMode : "split";
         if (mode === "inline") return inlineMaxScroll;
         if (mode === "blame") return blameMaxScroll;
         return splitMaxScroll;
@@ -46,28 +56,489 @@ Rectangle {
         }
     }
 
+    onEffectiveWrapChanged: {
+        if (root.effectiveWrap) {
+            root.horizontalScrollX = 0;
+        }
+    }
+
     property string lastLoadedFileKey: ""
+    property bool pendingScrollRestore: false
+    property real savedScrollRatio: 0
+    property string savedScrollFileKey: ""
+
+    readonly property color gridLineColor: Qt.rgba(0.58, 0.64, 0.72, 0.14)
+    readonly property color gutterBorderColor: "#1E293B"
+
+    // Shared text selection state (supports single-line, multi-line & off-screen copy)
+    property string selTarget: "" // "inline", "split-left", "split-right", "hunk", "blame"
+    property int selHunkIndex: -1
+    property int selAnchorRow: -1
+    property int selAnchorCol: 0
+    property int selFocusRow: -1
+    property int selFocusCol: 0
+    property int contextMenuRow: -1
+    property string contextMenuTarget: ""
+    property int contextMenuHunkIndex: -1
+
+    signal selectionStateChanged()
+
+    readonly property bool hasSelection: selTarget !== "" && selAnchorRow >= 0 && selFocusRow >= 0
+        && (selAnchorRow !== selFocusRow || selAnchorCol !== selFocusCol)
+    readonly property bool selForward: (selAnchorRow < selFocusRow)
+        || (selAnchorRow === selFocusRow && selAnchorCol <= selFocusCol)
+    readonly property int selStartRow: selForward ? selAnchorRow : selFocusRow
+    readonly property int selStartCol: selForward ? selAnchorCol : selFocusCol
+    readonly property int selEndRow: selForward ? selFocusRow : selAnchorRow
+    readonly property int selEndCol: selForward ? selFocusCol : selAnchorCol
+
+    function clearSelection() {
+        const hadAny = (selTarget !== "" || selHunkIndex !== -1 || selAnchorRow !== -1
+            || selAnchorCol !== 0 || selFocusRow !== -1 || selFocusCol !== 0);
+        if (!hadAny) return;
+        selTarget = "";
+        selHunkIndex = -1;
+        selAnchorRow = -1;
+        selAnchorCol = 0;
+        selFocusRow = -1;
+        selFocusCol = 0;
+        root.selectionStateChanged();
+    }
+
+    function copySelection() {
+        if (!root.diffViewer || !root.hasSelection) return;
+        const text = root.diffViewer.extractSelectedText(
+            root.selTarget, root.selStartRow, root.selStartCol, root.selEndRow, root.selEndCol, root.selHunkIndex);
+        if (text && text.length > 0) {
+            root.diffViewer.copyToClipboard(text);
+        }
+    }
+
+    function copyLine(target, row, hunkIdx) {
+        if (!root.diffViewer || row < 0) return;
+        const text = root.diffViewer.extractSelectedText(
+            target, row, 0, row, 1000000, hunkIdx !== undefined ? hunkIdx : -1);
+        if (text !== undefined && text !== null) {
+            root.diffViewer.copyToClipboard(text);
+        }
+    }
+
+    function selectAllInActiveView() {
+        if (!root.diffViewer || root.diffViewer.isEmpty) return;
+        const mode = root.diffViewer.viewMode || "split";
+        if (mode === "inline" && inlineListView.count > 0) {
+            selTarget = "inline";
+            selHunkIndex = -1;
+            selAnchorRow = 0;
+            selAnchorCol = 0;
+            selFocusRow = inlineListView.count - 1;
+            selFocusCol = 1000000;
+        } else if (mode === "blame" && blameListView.count > 0) {
+            selTarget = "blame";
+            selHunkIndex = -1;
+            selAnchorRow = 0;
+            selAnchorCol = 0;
+            selFocusRow = blameListView.count - 1;
+            selFocusCol = 1000000;
+        } else if ((mode === "split" || mode === "") && splitListView.count > 0) {
+            if (selTarget !== "split-left" && selTarget !== "split-right") {
+                selTarget = "split-right";
+            }
+            selHunkIndex = -1;
+            selAnchorRow = 0;
+            selAnchorCol = 0;
+            selFocusRow = splitListView.count - 1;
+            selFocusCol = 1000000;
+        } else if (mode === "hunk" && root.diffViewer.hunks && root.diffViewer.hunks.length > 0) {
+            const hIdx = (selHunkIndex >= 0 && selHunkIndex < root.diffViewer.hunks.length) ? selHunkIndex : 0;
+            const hLines = root.diffViewer.hunks[hIdx].lines;
+            if (hLines && hLines.length > 0) {
+                selTarget = "hunk";
+                selHunkIndex = hIdx;
+                selAnchorRow = 0;
+                selAnchorCol = 0;
+                selFocusRow = Math.min(hLines.length, 300) - 1;
+                selFocusCol = 1000000;
+            }
+        }
+        root.selectionStateChanged();
+    }
+
+    function handleDiffKeys(event) {
+        if ((event.modifiers & Qt.ControlModifier) !== 0 && event.key === Qt.Key_C) {
+            if (root.hasSelection) {
+                root.copySelection();
+                event.accepted = true;
+            }
+        } else if ((event.modifiers & Qt.ControlModifier) !== 0 && event.key === Qt.Key_A) {
+            root.selectAllInActiveView();
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Escape && root.hasSelection) {
+            root.clearSelection();
+            event.accepted = true;
+        }
+    }
+
+    function syncCodeSelection(codeEdit, targetName, rowIndex, disabled, hunkIdx) {
+        if (!codeEdit) return;
+        const matchTarget = (root.selTarget === targetName)
+            && (hunkIdx === undefined || hunkIdx < 0 || root.selHunkIndex === hunkIdx);
+        if (disabled || !root.hasSelection || !matchTarget || rowIndex < root.selStartRow || rowIndex > root.selEndRow) {
+            if (codeEdit.selectionStart !== codeEdit.selectionEnd) {
+                codeEdit.deselect();
+            }
+            return;
+        }
+        const len = codeEdit.length;
+        const s = (rowIndex === root.selStartRow) ? Math.min(root.selStartCol, len) : 0;
+        const e = (rowIndex === root.selEndRow) ? Math.min(root.selEndCol, len) : len;
+        if (e > s) {
+            if (codeEdit.selectionStart !== s || codeEdit.selectionEnd !== e) {
+                codeEdit.select(s, e);
+            }
+        } else if (codeEdit.selectionStart !== codeEdit.selectionEnd) {
+            codeEdit.deselect();
+        }
+    }
+
+    function currentFileKey() {
+        const rev = (root.diffViewer && root.diffViewer.currentRevision) ? root.diffViewer.currentRevision : "";
+        const file = (root.diffViewer && root.diffViewer.filePath) ? root.diffViewer.filePath : "";
+        return rev + "::" + file;
+    }
+
+    function activeVerticalListView() {
+        if (!root.diffViewer || root.showingMarkdownPreview) return null;
+        const mode = root.diffViewer.viewMode || "split";
+        if (mode === "inline") return inlineListView;
+        if (mode === "hunk") return hunkListView;
+        if (mode === "blame") return blameListView;
+        return splitListView;
+    }
 
     Connections {
         target: root.diffViewer
+
+        function onContextLinesChanged() {
+            const lv = root.activeVerticalListView();
+            if (lv && lv.contentHeight > lv.height) {
+                root.savedScrollRatio = Math.max(0, Math.min(1.0, lv.contentY / (lv.contentHeight - lv.height)));
+                root.savedScrollFileKey = root.currentFileKey();
+                root.pendingScrollRestore = true;
+            }
+        }
+
         function onDiffLoaded() {
-            var rev = (root.diffViewer && root.diffViewer.currentRevision) ? root.diffViewer.currentRevision : "";
-            var file = (root.diffViewer && root.diffViewer.filePath) ? root.diffViewer.filePath : "";
-            var key = rev + "::" + file;
+            root.clearSelection();
+            const key = root.currentFileKey();
             if (key !== root.lastLoadedFileKey) {
                 root.lastLoadedFileKey = key;
                 root.horizontalScrollX = 0;
+                root.pendingScrollRestore = false;
             } else {
-                // Same file reloaded (e.g. background polling / git status check):
-                // Preserve user scroll position! Clamp to max scroll if file became shorter.
+                // Same file reloaded (e.g. background polling or context expansion):
                 if (root.horizontalScrollX > root.currentMaxScroll) {
                     root.horizontalScrollX = root.currentMaxScroll;
                 }
+                if (root.pendingScrollRestore && key === root.savedScrollFileKey) {
+                    const ratio = root.savedScrollRatio;
+                    root.pendingScrollRestore = false;
+                    Qt.callLater(function () {
+                        const lv = root.activeVerticalListView();
+                        if (lv && lv.contentHeight > lv.height) {
+                            lv.contentY = Math.max(0, Math.min(lv.contentHeight - lv.height, ratio * (lv.contentHeight - lv.height)));
+                        }
+                    });
+                }
             }
         }
+
+        function onBlameLoaded() {
+            if (root.selTarget === "blame") {
+                root.clearSelection();
+            }
+        }
+
         function onViewModeChanged() {
+            root.clearSelection();
             root.horizontalScrollX = 0;
         }
+    }
+
+    FluxMenu {
+        id: diffCopyMenu
+
+        FluxMenuItem {
+            text: root.hasSelection ? "Copia selezione" : "Copia riga"
+            enabled: root.hasSelection || root.contextMenuRow >= 0
+            onTriggered: {
+                if (root.hasSelection) {
+                    root.copySelection();
+                } else if (root.contextMenuRow >= 0 && root.contextMenuTarget !== "") {
+                    root.copyLine(root.contextMenuTarget, root.contextMenuRow, root.contextMenuHunkIndex);
+                }
+            }
+        }
+        FluxMenuItem {
+            text: "Seleziona tutto"
+            enabled: root.diffViewer && !root.diffViewer.isEmpty
+            onTriggered: { root.selectAllInActiveView(); }
+        }
+        FluxMenuSeparator {
+            visible: root.hasSelection
+        }
+        FluxMenuItem {
+            text: "Deseleziona"
+            visible: root.hasSelection
+            onTriggered: { root.clearSelection(); }
+        }
+    }
+
+    component DiffCodeText: TextEdit {
+        id: codeEdit
+        property string selTargetName: ""
+        property int rowIndex: -1
+        property int hunkIdx: -1
+        property bool rowDisabled: false
+        property bool _syncingSelection: false
+
+        readOnly: true
+        selectByMouse: false
+        activeFocusOnPress: false
+        persistentSelection: true
+        textFormat: TextEdit.RichText
+        selectionColor: "#264F78"
+        selectedTextColor: "#F8FAFC"
+        leftPadding: 0
+        rightPadding: 0
+        topPadding: 0
+        bottomPadding: 0
+        font.family: root.monoFont
+
+        function syncSelection() {
+            if (_syncingSelection) return;
+            if (!root.hasSelection && codeEdit.selectionStart === codeEdit.selectionEnd) return;
+            _syncingSelection = true;
+            try {
+                root.syncCodeSelection(codeEdit, selTargetName, rowIndex, rowDisabled, hunkIdx);
+            } finally {
+                _syncingSelection = false;
+            }
+        }
+
+        Component.onCompleted: { syncSelection(); }
+        onRowIndexChanged: { syncSelection(); }
+        onTextChanged: { syncSelection(); }
+
+        Rectangle {
+            visible: !codeEdit.rowDisabled && root.hasSelection
+                && root.selTarget === codeEdit.selTargetName
+                && (codeEdit.hunkIdx < 0 || root.selHunkIndex === codeEdit.hunkIdx)
+                && codeEdit.rowIndex >= root.selStartRow && codeEdit.rowIndex < root.selEndRow
+                && codeEdit.length === 0
+            x: 0
+            y: 0
+            width: 6
+            height: Math.max(14, codeEdit.implicitHeight)
+            color: "#264F78"
+        }
+
+        Connections {
+            target: root
+            function onSelectionStateChanged() { codeEdit.syncSelection(); }
+        }
+    }
+
+    component DiffListSelectionMouseArea: MouseArea {
+        id: selMouse
+        property ListView listView: null
+        property string viewType: "inline" // "inline", "split", "blame"
+        property real maxHScroll: 0
+
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        hoverEnabled: true
+        preventStealing: isSelecting
+        cursorShape: hoveringHeader ? Qt.ArrowCursor : Qt.IBeamCursor
+
+        property bool isSelecting: false
+        property bool hoveringHeader: false
+        property string activeTarget: ""
+        property real lastMouseX: 0
+        property real lastMouseY: 0
+
+        function resolveTargetAt(mouseX) {
+            if (viewType === "split") {
+                const mid = Math.floor(width / 2);
+                if (mouseX < 40) return "";
+                if (mouseX >= mid && mouseX < mid + 41) return "";
+                return (mouseX < mid) ? "split-left" : "split-right";
+            }
+            if (viewType === "inline") {
+                return (mouseX >= 108) ? "inline" : "";
+            }
+            if (viewType === "blame") {
+                return (mouseX >= 318) ? "blame" : "";
+            }
+            return "";
+        }
+
+        function hitTest(mouseX, mouseY, forcedTarget) {
+            if (!listView || listView.count <= 0) return null;
+            const targetY = mouseY + listView.contentY;
+            const minY = listView.originY + 1;
+            const maxY = Math.max(minY, listView.originY + listView.contentHeight - 1);
+            const clampedY = Math.max(minY, Math.min(maxY, targetY));
+            const idx = listView.indexAt(Math.max(10, Math.min(width - 10, mouseX)), clampedY);
+            if (idx < 0) return null;
+
+            const rowItem = listView.itemAtIndex(idx);
+            if (!rowItem) return null;
+            if (rowItem.isHeaderRow === true) {
+                return { index: idx, isHeader: true, col: 0, codeEdit: null, target: forcedTarget };
+            }
+
+            let t = forcedTarget;
+            if (!t) t = resolveTargetAt(mouseX);
+            if (!t) return { index: idx, isHeader: false, col: 0, codeEdit: null, target: "" };
+
+            let ce = null;
+            if (t === "split-left") ce = rowItem.leftCodeEdit;
+            else if (t === "split-right") ce = rowItem.rightCodeEdit;
+            else ce = rowItem.codeEdit;
+
+            if (!ce) return { index: idx, isHeader: false, col: 0, codeEdit: null, target: t };
+
+            const pt = mapToItem(ce, mouseX, mouseY);
+            const cx = Math.max(0, Math.min(ce.width, pt.x));
+            const cy = Math.max(0, Math.min(Math.max(0, ce.height - 1), pt.y));
+            const col = ce.positionAt(cx, cy);
+            return { index: idx, isHeader: false, col: col, codeEdit: ce, target: t };
+        }
+
+        function updateFocusFromMouse(mx, my) {
+            const hit = hitTest(mx, my, activeTarget);
+            if (!hit) return;
+            const nextRow = hit.index;
+            const nextCol = hit.isHeader ? 0 : hit.col;
+            if (root.selFocusRow !== nextRow || root.selFocusCol !== nextCol) {
+                root.selFocusRow = nextRow;
+                root.selFocusCol = nextCol;
+                root.selectionStateChanged();
+            }
+        }
+
+        Timer {
+            id: autoScrollTimer
+            interval: 28
+            repeat: true
+            running: selMouse.isSelecting && selMouse.listView !== null && (
+                selMouse.lastMouseY < 14
+                || selMouse.lastMouseY > selMouse.height - 14
+            )
+            onTriggered: {
+                const lv = selMouse.listView;
+                if (!lv) return;
+                const maxScroll = Math.max(0, lv.contentHeight - lv.height);
+                if (maxScroll <= 0) return;
+                let delta = 0;
+                if (selMouse.lastMouseY < 14) {
+                    delta = -Math.max(12, (14 - selMouse.lastMouseY) * 0.8);
+                } else if (selMouse.lastMouseY > selMouse.height - 14) {
+                    delta = Math.max(12, (selMouse.lastMouseY - (selMouse.height - 14)) * 0.8);
+                }
+                const minY = lv.originY;
+                lv.contentY = Math.max(minY, Math.min(minY + maxScroll, lv.contentY + delta));
+                const clampedLocalY = Math.max(2, Math.min(selMouse.height - 2, selMouse.lastMouseY));
+                selMouse.updateFocusFromMouse(selMouse.lastMouseX, clampedLocalY);
+            }
+        }
+
+        onPressed: (mouse) => {
+            if (!listView) {
+                mouse.accepted = false;
+                return;
+            }
+            listView.forceActiveFocus();
+
+            if (mouse.button === Qt.RightButton) {
+                const rHit = hitTest(mouse.x, mouse.y, "");
+                if (rHit && !rHit.isHeader && rHit.target !== "") {
+                    root.contextMenuRow = rHit.index;
+                    root.contextMenuTarget = rHit.target;
+                    root.contextMenuHunkIndex = -1;
+                } else {
+                    root.contextMenuRow = -1;
+                    root.contextMenuTarget = "";
+                    root.contextMenuHunkIndex = -1;
+                }
+                diffCopyMenu.popup(selMouse, mouse.x, mouse.y);
+                return;
+            }
+
+            if (mouse.button !== Qt.LeftButton) {
+                mouse.accepted = false;
+                return;
+            }
+
+            const hit = hitTest(mouse.x, mouse.y, "");
+            if (!hit || hit.isHeader || hit.target === "") {
+                mouse.accepted = false;
+                return;
+            }
+
+            lastMouseX = mouse.x;
+            lastMouseY = mouse.y;
+            activeTarget = hit.target;
+            isSelecting = true;
+
+            if ((mouse.modifiers & Qt.ShiftModifier) !== 0 && root.selTarget === hit.target && root.selAnchorRow >= 0) {
+                root.selFocusRow = hit.index;
+                root.selFocusCol = hit.col;
+            } else {
+                root.selTarget = hit.target;
+                root.selHunkIndex = -1;
+                root.selAnchorRow = hit.index;
+                root.selAnchorCol = hit.col;
+                root.selFocusRow = hit.index;
+                root.selFocusCol = hit.col;
+            }
+            root.selectionStateChanged();
+        }
+
+        onPositionChanged: (mouse) => {
+            if (!isSelecting) {
+                const h = hitTest(mouse.x, mouse.y, "");
+                hoveringHeader = (!h || h.isHeader || h.target === "");
+                return;
+            }
+            if ((mouse.buttons & Qt.LeftButton) === 0) {
+                isSelecting = false;
+                return;
+            }
+            lastMouseX = mouse.x;
+            lastMouseY = mouse.y;
+            updateFocusFromMouse(mouse.x, mouse.y);
+        }
+
+        onDoubleClicked: (mouse) => {
+            if (mouse.button !== Qt.LeftButton) return;
+            const hit = hitTest(mouse.x, mouse.y, "");
+            if (!hit || hit.isHeader || !hit.codeEdit || hit.target === "") return;
+            hit.codeEdit.cursorPosition = hit.col;
+            hit.codeEdit.selectWord();
+            root.selTarget = hit.target;
+            root.selHunkIndex = -1;
+            root.selAnchorRow = hit.index;
+            root.selAnchorCol = hit.codeEdit.selectionStart;
+            root.selFocusRow = hit.index;
+            root.selFocusCol = hit.codeEdit.selectionEnd;
+            root.selectionStateChanged();
+            isSelecting = false;
+        }
+
+        onReleased: isSelecting = false
+        onCanceled: isSelecting = false
+        onExited: if (!isSelecting) hoveringHeader = false
     }
 
     component DiffHScrollBar: Rectangle {
@@ -76,6 +547,7 @@ Rectangle {
         property real viewWidth: 0
         property real scrollValue: 0
         property real maxScroll: Math.max(0, contentWidth - viewWidth)
+
         signal scrollRequested(real newValue)
 
         height: 10
@@ -106,8 +578,8 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             radius: 3
             color: hThumbArea.isDragging
-                   ? "#00E5FF"
-                   : (hThumbArea.containsMouse || trackMouseArea.containsMouse ? "#38BDF8" : "#475569")
+                ? "#00E5FF"
+                : (hThumbArea.containsMouse || trackMouseArea.containsMouse ? "#38BDF8" : "#475569")
             opacity: (hThumbArea.isDragging || hThumbArea.containsMouse || trackMouseArea.containsMouse) ? 0.95 : 0.65
 
             readonly property real trackWidth: hbar.width
@@ -128,28 +600,97 @@ Rectangle {
                 property bool isDragging: false
 
                 onPressed: (mouse) => {
-                    var pt = mapToItem(hbar, mouse.x, mouse.y);
+                    const pt = mapToItem(hbar, mouse.x, mouse.y);
                     startThumbTrackX = pt.x;
                     startScroll = hbar.scrollValue;
                     isDragging = true;
                 }
                 onPositionChanged: (mouse) => {
                     if (isDragging && pressed) {
-                        var pt = mapToItem(hbar, mouse.x, mouse.y);
-                        var deltaX = pt.x - startThumbTrackX;
-                        var maxThumbX = Math.max(1, hbar.width - hThumb.width);
-                        var targetScroll = Math.max(0, Math.min(hbar.maxScroll, startScroll + (deltaX / maxThumbX) * hbar.maxScroll));
+                        const pt = mapToItem(hbar, mouse.x, mouse.y);
+                        const deltaX = pt.x - startThumbTrackX;
+                        const maxThumbX = Math.max(1, hbar.width - hThumb.width);
+                        const targetScroll = Math.max(0, Math.min(hbar.maxScroll, startScroll + (deltaX / maxThumbX) * hbar.maxScroll));
                         hbar.scrollRequested(targetScroll);
                     }
                 }
-                onReleased: {
-                    isDragging = false;
-                }
-                onCanceled: {
-                    isDragging = false;
-                }
+                onReleased: isDragging = false
+                onCanceled: isDragging = false
             }
         }
+    }
+
+    // Inline Hunk Action Buttons component (+15 righe / File completo)
+    component HunkExpandActions: Row {
+        spacing: 6
+        visible: root.diffViewer && !root.diffViewer.isFullContext
+
+        Rectangle {
+            height: 20
+            width: plus15Text.implicitWidth + 14
+            radius: 6
+            color: plus15Mouse.containsMouse ? "#1E3A5F" : "#132235"
+            border.color: plus15Mouse.containsMouse ? "#38BDF8" : "#283B54"
+            border.width: 1
+
+            Behavior on color {
+                ColorAnimation {
+                    duration: 110
+                }
+            }
+
+            Text {
+                id: plus15Text
+                anchors.centerIn: parent
+                text: "+15 righe"
+                color: "#7DD3FC"
+                font.pixelSize: 9
+                font.bold: true
+            }
+            MouseArea {
+                id: plus15Mouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: if (root.diffViewer) root.diffViewer.expandContext(15)
+            }
+        }
+
+        Rectangle {
+            height: 20
+            width: fullCtxText.implicitWidth + 14
+            radius: 6
+            color: fullCtxMouse.containsMouse ? "#1E3A5F" : "#132235"
+            border.color: fullCtxMouse.containsMouse ? "#38BDF8" : "#283B54"
+            border.width: 1
+
+            Behavior on color {
+                ColorAnimation {
+                    duration: 110
+                }
+            }
+
+            Text {
+                id: fullCtxText
+                anchors.centerIn: parent
+                text: "File completo"
+                color: "#38BDF8"
+                font.pixelSize: 9
+                font.bold: true
+            }
+            MouseArea {
+                id: fullCtxMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: if (root.diffViewer) root.diffViewer.toggleFullContext()
+            }
+        }
+    }
+
+    component ContextOptionItem: FluxMenuItem {
+        id: optItem
+        font.pixelSize: 11
     }
 
     ColumnLayout {
@@ -161,26 +702,34 @@ Rectangle {
         // ==========================================
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 44
-            color: "#161B22"
-            border.color: "#21262D"
+            Layout.preferredHeight: 46
+            color: "#111722"
+            border.color: "#1E293B"
             border.width: 1
 
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 14
                 anchors.rightMargin: 14
-                spacing: 10
+                spacing: 8
 
                 // Back Button (shown when diff view replaces the graph in GitKraken mode)
                 Button {
                     visible: root.showBackButton
-                    Layout.preferredHeight: 28
+                    Layout.preferredHeight: 30
+                    leftPadding: 11
+                    rightPadding: 11
+                    hoverEnabled: true
                     background: Rectangle {
-                        color: parent.hovered ? "#334155" : "#1E293B"
-                        radius: 4
-                        border.color: "#475569"
+                        color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                        radius: 8
+                        border.color: parent.hovered ? "#38BDF8" : "#28374E"
                         border.width: 1
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
                     }
                     contentItem: RowLayout {
                         spacing: 6
@@ -201,20 +750,46 @@ Rectangle {
                 }
 
                 Text {
-                    text: (root.diffViewer && root.diffViewer.filePath !== "") ? root.diffViewer.filePath : "Nessun file selezionato"
+                    text: {
+                        if (!root.diffViewer) return "Nessun file selezionato";
+                        if (root.diffViewer.isLoading && root.diffViewer.loadingFilePath && root.diffViewer.loadingFilePath !== "") {
+                            return root.diffViewer.loadingFilePath;
+                        }
+                        return root.diffViewer.filePath !== "" ? root.diffViewer.filePath : "Nessun file selezionato";
+                    }
                     color: "#F1F5F9"
                     font.bold: true
                     font.pixelSize: 13
                     elide: Text.ElideMiddle
-                    Layout.maximumWidth: root.width * 0.35
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 80
+                }
+
+                // Loading indicator badge during async file switch
+                Rectangle {
+                    visible: Boolean(root.diffViewer && root.diffViewer.isLoading)
+                    Layout.preferredHeight: 22
+                    implicitWidth: loadingBadgeTxt.implicitWidth + 14
+                    radius: 6
+                    color: "#152336"
+                    border.color: "#38BDF8"
+                    border.width: 1
+                    Text {
+                        id: loadingBadgeTxt
+                        anchors.centerIn: parent
+                        text: "⏳ Caricamento..."
+                        color: "#7DD3FC"
+                        font.pixelSize: 10
+                        font.bold: true
+                    }
                 }
 
                 // Type Badge (NEW, DELETED, RENAMED, BINARY, MODIFIED)
                 Rectangle {
                     visible: root.diffViewer && !root.diffViewer.isEmpty
-                    Layout.preferredHeight: 20
-                    implicitWidth: typeText.implicitWidth + 10
-                    radius: 3
+                    Layout.preferredHeight: 22
+                    implicitWidth: typeText.implicitWidth + 14
+                    radius: 6
                     color: {
                         if (!root.diffViewer) return "transparent";
                         if (root.diffViewer.isNewFile) return "#065F46";
@@ -232,7 +807,7 @@ Rectangle {
                             if (root.diffViewer.isNewFile) return "NEW";
                             if (root.diffViewer.isDeletedFile) return "DELETED";
                             if (root.diffViewer.isRenamed) return "RENAMED";
-                            if (root.diffViewer.isBinary) return "BINARY";
+                            if (root.diffViewer.isBinary) return (root.diffViewer.formatBadge && root.diffViewer.formatBadge.length > 0) ? root.diffViewer.formatBadge : "BINARY";
                             return "MODIFIED";
                         }
                         color: "#FFFFFF"
@@ -241,14 +816,35 @@ Rectangle {
                     }
                 }
 
-                // Language Badge (e.g. ⚡ C++, 🐍 Python, ⚛ React / TSX)
+                // Format Badge for new/deleted/renamed binary files (e.g. PNG, PDF, ZIP)
                 Rectangle {
-                    visible: root.diffViewer && !root.diffViewer.isEmpty && root.diffViewer.languageName && root.diffViewer.languageName.length > 0
-                    Layout.preferredHeight: 20
-                    implicitWidth: langRow.implicitWidth + 12
-                    radius: 3
+                    visible: root.diffViewer && !root.diffViewer.isEmpty && root.diffViewer.isBinary &&
+                             (root.diffViewer.isNewFile || root.diffViewer.isDeletedFile || root.diffViewer.isRenamed) &&
+                             root.diffViewer.formatBadge && root.diffViewer.formatBadge.length > 0
+                    Layout.preferredHeight: 22
+                    implicitWidth: fmtBadgeTxt.implicitWidth + 12
+                    radius: 6
                     color: "#1E293B"
                     border.color: "#334155"
+                    border.width: 1
+                    Text {
+                        id: fmtBadgeTxt
+                        anchors.centerIn: parent
+                        text: root.diffViewer ? root.diffViewer.formatBadge : ""
+                        color: "#38BDF8"
+                        font.pixelSize: 10
+                        font.bold: true
+                    }
+                }
+
+                // Language Badge
+                Rectangle {
+                    visible: root.diffViewer && !root.diffViewer.isEmpty && root.diffViewer.languageName && root.diffViewer.languageName.length > 0
+                    Layout.preferredHeight: 22
+                    implicitWidth: langRow.implicitWidth + 14
+                    radius: 6
+                    color: "#151F2E"
+                    border.color: "#26354A"
                     border.width: 1
 
                     RowLayout {
@@ -268,114 +864,415 @@ Rectangle {
                     }
                 }
 
-                Item { Layout.fillWidth: true }
+                // Markdown Segmented Switch: Diff <> vs Anteprima 👁
+                Rectangle {
+                    visible: root.isMarkdown && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary
+                    Layout.preferredHeight: 28
+                    implicitWidth: mdToggleRow.implicitWidth + 6
+                    color: "#0A0E15"
+                    radius: 8
+                    border.color: "#222F42"
+                    border.width: 1
+
+                    RowLayout {
+                        id: mdToggleRow
+                        anchors.centerIn: parent
+                        spacing: 3
+
+                        Button {
+                            id: mdDiffSourceBtn
+                            Layout.preferredHeight: 22
+                            leftPadding: 9
+                            rightPadding: 9
+                            hoverEnabled: true
+                            readonly property bool active: !root.showingMarkdownPreview
+                            background: Rectangle {
+                                color: mdDiffSourceBtn.active ? "#152336" : (mdDiffSourceBtn.hovered ? "#141D2B" : "transparent")
+                                radius: 6
+                                border.color: mdDiffSourceBtn.active ? "#38BDF8" : "transparent"
+                                border.width: 1
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
+                            }
+                            contentItem: Text {
+                                text: "<> Diff"
+                                color: mdDiffSourceBtn.active ? "#38BDF8" : "#94A3B8"
+                                font.pixelSize: 11
+                                font.bold: mdDiffSourceBtn.active
+                            }
+                            onClicked: if (root.diffViewer) root.diffViewer.setMarkdownRendered(false)
+                        }
+
+                        Button {
+                            id: mdPreviewBtn
+                            Layout.preferredHeight: 22
+                            leftPadding: 9
+                            rightPadding: 9
+                            hoverEnabled: true
+                            readonly property bool active: root.showingMarkdownPreview
+                            background: Rectangle {
+                                color: mdPreviewBtn.active ? "#063B2C" : (mdPreviewBtn.hovered ? "#141D2B" : "transparent")
+                                radius: 6
+                                border.color: mdPreviewBtn.active ? "#34D399" : "transparent"
+                                border.width: 1
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
+                            }
+                            contentItem: Text {
+                                text: "👁 Anteprima"
+                                color: mdPreviewBtn.active ? "#6EE7B7" : "#94A3B8"
+                                font.pixelSize: 11
+                                font.bold: mdPreviewBtn.active
+                            }
+                            onClicked: if (root.diffViewer) root.diffViewer.setMarkdownRendered(true)
+                        }
+                    }
+                }
+
+                // SVG Segmented Switch: Diff <> vs Anteprima 👁
+                Rectangle {
+                    visible: root.isSvgPreviewable && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary
+                    Layout.preferredHeight: 28
+                    implicitWidth: svgToggleRow.implicitWidth + 6
+                    color: "#0A0E15"
+                    radius: 8
+                    border.color: "#222F42"
+                    border.width: 1
+
+                    RowLayout {
+                        id: svgToggleRow
+                        anchors.centerIn: parent
+                        spacing: 3
+
+                        Button {
+                            id: svgDiffSourceBtn
+                            Layout.preferredHeight: 22
+                            leftPadding: 9
+                            rightPadding: 9
+                            hoverEnabled: true
+                            readonly property bool active: !root.showingRichPreview
+                            background: Rectangle {
+                                color: svgDiffSourceBtn.active ? "#152336" : (svgDiffSourceBtn.hovered ? "#141D2B" : "transparent")
+                                radius: 6
+                                border.color: svgDiffSourceBtn.active ? "#38BDF8" : "transparent"
+                                border.width: 1
+                            }
+                            contentItem: Text {
+                                text: "<> Codice"
+                                color: svgDiffSourceBtn.active ? "#38BDF8" : "#94A3B8"
+                                font.pixelSize: 11
+                                font.bold: svgDiffSourceBtn.active
+                            }
+                            onClicked: if (root.diffViewer) root.diffViewer.setRichPreviewRendered(false)
+                        }
+
+                        Button {
+                            id: svgPreviewBtn
+                            Layout.preferredHeight: 22
+                            leftPadding: 9
+                            rightPadding: 9
+                            hoverEnabled: true
+                            readonly property bool active: root.showingRichPreview
+                            background: Rectangle {
+                                color: svgPreviewBtn.active ? "#063B2C" : (svgPreviewBtn.hovered ? "#141D2B" : "transparent")
+                                radius: 6
+                                border.color: svgPreviewBtn.active ? "#34D399" : "transparent"
+                                border.width: 1
+                            }
+                            contentItem: Text {
+                                text: "🖼 Anteprima"
+                                color: svgPreviewBtn.active ? "#6EE7B7" : "#94A3B8"
+                                font.pixelSize: 11
+                                font.bold: svgPreviewBtn.active
+                            }
+                            onClicked: if (root.diffViewer) root.diffViewer.setRichPreviewRendered(true)
+                        }
+                    }
+                }
+
+                // Context Lines Selector (for ALL files when in source diff view)
+                Button {
+                    id: contextBtn
+                    visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary &&
+                        !root.showingMarkdownPreview && !root.showingRichPreview && root.diffViewer.viewMode !== "blame"
+                    Layout.preferredHeight: 28
+                    leftPadding: 10
+                    rightPadding: 10
+                    hoverEnabled: true
+                    background: Rectangle {
+                        color: (root.diffViewer && root.diffViewer.isFullContext) ? "#152336" : (contextBtn.hovered ? "#192436" : "#111824")
+                        radius: 7
+                        border.color: (root.diffViewer && root.diffViewer.isFullContext) ? "#38BDF8" : "#243247"
+                        border.width: 1
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 110
+                            }
+                        }
+                    }
+                    contentItem: RowLayout {
+                        spacing: 4
+                        Text {
+                            text: "↕"
+                            color: "#38BDF8"
+                            font.pixelSize: 11
+                            font.bold: true
+                        }
+                        Text {
+                            text: {
+                                if (!root.diffViewer) return "Contesto: 10";
+                                if (root.diffViewer.isFullContext) return "File completo";
+                                return "Contesto: " + root.diffViewer.contextLines;
+                            }
+                            color: (root.diffViewer && root.diffViewer.isFullContext) ? "#7DD3FC" : "#CBD5E1"
+                            font.pixelSize: 11
+                            font.bold: root.diffViewer && root.diffViewer.isFullContext
+                        }
+                        Text {
+                            text: "▾"
+                            color: "#64748B"
+                            font.pixelSize: 9
+                        }
+                    }
+                    onClicked: contextMenu.open()
+
+                    FluxMenu {
+                        id: contextMenu
+                        y: contextBtn.height + 4
+
+                        ContextOptionItem {
+                            text: "3 righe (compatto)"
+                            selected: root.diffViewer && root.diffViewer.contextLines === 3
+                            onTriggered: if (root.diffViewer) root.diffViewer.setContextLines(3)
+                        }
+                        ContextOptionItem {
+                            text: "10 righe (predefinito)"
+                            selected: root.diffViewer && root.diffViewer.contextLines === 10
+                            onTriggered: if (root.diffViewer) root.diffViewer.setContextLines(10)
+                        }
+                        ContextOptionItem {
+                            text: "25 righe"
+                            selected: root.diffViewer && root.diffViewer.contextLines === 25
+                            onTriggered: if (root.diffViewer) root.diffViewer.setContextLines(25)
+                        }
+                        ContextOptionItem {
+                            text: "50 righe"
+                            selected: root.diffViewer && root.diffViewer.contextLines === 50
+                            onTriggered: if (root.diffViewer) root.diffViewer.setContextLines(50)
+                        }
+                        FluxMenuSeparator {
+                        }
+                        ContextOptionItem {
+                            text: "+15 righe extra"
+                            enabled: root.diffViewer && !root.diffViewer.isFullContext
+                            onTriggered: if (root.diffViewer) root.diffViewer.expandContext(15)
+                        }
+                        ContextOptionItem {
+                            text: (root.diffViewer && root.diffViewer.isFullContext) ? "Torna al contesto ridotto" : "Mostra file completo"
+                            selected: root.diffViewer && root.diffViewer.isFullContext
+                            onTriggered: if (root.diffViewer) root.diffViewer.toggleFullContext()
+                        }
+                    }
+                }
+
+                // Word Wrap Toggle (Inline, Split, Hunk)
+                Button {
+                    id: wrapBtn
+                    visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary &&
+                        !root.showingMarkdownPreview && !root.showingRichPreview && root.diffViewer.viewMode !== "blame"
+                    Layout.preferredHeight: 28
+                    leftPadding: 10
+                    rightPadding: 10
+                    hoverEnabled: true
+                    background: Rectangle {
+                        color: root.effectiveWrap ? "#152336" : (wrapBtn.hovered ? "#192436" : "#111824")
+                        radius: 7
+                        border.color: root.effectiveWrap ? "#38BDF8" : "#243247"
+                        border.width: 1
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 110
+                            }
+                        }
+                    }
+                    contentItem: Text {
+                        text: "↩ A capo"
+                        color: root.effectiveWrap ? "#38BDF8" : "#94A3B8"
+                        font.pixelSize: 11
+                        font.bold: root.effectiveWrap
+                    }
+                    onClicked: {
+                        if (root.isMarkdown) {
+                            root.wrapMarkdown = !root.wrapMarkdown;
+                        } else {
+                            root.wrapCode = !root.wrapCode;
+                        }
+                    }
+                }
 
                 // View Mode Switcher Buttons (Inline, Split, Hunk, Blame)
-                RowLayout {
-                    visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary
-                    spacing: 4
+                Rectangle {
+                    visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && !root.showingMarkdownPreview && !root.showingRichPreview
+                    Layout.preferredHeight: 28
+                    implicitWidth: viewModeRow.implicitWidth + 6
+                    radius: 8
+                    color: "#0A0E15"
+                    border.color: "#222F42"
+                    border.width: 1
 
-                    // 1. Inline View
-                    Button {
-                        id: inlineBtn
-                        Layout.preferredHeight: 26
-                        readonly property bool isCurrent: root.diffViewer ? root.diffViewer.viewMode === "inline" : false
-                        background: Rectangle {
-                            color: inlineBtn.isCurrent ? "#1E293B" : (inlineBtn.hovered ? "#161B22" : "transparent")
-                            radius: 4
-                            border.color: inlineBtn.isCurrent ? "#38BDF8" : "#334155"
-                            border.width: 1
-                        }
-                        contentItem: RowLayout {
-                            spacing: 4
-                            Text { text: "📄"; font.pixelSize: 10 }
-                            Text {
-                                text: "Inline"
-                                color: inlineBtn.isCurrent ? "#38BDF8" : "#94A3B8"
-                                font.pixelSize: 11
-                                font.bold: inlineBtn.isCurrent
+                    RowLayout {
+                        id: viewModeRow
+                        anchors.centerIn: parent
+                        spacing: 2
+
+                        // 1. Inline View
+                        Button {
+                            id: inlineBtn
+                            Layout.preferredHeight: 22
+                            leftPadding: 9
+                            rightPadding: 9
+                            hoverEnabled: true
+                            readonly property bool isCurrent: root.diffViewer ? root.diffViewer.viewMode === "inline" : false
+                            background: Rectangle {
+                                color: inlineBtn.isCurrent ? "#152336" : (inlineBtn.hovered ? "#141D2B" : "transparent")
+                                radius: 6
+                                border.color: inlineBtn.isCurrent ? "#38BDF8" : "transparent"
+                                border.width: 1
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
+                            }
+                            contentItem: RowLayout {
+                                spacing: 4
+                                Text {
+                                    text: "📄"; font.pixelSize: 10
+                                }
+                                Text {
+                                    text: "Inline"
+                                    color: inlineBtn.isCurrent ? "#38BDF8" : "#94A3B8"
+                                    font.pixelSize: 11
+                                    font.bold: inlineBtn.isCurrent
+                                }
+                            }
+                            onClicked: {
+                                if (root.diffViewer) root.diffViewer.setViewMode("inline");
                             }
                         }
-                        onClicked: {
-                            if (root.diffViewer) root.diffViewer.setViewMode("inline");
-                        }
-                    }
 
-                    // 2. Split View (Side-by-side)
-                    Button {
-                        id: splitBtn
-                        Layout.preferredHeight: 26
-                        readonly property bool isCurrent: root.diffViewer ? (root.diffViewer.viewMode === "split" || root.diffViewer.viewMode === "") : true
-                        background: Rectangle {
-                            color: splitBtn.isCurrent ? "#1E293B" : (splitBtn.hovered ? "#161B22" : "transparent")
-                            radius: 4
-                            border.color: splitBtn.isCurrent ? "#38BDF8" : "#334155"
-                            border.width: 1
-                        }
-                        contentItem: RowLayout {
-                            spacing: 4
-                            Text { text: "📑"; font.pixelSize: 10 }
-                            Text {
-                                text: "Split"
-                                color: splitBtn.isCurrent ? "#38BDF8" : "#94A3B8"
-                                font.pixelSize: 11
-                                font.bold: splitBtn.isCurrent
+                        // 2. Split View (Side-by-side)
+                        Button {
+                            id: splitBtn
+                            Layout.preferredHeight: 22
+                            leftPadding: 9
+                            rightPadding: 9
+                            hoverEnabled: true
+                            readonly property bool isCurrent: root.diffViewer ? (root.diffViewer.viewMode === "split" || root.diffViewer.viewMode === "") : true
+                            background: Rectangle {
+                                color: splitBtn.isCurrent ? "#152336" : (splitBtn.hovered ? "#141D2B" : "transparent")
+                                radius: 6
+                                border.color: splitBtn.isCurrent ? "#38BDF8" : "transparent"
+                                border.width: 1
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
+                            }
+                            contentItem: RowLayout {
+                                spacing: 4
+                                Text {
+                                    text: "📑"; font.pixelSize: 10
+                                }
+                                Text {
+                                    text: "Split"
+                                    color: splitBtn.isCurrent ? "#38BDF8" : "#94A3B8"
+                                    font.pixelSize: 11
+                                    font.bold: splitBtn.isCurrent
+                                }
+                            }
+                            onClicked: {
+                                if (root.diffViewer) root.diffViewer.setViewMode("split");
                             }
                         }
-                        onClicked: {
-                            if (root.diffViewer) root.diffViewer.setViewMode("split");
-                        }
-                    }
 
-                    // 3. Hunk View
-                    Button {
-                        id: hunkBtn
-                        Layout.preferredHeight: 26
-                        readonly property bool isCurrent: root.diffViewer ? root.diffViewer.viewMode === "hunk" : false
-                        background: Rectangle {
-                            color: hunkBtn.isCurrent ? "#1E293B" : (hunkBtn.hovered ? "#161B22" : "transparent")
-                            radius: 4
-                            border.color: hunkBtn.isCurrent ? "#38BDF8" : "#334155"
-                            border.width: 1
-                        }
-                        contentItem: RowLayout {
-                            spacing: 4
-                            Text { text: "🔍"; font.pixelSize: 10 }
-                            Text {
-                                text: "Hunk"
-                                color: hunkBtn.isCurrent ? "#38BDF8" : "#94A3B8"
-                                font.pixelSize: 11
-                                font.bold: hunkBtn.isCurrent
+                        // 3. Hunk View
+                        Button {
+                            id: hunkBtn
+                            Layout.preferredHeight: 22
+                            leftPadding: 9
+                            rightPadding: 9
+                            hoverEnabled: true
+                            readonly property bool isCurrent: root.diffViewer ? root.diffViewer.viewMode === "hunk" : false
+                            background: Rectangle {
+                                color: hunkBtn.isCurrent ? "#152336" : (hunkBtn.hovered ? "#141D2B" : "transparent")
+                                radius: 6
+                                border.color: hunkBtn.isCurrent ? "#38BDF8" : "transparent"
+                                border.width: 1
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
+                            }
+                            contentItem: RowLayout {
+                                spacing: 4
+                                Text {
+                                    text: "🔍"; font.pixelSize: 10
+                                }
+                                Text {
+                                    text: "Hunk"
+                                    color: hunkBtn.isCurrent ? "#38BDF8" : "#94A3B8"
+                                    font.pixelSize: 11
+                                    font.bold: hunkBtn.isCurrent
+                                }
+                            }
+                            onClicked: {
+                                if (root.diffViewer) root.diffViewer.setViewMode("hunk");
                             }
                         }
-                        onClicked: {
-                            if (root.diffViewer) root.diffViewer.setViewMode("hunk");
-                        }
-                    }
 
-                    // 4. Blame View
-                    Button {
-                        id: blameBtn
-                        Layout.preferredHeight: 26
-                        readonly property bool isCurrent: root.diffViewer ? root.diffViewer.viewMode === "blame" : false
-                        background: Rectangle {
-                            color: blameBtn.isCurrent ? "#1E293B" : (blameBtn.hovered ? "#161B22" : "transparent")
-                            radius: 4
-                            border.color: blameBtn.isCurrent ? "#38BDF8" : "#334155"
-                            border.width: 1
-                        }
-                        contentItem: RowLayout {
-                            spacing: 4
-                            Text { text: "👤"; font.pixelSize: 10 }
-                            Text {
-                                text: "Blame"
-                                color: blameBtn.isCurrent ? "#38BDF8" : "#94A3B8"
-                                font.pixelSize: 11
-                                font.bold: blameBtn.isCurrent
+                        // 4. Blame View
+                        Button {
+                            id: blameBtn
+                            Layout.preferredHeight: 22
+                            leftPadding: 9
+                            rightPadding: 9
+                            hoverEnabled: true
+                            readonly property bool isCurrent: root.diffViewer ? root.diffViewer.viewMode === "blame" : false
+                            background: Rectangle {
+                                color: blameBtn.isCurrent ? "#152336" : (blameBtn.hovered ? "#141D2B" : "transparent")
+                                radius: 6
+                                border.color: blameBtn.isCurrent ? "#38BDF8" : "transparent"
+                                border.width: 1
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
                             }
-                        }
-                        onClicked: {
-                            if (root.diffViewer) root.diffViewer.setViewMode("blame");
+                            contentItem: RowLayout {
+                                spacing: 4
+                                Text {
+                                    text: "👤"; font.pixelSize: 10
+                                }
+                                Text {
+                                    text: "Blame"
+                                    color: blameBtn.isCurrent ? "#38BDF8" : "#94A3B8"
+                                    font.pixelSize: 11
+                                    font.bold: blameBtn.isCurrent
+                                }
+                            }
+                            onClicked: {
+                                if (root.diffViewer) root.diffViewer.setViewMode("blame");
+                            }
                         }
                     }
                 }
@@ -383,7 +1280,7 @@ Rectangle {
                 // Additions / Deletions stats
                 RowLayout {
                     visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary
-                    spacing: 8
+                    spacing: 6
 
                     Text {
                         text: root.diffViewer ? ("+" + root.diffViewer.additionsCount) : "+0"
@@ -409,22 +1306,33 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
 
-            // Empty State
+            // Empty State (diffs load asynchronously: say so instead of "select a file" meanwhile)
             Text {
                 anchors.centerIn: parent
                 visible: !root.diffViewer || root.diffViewer.isEmpty
-                text: "Seleziona un file per visualizzarne il diff o il blame"
+                text: (root.diffViewer && root.diffViewer.isLoading)
+                    ? "Caricamento del diff..."
+                    : "Seleziona un file per visualizzarne il diff o il blame"
                 color: "#64748B"
                 font.pixelSize: 13
             }
 
-            // Binary File Notice
-            Text {
-                anchors.centerIn: parent
-                visible: root.diffViewer && root.diffViewer.isBinary
-                text: "📦 File binario — anteprima delle differenze testuali non disponibile"
-                color: "#94A3B8"
-                font.pixelSize: 13
+            // Rich Binary / Image / SVG / Archive / Font / Hex Preview
+            RichFilePreviewView {
+                anchors.fill: parent
+                visible: root.showingRichPreview
+                diffViewer: root.diffViewer
+                monoFont: root.monoFont
+            }
+
+            // ------------------------------------------
+            // 0. MARKDOWN RENDERED PREVIEW (GitHub Style)
+            // ------------------------------------------
+            MarkdownPreviewView {
+                anchors.fill: parent
+                visible: root.showingMarkdownPreview
+                diffViewer: root.diffViewer
+                monoFont: root.monoFont
             }
 
             // ------------------------------------------
@@ -432,19 +1340,24 @@ Rectangle {
             // ------------------------------------------
             Item {
                 anchors.fill: parent
-                visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "inline"
+                visible: !root.showingMarkdownPreview && !root.showingRichPreview && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "inline"
                 clip: true
 
                 ListView {
                     id: inlineListView
-                    anchors.fill: parent
+                    SmoothWheelScroller {}
+                    anchors.left: parent.left
+                    anchors.right: inlineOverviewBar.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
                     anchors.bottomMargin: inlineHScrollBar.visible ? 12 : 0
                     focus: true
-                    model: root.diffViewer ? root.diffViewer.linesModel : null
+                    model: (!root.showingMarkdownPreview && !root.showingRichPreview && root.diffViewer && root.diffViewer.viewMode === "inline") ? root.diffViewer.linesModel : null
                     boundsBehavior: Flickable.StopAtBounds
                     maximumFlickVelocity: 6000
                     flickDeceleration: 1000
-                    ScrollBar.vertical: FluxScrollBar {}
+
+                    Keys.onPressed: (event) => { root.handleDiffKeys(event); }
 
                     Keys.onLeftPressed: (event) => {
                         if (root.inlineMaxScroll > 0) {
@@ -460,8 +1373,14 @@ Rectangle {
                     }
 
                     delegate: Rectangle {
+                        id: inlineRowDelegate
                         width: inlineListView.width
-                        height: 20
+                        readonly property bool isHeaderRow: model.lineKind === "header"
+                        readonly property real textAreaWidth: Math.max(60, inlineRowDelegate.width - 108)
+                        readonly property alias codeEdit: inlineCodeText
+                        height: isHeaderRow
+                            ? 28
+                            : (root.effectiveWrap ? Math.max(20, inlineCodeText.implicitHeight + 6) : 20)
                         color: model.bgColor
 
                         Item {
@@ -484,12 +1403,20 @@ Rectangle {
                                     Text {
                                         anchors.fill: parent
                                         anchors.rightMargin: 6
+                                        anchors.topMargin: 2
                                         text: model.oldLineNumber || ""
                                         color: "#64748B"
-                                        font.family: "monospace"
+                                        font.family: root.monoFont
                                         font.pixelSize: 11
                                         horizontalAlignment: Text.AlignRight
-                                        verticalAlignment: Text.AlignVCenter
+                                        verticalAlignment: root.effectiveWrap ? Text.AlignTop : Text.AlignVCenter
+                                    }
+                                    Rectangle {
+                                        anchors.right: parent.right
+                                        anchors.top: parent.top
+                                        anchors.bottom: parent.bottom
+                                        width: 1
+                                        color: root.gutterBorderColor
                                     }
                                 }
 
@@ -501,12 +1428,20 @@ Rectangle {
                                     Text {
                                         anchors.fill: parent
                                         anchors.rightMargin: 6
+                                        anchors.topMargin: 2
                                         text: model.newLineNumber || ""
                                         color: "#64748B"
-                                        font.family: "monospace"
+                                        font.family: root.monoFont
                                         font.pixelSize: 11
                                         horizontalAlignment: Text.AlignRight
-                                        verticalAlignment: Text.AlignVCenter
+                                        verticalAlignment: root.effectiveWrap ? Text.AlignTop : Text.AlignVCenter
+                                    }
+                                    Rectangle {
+                                        anchors.right: parent.right
+                                        anchors.top: parent.top
+                                        anchors.bottom: parent.bottom
+                                        width: 1
+                                        color: root.gutterBorderColor
                                     }
                                 }
 
@@ -516,21 +1451,23 @@ Rectangle {
                                     height: parent.height
                                     color: "transparent"
                                     Text {
-                                        anchors.centerIn: parent
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        anchors.top: parent.top
+                                        anchors.topMargin: root.effectiveWrap ? 2 : Math.floor((parent.height - implicitHeight) / 2)
                                         text: {
                                             if (model.lineKind === "addition") return "+";
                                             if (model.lineKind === "deletion") return "-";
                                             return " ";
                                         }
                                         color: model.fgColor
-                                        font.family: "monospace"
+                                        font.family: root.monoFont
                                         font.pixelSize: 12
                                         font.bold: true
                                     }
                                 }
                             }
 
-                            // Horizontally Scrollable Content Line
+                            // Content Line
                             Item {
                                 anchors.left: inlineGutter.right
                                 anchors.right: parent.right
@@ -538,19 +1475,41 @@ Rectangle {
                                 anchors.bottom: parent.bottom
                                 clip: true
 
-                                Text {
-                                    x: 6 - root.horizontalScrollX
-                                    width: Math.max(implicitWidth, Math.max(parent.width - 6, root.maxCodeWidth))
-                                    height: parent.height
+                                DiffCodeText {
+                                    id: inlineCodeText
+                                    selTargetName: "inline"
+                                    rowIndex: index
+                                    rowDisabled: inlineRowDelegate.isHeaderRow
+                                    x: root.effectiveWrap ? 6 : (6 - root.horizontalScrollX)
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: (root.effectiveWrap && !inlineRowDelegate.isHeaderRow)
+                                        ? Math.max(60, inlineRowDelegate.textAreaWidth - 14)
+                                        : Math.max(inlineRowDelegate.textAreaWidth - 6, root.maxCodeWidth)
+                                    height: implicitHeight
                                     text: model.richContent || model.content || ""
-                                    textFormat: Text.RichText
                                     color: model.fgColor
-                                    font.family: "monospace"
                                     font.pixelSize: 12
-                                    verticalAlignment: Text.AlignVCenter
-                                    elide: Text.ElideNone
+                                    wrapMode: (root.effectiveWrap && !inlineRowDelegate.isHeaderRow) ? TextEdit.WrapAtWordBoundaryOrAnywhere : TextEdit.NoWrap
+                                }
+
+                                HunkExpandActions {
+                                    visible: inlineRowDelegate.isHeaderRow && root.diffViewer && !root.diffViewer.isFullContext
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 16
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    z: 5
                                 }
                             }
+                        }
+
+                        // Subtle horizontal row divider
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.bottom: parent.bottom
+                            height: 1
+                            color: root.gridLineColor
+                            z: 4
                         }
                     }
 
@@ -560,7 +1519,8 @@ Rectangle {
                         orientation: Qt.Horizontal
                         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
                         onWheel: (event) => {
-                            var dx = 0;
+                            if (root.inlineMaxScroll <= 0) return;
+                            let dx = 0;
                             if (event.pixelDelta && event.pixelDelta.x !== 0) {
                                 dx = event.pixelDelta.x;
                             } else if (event.angleDelta && event.angleDelta.x !== 0) {
@@ -580,7 +1540,8 @@ Rectangle {
                         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
                         acceptedModifiers: Qt.ShiftModifier
                         onWheel: (event) => {
-                            var dy = 0;
+                            if (root.inlineMaxScroll <= 0) return;
+                            let dy = 0;
                             if (event.pixelDelta && event.pixelDelta.y !== 0) {
                                 dy = event.pixelDelta.y;
                             } else if (event.angleDelta && event.angleDelta.y !== 0) {
@@ -594,18 +1555,38 @@ Rectangle {
                     }
                 }
 
+                DiffListSelectionMouseArea {
+                    anchors.fill: inlineListView
+                    listView: inlineListView
+                    viewType: "inline"
+                    maxHScroll: root.inlineMaxScroll
+                    z: 5
+                }
+
                 // Horizontal ScrollBar for Inline View
                 DiffHScrollBar {
                     id: inlineHScrollBar
                     anchors.left: parent.left
                     anchors.leftMargin: 108
-                    anchors.right: parent.right
-                    anchors.rightMargin: 10
+                    anchors.right: inlineOverviewBar.left
+                    anchors.rightMargin: 8
                     anchors.bottom: parent.bottom
-                    contentWidth: root.maxCodeWidth
+                    contentWidth: root.effectiveWrap ? 0 : root.maxCodeWidth
                     viewWidth: root.inlineAvailWidth
                     scrollValue: root.horizontalScrollX
-                    onScrollRequested: (val) => { root.horizontalScrollX = val; }
+                    onScrollRequested: (val) => {
+                        root.horizontalScrollX = val;
+                    }
+                }
+
+                // Diff Overview ScrollBar (Left half = before commit/red, Right half = new version/green)
+                DiffOverviewScrollBar {
+                    id: inlineOverviewBar
+                    anchors.top: parent.top
+                    anchors.bottom: inlineListView.bottom
+                    anchors.right: parent.right
+                    flickable: inlineListView
+                    markers: root.diffViewer ? root.diffViewer.inlineOverviewMarkers : []
                 }
             }
 
@@ -614,7 +1595,7 @@ Rectangle {
             // ------------------------------------------
             ColumnLayout {
                 anchors.fill: parent
-                visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && (root.diffViewer.viewMode === "split" || root.diffViewer.viewMode === "")
+                visible: !root.showingMarkdownPreview && !root.showingRichPreview && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && (root.diffViewer.viewMode === "split" || root.diffViewer.viewMode === "")
                 spacing: 0
 
                 // Split Header (Original vs Modified)
@@ -660,6 +1641,51 @@ Rectangle {
                                 font.bold: true
                             }
                         }
+
+                        // Overview ScrollBar header cap (- | +) keeping Split columns aligned
+                        Rectangle {
+                            Layout.preferredWidth: splitOverviewBar.width
+                            Layout.fillHeight: true
+                            color: "#090D14"
+
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: 1
+                                color: "#1E293B"
+                            }
+
+                            Rectangle {
+                                x: Math.floor(parent.width / 2)
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: 1
+                                color: "#1E293B"
+                            }
+
+                            Text {
+                                x: 1
+                                width: Math.floor(parent.width / 2) - 1
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "-"
+                                color: "#EF4444"
+                                font.pixelSize: 10
+                                font.bold: true
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+
+                            Text {
+                                x: Math.floor(parent.width / 2) + 1
+                                width: parent.width - x
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "+"
+                                color: "#10B981"
+                                font.pixelSize: 10
+                                font.bold: true
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+                        }
                     }
                 }
 
@@ -670,14 +1696,19 @@ Rectangle {
 
                     ListView {
                         id: splitListView
-                        anchors.fill: parent
+                        SmoothWheelScroller {}
+                        anchors.left: parent.left
+                        anchors.right: splitOverviewBar.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
                         anchors.bottomMargin: splitHScrollBar.visible ? 12 : 0
                         focus: true
-                        model: root.diffViewer ? root.diffViewer.splitLines : null
+                        model: (!root.showingMarkdownPreview && !root.showingRichPreview && root.diffViewer && (root.diffViewer.viewMode === "split" || root.diffViewer.viewMode === "")) ? root.diffViewer.splitLines : null
                         boundsBehavior: Flickable.StopAtBounds
                         maximumFlickVelocity: 6000
                         flickDeceleration: 1000
-                        ScrollBar.vertical: FluxScrollBar {}
+
+                        Keys.onPressed: (event) => { root.handleDiffKeys(event); }
 
                         Keys.onLeftPressed: (event) => {
                             if (root.splitMaxScroll > 0) {
@@ -695,13 +1726,22 @@ Rectangle {
                         delegate: Rectangle {
                             id: splitRow
                             width: splitListView.width
-                            height: modelData.isHunkHeader ? 22 : 20
+                            readonly property bool isHeaderRow: modelData.isHunkHeader === true
+                            readonly property real leftTextAreaWidth: Math.max(40, Math.floor(splitRow.width / 2) - 40)
+                            readonly property real rightTextAreaWidth: Math.max(40, splitRow.width - Math.floor(splitRow.width / 2) - 41)
+                            readonly property alias leftCodeEdit: leftCodeText
+                            readonly property alias rightCodeEdit: rightCodeText
+                            height: isHeaderRow
+                                ? 28
+                                : (root.effectiveWrap
+                                    ? Math.max(20, leftCodeText.implicitHeight + 6, rightCodeText.implicitHeight + 6)
+                                    : 20)
                             color: "#0D1117"
 
                             // Hunk banner across entire row
                             Rectangle {
                                 anchors.fill: parent
-                                visible: modelData.isHunkHeader === true
+                                visible: splitRow.isHeaderRow
                                 color: "#1E293B"
                                 border.color: "#334155"
                                 border.width: 1
@@ -709,12 +1749,22 @@ Rectangle {
                                 Text {
                                     anchors.left: parent.left
                                     anchors.leftMargin: 12
+                                    anchors.right: splitExpandActions.left
+                                    anchors.rightMargin: 8
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: modelData.hunkHeader || ""
                                     color: "#38BDF8"
-                                    font.family: "monospace"
+                                    font.family: root.monoFont
                                     font.pixelSize: 10
                                     font.bold: true
+                                    elide: Text.ElideRight
+                                }
+
+                                HunkExpandActions {
+                                    id: splitExpandActions
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 16
+                                    anchors.verticalCenter: parent.verticalCenter
                                 }
                             }
 
@@ -722,13 +1772,15 @@ Rectangle {
                             RowLayout {
                                 anchors.fill: parent
                                 spacing: 0
-                                visible: !modelData.isHunkHeader
+                                visible: !splitRow.isHeaderRow
 
                                 // LEFT COLUMN (Original / Deletion)
                                 Rectangle {
+                                    id: leftColumn
                                     Layout.preferredWidth: Math.floor(splitRow.width / 2)
                                     Layout.fillHeight: true
                                     color: modelData.leftBgColor || "transparent"
+                                    readonly property bool isEmptySide: modelData.leftKind === "empty"
 
                                     RowLayout {
                                         anchors.fill: parent
@@ -737,16 +1789,25 @@ Rectangle {
                                         Rectangle {
                                             Layout.preferredWidth: 40
                                             Layout.fillHeight: true
-                                            color: "#090D13"
+                                            color: leftColumn.isEmptySide ? "transparent" : "#090D13"
                                             Text {
                                                 anchors.fill: parent
                                                 anchors.rightMargin: 6
+                                                anchors.topMargin: 2
                                                 text: modelData.leftLine || ""
                                                 color: "#64748B"
-                                                font.family: "monospace"
+                                                font.family: root.monoFont
                                                 font.pixelSize: 10
                                                 horizontalAlignment: Text.AlignRight
-                                                verticalAlignment: Text.AlignVCenter
+                                                verticalAlignment: root.effectiveWrap ? Text.AlignTop : Text.AlignVCenter
+                                            }
+                                            Rectangle {
+                                                anchors.right: parent.right
+                                                anchors.top: parent.top
+                                                anchors.bottom: parent.bottom
+                                                width: 1
+                                                visible: !leftColumn.isEmptySide
+                                                color: root.gutterBorderColor
                                             }
                                         }
 
@@ -755,19 +1816,34 @@ Rectangle {
                                             Layout.fillHeight: true
                                             clip: true
 
-                                            Text {
-                                                x: 6 - root.horizontalScrollX
-                                                width: Math.max(implicitWidth, Math.max(parent.width - 6, root.maxCodeWidth))
-                                                height: parent.height
+                                            DiffCodeText {
+                                                id: leftCodeText
+                                                selTargetName: "split-left"
+                                                rowIndex: index
+                                                rowDisabled: splitRow.isHeaderRow || modelData.leftKind === "empty"
+                                                x: root.effectiveWrap ? 6 : (6 - root.horizontalScrollX)
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: root.effectiveWrap
+                                                    ? Math.max(40, splitRow.leftTextAreaWidth - 12)
+                                                    : Math.max(splitRow.leftTextAreaWidth - 6, root.maxCodeWidth)
+                                                height: implicitHeight
                                                 text: modelData.leftRichContent || modelData.leftContent || ""
-                                                textFormat: Text.RichText
                                                 color: modelData.leftFgColor || "#CBD5E1"
-                                                font.family: "monospace"
                                                 font.pixelSize: 11
-                                                verticalAlignment: Text.AlignVCenter
-                                                elide: Text.ElideNone
+                                                wrapMode: root.effectiveWrap ? TextEdit.WrapAtWordBoundaryOrAnywhere : TextEdit.NoWrap
                                             }
                                         }
+                                    }
+
+                                    // Subtle horizontal row divider (hidden in empty gaps)
+                                    Rectangle {
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.bottom: parent.bottom
+                                        height: 1
+                                        visible: !parent.isEmptySide
+                                        color: root.gridLineColor
+                                        z: 4
                                     }
                                 }
 
@@ -780,9 +1856,11 @@ Rectangle {
 
                                 // RIGHT COLUMN (Modified / Addition)
                                 Rectangle {
+                                    id: rightColumn
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
                                     color: modelData.rightBgColor || "transparent"
+                                    readonly property bool isEmptySide: modelData.rightKind === "empty"
 
                                     RowLayout {
                                         anchors.fill: parent
@@ -791,16 +1869,25 @@ Rectangle {
                                         Rectangle {
                                             Layout.preferredWidth: 40
                                             Layout.fillHeight: true
-                                            color: "#0B1017"
+                                            color: rightColumn.isEmptySide ? "transparent" : "#0B1017"
                                             Text {
                                                 anchors.fill: parent
                                                 anchors.rightMargin: 6
+                                                anchors.topMargin: 2
                                                 text: modelData.rightLine || ""
                                                 color: "#64748B"
-                                                font.family: "monospace"
+                                                font.family: root.monoFont
                                                 font.pixelSize: 10
                                                 horizontalAlignment: Text.AlignRight
-                                                verticalAlignment: Text.AlignVCenter
+                                                verticalAlignment: root.effectiveWrap ? Text.AlignTop : Text.AlignVCenter
+                                            }
+                                            Rectangle {
+                                                anchors.right: parent.right
+                                                anchors.top: parent.top
+                                                anchors.bottom: parent.bottom
+                                                width: 1
+                                                visible: !rightColumn.isEmptySide
+                                                color: root.gutterBorderColor
                                             }
                                         }
 
@@ -809,19 +1896,34 @@ Rectangle {
                                             Layout.fillHeight: true
                                             clip: true
 
-                                            Text {
-                                                x: 6 - root.horizontalScrollX
-                                                width: Math.max(implicitWidth, Math.max(parent.width - 6, root.maxCodeWidth))
-                                                height: parent.height
+                                            DiffCodeText {
+                                                id: rightCodeText
+                                                selTargetName: "split-right"
+                                                rowIndex: index
+                                                rowDisabled: splitRow.isHeaderRow || modelData.rightKind === "empty"
+                                                x: root.effectiveWrap ? 6 : (6 - root.horizontalScrollX)
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: root.effectiveWrap
+                                                    ? Math.max(40, splitRow.rightTextAreaWidth - 12)
+                                                    : Math.max(splitRow.rightTextAreaWidth - 6, root.maxCodeWidth)
+                                                height: implicitHeight
                                                 text: modelData.rightRichContent || modelData.rightContent || ""
-                                                textFormat: Text.RichText
                                                 color: modelData.rightFgColor || "#CBD5E1"
-                                                font.family: "monospace"
                                                 font.pixelSize: 11
-                                                verticalAlignment: Text.AlignVCenter
-                                                elide: Text.ElideNone
+                                                wrapMode: root.effectiveWrap ? TextEdit.WrapAtWordBoundaryOrAnywhere : TextEdit.NoWrap
                                             }
                                         }
+                                    }
+
+                                    // Subtle horizontal row divider (hidden in empty gaps)
+                                    Rectangle {
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.bottom: parent.bottom
+                                        height: 1
+                                        visible: !parent.isEmptySide
+                                        color: root.gridLineColor
+                                        z: 4
                                     }
                                 }
                             }
@@ -833,7 +1935,8 @@ Rectangle {
                             orientation: Qt.Horizontal
                             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
                             onWheel: (event) => {
-                                var dx = 0;
+                                if (root.splitMaxScroll <= 0) return;
+                                let dx = 0;
                                 if (event.pixelDelta && event.pixelDelta.x !== 0) {
                                     dx = event.pixelDelta.x;
                                 } else if (event.angleDelta && event.angleDelta.x !== 0) {
@@ -853,7 +1956,8 @@ Rectangle {
                             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
                             acceptedModifiers: Qt.ShiftModifier
                             onWheel: (event) => {
-                                var dy = 0;
+                                if (root.splitMaxScroll <= 0) return;
+                                let dy = 0;
                                 if (event.pixelDelta && event.pixelDelta.y !== 0) {
                                     dy = event.pixelDelta.y;
                                 } else if (event.angleDelta && event.angleDelta.y !== 0) {
@@ -867,18 +1971,38 @@ Rectangle {
                         }
                     }
 
+                    DiffListSelectionMouseArea {
+                        anchors.fill: splitListView
+                        listView: splitListView
+                        viewType: "split"
+                        maxHScroll: root.splitMaxScroll
+                        z: 5
+                    }
+
                     // Horizontal ScrollBar for Split View
                     DiffHScrollBar {
                         id: splitHScrollBar
                         anchors.left: parent.left
                         anchors.leftMargin: 40
-                        anchors.right: parent.right
-                        anchors.rightMargin: 10
+                        anchors.right: splitOverviewBar.left
+                        anchors.rightMargin: 8
                         anchors.bottom: parent.bottom
-                        contentWidth: root.maxCodeWidth
+                        contentWidth: root.effectiveWrap ? 0 : root.maxCodeWidth
                         viewWidth: root.splitAvailWidth
                         scrollValue: root.horizontalScrollX
-                        onScrollRequested: (val) => { root.horizontalScrollX = val; }
+                        onScrollRequested: (val) => {
+                            root.horizontalScrollX = val;
+                        }
+                    }
+
+                    // Diff Overview ScrollBar (Left half = before commit/red, Right half = new version/green)
+                    DiffOverviewScrollBar {
+                        id: splitOverviewBar
+                        anchors.top: parent.top
+                        anchors.bottom: splitListView.bottom
+                        anchors.right: parent.right
+                        flickable: splitListView
+                        markers: root.diffViewer ? root.diffViewer.splitOverviewMarkers : []
                     }
                 }
             }
@@ -886,23 +2010,43 @@ Rectangle {
             // ------------------------------------------
             // 3. HUNK VIEW (Cards per Hunk)
             // ------------------------------------------
-            ScrollView {
+            Item {
                 anchors.fill: parent
-                visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "hunk"
+                visible: !root.showingMarkdownPreview && !root.showingRichPreview && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "hunk"
                 clip: true
-                ScrollBar.vertical: FluxScrollBar {}
-                ScrollBar.horizontal: FluxScrollBar {}
+
+                ScrollView {
+                    id: hunkScrollView
+                    anchors.left: parent.left
+                    anchors.right: hunkOverviewBar.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    clip: true
+                    ScrollBar.vertical: ScrollBar {
+                        policy: ScrollBar.AlwaysOff
+                        visible: false
+                        width: 0
+                    }
+                    ScrollBar.horizontal: FluxScrollBar {
+                        visible: !root.effectiveWrap
+                    }
 
                 ListView {
                     id: hunkListView
-                    width: Math.max(parent.width, root.maxCodeWidth + 120)
-                    model: root.diffViewer ? root.diffViewer.hunks : null
+                    SmoothWheelScroller {}
+                    focus: true
+                    width: root.effectiveWrap ? hunkScrollView.width : Math.max(hunkScrollView.width, root.maxCodeWidth + 120)
+                    model: (!root.showingMarkdownPreview && !root.showingRichPreview && root.diffViewer && root.diffViewer.viewMode === "hunk") ? root.diffViewer.hunks : null
                     spacing: 12
                     boundsBehavior: Flickable.StopAtBounds
                     maximumFlickVelocity: 6000
                     flickDeceleration: 1000
+                    Keys.onPressed: (event) => { root.handleDiffKeys(event); }
 
                     delegate: Rectangle {
+                        id: hunkCardDelegate
+                        readonly property int hunkIndex: index
+                        readonly property real hunkTextAreaWidth: Math.max(60, hunkCardDelegate.width - 125)
                         x: 12
                         width: hunkListView.width - 24
                         implicitHeight: hunkCol.implicitHeight + 16
@@ -920,14 +2064,15 @@ Rectangle {
                             // Hunk Header Banner
                             Rectangle {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 28
+                                Layout.preferredHeight: 30
                                 color: "#0D1117"
                                 radius: 4
                                 border.color: "#21262D"
 
                                 RowLayout {
                                     anchors.fill: parent
-                                    anchors.margins: 6
+                                    anchors.leftMargin: 8
+                                    anchors.rightMargin: 8
                                     spacing: 8
                                     Text {
                                         text: "🔍"
@@ -936,70 +2081,233 @@ Rectangle {
                                     Text {
                                         text: modelData.header || ""
                                         color: "#38BDF8"
-                                        font.family: "monospace"
+                                        font.family: root.monoFont
                                         font.pixelSize: 11
                                         font.bold: true
+                                        elide: Text.ElideRight
+                                        Layout.fillWidth: true
+                                    }
+                                    HunkExpandActions {
                                     }
                                 }
                             }
 
                             // Hunk Lines
-                            Repeater {
-                                model: modelData.lines || []
+                            Item {
+                                Layout.fillWidth: true
+                                implicitHeight: hunkLinesCol.implicitHeight
 
-                                delegate: Rectangle {
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: 20
-                                    color: modelData.bgColor || "transparent"
+                                ColumnLayout {
+                                    id: hunkLinesCol
+                                    anchors.fill: parent
+                                    spacing: 4
 
-                                    RowLayout {
-                                        anchors.fill: parent
-                                        spacing: 6
+                                    Repeater {
+                                        id: hunkLinesRepeater
+                                        model: (modelData.lines && modelData.lines.length > 300) ? modelData.lines.slice(0, 300) : (modelData.lines || [])
 
-                                        Text {
-                                            Layout.preferredWidth: 36
-                                            text: modelData.oldLineNumber || ""
-                                            color: "#64748B"
-                                            font.family: "monospace"
-                                            font.pixelSize: 10
-                                            horizontalAlignment: Text.AlignRight
-                                        }
-
-                                        Text {
-                                            Layout.preferredWidth: 36
-                                            text: modelData.newLineNumber || ""
-                                            color: "#64748B"
-                                            font.family: "monospace"
-                                            font.pixelSize: 10
-                                            horizontalAlignment: Text.AlignRight
-                                        }
-
-                                        Text {
-                                            text: {
-                                                if (modelData.kind === "addition") return "+";
-                                                if (modelData.kind === "deletion") return "-";
-                                                return " ";
-                                            }
-                                            color: modelData.fgColor || "#CBD5E1"
-                                            font.family: "monospace"
-                                            font.pixelSize: 11
-                                            font.bold: true
-                                        }
-
-                                        Text {
+                                        delegate: Rectangle {
+                                            readonly property alias codeEdit: hunkLineText
                                             Layout.fillWidth: true
-                                            text: modelData.richContent || modelData.content || ""
-                                            textFormat: Text.RichText
-                                            color: modelData.fgColor || "#CBD5E1"
-                                            font.family: "monospace"
-                                            font.pixelSize: 11
-                                            elide: Text.ElideNone
+                                            Layout.preferredHeight: root.effectiveWrap ? Math.max(20, hunkLineText.implicitHeight + 6) : 20
+                                            color: modelData.bgColor || "transparent"
+
+                                            RowLayout {
+                                                anchors.fill: parent
+                                                spacing: 6
+
+                                                Text {
+                                                    Layout.preferredWidth: 36
+                                                    Layout.alignment: root.effectiveWrap ? Qt.AlignTop : Qt.AlignVCenter
+                                                    Layout.topMargin: root.effectiveWrap ? 2 : 0
+                                                    text: modelData.oldLineNumber || ""
+                                                    color: "#64748B"
+                                                    font.family: root.monoFont
+                                                    font.pixelSize: 10
+                                                    horizontalAlignment: Text.AlignRight
+                                                }
+
+                                                Text {
+                                                    Layout.preferredWidth: 36
+                                                    Layout.alignment: root.effectiveWrap ? Qt.AlignTop : Qt.AlignVCenter
+                                                    Layout.topMargin: root.effectiveWrap ? 2 : 0
+                                                    text: modelData.newLineNumber || ""
+                                                    color: "#64748B"
+                                                    font.family: root.monoFont
+                                                    font.pixelSize: 10
+                                                    horizontalAlignment: Text.AlignRight
+                                                }
+
+                                                Rectangle {
+                                                    Layout.preferredWidth: 1
+                                                    Layout.fillHeight: true
+                                                    color: root.gutterBorderColor
+                                                }
+
+                                                Text {
+                                                    Layout.preferredWidth: 12
+                                                    Layout.alignment: root.effectiveWrap ? Qt.AlignTop : Qt.AlignVCenter
+                                                    Layout.topMargin: root.effectiveWrap ? 2 : 0
+                                                    text: {
+                                                        if (modelData.kind === "addition") return "+";
+                                                        if (modelData.kind === "deletion") return "-";
+                                                        return " ";
+                                                    }
+                                                    color: modelData.fgColor || "#CBD5E1"
+                                                    font.family: root.monoFont
+                                                    font.pixelSize: 11
+                                                    font.bold: true
+                                                    horizontalAlignment: Text.AlignHCenter
+                                                }
+
+                                                Item {
+                                                    Layout.fillWidth: true
+                                                    Layout.fillHeight: true
+                                                    clip: true
+
+                                                    DiffCodeText {
+                                                        id: hunkLineText
+                                                        selTargetName: "hunk"
+                                                        hunkIdx: hunkCardDelegate.hunkIndex
+                                                        rowIndex: index
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        width: root.effectiveWrap
+                                                            ? hunkCardDelegate.hunkTextAreaWidth
+                                                            : Math.max(hunkCardDelegate.hunkTextAreaWidth, root.maxCodeWidth)
+                                                        height: implicitHeight
+                                                        text: modelData.richContent || modelData.content || ""
+                                                        color: modelData.fgColor || "#CBD5E1"
+                                                        font.pixelSize: 11
+                                                        wrapMode: root.effectiveWrap ? TextEdit.WrapAtWordBoundaryOrAnywhere : TextEdit.NoWrap
+                                                    }
+                                                }
+                                            }
+
+                                            // Subtle horizontal row divider
+                                            Rectangle {
+                                                anchors.left: parent.left
+                                                anchors.right: parent.right
+                                                anchors.bottom: parent.bottom
+                                                height: 1
+                                                color: root.gridLineColor
+                                            }
                                         }
                                     }
+                                }
+
+                                MouseArea {
+                                    id: hunkSelectionMouse
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 96
+                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                    hoverEnabled: true
+                                    preventStealing: isSelecting
+                                    cursorShape: Qt.IBeamCursor
+                                    property bool isSelecting: false
+
+                                    function hitTestHunk(mouseX, mouseY) {
+                                        const count = hunkLinesRepeater.count;
+                                        if (count <= 0) return null;
+                                        let bestIdx = 0;
+                                        if (mouseY >= 0) {
+                                            for (let i = 0; i < count; ++i) {
+                                                const it = hunkLinesRepeater.itemAt(i);
+                                                if (!it) continue;
+                                                bestIdx = i;
+                                                if (mouseY <= it.y + it.height + 2) {
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        const rowItem = hunkLinesRepeater.itemAt(bestIdx);
+                                        if (!rowItem || !rowItem.codeEdit) return null;
+                                        const ce = rowItem.codeEdit;
+                                        const pt = mapToItem(ce, mouseX, mouseY);
+                                        const cx = Math.max(0, Math.min(ce.width, pt.x));
+                                        const cy = Math.max(0, Math.min(Math.max(0, ce.height - 1), pt.y));
+                                        return { index: bestIdx, col: ce.positionAt(cx, cy), codeEdit: ce };
+                                    }
+
+                                    onPressed: (mouse) => {
+                                        hunkListView.forceActiveFocus();
+                                        const hit = hitTestHunk(mouse.x, mouse.y);
+                                        if (mouse.button === Qt.RightButton) {
+                                            root.contextMenuRow = hit ? hit.index : -1;
+                                            root.contextMenuTarget = "hunk";
+                                            root.contextMenuHunkIndex = hunkCardDelegate.hunkIndex;
+                                            diffCopyMenu.popup(hunkSelectionMouse, mouse.x, mouse.y);
+                                            return;
+                                        }
+                                        if (mouse.button !== Qt.LeftButton || !hit) {
+                                            mouse.accepted = false;
+                                            return;
+                                        }
+                                        isSelecting = true;
+                                        if ((mouse.modifiers & Qt.ShiftModifier) !== 0
+                                                && root.selTarget === "hunk"
+                                                && root.selHunkIndex === hunkCardDelegate.hunkIndex
+                                                && root.selAnchorRow >= 0) {
+                                            root.selFocusRow = hit.index;
+                                            root.selFocusCol = hit.col;
+                                        } else {
+                                            root.selTarget = "hunk";
+                                            root.selHunkIndex = hunkCardDelegate.hunkIndex;
+                                            root.selAnchorRow = hit.index;
+                                            root.selAnchorCol = hit.col;
+                                            root.selFocusRow = hit.index;
+                                            root.selFocusCol = hit.col;
+                                        }
+                                        root.selectionStateChanged();
+                                    }
+
+                                    onPositionChanged: (mouse) => {
+                                        if (!isSelecting) return;
+                                        if ((mouse.buttons & Qt.LeftButton) === 0) {
+                                            isSelecting = false;
+                                            return;
+                                        }
+                                        const hit = hitTestHunk(mouse.x, mouse.y);
+                                        if (!hit) return;
+                                        if (root.selFocusRow !== hit.index || root.selFocusCol !== hit.col) {
+                                            root.selFocusRow = hit.index;
+                                            root.selFocusCol = hit.col;
+                                            root.selectionStateChanged();
+                                        }
+                                    }
+
+                                    onDoubleClicked: (mouse) => {
+                                        if (mouse.button !== Qt.LeftButton) return;
+                                        const hit = hitTestHunk(mouse.x, mouse.y);
+                                        if (!hit || !hit.codeEdit) return;
+                                        hit.codeEdit.cursorPosition = hit.col;
+                                        hit.codeEdit.selectWord();
+                                        root.selTarget = "hunk";
+                                        root.selHunkIndex = hunkCardDelegate.hunkIndex;
+                                        root.selAnchorRow = hit.index;
+                                        root.selAnchorCol = hit.codeEdit.selectionStart;
+                                        root.selFocusRow = hit.index;
+                                        root.selFocusCol = hit.codeEdit.selectionEnd;
+                                        root.selectionStateChanged();
+                                        isSelecting = false;
+                                    }
+
+                                    onReleased: isSelecting = false
+                                    onCanceled: isSelecting = false
                                 }
                             }
                         }
                     }
+                }
+                }
+
+                // Diff Overview ScrollBar for Hunk View
+                DiffOverviewScrollBar {
+                    id: hunkOverviewBar
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    anchors.right: parent.right
+                    flickable: hunkListView
+                    markers: root.diffViewer ? root.diffViewer.hunkOverviewMarkers : []
                 }
             }
 
@@ -1008,19 +2316,23 @@ Rectangle {
             // ------------------------------------------
             Item {
                 anchors.fill: parent
-                visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "blame"
+                visible: !root.showingMarkdownPreview && !root.showingRichPreview && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && root.diffViewer.viewMode === "blame"
                 clip: true
 
                 ListView {
                     id: blameListView
+                    SmoothWheelScroller {}
                     anchors.fill: parent
                     anchors.bottomMargin: blameHScrollBar.visible ? 12 : 0
                     focus: true
-                    model: root.diffViewer ? root.diffViewer.blameLines : null
+                    model: (!root.showingMarkdownPreview && !root.showingRichPreview && root.diffViewer && root.diffViewer.viewMode === "blame") ? root.diffViewer.blameLines : null
                     boundsBehavior: Flickable.StopAtBounds
                     maximumFlickVelocity: 6000
                     flickDeceleration: 1000
-                    ScrollBar.vertical: FluxScrollBar {}
+                    ScrollBar.vertical: FluxScrollBar {
+                    }
+
+                    Keys.onPressed: (event) => { root.handleDiffKeys(event); }
 
                     Keys.onLeftPressed: (event) => {
                         if (root.blameMaxScroll > 0) {
@@ -1036,6 +2348,8 @@ Rectangle {
                     }
 
                     delegate: Rectangle {
+                        readonly property bool isHeaderRow: false
+                        readonly property alias codeEdit: blameCodeText
                         width: blameListView.width
                         height: 22
                         color: index % 2 === 0 ? "#0D1117" : "#111827"
@@ -1060,17 +2374,44 @@ Rectangle {
 
                                     // Author Avatar / Circle
                                     Rectangle {
-                                        width: 16
-                                        height: 16
+                                        Layout.preferredWidth: 16
+                                        Layout.preferredHeight: 16
                                         radius: 8
                                         color: modelData.color || "#6366F1"
-                                        clip: true
 
                                         Image {
+                                            id: blameAvatarImg
                                             anchors.fill: parent
                                             source: modelData.avatarUrl || ""
                                             fillMode: Image.PreserveAspectCrop
                                             smooth: true
+                                            mipmap: true
+                                        }
+
+                                        Canvas {
+                                            id: blameCornerMask
+                                            anchors.fill: parent
+                                            visible: blameAvatarImg.status === Image.Ready
+                                            onVisibleChanged: if (visible) requestPaint()
+                                            onAvailableChanged: if (available) requestPaint()
+                                            onPaint: {
+                                                const ctx = getContext("2d");
+                                                ctx.reset();
+                                                const cx = width / 2;
+                                                const cy = height / 2;
+                                                const r = Math.min(width, height) / 2 - 0.5;
+
+                                                ctx.globalCompositeOperation = "source-over";
+                                                ctx.fillStyle = "#0B0F19";
+                                                ctx.fillRect(0, 0, width, height);
+
+                                                ctx.globalCompositeOperation = "destination-out";
+                                                ctx.beginPath();
+                                                ctx.arc(cx, cy, r, 0, Math.PI * 2, false);
+                                                ctx.closePath();
+                                                ctx.fillStyle = "#000000";
+                                                ctx.fill();
+                                            }
                                         }
 
                                         Text {
@@ -1079,7 +2420,7 @@ Rectangle {
                                             color: "#FFFFFF"
                                             font.pixelSize: 8
                                             font.bold: true
-                                            visible: parent.children[0].status !== Image.Ready
+                                            visible: blameAvatarImg.status !== Image.Ready
                                         }
                                     }
 
@@ -1087,7 +2428,7 @@ Rectangle {
                                     Text {
                                         text: modelData.shortSha || ""
                                         color: "#38BDF8"
-                                        font.family: "monospace"
+                                        font.family: root.monoFont
                                         font.pixelSize: 10
                                         Layout.preferredWidth: 54
                                     }
@@ -1112,7 +2453,7 @@ Rectangle {
                                     Text {
                                         text: modelData.lineNumber || ""
                                         color: "#94A3B8"
-                                        font.family: "monospace"
+                                        font.family: root.monoFont
                                         font.pixelSize: 10
                                         Layout.preferredWidth: 28
                                         horizontalAlignment: Text.AlignRight
@@ -1126,19 +2467,30 @@ Rectangle {
                                 Layout.fillHeight: true
                                 clip: true
 
-                                Text {
+                                DiffCodeText {
+                                    id: blameCodeText
+                                    selTargetName: "blame"
+                                    rowIndex: index
                                     x: 6 - root.horizontalScrollX
-                                    width: Math.max(implicitWidth, Math.max(parent.width - 6, root.maxCodeWidth))
-                                    height: parent.height
+                                    width: Math.max(parent.width - 6, root.maxCodeWidth)
+                                    height: implicitHeight
+                                    anchors.verticalCenter: parent.verticalCenter
                                     text: modelData.richContent || modelData.content || ""
-                                    textFormat: Text.RichText
                                     color: "#F1F5F9"
-                                    font.family: "monospace"
                                     font.pixelSize: 11
-                                    verticalAlignment: Text.AlignVCenter
-                                    elide: Text.ElideNone
+                                    wrapMode: TextEdit.NoWrap
                                 }
                             }
+                        }
+
+                        // Subtle horizontal row divider
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.bottom: parent.bottom
+                            height: 1
+                            color: root.gridLineColor
+                            z: 4
                         }
                     }
 
@@ -1148,7 +2500,8 @@ Rectangle {
                         orientation: Qt.Horizontal
                         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
                         onWheel: (event) => {
-                            var dx = 0;
+                            if (root.blameMaxScroll <= 0) return;
+                            let dx = 0;
                             if (event.pixelDelta && event.pixelDelta.x !== 0) {
                                 dx = event.pixelDelta.x;
                             } else if (event.angleDelta && event.angleDelta.x !== 0) {
@@ -1168,7 +2521,8 @@ Rectangle {
                         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
                         acceptedModifiers: Qt.ShiftModifier
                         onWheel: (event) => {
-                            var dy = 0;
+                            if (root.blameMaxScroll <= 0) return;
+                            let dy = 0;
                             if (event.pixelDelta && event.pixelDelta.y !== 0) {
                                 dy = event.pixelDelta.y;
                             } else if (event.angleDelta && event.angleDelta.y !== 0) {
@@ -1182,6 +2536,14 @@ Rectangle {
                     }
                 }
 
+                DiffListSelectionMouseArea {
+                    anchors.fill: blameListView
+                    listView: blameListView
+                    viewType: "blame"
+                    maxHScroll: root.blameMaxScroll
+                    z: 5
+                }
+
                 // Horizontal ScrollBar for Blame View
                 DiffHScrollBar {
                     id: blameHScrollBar
@@ -1193,7 +2555,9 @@ Rectangle {
                     contentWidth: root.maxCodeWidth
                     viewWidth: root.blameAvailWidth
                     scrollValue: root.horizontalScrollX
-                    onScrollRequested: (val) => { root.horizontalScrollX = val; }
+                    onScrollRequested: (val) => {
+                        root.horizontalScrollX = val;
+                    }
                 }
             }
         }

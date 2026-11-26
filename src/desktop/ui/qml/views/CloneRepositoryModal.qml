@@ -8,6 +8,7 @@ Dialog {
     title: "Clona Repository"
     modal: true
     width: 820
+    header: null
     anchors.centerIn: Overlay.overlay
     padding: 0
     topPadding: 0
@@ -27,6 +28,317 @@ Dialog {
     property bool repoTouched: false
     property bool destFolderMissing: false
     property bool urlMissing: false
+    property bool sshGuideExpanded: true
+
+    // Re-points the URL field at the selected repository after a protocol change (SSH <-> HTTPS).
+    function refreshSelectedRepoUrl() {
+        if (!root.profilesVm || root.selectedRepoFullName.length === 0) return;
+        for (let i = 0; i < repoListView.count; ++i) {
+            const r = root.profilesVm.remoteReposModel.getRepoAt(i);
+            if (r.fullName === root.selectedRepoFullName) {
+                urlField.text = r.activeCloneUrl;
+                break;
+            }
+        }
+    }
+
+    // Runs an action button of the troubleshooting guide. Returns a short feedback text.
+    function runGuideAction(action, host) {
+        if (!root.profilesVm) return "";
+        if (action === "copyPublicKey") {
+            return root.profilesVm.copyPublicKey(host) ? "Chiave copiata negli appunti" : "Nessuna chiave pubblica trovata";
+        }
+        if (action === "recheckSsh") {
+            root.profilesVm.recheckSsh();
+            return "Verifica in corso…";
+        }
+        if (action === "useHttps") {
+            root.profilesVm.setSelectedProtocol("https");
+            root.refreshSelectedRepoUrl();
+            if (root.effectiveHubVm && root.effectiveHubVm.cloneIssue.length > 0) {
+                root.effectiveHubVm.resetCloneState();
+            }
+            return "Protocollo impostato su HTTPS";
+        }
+        if (action === "openTokenConfig") {
+            root.showTokenConfig = true;
+            return "";
+        }
+        return "";
+    }
+
+    // Read-only text that can be selected with the mouse and copied (logs, commands...).
+    component SelectableText: TextEdit {
+        readOnly: true
+        selectByMouse: true
+        selectByKeyboard: true
+        persistentSelection: false
+        wrapMode: TextEdit.Wrap
+        textFormat: TextEdit.PlainText
+        selectionColor: "#2563EB"
+        selectedTextColor: "#FFFFFF"
+        color: "#E2E8F0"
+        font.pixelSize: 11
+    }
+
+    // Small flat button used by the guide (copy, open link, actions).
+    component GuideButton: Button {
+        id: guideBtn
+        property color accent: "#38BDF8"
+        Layout.preferredHeight: 24
+        leftPadding: 10
+        rightPadding: 10
+        hoverEnabled: true
+        contentItem: Text {
+            text: guideBtn.text
+            color: guideBtn.hovered ? "#FFFFFF" : guideBtn.accent
+            font.pixelSize: 11
+            font.bold: true
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+        background: Rectangle {
+            radius: 4
+            color: guideBtn.hovered ? "#1E3A5F" : "#0F172A"
+            border.color: guideBtn.accent
+            border.width: 1
+        }
+    }
+
+    // Step-by-step "how to fix it" card for a remote access problem (SSH key, host key, token...).
+    // `guide` is GitProfilesViewModel.troubleshootingGuide(); `logText` is the raw ssh/git output.
+    component RemoteAccessGuide: ColumnLayout {
+        id: guideRoot
+        property var guide: ({})
+        property string host: ""
+        property string logText: ""
+        property bool showSummary: true
+        property string feedback: ""
+        property bool showLog: false
+        // Injected by the user: inline components can't see the ids of the enclosing file.
+        property var profilesVm: null
+        property var actionHandler: null // function(action, host) -> feedback text
+        spacing: 8
+
+        Timer {
+            id: feedbackTimer
+            interval: 2500
+            onTriggered: guideRoot.feedback = ""
+        }
+
+        function act(action) {
+            guideRoot.feedback = guideRoot.actionHandler ? guideRoot.actionHandler(action, guideRoot.host) : "";
+            if (guideRoot.feedback.length > 0) feedbackTimer.restart();
+        }
+
+        Text {
+            visible: guideRoot.showSummary && (guideRoot.guide.summary || "").length > 0
+            text: guideRoot.guide.summary || ""
+            color: "#CBD5E1"
+            font.pixelSize: 11
+            wrapMode: Text.Wrap
+            Layout.fillWidth: true
+        }
+
+        Repeater {
+            model: guideRoot.guide.steps || []
+
+            delegate: RowLayout {
+                required property var modelData
+                required property int index
+                Layout.fillWidth: true
+                spacing: 8
+
+                Rectangle {
+                    Layout.alignment: Qt.AlignTop
+                    Layout.preferredWidth: 20
+                    Layout.preferredHeight: 20
+                    radius: 10
+                    color: "#1E3A5F"
+                    Text {
+                        anchors.centerIn: parent
+                        text: index + 1
+                        color: "#BAE6FD"
+                        font.pixelSize: 10
+                        font.bold: true
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+
+                    Text {
+                        text: modelData.title
+                        color: "#F8FAFC"
+                        font.pixelSize: 12
+                        font.bold: true
+                        wrapMode: Text.Wrap
+                        Layout.fillWidth: true
+                    }
+
+                    SelectableText {
+                        visible: (modelData.detail || "").length > 0
+                        text: modelData.detail || ""
+                        color: "#94A3B8"
+                        Layout.fillWidth: true
+                    }
+
+                    // Copyable command / snippet
+                    Rectangle {
+                        visible: (modelData.command || "").length > 0
+                        Layout.fillWidth: true
+                        implicitHeight: cmdRow.implicitHeight + 10
+                        radius: 4
+                        color: "#020617"
+                        border.color: "#1E293B"
+
+                        RowLayout {
+                            id: cmdRow
+                            anchors.fill: parent
+                            anchors.margins: 5
+                            spacing: 6
+
+                            SelectableText {
+                                text: modelData.command || ""
+                                font.family: "monospace"
+                                color: "#A5F3FC"
+                                Layout.fillWidth: true
+                            }
+
+                            GuideButton {
+                                text: "Copia"
+                                Layout.alignment: Qt.AlignTop
+                                onClicked: {
+                                    if (guideRoot.profilesVm) guideRoot.profilesVm.copyToClipboard(modelData.command);
+                                    guideRoot.feedback = "Comando copiato negli appunti";
+                                    feedbackTimer.restart();
+                                }
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        visible: (modelData.url || "").length > 0 || (modelData.action || "").length > 0
+                        spacing: 6
+
+                        GuideButton {
+                            visible: (modelData.action || "").length > 0
+                            text: modelData.actionLabel || ""
+                            accent: "#34D399"
+                            onClicked: guideRoot.act(modelData.action)
+                        }
+
+                        GuideButton {
+                            visible: (modelData.url || "").length > 0
+                            text: (modelData.urlLabel || "Apri") + " ↗"
+                            onClicked: Qt.openUrlExternally(modelData.url)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Raw output, selectable and copyable
+        RowLayout {
+            visible: guideRoot.logText.length > 0
+            spacing: 6
+
+            GuideButton {
+                text: guideRoot.showLog ? "Nascondi log" : "Mostra log"
+                accent: "#94A3B8"
+                onClicked: guideRoot.showLog = !guideRoot.showLog
+            }
+
+            GuideButton {
+                text: "Copia log"
+                accent: "#94A3B8"
+                onClicked: {
+                    if (guideRoot.profilesVm) guideRoot.profilesVm.copyToClipboard(guideRoot.logText);
+                    guideRoot.feedback = "Log copiato negli appunti";
+                    feedbackTimer.restart();
+                }
+            }
+
+            Text {
+                visible: guideRoot.feedback.length > 0
+                text: "✔ " + guideRoot.feedback
+                color: "#6EE7B7"
+                font.pixelSize: 11
+            }
+        }
+
+        Text {
+            visible: guideRoot.logText.length === 0 && guideRoot.feedback.length > 0
+            text: "✔ " + guideRoot.feedback
+            color: "#6EE7B7"
+            font.pixelSize: 11
+        }
+
+        Rectangle {
+            visible: guideRoot.showLog && guideRoot.logText.length > 0
+            Layout.fillWidth: true
+            Layout.preferredHeight: Math.min(logEdit.implicitHeight + 12, 140)
+            radius: 4
+            color: "#020617"
+            border.color: "#1E293B"
+
+            Flickable {
+                id: logFlick
+                anchors.fill: parent
+                anchors.margins: 6
+                clip: true
+                contentWidth: width
+                contentHeight: logEdit.implicitHeight
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                SelectableText {
+                    id: logEdit
+                    width: logFlick.width
+                    text: guideRoot.logText
+                    font.family: "monospace"
+                    color: "#FCA5A5"
+                }
+            }
+        }
+    }
+
+    Connections {
+        target: root.profilesVm
+        function onSelectedProtocolChanged() {
+            root.refreshSelectedRepoUrl();
+        }
+        function onSshCheckChanged() {
+            // Key accepted now: an SSH error from the last clone attempt is no longer relevant.
+            if (root.profilesVm.sshCheckState === "ok" && root.effectiveHubVm &&
+                    root.effectiveHubVm.cloneIssue.indexOf("ssh") === 0 && !root.effectiveHubVm.isCloning) {
+                root.effectiveHubVm.resetCloneState();
+            }
+        }
+    }
+
+    // While an SSH problem is shown, check again in the background: the user is likely fixing it
+    // in the browser (adding the key) and shouldn't have to restart the app or press a button.
+    readonly property bool sshIssueShown: Boolean(root.profilesVm && root.profilesVm.activeProfileId !== "url" &&
+        root.profilesVm.sshCheckState.length > 0 && root.profilesVm.sshCheckState !== "checking" &&
+        root.profilesVm.sshCheckState !== "ok")
+
+    Timer {
+        interval: 10000
+        repeat: true
+        running: root.visible && root.sshIssueShown
+        onTriggered: root.profilesVm.recheckSshIfFailing()
+    }
+
+    Connections {
+        target: Qt.application
+        function onStateChanged() {
+            if (Qt.application.state === Qt.ApplicationActive && root.visible && root.sshIssueShown) {
+                root.profilesVm.recheckSshIfFailing();
+            }
+        }
+    }
 
     function resetFormAndCache() {
         console.log("[CloneModal] Reset completo del form e della cache...");
@@ -75,7 +387,7 @@ Dialog {
     function openWithDefaultFolder(defaultParentFolder) {
         root.resetFormAndCache();
 
-        var initialFolder = "";
+        let initialFolder = "";
         if (defaultParentFolder && defaultParentFolder.length > 0) {
             initialFolder = defaultParentFolder;
         } else if (root.effectiveHubVm && root.effectiveHubVm.lastCloneDestinationPath && root.effectiveHubVm.lastCloneDestinationPath.length > 0) {
@@ -100,7 +412,8 @@ Dialog {
 
     Connections {
         target: root.effectiveHubVm
-        function onCloneCompleted(success, message) {
+
+        function onCloneCompleted(success) {
             if (success) {
                 root.resetFormAndCache();
                 root.close();
@@ -112,12 +425,12 @@ Dialog {
         id: cloneParentFolderDialog
         title: "Seleziona cartella di destinazione locale"
         currentFolder: destFolderField.text.length > 0
-                       ? ("file://" + destFolderField.text)
-                       : (root.effectiveHubVm && root.effectiveHubVm.lastCloneDestinationPath && root.effectiveHubVm.lastCloneDestinationPath.length > 0
-                          ? ("file://" + root.effectiveHubVm.lastCloneDestinationPath)
-                          : "")
+            ? ("file://" + destFolderField.text)
+            : (root.effectiveHubVm && root.effectiveHubVm.lastCloneDestinationPath && root.effectiveHubVm.lastCloneDestinationPath.length > 0
+                ? ("file://" + root.effectiveHubVm.lastCloneDestinationPath)
+                : "")
         onAccepted: {
-            var selected = cloneParentFolderDialog.selectedFolder.toString();
+            let selected = cloneParentFolderDialog.selectedFolder.toString();
             if (selected.startsWith("file://")) {
                 selected = selected.substring(7);
             }
@@ -129,11 +442,276 @@ Dialog {
         }
     }
 
+    // True when the selected provider is a self-hosted server added by hand (can be removed).
+    readonly property bool activeProfileRemovable: {
+        if (!root.profilesVm) return false;
+        const list = root.profilesVm.profiles;
+        for (let i = 0; i < list.length; ++i) {
+            if (list[i].id === root.profilesVm.activeProfileId) return list[i].removable === true;
+        }
+        return false;
+    }
+
+    // -------------------------------------------------------------
+    // ADD CUSTOM SERVER POPUP (Gitea / Forgejo / Codeberg / self-hosted)
+    // -------------------------------------------------------------
+    Popup {
+        id: customServerPopup
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: 460
+        modal: true
+        focus: true
+        padding: 0
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        property bool showToken: false
+
+        function openForNew() {
+            customNameField.text = "";
+            customHostField.text = "";
+            customApiField.text = "";
+            customUserField.text = "";
+            customTokenField.text = "";
+            customServerPopup.showToken = false;
+            customServerPopup.open();
+            customHostField.forceActiveFocus();
+        }
+
+        function submit() {
+            if (!root.profilesVm || customHostField.text.trim().length === 0) return;
+            root.profilesVm.addCustomProfile(
+                customHostField.text,
+                customNameField.text,
+                customTokenField.text,
+                customApiField.text,
+                customUserField.text
+            );
+            customTokenField.text = "";
+            customServerPopup.close();
+            root.selectedRepoFullName = "";
+            root.selectedRepoIsPrivate = false;
+            urlField.text = "";
+            root.showTokenConfig = false;
+            root.showRepoPicker = true;
+        }
+
+        background: Rectangle {
+            color: "#0E1420"
+            radius: 12
+            border.color: "#38BDF8"
+            border.width: 1
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 10
+
+            Item { Layout.preferredHeight: 4 }
+
+            RowLayout {
+                Layout.leftMargin: 16
+                Layout.rightMargin: 16
+                spacing: 8
+
+                Image {
+                    source: "qrc:/qt/qml/GitFlux/Desktop/assets/icons/providers/server.png"
+                    Layout.preferredWidth: 16
+                    Layout.preferredHeight: 16
+                    Layout.alignment: Qt.AlignVCenter
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                    mipmap: true
+                }
+
+                Text {
+                    text: "Aggiungi server Git personalizzato"
+                    color: "#F8FAFC"
+                    font.bold: true
+                    font.pixelSize: 14
+                }
+            }
+
+            Text {
+                Layout.leftMargin: 16
+                Layout.rightMargin: 16
+                Layout.fillWidth: true
+                text: "Gitea, Forgejo, Codeberg o qualsiasi istanza compatibile con l'API /api/v1. Il token è opzionale: senza token vengono elencati solo i repository pubblici."
+                color: "#94A3B8"
+                font.pixelSize: 11
+                wrapMode: Text.Wrap
+            }
+
+            GridLayout {
+                Layout.leftMargin: 16
+                Layout.rightMargin: 16
+                Layout.fillWidth: true
+                columns: 2
+                columnSpacing: 10
+                rowSpacing: 8
+
+                Text { text: "Host *"; color: "#CBD5E1"; font.pixelSize: 11; font.bold: true }
+                TextField {
+                    id: customHostField
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 32
+                    placeholderText: "gitea.example.com o https://192.168.1.30:3000"
+                    placeholderTextColor: "#475569"
+                    selectByMouse: true
+                    color: "#F8FAFC"
+                    font.pixelSize: 12
+                    background: Rectangle { color: "#0B1120"; radius: 4; border.color: customHostField.activeFocus ? "#38BDF8" : "#334155" }
+                    onAccepted: customNameField.forceActiveFocus()
+                    // A full URL with a port/path is most likely the API base: reuse it.
+                    onEditingFinished: {
+                        const t = text.trim();
+                        if (customApiField.text.trim().length === 0 && t.indexOf("://") > 0) {
+                            customApiField.text = t;
+                        }
+                    }
+                }
+
+                Text { text: "Nome"; color: "#CBD5E1"; font.pixelSize: 11; font.bold: true }
+                TextField {
+                    id: customNameField
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 32
+                    placeholderText: "Es. Gitea di casa (default: host)"
+                    placeholderTextColor: "#475569"
+                    selectByMouse: true
+                    color: "#F8FAFC"
+                    font.pixelSize: 12
+                    background: Rectangle { color: "#0B1120"; radius: 4; border.color: customNameField.activeFocus ? "#38BDF8" : "#334155" }
+                    onAccepted: customApiField.forceActiveFocus()
+                }
+
+                Text { text: "URL API"; color: "#CBD5E1"; font.pixelSize: 11; font.bold: true }
+                TextField {
+                    id: customApiField
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 32
+                    placeholderText: "Default: https://<host> (+ /api/v1)"
+                    placeholderTextColor: "#475569"
+                    selectByMouse: true
+                    color: "#F8FAFC"
+                    font.pixelSize: 12
+                    background: Rectangle { color: "#0B1120"; radius: 4; border.color: customApiField.activeFocus ? "#38BDF8" : "#334155" }
+                    onAccepted: customUserField.forceActiveFocus()
+                }
+
+                Text { text: "Username"; color: "#CBD5E1"; font.pixelSize: 11; font.bold: true }
+                TextField {
+                    id: customUserField
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 32
+                    placeholderText: "Opzionale"
+                    placeholderTextColor: "#475569"
+                    selectByMouse: true
+                    color: "#F8FAFC"
+                    font.pixelSize: 12
+                    background: Rectangle { color: "#0B1120"; radius: 4; border.color: customUserField.activeFocus ? "#38BDF8" : "#334155" }
+                    onAccepted: customTokenField.forceActiveFocus()
+                }
+
+                Text { text: "Token"; color: "#CBD5E1"; font.pixelSize: 11; font.bold: true }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    TextField {
+                        id: customTokenField
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 32
+                        placeholderText: "Access Token (opzionale)"
+                        placeholderTextColor: "#475569"
+                        selectByMouse: true
+                        echoMode: customServerPopup.showToken ? TextInput.Normal : TextInput.Password
+                        color: "#F8FAFC"
+                        font.pixelSize: 12
+                        background: Rectangle { color: "#0B1120"; radius: 4; border.color: customTokenField.activeFocus ? "#38BDF8" : "#334155" }
+                        onAccepted: customServerPopup.submit()
+                    }
+                    Button {
+                        text: customServerPopup.showToken ? "🙈" : "👁️"
+                        Layout.preferredWidth: 32
+                        Layout.preferredHeight: 32
+                        onClicked: customServerPopup.showToken = !customServerPopup.showToken
+                        background: Rectangle { color: "#1E293B"; radius: 4 }
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.leftMargin: 16
+                Layout.rightMargin: 16
+                Layout.bottomMargin: 14
+                Layout.topMargin: 4
+                Layout.fillWidth: true
+                spacing: 8
+
+                Item { Layout.fillWidth: true }
+
+                Button {
+                    text: "Annulla"
+                    Layout.preferredHeight: 32
+                    onClicked: customServerPopup.close()
+                    contentItem: Text {
+                        text: "Annulla"
+                        color: "#94A3B8"
+                        font.bold: true
+                        font.pixelSize: 11
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle {
+                        color: parent.hovered ? "#334155" : "#1E293B"
+                        radius: 4
+                        border.color: "#334155"
+                    }
+                }
+
+                Button {
+                    text: "＋ Aggiungi server"
+                    Layout.preferredHeight: 32
+                    enabled: customHostField.text.trim().length > 0
+                    onClicked: customServerPopup.submit()
+                    contentItem: Text {
+                        text: "＋ Aggiungi server"
+                        color: parent.enabled ? "#FFFFFF" : "#64748B"
+                        font.bold: true
+                        font.pixelSize: 11
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle {
+                        color: parent.enabled ? (parent.hovered ? "#0284C7" : "#0369A1") : "#1E293B"
+                        radius: 4
+                    }
+                }
+            }
+        }
+    }
+
     background: Rectangle {
-        color: "#0B1120"
-        radius: 8
-        border.color: "#334155"
+        color: "#0E1420"
+        radius: 14
+        border.color: "#28374E"
         border.width: 1
+
+        Rectangle {
+            z: -2
+            anchors.fill: parent
+            anchors.margins: -8
+            radius: 20
+            color: "#000000"
+            opacity: 0.30
+        }
+        Rectangle {
+            z: -1
+            anchors.fill: parent
+            anchors.margins: -2
+            radius: 16
+            color: "#000000"
+            opacity: 0.42
+        }
     }
 
     contentItem: ColumnLayout {
@@ -146,23 +724,30 @@ Dialog {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 48
-            color: "#1E293B"
-            radius: 8
+            color: "#161F2E"
+            radius: 14
 
             Rectangle {
                 anchors.bottom: parent.bottom
                 width: parent.width
-                height: 8
-                color: "#1E293B"
+                height: 14
+                color: "#161F2E"
+            }
+
+            Rectangle {
+                anchors.bottom: parent.bottom
+                width: parent.width
+                height: 1
+                color: "#222F42"
             }
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
+                anchors.leftMargin: 18
+                anchors.rightMargin: 14
 
                 Text {
-                    text: "⬇ Clona Repository (Stile GitKraken)"
+                    text: "⬇ Clona Repository"
                     color: "#F8FAFC"
                     font.pixelSize: 15
                     font.bold: true
@@ -174,6 +759,7 @@ Dialog {
                     flat: true
                     Layout.preferredWidth: 28
                     Layout.preferredHeight: 28
+                    hoverEnabled: true
                     enabled: !(root.effectiveHubVm && root.effectiveHubVm.isCloning)
                     onClicked: {
                         root.resetFormAndCache();
@@ -181,13 +767,16 @@ Dialog {
                     }
                     contentItem: Text {
                         text: "✕"
-                        color: parent.hovered ? "#EF4444" : "#94A3B8"
-                        font.pixelSize: 14
+                        color: parent.hovered ? "#F8FAFC" : "#94A3B8"
+                        font.pixelSize: 13
                         font.bold: true
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
-                    background: Item {}
+                    background: Rectangle {
+                        radius: 7
+                        color: parent.hovered ? "#243247" : "transparent"
+                    }
                 }
             }
         }
@@ -236,21 +825,35 @@ Dialog {
                         Layout.fillHeight: true
                         clip: true
                         interactive: false
+                        spacing: 3
                         model: root.profilesVm ? root.profilesVm.profiles : []
 
                         delegate: Rectangle {
                             id: providerItem
-                            width: providerListView.width
-                            height: 42
+                            width: providerListView.width - 12
+                            x: 6
+                            height: 40
+                            radius: 8
 
                             readonly property bool isSelected: root.profilesVm && (root.profilesVm.activeProfileId === modelData.id)
 
-                            color: isSelected ? "#1E293B" : (providerMouse.containsMouse ? "#111827" : "transparent")
+                            color: isSelected ? "#16253A" : (providerMouse.containsMouse ? "#111A29" : "transparent")
+                            border.color: isSelected ? "#244369" : (providerMouse.containsMouse ? "#1D2A3F" : "transparent")
+                            border.width: 1
 
-                            // Active Left Indicator Bar
+                            Behavior on color {
+                                ColorAnimation {
+                                    duration: 110
+                                }
+                            }
+
+                            // Active Left Indicator Pill
                             Rectangle {
+                                x: 3
+                                anchors.verticalCenter: parent.verticalCenter
                                 width: 3
-                                height: parent.height
+                                height: 18
+                                radius: 1.5
                                 color: "#38BDF8"
                                 visible: providerItem.isSelected
                             }
@@ -261,9 +864,15 @@ Dialog {
                                 anchors.rightMargin: 12
                                 spacing: 10
 
-                                Text {
-                                    text: modelData.icon
-                                    font.pixelSize: 14
+                                Image {
+                                    source: modelData.iconSource ? modelData.iconSource : ""
+                                    Layout.preferredWidth: 18
+                                    Layout.preferredHeight: 18
+                                    Layout.alignment: Qt.AlignVCenter
+                                    fillMode: Image.PreserveAspectFit
+                                    smooth: true
+                                    mipmap: true
+                                    opacity: providerItem.isSelected ? 1.0 : (providerMouse.containsMouse ? 0.95 : 0.85)
                                 }
 
                                 Text {
@@ -300,6 +909,35 @@ Dialog {
                                     }
                                 }
                             }
+                        }
+                    }
+
+                    // Add a self-hosted server (Gitea / Forgejo / Codeberg...)
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 6
+                        Layout.rightMargin: 6
+                        Layout.bottomMargin: 8
+                        Layout.preferredHeight: 36
+                        radius: 8
+                        color: addServerMouse.containsMouse ? "#111A29" : "transparent"
+                        border.color: addServerMouse.containsMouse ? "#38BDF8" : "#1D2A3F"
+                        border.width: 1
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "＋ Server personalizzato"
+                            color: addServerMouse.containsMouse ? "#38BDF8" : "#64748B"
+                            font.pixelSize: 11
+                            font.bold: true
+                        }
+
+                        MouseArea {
+                            id: addServerMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: customServerPopup.openForNew()
                         }
                     }
                 }
@@ -339,11 +977,22 @@ Dialog {
                             anchors.rightMargin: 12
                             spacing: 8
 
-                            // Profile Title & Account Name
+                            // Active Provider Icon & Profile Title
+                            Image {
+                                visible: Boolean(root.profilesVm && root.profilesVm.activeProfileIconSource && root.profilesVm.activeProfileIconSource.length > 0)
+                                source: root.profilesVm ? root.profilesVm.activeProfileIconSource : ""
+                                Layout.preferredWidth: 16
+                                Layout.preferredHeight: 16
+                                Layout.alignment: Qt.AlignVCenter
+                                fillMode: Image.PreserveAspectFit
+                                smooth: true
+                                mipmap: true
+                            }
+
                             Text {
                                 text: (root.profilesVm ? root.profilesVm.activeProfileDisplayName : "") +
-                                      (root.profilesVm && root.profilesVm.activeProfileUsername.length > 0
-                                       ? " • @" + root.profilesVm.activeProfileUsername : "")
+                                    (root.profilesVm && root.profilesVm.activeProfileUsername.length > 0
+                                        ? " • @" + root.profilesVm.activeProfileUsername : "")
                                 color: "#F8FAFC"
                                 font.bold: true
                                 font.pixelSize: 12
@@ -387,7 +1036,9 @@ Dialog {
                                 }
                             }
 
-                            Item { Layout.fillWidth: true }
+                            Item {
+                                Layout.fillWidth: true
+                            }
 
                             // Protocol Switcher (SSH vs HTTPS)
                             RowLayout {
@@ -420,8 +1071,8 @@ Dialog {
                                                 root.profilesVm.setSelectedProtocol("ssh");
                                                 if (root.selectedRepoFullName.length > 0) {
                                                     // refresh active clone url in field
-                                                    for (var i = 0; i < repoListView.count; ++i) {
-                                                        var r = root.profilesVm.remoteReposModel.getRepoAt(i);
+                                                    for (let i = 0; i < repoListView.count; ++i) {
+                                                        const r = root.profilesVm.remoteReposModel.getRepoAt(i);
                                                         if (r.fullName === root.selectedRepoFullName) {
                                                             urlField.text = r.activeCloneUrl;
                                                             break;
@@ -454,8 +1105,8 @@ Dialog {
                                             if (root.profilesVm) {
                                                 root.profilesVm.setSelectedProtocol("https");
                                                 if (root.selectedRepoFullName.length > 0) {
-                                                    for (var i = 0; i < repoListView.count; ++i) {
-                                                        var r = root.profilesVm.remoteReposModel.getRepoAt(i);
+                                                    for (let i = 0; i < repoListView.count; ++i) {
+                                                        const r = root.profilesVm.remoteReposModel.getRepoAt(i);
                                                         if (r.fullName === root.selectedRepoFullName) {
                                                             urlField.text = r.activeCloneUrl;
                                                             break;
@@ -486,6 +1137,38 @@ Dialog {
                                 }
                             }
 
+                            // Remove Server Button (only for servers added by hand)
+                            Button {
+                                visible: root.activeProfileRemovable
+                                text: "🗑"
+                                Layout.preferredHeight: 26
+                                Layout.preferredWidth: 28
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Rimuovi questo server"
+                                onClicked: {
+                                    if (root.profilesVm) {
+                                        root.profilesVm.removeCustomProfile(root.profilesVm.activeProfileId);
+                                        root.selectedRepoFullName = "";
+                                        root.selectedRepoIsPrivate = false;
+                                        root.showTokenConfig = false;
+                                        root.showRepoPicker = false;
+                                        urlField.text = "";
+                                    }
+                                }
+                                contentItem: Text {
+                                    text: "🗑"
+                                    font.pixelSize: 12
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                background: Rectangle {
+                                    color: parent.hovered ? "#450A0A" : "#1E293B"
+                                    radius: 4
+                                    border.color: parent.hovered ? "#DC2626" : "transparent"
+                                    border.width: 1
+                                }
+                            }
+
                             // Config Token Button
                             Button {
                                 text: root.showTokenConfig ? "Nascondi" : (root.profilesVm && root.profilesVm.activeProfileHasToken ? "Modifica Token" : "+ Inserisci Token")
@@ -504,6 +1187,93 @@ Dialog {
                                     radius: 4
                                     border.color: root.showTokenConfig ? "#38BDF8" : "#334155"
                                     border.width: 1
+                                }
+                            }
+                        }
+                    }
+
+                    // ---------------------------------------------------------
+                    // A2. SSH KEY CHECK ("ssh -T") + HOW TO FIX IT
+                    // ---------------------------------------------------------
+                    Rectangle {
+                        id: sshCheckCard
+                        readonly property string checkState: root.profilesVm ? root.profilesVm.sshCheckState : ""
+                        readonly property bool isIssue: checkState.length > 0 && checkState !== "checking" && checkState !== "ok"
+                        // A failed clone shows its own guide below: don't repeat it here.
+                        readonly property bool cloneGuideShown: Boolean(root.effectiveHubVm && root.effectiveHubVm.cloneIssue.length > 0)
+
+                        Layout.fillWidth: true
+                        visible: root.profilesVm !== null && root.profilesVm.activeProfileId !== "url" &&
+                                 checkState.length > 0 && !(isIssue && cloneGuideShown)
+                        implicitHeight: sshCheckCol.implicitHeight + 14
+                        radius: 6
+                        color: isIssue ? "#2A1A05" : (checkState === "ok" ? "#052E1C" : "#0F1B2D")
+                        border.color: isIssue ? "#D97706" : (checkState === "ok" ? "#059669" : "#1E3A5F")
+                        border.width: 1
+
+                        ColumnLayout {
+                            id: sshCheckCol
+                            anchors.fill: parent
+                            anchors.margins: 7
+                            spacing: 6
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.Wrap
+                                    font.pixelSize: 11
+                                    font.bold: true
+                                    color: sshCheckCard.isIssue ? "#FCD34D" : (sshCheckCard.checkState === "ok" ? "#6EE7B7" : "#93C5FD")
+                                    text: {
+                                        if (!root.profilesVm) return "";
+                                        const host = root.profilesVm.activeProfileHost;
+                                        if (sshCheckCard.checkState === "checking") return "⏳ Verifica della chiave SSH su " + host + "…";
+                                        if (sshCheckCard.checkState === "ok") {
+                                            const acc = root.profilesVm.sshCheckAccount;
+                                            return "✔ Chiave SSH accettata da " + host + (acc.length > 0 ? " (account @" + acc + ")" : "");
+                                        }
+                                        const g = root.profilesVm.troubleshootingGuide(sshCheckCard.checkState, "");
+                                        return "⚠️ " + g.title + (root.profilesVm.sshAutoSwitchedToHttps ? " — per ora uso HTTPS" : "");
+                                    }
+                                }
+
+                                GuideButton {
+                                    visible: sshCheckCard.isIssue
+                                    text: root.sshGuideExpanded ? "Nascondi ▴" : "Come risolvere ▾"
+                                    accent: "#FBBF24"
+                                    onClicked: root.sshGuideExpanded = !root.sshGuideExpanded
+                                }
+
+                                GuideButton {
+                                    visible: sshCheckCard.checkState === "ok"
+                                    text: "Verifica di nuovo"
+                                    accent: "#34D399"
+                                    onClicked: root.profilesVm.recheckSsh()
+                                }
+                            }
+
+                            Flickable {
+                                id: sshGuideFlick
+                                visible: sshCheckCard.isIssue && root.sshGuideExpanded
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: Math.min(sshGuide.implicitHeight, 260)
+                                clip: true
+                                contentWidth: width
+                                contentHeight: sshGuide.implicitHeight
+                                boundsBehavior: Flickable.StopAtBounds
+                                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                                RemoteAccessGuide {
+                                    id: sshGuide
+                                    width: sshGuideFlick.width - 10
+                                    profilesVm: root.profilesVm
+                                    actionHandler: root.runGuideAction
+                                    guide: (root.profilesVm && sshCheckCard.isIssue)
+                                        ? root.profilesVm.troubleshootingGuide(sshCheckCard.checkState, "") : ({})
+                                    logText: root.profilesVm ? root.profilesVm.sshCheckOutput : ""
                                 }
                             }
                         }
@@ -536,8 +1306,8 @@ Dialog {
 
                             Text {
                                 text: root.profilesVm && root.profilesVm.activeProfileId === "bitbucket"
-                                      ? "Bitbucket ha deprecato le App Password a Luglio 2026. Crea un 'API token with scopes' su id.atlassian.com selezionando l'app Bitbucket e lo scope 'read:repository:bitbucket'."
-                                      : "Il token viene crittografato sul database locale con Argon2id (KDF) e AES-256-GCM. Sblocca tutti i repository privati e delle organizzazioni."
+                                    ? "Bitbucket ha deprecato le App Password a Luglio 2026. Crea un 'API token with scopes' su id.atlassian.com selezionando l'app Bitbucket e lo scope 'read:repository:bitbucket'."
+                                    : "Il token viene crittografato sul database locale con Argon2id (KDF) e AES-256-GCM. Sblocca tutti i repository privati e delle organizzazioni."
                                 color: "#94A3B8"
                                 font.pixelSize: 11
                                 wrapMode: Text.Wrap
@@ -553,8 +1323,8 @@ Dialog {
                                     Layout.preferredWidth: 160
                                     Layout.preferredHeight: 32
                                     placeholderText: root.profilesVm && root.profilesVm.activeProfileId === "bitbucket"
-                                                     ? "Email Atlassian"
-                                                     : "Username (es. Dokjolly0)"
+                                        ? "Email Atlassian"
+                                        : "Username (es. Dokjolly0)"
                                     placeholderTextColor: "#475569"
                                     selectByMouse: true
                                     text: root.profilesVm ? root.profilesVm.activeProfileUsername : ""
@@ -574,8 +1344,8 @@ Dialog {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: 32
                                     placeholderText: root.profilesVm && root.profilesVm.activeProfileId === "bitbucket"
-                                                     ? "Atlassian Scoped API Token (ATATT...)"
-                                                     : "Personal Access Token (ghp_... o API token)"
+                                        ? "Atlassian Scoped API Token (ATATT...)"
+                                        : "Personal Access Token (ghp_... o API token)"
                                     placeholderTextColor: "#475569"
                                     selectByMouse: true
                                     echoMode: root.showTokenText ? TextInput.Normal : TextInput.Password
@@ -595,7 +1365,9 @@ Dialog {
                                     Layout.preferredWidth: 32
                                     Layout.preferredHeight: 32
                                     onClicked: root.showTokenText = !root.showTokenText
-                                    background: Rectangle { color: "#1E293B"; radius: 4 }
+                                    background: Rectangle {
+                                        color: "#1E293B"; radius: 4
+                                    }
                                 }
 
                                 Button {
@@ -697,8 +1469,12 @@ Dialog {
                                 text: "🔑 Inserisci Token"
                                 Layout.preferredHeight: 28
                                 onClicked: root.showTokenConfig = true
-                                background: Rectangle { color: parent.hovered ? "#0284C7" : "#0369A1"; radius: 4 }
-                                contentItem: Text { text: "🔑 Inserisci Token"; color: "#FFFFFF"; font.pixelSize: 11; font.bold: true }
+                                background: Rectangle {
+                                    color: parent.hovered ? "#0284C7" : "#0369A1"; radius: 4
+                                }
+                                contentItem: Text {
+                                    text: "🔑 Inserisci Token"; color: "#FFFFFF"; font.pixelSize: 11; font.bold: true
+                                }
                             }
                         }
                     }
@@ -733,8 +1509,12 @@ Dialog {
                                 text: "Modifica"
                                 Layout.preferredHeight: 24
                                 onClicked: root.showTokenConfig = true
-                                background: Rectangle { color: parent.hovered ? "#047857" : "#065F46"; radius: 4 }
-                                contentItem: Text { text: "Modifica"; color: "#ECFDF5"; font.pixelSize: 10; font.bold: true }
+                                background: Rectangle {
+                                    color: parent.hovered ? "#047857" : "#065F46"; radius: 4
+                                }
+                                contentItem: Text {
+                                    text: "Modifica"; color: "#ECFDF5"; font.pixelSize: 10; font.bold: true
+                                }
                             }
                         }
                     }
@@ -762,8 +1542,8 @@ Dialog {
                             radius: 6
                             color: repoSelectorMouse.containsMouse ? "#1E293B" : "#0B1120"
                             border.color: (root.repoTouched && !root.showRepoPicker && root.selectedRepoFullName.length === 0)
-                                          ? "#F59E0B"
-                                          : (root.showRepoPicker ? "#38BDF8" : (root.selectedRepoFullName.length > 0 ? "#0284C7" : "#334155"))
+                                ? "#F59E0B"
+                                : (root.showRepoPicker ? "#38BDF8" : (root.selectedRepoFullName.length > 0 ? "#0284C7" : "#334155"))
                             border.width: (root.showRepoPicker || (root.repoTouched && !root.showRepoPicker && root.selectedRepoFullName.length === 0)) ? 2 : 1
 
                             RowLayout {
@@ -783,8 +1563,8 @@ Dialog {
 
                                     Text {
                                         text: root.selectedRepoFullName.length > 0
-                                              ? root.selectedRepoFullName
-                                              : "Clicca per selezionare un repository da " + (root.profilesVm ? root.profilesVm.activeProfileDisplayName : "server") + "..."
+                                            ? root.selectedRepoFullName
+                                            : "Clicca per selezionare un repository da " + (root.profilesVm ? root.profilesVm.activeProfileDisplayName : "server") + "..."
                                         color: root.selectedRepoFullName.length > 0 ? "#F8FAFC" : "#64748B"
                                         font.pixelSize: 12
                                         font.bold: root.selectedRepoFullName.length > 0
@@ -812,8 +1592,8 @@ Dialog {
                                         id: actionBtnText
                                         anchors.centerIn: parent
                                         text: root.showRepoPicker
-                                              ? "Chiudi ▲"
-                                              : (root.selectedRepoFullName.length > 0 ? "Cambia ▼" : "Scegli ▼")
+                                            ? "Chiudi ▲"
+                                            : (root.selectedRepoFullName.length > 0 ? "Cambia ▼" : "Scegli ▼")
                                         color: root.showRepoPicker ? "#FFFFFF" : "#94A3B8"
                                         font.pixelSize: 11
                                         font.bold: true
@@ -867,8 +1647,12 @@ Dialog {
                                         root.showRepoPicker = true;
                                         if (typeof searchField !== "undefined") searchField.forceActiveFocus();
                                     }
-                                    contentItem: Text { text: "Scegli ▼"; color: "#FDE68A"; font.pixelSize: 10; font.bold: true }
-                                    background: Rectangle { color: "#78350F"; radius: 4 }
+                                    contentItem: Text {
+                                        text: "Scegli ▼"; color: "#FDE68A"; font.pixelSize: 10; font.bold: true
+                                    }
+                                    background: Rectangle {
+                                        color: "#78350F"; radius: 4
+                                    }
                                 }
                             }
                         }
@@ -929,7 +1713,9 @@ Dialog {
                                         Layout.preferredWidth: 32
                                         Layout.preferredHeight: 32
                                         onClicked: searchField.text = ""
-                                        background: Rectangle { color: "#1E293B"; radius: 4 }
+                                        background: Rectangle {
+                                            color: "#1E293B"; radius: 4
+                                        }
                                         contentItem: Text {
                                             text: "✕"
                                             color: "#94A3B8"
@@ -951,8 +1737,8 @@ Dialog {
                                             anchors.centerIn: parent
                                             text: {
                                                 if (!root.profilesVm || !root.profilesVm.remoteReposModel) return "0 repo";
-                                                var filtered = root.profilesVm.remoteReposModel.filteredCount;
-                                                var total = root.profilesVm.remoteReposModel.totalCount;
+                                                const filtered = root.profilesVm.remoteReposModel.filteredCount;
+                                                const total = root.profilesVm.remoteReposModel.totalCount;
                                                 return filtered + " di " + total + " repo";
                                             }
                                             color: "#38BDF8"
@@ -972,7 +1758,9 @@ Dialog {
                                     RowLayout {
                                         anchors.centerIn: parent
                                         spacing: 8
-                                        ProgressBar { indeterminate: true; Layout.preferredWidth: 100 }
+                                        ProgressBar {
+                                            indeterminate: true; Layout.preferredWidth: 100
+                                        }
                                         Text {
                                             text: "Caricamento repository in corso..."
                                             color: "#38BDF8"
@@ -1006,8 +1794,12 @@ Dialog {
                                             text: "Inserisci Token"
                                             Layout.preferredHeight: 24
                                             onClicked: root.showTokenConfig = true
-                                            background: Rectangle { color: "#7F1D1D"; radius: 4 }
-                                            contentItem: Text { text: "Inserisci Token"; color: "#FFFFFF"; font.pixelSize: 10; font.bold: true }
+                                            background: Rectangle {
+                                                color: "#7F1D1D"; radius: 4
+                                            }
+                                            contentItem: Text {
+                                                text: "Inserisci Token"; color: "#FFFFFF"; font.pixelSize: 10; font.bold: true
+                                            }
                                         }
                                     }
                                 }
@@ -1024,6 +1816,7 @@ Dialog {
 
                                     ListView {
                                         id: repoListView
+                                        SmoothWheelScroller {}
                                         anchors.fill: parent
                                         anchors.margins: 4
                                         spacing: 4
@@ -1031,7 +1824,8 @@ Dialog {
                                         boundsBehavior: Flickable.StopAtBounds
                                         maximumFlickVelocity: 6000
                                         flickDeceleration: 1000
-                                        ScrollBar.vertical: FluxScrollBar {}
+                                        ScrollBar.vertical: FluxScrollBar {
+                                        }
 
                                         delegate: Rectangle {
                                             id: repoCard
@@ -1104,7 +1898,7 @@ Dialog {
                                                 onClicked: {
                                                     root.selectedRepoFullName = model.fullName;
                                                     root.selectedRepoIsPrivate = model.isPrivate;
-                                                    var targetUrl = model.activeCloneUrl;
+                                                    let targetUrl = model.activeCloneUrl;
                                                     if (!targetUrl || targetUrl.length === 0) {
                                                         targetUrl = (root.profilesVm && root.profilesVm.selectedProtocol === "ssh") ? model.sshUrl : model.httpsUrl;
                                                     }
@@ -1113,7 +1907,7 @@ Dialog {
                                                     }
                                                     urlField.text = targetUrl;
 
-                                                    var defaultName = model.fullName ? model.fullName.split("/").pop() : model.name;
+                                                    const defaultName = model.fullName ? model.fullName.split("/").pop() : model.name;
                                                     dirNameField.text = defaultName;
                                                     dirNameField.propertyModified = true;
                                                     root.showRepoPicker = false;
@@ -1128,8 +1922,8 @@ Dialog {
                                             anchors.centerIn: parent
                                             visible: repoListView.count === 0 && (!root.profilesVm || !root.profilesVm.isFetching)
                                             text: searchField.text.length > 0
-                                                  ? "Nessun repository trovato per '" + searchField.text + "'"
-                                                  : "Nessun repository disponibile per questo account."
+                                                ? "Nessun repository trovato per '" + searchField.text + "'"
+                                                : "Nessun repository disponibile per questo account."
                                             color: "#64748B"
                                             font.pixelSize: 12
                                         }
@@ -1168,14 +1962,14 @@ Dialog {
                                 color: (root.urlMissing && urlField.text.trim().length === 0) ? "#2A0808" : "#0B1120"
                                 radius: 6
                                 border.color: (root.urlMissing && urlField.text.trim().length === 0)
-                                              ? "#DC2626"
-                                              : (urlField.activeFocus ? "#38BDF8" : "#334155")
+                                    ? "#DC2626"
+                                    : (urlField.activeFocus ? "#38BDF8" : "#334155")
                                 border.width: (root.urlMissing && urlField.text.trim().length === 0) ? 2 : 1
                             }
                             onTextChanged: {
                                 if (root.urlMissing && text.trim().length > 0) root.urlMissing = false;
                                 if (root.effectiveHubVm && text.length > 0 && root.profilesVm && root.profilesVm.activeProfileId === "url") {
-                                    var extracted = root.effectiveHubVm.extractRepoNameFromUrl(text);
+                                    const extracted = root.effectiveHubVm.extractRepoNameFromUrl(text);
                                     if (dirNameField.text.length === 0 || dirNameField.propertyModified !== true) {
                                         dirNameField.text = extracted;
                                     }
@@ -1245,8 +2039,8 @@ Dialog {
                                     color: (root.destFolderMissing && destFolderField.text.trim().length === 0) ? "#2A0808" : "#0B1120"
                                     radius: 6
                                     border.color: (root.destFolderMissing && destFolderField.text.trim().length === 0)
-                                                  ? "#DC2626"
-                                                  : (destFolderField.activeFocus ? "#38BDF8" : "#334155")
+                                        ? "#DC2626"
+                                        : (destFolderField.activeFocus ? "#38BDF8" : "#334155")
                                     border.width: (root.destFolderMissing && destFolderField.text.trim().length === 0) ? 2 : 1
                                 }
                                 onTextChanged: {
@@ -1311,8 +2105,12 @@ Dialog {
                                         root.destFolderMissing = false;
                                         cloneParentFolderDialog.open();
                                     }
-                                    contentItem: Text { text: "📁 Sfoglia..."; color: "#FFFFFF"; font.pixelSize: 11; font.bold: true }
-                                    background: Rectangle { color: "#7F1D1D"; radius: 4 }
+                                    contentItem: Text {
+                                        text: "📁 Sfoglia..."; color: "#FFFFFF"; font.pixelSize: 11; font.bold: true
+                                    }
+                                    background: Rectangle {
+                                        color: "#7F1D1D"; radius: 4
+                                    }
                                 }
                             }
                         }
@@ -1478,8 +2276,8 @@ Dialog {
                                 from: 0
                                 to: 100
                                 value: (root.effectiveHubVm && root.effectiveHubVm.cloneProgressPercent > 0)
-                                       ? root.effectiveHubVm.cloneProgressPercent
-                                       : 0
+                                    ? root.effectiveHubVm.cloneProgressPercent
+                                    : 0
                                 indeterminate: Boolean(root.effectiveHubVm && root.effectiveHubVm.cloneProgressPercent <= 0)
                                 background: Rectangle {
                                     implicitHeight: 8
@@ -1492,15 +2290,19 @@ Dialog {
                                     Rectangle {
                                         id: barFill
                                         width: cloneProgressBar.indeterminate
-                                               ? parent.width * 0.35
-                                               : Math.max(8, parent.width * cloneProgressBar.visualPosition)
+                                            ? parent.width * 0.35
+                                            : Math.max(8, parent.width * cloneProgressBar.visualPosition)
                                         height: parent.height
                                         radius: 4
                                         x: cloneProgressBar.indeterminate ? indetAnim.animX : 0
                                         gradient: Gradient {
                                             orientation: Gradient.Horizontal
-                                            GradientStop { position: 0.0; color: "#0284C7" }
-                                            GradientStop { position: 1.0; color: "#38BDF8" }
+                                            GradientStop {
+                                                position: 0.0; color: "#0284C7"
+                                            }
+                                            GradientStop {
+                                                position: 1.0; color: "#38BDF8"
+                                            }
                                         }
                                     }
 
@@ -1518,12 +2320,13 @@ Dialog {
                                 }
                             }
 
-                            Text {
+                            SelectableText {
                                 text: root.effectiveHubVm ? root.effectiveHubVm.cloneStatusMessage : ""
                                 color: "#94A3B8"
                                 font.pixelSize: 11
                                 font.family: "monospace"
-                                elide: Text.ElideRight
+                                wrapMode: TextEdit.NoWrap
+                                clip: true
                                 Layout.fillWidth: true
                             }
                         }
@@ -1531,22 +2334,72 @@ Dialog {
 
                     // Error Banner
                     Rectangle {
+                        id: errorBanner
                         Layout.fillWidth: true
                         visible: Boolean(root.effectiveHubVm && root.effectiveHubVm.lastError.length > 0 && !root.effectiveHubVm.isCloning)
                         color: "#450A0A"
                         radius: 6
                         border.color: "#DC2626"
                         border.width: 1
-                        implicitHeight: errorText.implicitHeight + 16
+                        implicitHeight: errorCol.implicitHeight + 16
 
-                        Text {
-                            id: errorText
+                        readonly property string issue: root.effectiveHubVm ? root.effectiveHubVm.cloneIssue : ""
+                        readonly property string rawLog: root.effectiveHubVm ? root.effectiveHubVm.cloneErrorLog : ""
+
+                        ColumnLayout {
+                            id: errorCol
                             anchors.fill: parent
                             anchors.margins: 8
-                            text: root.effectiveHubVm ? root.effectiveHubVm.lastError : ""
-                            color: "#FECACA"
-                            font.pixelSize: 12
-                            wrapMode: Text.Wrap
+                            spacing: 8
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+
+                                // Selectable: the message can be copied like any log.
+                                SelectableText {
+                                    id: errorText
+                                    Layout.fillWidth: true
+                                    text: root.effectiveHubVm ? root.effectiveHubVm.lastError : ""
+                                    color: "#FECACA"
+                                    font.pixelSize: 12
+                                    font.bold: errorBanner.issue.length > 0
+                                }
+
+                                GuideButton {
+                                    visible: errorBanner.issue.length === 0
+                                    Layout.alignment: Qt.AlignTop
+                                    text: "Copia"
+                                    accent: "#FCA5A5"
+                                    onClicked: if (root.profilesVm) root.profilesVm.copyToClipboard(
+                                        errorBanner.rawLog.length > 0 ? errorBanner.rawLog : errorText.text)
+                                }
+                            }
+
+                            // Recognised problem: guided fix + copyable git log
+                            Flickable {
+                                id: cloneGuideFlick
+                                visible: errorBanner.issue.length > 0
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: Math.min(cloneGuide.implicitHeight, 280)
+                                clip: true
+                                contentWidth: width
+                                contentHeight: cloneGuide.implicitHeight
+                                boundsBehavior: Flickable.StopAtBounds
+                                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                                RemoteAccessGuide {
+                                    id: cloneGuide
+                                    width: cloneGuideFlick.width - 10
+                                    profilesVm: root.profilesVm
+                                    actionHandler: root.runGuideAction
+                                    host: root.effectiveHubVm ? root.effectiveHubVm.cloneIssueHost : ""
+                                    guide: (root.profilesVm && errorBanner.issue.length > 0)
+                                        ? root.profilesVm.troubleshootingGuide(errorBanner.issue, host) : ({})
+                                    logText: errorBanner.rawLog
+                                    showLog: true
+                                }
+                            }
                         }
                     }
                 }
@@ -1558,28 +2411,40 @@ Dialog {
         // ==========================================
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 52
-            color: "#1E293B"
-            radius: 8
+            Layout.preferredHeight: 54
+            color: "#161F2E"
+            radius: 14
 
             Rectangle {
                 anchors.top: parent.top
                 width: parent.width
-                height: 8
-                color: "#1E293B"
+                height: 14
+                color: "#161F2E"
+            }
+
+            Rectangle {
+                anchors.top: parent.top
+                width: parent.width
+                height: 1
+                color: "#222F42"
             }
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
+                anchors.leftMargin: 18
+                anchors.rightMargin: 18
                 spacing: 10
 
-                Item { Layout.fillWidth: true }
+                Item {
+                    Layout.fillWidth: true
+                }
 
                 Button {
                     text: "Annulla"
-                    Layout.preferredHeight: 34
+                    Layout.preferredHeight: 36
+                    leftPadding: 16
+                    rightPadding: 16
+                    hoverEnabled: true
                     enabled: !(root.effectiveHubVm && root.effectiveHubVm.isCloning)
                     onClicked: {
                         root.resetFormAndCache();
@@ -1587,20 +2452,32 @@ Dialog {
                     }
                     contentItem: Text {
                         text: "Annulla"
-                        color: "#94A3B8"
-                        font.pixelSize: 13
+                        color: "#CBD5E1"
+                        font.pixelSize: 12
+                        font.bold: true
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
                     background: Rectangle {
-                        color: parent.hovered ? "#334155" : "transparent"
-                        radius: 6
+                        color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                        radius: 8
+                        border.color: "#28374E"
+                        border.width: 1
+
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
                     }
                 }
 
                 Button {
                     id: cloneButton
                     Layout.preferredHeight: 36
+                    leftPadding: 18
+                    rightPadding: 18
+                    hoverEnabled: true
                     enabled: !(root.effectiveHubVm && root.effectiveHubVm.isCloning)
                     onClicked: {
                         console.log("[CloneModal] Avvia Clonazione cliccato. URL=" + urlField.text + " DestFolder=" + destFolderField.text + " Dir=" + dirNameField.text);
@@ -1626,7 +2503,7 @@ Dialog {
                         root.repoTouched = false;
                         root.destFolderMissing = false;
                         root.urlMissing = false;
-                        var vm = root.effectiveHubVm;
+                        const vm = root.effectiveHubVm;
                         if (vm) {
                             console.log("[CloneModal] Invocazione cloneRepositoryAsync su ViewModel per: " + urlField.text.trim());
                             vm.cloneRepositoryAsync(
@@ -1641,31 +2518,37 @@ Dialog {
                     }
                     contentItem: Text {
                         text: (root.effectiveHubVm && root.effectiveHubVm.isCloning)
-                              ? (root.effectiveHubVm.cloneProgressPercent > 0
-                                 ? ("⏳ " + root.effectiveHubVm.cloneProgressPercent + "% In corso...")
-                                 : "⏳ Clonazione in corso...")
-                              : (root.selectedRepoFullName.length > 0
-                                 ? "⬇ Avvia Clonazione (" + (dirNameField.text.length > 0 ? dirNameField.text : root.selectedRepoFullName) + ")"
-                                 : "⬇ Avvia Clonazione")
+                            ? (root.effectiveHubVm.cloneProgressPercent > 0
+                                ? ("⏳ " + root.effectiveHubVm.cloneProgressPercent + "% In corso...")
+                                : "⏳ Clonazione in corso...")
+                            : (root.selectedRepoFullName.length > 0
+                                ? "⬇ Avvia Clonazione (" + (dirNameField.text.length > 0 ? dirNameField.text : root.selectedRepoFullName) + ")"
+                                : "⬇ Avvia Clonazione")
                         color: (root.effectiveHubVm && root.effectiveHubVm.isCloning)
-                               ? "#38BDF8"
-                               : (urlField.text.trim().length > 0 ? "#FFFFFF" : "#94A3B8")
-                        font.pixelSize: 13
+                            ? "#38BDF8"
+                            : (urlField.text.trim().length > 0 ? "#FFFFFF" : "#94A3B8")
+                        font.pixelSize: 12
                         font.bold: true
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
                     background: Rectangle {
                         color: (root.effectiveHubVm && root.effectiveHubVm.isCloning)
-                               ? "#0C4A6E"
-                               : (urlField.text.trim().length > 0
-                                  ? (cloneButton.hovered ? "#0284C7" : "#0369A1")
-                                  : (cloneButton.hovered ? "#1E293B" : "#0F172A"))
-                        radius: 6
+                            ? "#0C4A6E"
+                            : (urlField.text.trim().length > 0
+                                ? (cloneButton.hovered ? "#0EA5E9" : "#0284C7")
+                                : (cloneButton.hovered ? "#1E2B3E" : "#151E2C"))
+                        radius: 8
                         border.color: (root.effectiveHubVm && root.effectiveHubVm.isCloning)
-                                      ? "#38BDF8"
-                                      : (urlField.text.trim().length > 0 ? "#38BDF8" : "#334155")
+                            ? "#38BDF8"
+                            : (urlField.text.trim().length > 0 ? "#38BDF8" : "#28374E")
                         border.width: 1
+
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
                     }
                 }
             }

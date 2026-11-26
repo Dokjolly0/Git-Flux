@@ -8,44 +8,54 @@
 #include <filesystem>
 #include <fstream>
 
-namespace {
+namespace
+{
+    struct StashTestSandbox
+    {
+        std::filesystem::path root;
 
-struct StashTestSandbox {
-    std::filesystem::path root;
+        StashTestSandbox()
+        {
+            const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+            root = std::filesystem::temp_directory_path() / ("gf_stash_integ_" + std::to_string(nonce));
+            std::filesystem::create_directories(root);
+        }
 
-    StashTestSandbox() {
-        const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-        root = std::filesystem::temp_directory_path() / ("gf_stash_integ_" + std::to_string(nonce));
-        std::filesystem::create_directories(root);
-    }
+        ~StashTestSandbox()
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(root, ec);
+        }
 
-    ~StashTestSandbox() {
-        std::error_code ec;
-        std::filesystem::remove_all(root, ec);
-    }
+        void writeFile(const std::string& relativePath, const std::string& content) const
+        {
+            const auto filePath = root / relativePath;
+            std::filesystem::create_directories(filePath.parent_path());
+            std::ofstream ofs(filePath, std::ios::trunc);
+            ofs << content;
+        }
 
-    void writeFile(const std::string& relativePath, const std::string& content) {
-        auto filePath = root / relativePath;
-        std::filesystem::create_directories(filePath.parent_path());
-        std::ofstream ofs(filePath, std::ios::trunc);
-        ofs << content;
-    }
+        [[nodiscard]] std::string readFile(const std::string& relativePath) const
+        {
+            const auto filePath = root / relativePath;
+            std::ifstream ifs(filePath);
+            return std::string(std::istreambuf_iterator(ifs), std::istreambuf_iterator<char>());
+        }
 
-    [[nodiscard]] std::string readFile(const std::string& relativePath) {
-        auto filePath = root / relativePath;
-        std::ifstream ifs(filePath);
-        return std::string((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
-    }
-
-    [[nodiscard]] bool fileExists(const std::string& relativePath) {
-        std::error_code ec;
-        return std::filesystem::exists(root / relativePath, ec);
-    }
-};
-
+        [[nodiscard]] bool fileExists(const std::string& relativePath) const
+        {
+            std::error_code ec;
+            return std::filesystem::exists(root / relativePath, ec);
+        }
+    };
 } // namespace
 
-TEST_CASE("NativeRepositoryGitOps and GitStashService real Git lifecycle", "[git][stash][integration]") {
+TEST_CASE (
+"NativeRepositoryGitOps and GitStashService real Git lifecycle"
+,
+"[git][stash][integration]"
+)
+ {
     auto gitDiscovery = gf::infra::git::GitDiscovery::discover();
     REQUIRE(gitDiscovery.has_value());
     const auto gitExe = gitDiscovery->directBinaryPath.empty()
@@ -120,13 +130,13 @@ TEST_CASE("NativeRepositoryGitOps and GitStashService real Git lifecycle", "[git
         auto list1 = stashService.listStashes(sandbox.root);
         REQUIRE(list1.has_value());
         REQUIRE(list1->size() == 1);
-        const auto& item1 = (*list1)[0];
-        CHECK(item1.index == 0);
-        CHECK(item1.selector == "stash@{0}");
-        CHECK(item1.branchName == "main");
-        CHECK(item1.message.find("WIP feature alpha") != std::string::npos);
-        CHECK_FALSE(item1.commitSha.empty());
-        CHECK_FALSE(item1.dateIso.empty());
+        const auto& [index, selector, commitSha, dateIso, message, branchName] = (*list1)[0];
+        CHECK(index == 0);
+        CHECK(selector == "stash@{0}");
+        CHECK(branchName == "main");
+        CHECK(message.find("WIP feature alpha") != std::string::npos);
+        CHECK_FALSE(commitSha.empty());
+        CHECK_FALSE(dateIso.empty());
 
         // 3. Second stash
         sandbox.writeFile("second.txt", "second file content\n");
@@ -161,6 +171,26 @@ TEST_CASE("NativeRepositoryGitOps and GitStashService real Git lifecycle", "[git
         auto listAfterApply = stashService.listStashes(sandbox.root);
         REQUIRE(listAfterApply.has_value());
         CHECK(listAfterApply->size() == 2);
+
+        // Verify getCommitLog("--all") includes both stash@{0} and stash@{1} with stash selectors
+        auto logWithStashes = gitOps.getCommitLog(sandbox.root, gf::git::bo::CommitLogOptions{
+            .maxCount = 0,
+            .revisionRange = std::string("--all"),
+            .dateOrder = true
+        });
+        REQUIRE(logWithStashes.has_value());
+        bool foundStash0 = false;
+        bool foundStash1 = false;
+        for (const auto& item : *logWithStashes)
+        {
+            for (const auto& dec : item.refDecorations)
+            {
+                if (dec == "stash@{0}") foundStash0 = true;
+                if (dec == "stash@{1}") foundStash1 = true;
+            }
+        }
+        CHECK(foundStash0);
+        CHECK(foundStash1);
 
         // Discard restored change to clean working tree
         std::error_code ec;

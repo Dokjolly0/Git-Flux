@@ -28,39 +28,50 @@ using gf::workspaces::bl::WorkspaceService;
 using gf::workspaces::bl::WorkspaceServiceError;
 using gf::workspaces::bo::WorkspaceId;
 
-namespace {
+namespace
+{
+    struct ScopedSandbox
+    {
+        std::filesystem::path dir;
 
-struct ScopedSandbox {
-    std::filesystem::path dir;
-    ScopedSandbox(std::string_view name) {
-        dir = std::filesystem::temp_directory_path() / name;
-        std::error_code ec;
-        std::filesystem::remove_all(dir, ec);
-        std::filesystem::create_directories(dir, ec);
+        explicit ScopedSandbox(const std::string_view name)
+        {
+            dir = std::filesystem::temp_directory_path() / name;
+            std::error_code ec;
+            std::filesystem::remove_all(dir, ec);
+            std::filesystem::create_directories(dir, ec);
+        }
+
+        ~ScopedSandbox()
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(dir, ec);
+        }
+    };
+
+    SqliteConnection createMemoryDb()
+    {
+        auto connRes = SqliteConnection::openInMemory();
+        REQUIRE(connRes.has_value());
+        REQUIRE(SchemaMigrator::migrateToLatest(*connRes).has_value());
+        return std::move(*connRes);
     }
-    ~ScopedSandbox() {
+
+    void makeFakeGitRepo(const std::filesystem::path& path)
+    {
         std::error_code ec;
-        std::filesystem::remove_all(dir, ec);
+        std::filesystem::create_directories(path / ".git", ec);
+        std::ofstream f(path / ".git/config");
+        f << "[core]\n";
     }
-};
-
-SqliteConnection createMemoryDb() {
-    auto connRes = SqliteConnection::openInMemory();
-    REQUIRE(connRes.has_value());
-    REQUIRE(SchemaMigrator::migrateToLatest(*connRes).has_value());
-    return std::move(*connRes);
-}
-
-void makeFakeGitRepo(const std::filesystem::path& path) {
-    std::error_code ec;
-    std::filesystem::create_directories(path / ".git", ec);
-    std::ofstream f(path / ".git/config");
-    f << "[core]\n";
-}
-
 } // namespace
 
-TEST_CASE("RepositoryService gestisce validazione, registrazione e riconnessione path", "[unit][services][repository]") {
+TEST_CASE (
+"RepositoryService gestisce validazione, registrazione e riconnessione path"
+,
+"[unit][services][repository]"
+)
+ {
     auto conn = createMemoryDb();
     SqliteRepositoryStore store(conn);
     RepositoryService service(store);
@@ -126,7 +137,12 @@ TEST_CASE("RepositoryService gestisce validazione, registrazione e riconnessione
     REQUIRE(service.getAllRepositories()->empty());
 }
 
-TEST_CASE("RepositoryService resolves .git suffix and handles folder or .git selection seamlessly", "[unit][services][repository]") {
+TEST_CASE (
+"RepositoryService resolves .git suffix and handles folder or .git selection seamlessly"
+,
+"[unit][services][repository]"
+)
+ {
     auto conn = createMemoryDb();
     SqliteRepositoryStore store(conn);
     RepositoryService service(store);
@@ -177,7 +193,12 @@ TEST_CASE("RepositoryService resolves .git suffix and handles folder or .git sel
     CHECK(reconnectRes->pathStatus == RepositoryPathStatus::Valid);
 }
 
-TEST_CASE("GroupService gestisce membership e deduplicazione deterministica per Quick Open", "[unit][services][group]") {
+TEST_CASE (
+"GroupService gestisce membership e deduplicazione deterministica per Quick Open"
+,
+"[unit][services][group]"
+)
+ {
     auto conn = createMemoryDb();
     SqliteRepositoryStore repoStore(conn);
     SqliteGroupStore groupStore(conn);
@@ -234,7 +255,12 @@ TEST_CASE("GroupService gestisce membership e deduplicazione deterministica per 
     REQUIRE(quickOpenCtx->repositories[2].id == r3.id);
 }
 
-TEST_CASE("WorkspaceService gestisce composizione gruppi/repo, deduplicazione e sessioni", "[unit][services][workspace]") {
+TEST_CASE (
+"WorkspaceService gestisce composizione gruppi/repo, deduplicazione e sessioni"
+,
+"[unit][services][workspace]"
+)
+ {
     auto conn = createMemoryDb();
     SqliteRepositoryStore repoStore(conn);
     SqliteGroupStore groupStore(conn);
@@ -298,4 +324,111 @@ TEST_CASE("WorkspaceService gestisce composizione gruppi/repo, deduplicazione e 
     // 5. Delete workspace
     REQUIRE(wsService.deleteWorkspace(wsId).value_or(false));
     REQUIRE(wsService.getAllWorkspaces()->empty());
+}
+
+TEST_CASE (
+"GroupService validates, persists, and resolves custom and fallback group colors"
+,
+"[unit][services][groups][color]"
+)
+ {
+    auto conn = createMemoryDb();
+    SqliteRepositoryStore repoStore(conn);
+    SqliteGroupStore groupStore(conn);
+    GroupService groupService(groupStore, repoStore);
+
+    // Custom valid hex color on creation
+    auto gColored = groupService.createGroup("POS", {}, "#34D399");
+    REQUIRE(gColored.has_value());
+    REQUIRE(gColored->color == "#34D399");
+    REQUIRE(gColored->resolvedColor() == "#34D399");
+
+    // Empty color uses deterministic palette fallback
+    auto gAuto = groupService.createGroup("Backend");
+    REQUIRE(gAuto.has_value());
+    REQUIRE(gAuto->color.empty());
+    const auto fallbackColor = gAuto->resolvedColor();
+    REQUIRE(fallbackColor.size() == 7);
+    REQUIRE(fallbackColor[0] == '#');
+    REQUIRE(gAuto->resolvedColor() == fallbackColor);
+
+    // Invalid hex color rejected on create and update
+    auto badCreate = groupService.createGroup("Bad", {}, "not-a-color");
+    REQUIRE_FALSE(badCreate.has_value());
+    REQUIRE(badCreate.error().kind == GroupServiceError::Kind::InvalidColor);
+
+    auto badUpdate = groupService.updateGroupColor(gAuto->id, "#12345");
+    REQUIRE_FALSE(badUpdate.has_value());
+    REQUIRE(badUpdate.error().kind == GroupServiceError::Kind::InvalidColor);
+
+    // Valid update persists across reload
+    auto updated = groupService.updateGroupColor(gAuto->id, "#FB7185");
+    REQUIRE(updated.has_value());
+    REQUIRE(updated->color == "#FB7185");
+
+    auto reloaded = groupService.getGroup(gAuto->id);
+    REQUIRE(reloaded.has_value());
+    REQUIRE(reloaded->has_value());
+    REQUIRE((*reloaded)->color == "#FB7185");
+    REQUIRE((*reloaded)->resolvedColor() == "#FB7185");
+}
+
+TEST_CASE(
+    "WorkspaceService validates, renames, and persists custom and fallback workspace colors",
+    "[unit][services][workspaces][color]"
+)
+{
+    auto conn = createMemoryDb();
+    SqliteRepositoryStore repoStore(conn);
+    SqliteGroupStore groupStore(conn);
+    SqliteWorkspaceStore wsStore(conn);
+    WorkspaceService wsService(wsStore, groupStore, repoStore);
+
+    // Custom valid hex color on creation
+    auto wsColored = wsService.createWorkspace("Platform", {}, {}, "#34D399");
+    REQUIRE(wsColored.has_value());
+    REQUIRE(wsColored->color == "#34D399");
+    REQUIRE(wsColored->resolvedColor() == "#34D399");
+
+    // Empty color uses deterministic palette fallback
+    auto wsAuto = wsService.createWorkspace("Mobile");
+    REQUIRE(wsAuto.has_value());
+    REQUIRE(wsAuto->color.empty());
+    const auto fallbackColor = wsAuto->resolvedColor();
+    REQUIRE(fallbackColor.size() == 7);
+    REQUIRE(fallbackColor[0] == '#');
+
+    // Invalid hex color rejected on create and update
+    auto badCreate = wsService.createWorkspace("Bad", {}, {}, "not-a-color");
+    REQUIRE_FALSE(badCreate.has_value());
+    REQUIRE(badCreate.error().kind == WorkspaceServiceError::Kind::InvalidColor);
+
+    auto badUpdate = wsService.updateWorkspaceColor(wsAuto->id, "#12345");
+    REQUIRE_FALSE(badUpdate.has_value());
+    REQUIRE(badUpdate.error().kind == WorkspaceServiceError::Kind::InvalidColor);
+
+    // Valid color update persists across reload
+    auto updatedColor = wsService.updateWorkspaceColor(wsAuto->id, "#A78BFA");
+    REQUIRE(updatedColor.has_value());
+    REQUIRE(updatedColor->color == "#A78BFA");
+
+    // Rename succeeds, rejects empty or duplicate names, and persists
+    auto badEmptyRename = wsService.renameWorkspace(wsAuto->id, "");
+    REQUIRE_FALSE(badEmptyRename.has_value());
+    REQUIRE(badEmptyRename.error().kind == WorkspaceServiceError::Kind::InvalidName);
+
+    auto badDupRename = wsService.renameWorkspace(wsAuto->id, "Platform");
+    REQUIRE_FALSE(badDupRename.has_value());
+    REQUIRE(badDupRename.error().kind == WorkspaceServiceError::Kind::DuplicateName);
+
+    auto renamed = wsService.renameWorkspace(wsAuto->id, "Mobile Suite");
+    REQUIRE(renamed.has_value());
+    REQUIRE(renamed->name == "Mobile Suite");
+
+    auto reloaded = wsService.getWorkspace(wsAuto->id);
+    REQUIRE(reloaded.has_value());
+    REQUIRE(reloaded->has_value());
+    REQUIRE((*reloaded)->name == "Mobile Suite");
+    REQUIRE((*reloaded)->color == "#A78BFA");
+    REQUIRE((*reloaded)->resolvedColor() == "#A78BFA");
 }

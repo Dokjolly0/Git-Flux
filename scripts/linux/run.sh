@@ -8,6 +8,7 @@
 # Options:
 #   -b, --build          Build application before launching
 #   -s, --smoke          Run in headless smoke test mode (--test-startup)
+#   --debug              Launch with debug console logging enabled
 #   -d, --gdb            Launch under GDB debugger
 #   -v, --valgrind       Launch under Valgrind (memcheck)
 #   -h, --help           Show this help message
@@ -42,6 +43,7 @@ ${CYAN}Usage:${NC}
 ${CYAN}Options:${NC}
   -b, --build      Automatically build git_flux target before launching
   -s, --smoke      Run headless startup smoke test (--test-startup)
+  --debug          Enable debug console output and logs (--debug)
   -d, --gdb        Run application inside GDB debugger
   -v, --valgrind   Run application under Valgrind Memcheck
   -h, --help       Show this help message
@@ -49,6 +51,7 @@ ${CYAN}Options:${NC}
 ${CYAN}Examples:${NC}
   $0                         # Launch Git Flux desktop graphical interface
   $0 --build                 # Build and then launch application
+  $0 --build --debug         # Build and launch with debug console logging
   $0 --smoke                 # Run fast headless smoke test
   $0 --gdb                   # Interactive debugging with GDB
   $0 -- --help               # Pass flags and options directly to Git Flux

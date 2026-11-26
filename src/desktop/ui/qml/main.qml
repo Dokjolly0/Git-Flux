@@ -8,15 +8,37 @@ import "views"
 ApplicationWindow {
     id: appWindow
     visible: true
-    width: 1280
-    height: 800
-    minimumWidth: 900
-    minimumHeight: 600
+    width: 1560
+    height: 900
+    minimumWidth: 1120
+    minimumHeight: 640
     title: "Git Flux"
-    color: "#0E1117"
+    color: fluxTheme.canvas
 
     FluxTheme {
         id: fluxTheme
+    }
+
+    Item {
+        id: tooltipInitializer
+        visible: false
+        Component.onCompleted: {
+            if (ToolTip.toolTip) {
+                ToolTip.toolTip.topPadding = 7;
+                ToolTip.toolTip.bottomPadding = 7;
+                ToolTip.toolTip.leftPadding = 11;
+                ToolTip.toolTip.rightPadding = 11;
+                ToolTip.toolTip.font.pixelSize = 11;
+                if (ToolTip.toolTip.background) {
+                    ToolTip.toolTip.background.radius = 8;
+                    ToolTip.toolTip.background.color = "#111824";
+                    ToolTip.toolTip.background.border.color = "#28374E";
+                }
+                if (ToolTip.toolTip.contentItem) {
+                    ToolTip.toolTip.contentItem.color = "#F8FAFC";
+                }
+            }
+        }
     }
 
     property string currentView: "home" // "home" or "session"
@@ -31,21 +53,21 @@ ApplicationWindow {
             quickOpenModal.open();
         }
 
-        onRepositoryOpened: function(repoId, name, path) {
+        onRepositoryOpened: function (repoId, name, path) {
             if (typeof workspaceSessionVm !== "undefined") {
                 workspaceSessionVm.openRepository(repoId, name, path);
                 appWindow.currentView = "session";
             }
         }
 
-        onGroupOpened: function(groupId, groupName, repoIds) {
+        onGroupOpened: function (groupId, groupName, repoIds) {
             if (typeof workspaceSessionVm !== "undefined") {
-                workspaceSessionVm.openGroup(groupName, repoIds);
+                workspaceSessionVm.openGroup(groupName, repoIds, groupId);
                 appWindow.currentView = "session";
             }
         }
 
-        onWorkspaceOpened: function(workspaceId) {
+        onWorkspaceOpened: function (workspaceId) {
             if (typeof workspaceSessionVm !== "undefined") {
                 workspaceSessionVm.openWorkspace(workspaceId);
                 appWindow.currentView = "session";
@@ -74,7 +96,7 @@ ApplicationWindow {
         id: quickOpenModal
         anchors.fill: parent
 
-        onSessionStarted: function(repoIds) {
+        onSessionStarted: function (repoIds) {
             if (typeof workspaceSessionVm !== "undefined") {
                 workspaceSessionVm.openRepositories(repoIds);
                 appWindow.currentView = "session";
@@ -134,7 +156,7 @@ ApplicationWindow {
             if (appWindow.currentView === "home") {
                 if (typeof homeHubVm !== "undefined") homeHubVm.refreshAll();
             } else {
-                if (typeof workspaceSessionVm !== "undefined") workspaceSessionVm.refreshActiveRepository();
+                if (typeof workspaceSessionVm !== "undefined") workspaceSessionVm.refreshActiveTab();
             }
         }
     }

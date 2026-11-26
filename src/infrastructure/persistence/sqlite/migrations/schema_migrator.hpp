@@ -4,17 +4,17 @@
 
 #include <expected>
 
-namespace gf::infra::persistence::sqlite {
+namespace gf::infra::persistence::sqlite
+{
+    class SchemaMigrator
+    {
+    public:
+        static constexpr int kTargetSchemaVersion = 1;
 
-class SchemaMigrator {
-public:
-    static constexpr int kTargetSchemaVersion = 1;
+        [[nodiscard]] static std::expected<int, SqliteError>
+        getCurrentVersion(SqliteConnection& conn);
 
-    [[nodiscard]] static std::expected<int, SqliteError>
-    getCurrentVersion(SqliteConnection& conn);
-
-    [[nodiscard]] static std::expected<void, SqliteError>
-    migrateToLatest(SqliteConnection& conn);
-};
-
+        [[nodiscard]] static std::expected<void, SqliteError>
+        migrateToLatest(SqliteConnection& conn);
+    };
 } // namespace gf::infra::persistence::sqlite

@@ -8,10 +8,24 @@ Dialog {
     title: "Crea Git Worktree"
     modal: true
     width: 500
-    height: 320
+    height: 335
+    padding: 18
+    topPadding: 14
+    bottomPadding: 14
     anchors.centerIn: Overlay.overlay
 
     property var branchManager: null
+
+    // Operations are asynchronous: remember which one this dialog started and react to its
+    // outcome only (another queued operation may complete first).
+    property alias pendingOperationId: opWatcher.pendingOperationId
+
+    FluxBranchOpWatcher {
+        id: opWatcher
+        branchManager: root.branchManager
+        onSucceeded: root.close()
+        onFailed: (message) => { errorText.text = message; }
+    }
     property string commitOrBranch: ""
 
     function openWithTarget(target) {
@@ -26,7 +40,7 @@ Dialog {
         id: folderDialog
         title: "Seleziona cartella per il nuovo worktree"
         onAccepted: {
-            var selected = folderDialog.selectedFolder.toString();
+            let selected = folderDialog.selectedFolder.toString();
             if (selected.startsWith("file://")) {
                 selected = selected.substring(7);
             }
@@ -34,48 +48,11 @@ Dialog {
         }
     }
 
-    background: Rectangle {
-        color: "#0F172A"
-        radius: 8
-        border.color: "#334155"
-        border.width: 1
-    }
+    background: FluxModalBackground {}
 
-    header: Rectangle {
-        color: "#1E293B"
-        height: 44
-        radius: 8
-
-        Rectangle {
-            anchors.bottom: parent.bottom
-            width: parent.width
-            height: 8
-            color: "#1E293B"
-        }
-
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 16
-
-            Text {
-                text: "📁 Crea Git Worktree"
-                color: "#F8FAFC"
-                font.bold: true
-                font.pixelSize: 13
-            }
-
-            Item { Layout.fillWidth: true }
-
-            Button {
-                text: "✕"
-                Layout.preferredWidth: 24
-                Layout.preferredHeight: 24
-                background: Rectangle { color: "transparent" }
-                contentItem: Text { text: "✕"; color: "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter }
-                onClicked: root.close()
-            }
-        }
+    header: FluxModalHeader {
+        titleText: "📁 Crea Git Worktree"
+        onCloseRequested: root.close()
     }
 
     contentItem: ColumnLayout {
@@ -84,15 +61,16 @@ Dialog {
         // Commit or branch target indicator
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 34
-            color: "#161B22"
-            radius: 4
-            border.color: "#30363D"
+            Layout.preferredHeight: 36
+            color: "#0D131D"
+            radius: 9
+            border.color: "#222F42"
+            border.width: 1
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 10
-                anchors.rightMargin: 10
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
                 spacing: 8
 
                 Text {
@@ -116,11 +94,11 @@ Dialog {
         // Worktree directory path
         ColumnLayout {
             Layout.fillWidth: true
-            spacing: 4
+            spacing: 5
 
             Text {
                 text: "Percorso cartella del Worktree:"
-                color: "#94A3B8"
+                color: "#CBD5E1"
                 font.pixelSize: 11
                 font.bold: true
             }
@@ -132,18 +110,24 @@ Dialog {
                 TextField {
                     id: pathField
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 34
+                    Layout.preferredHeight: 36
                     color: "#F8FAFC"
                     font.pixelSize: 12
                     placeholderText: "/percorso/nuovo-worktree..."
-                    placeholderTextColor: "#475569"
+                    placeholderTextColor: "#64748B"
                     selectByMouse: true
 
                     background: Rectangle {
-                        color: "#020617"
-                        radius: 4
-                        border.color: pathField.activeFocus ? "#38BDF8" : "#334155"
+                        color: "#0A0E15"
+                        radius: 8
+                        border.color: pathField.activeFocus ? "#38BDF8" : "#222F42"
                         border.width: 1
+
+                        Behavior on border.color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
                     }
 
                     onAccepted: createBtn.clicked()
@@ -151,17 +135,26 @@ Dialog {
 
                 Button {
                     text: "📂 Sfoglia..."
-                    Layout.preferredHeight: 34
-                    Layout.preferredWidth: 90
+                    Layout.preferredHeight: 36
+                    Layout.preferredWidth: 96
+                    hoverEnabled: true
                     background: Rectangle {
-                        color: parent.hovered ? "#334155" : "#1E293B"
-                        radius: 4
-                        border.color: "#475569"
+                        color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                        radius: 8
+                        border.color: "#28374E"
+                        border.width: 1
+
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 120
+                            }
+                        }
                     }
                     contentItem: Text {
                         text: "📂 Sfoglia"
                         color: "#E2E8F0"
                         font.pixelSize: 11
+                        font.bold: true
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
@@ -189,73 +182,62 @@ Dialog {
     }
 
     footer: Rectangle {
-        color: "#1E293B"
-        height: 52
-        radius: 8
+        color: "#161F2E"
+        height: 54
+        radius: 14
 
         Rectangle {
             anchors.top: parent.top
             width: parent.width
-            height: 8
-            color: "#1E293B"
+            height: 14
+            color: "#161F2E"
+        }
+
+        Rectangle {
+            anchors.top: parent.top
+            width: parent.width
+            height: 1
+            color: "#222F42"
         }
 
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 16
-            anchors.rightMargin: 16
+            anchors.leftMargin: 18
+            anchors.rightMargin: 18
             spacing: 10
 
-            Item { Layout.fillWidth: true }
+            Item {
+                Layout.fillWidth: true
+            }
 
-            Button {
+            FluxActionButton {
                 text: "Annulla"
-                Layout.preferredHeight: 32
-                background: Rectangle {
-                    color: parent.hovered ? "#334155" : "transparent"
-                    radius: 4
-                    border.color: "#475569"
-                    border.width: 1
-                }
-                contentItem: Text {
-                    text: "Annulla"
-                    color: "#94A3B8"
-                    font.pixelSize: 12
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
+                Layout.preferredHeight: 34
+                fontPixelSize: 12
                 onClicked: root.close()
             }
 
-            Button {
+            FluxActionButton {
                 id: createBtn
                 text: "📁 Crea Worktree"
-                Layout.preferredHeight: 32
-                Layout.preferredWidth: 140
+                Layout.preferredHeight: 34
+                Layout.preferredWidth: 146
                 enabled: pathField.text.trim().length > 0
-
-                background: Rectangle {
-                    color: createBtn.enabled ? (createBtn.hovered ? "#0284C7" : "#0369A1") : "#334155"
-                    radius: 4
-                }
-                contentItem: Text {
-                    text: "📁 Crea Worktree"
-                    color: createBtn.enabled ? "#FFFFFF" : "#64748B"
-                    font.pixelSize: 12
-                    font.bold: true
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
+                baseColor: "#0284C7"
+                hoverColor: "#0EA5E9"
+                baseBorderColor: "#38BDF8"
+                textColor: "#FFFFFF"
+                fontPixelSize: 12
+                fontBold: true
                 onClicked: {
-                    var path = pathField.text.trim();
+                    const path = pathField.text.trim();
                     if (!path) {
                         errorText.text = "Specificare un percorso valido per il worktree";
                         return;
                     }
-                    if (root.branchManager) {
-                        var ok = root.branchManager.createWorktree(path, root.commitOrBranch);
-                        if (ok) {
-                            root.close();
+                    if (root.branchManager && root.pendingOperationId === 0) {
+                        if (root.branchManager.createWorktree(path, root.commitOrBranch)) {
+                            root.pendingOperationId = root.branchManager.lastOperationId;
                         } else {
                             errorText.text = root.branchManager.statusMessage;
                         }

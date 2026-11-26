@@ -10,7 +10,12 @@
 
 #include <type_traits>
 
-TEST_CASE("StrongIds hanno type safety assoluta e non sono intercambiabili", "[unit][domain][ids]") {
+TEST_CASE (
+"StrongIds hanno type safety assoluta e non sono intercambiabili"
+,
+"[unit][domain][ids]"
+)
+ {
     using gf::groups::bo::GroupId;
     using gf::repositories::bo::RepositoryId;
     using gf::workspaces::bo::WorkspaceId;
@@ -28,7 +33,12 @@ TEST_CASE("StrongIds hanno type safety assoluta e non sono intercambiabili", "[u
     REQUIRE(workspaceId.value() == "id-common");
 }
 
-TEST_CASE("Repository entity verifica campi obbligatori e comparazioni", "[unit][domain][repository]") {
+TEST_CASE (
+"Repository entity verifica campi obbligatori e comparazioni"
+,
+"[unit][domain][repository]"
+)
+ {
     using gf::repositories::bo::Repository;
     using gf::repositories::bo::RepositoryId;
     using gf::repositories::bo::RepositoryPathStatus;
@@ -69,7 +79,12 @@ TEST_CASE("Repository entity verifica campi obbligatori e comparazioni", "[unit]
     REQUIRE(copy == validRepo);
 }
 
-TEST_CASE("Group entity gestisce repository ordinati e membership", "[unit][domain][group]") {
+TEST_CASE (
+"Group entity gestisce repository ordinati e membership"
+,
+"[unit][domain][group]"
+)
+ {
     using gf::groups::bo::Group;
     using gf::groups::bo::GroupId;
     using gf::repositories::bo::RepositoryId;
@@ -106,7 +121,12 @@ TEST_CASE("Group entity gestisce repository ordinati e membership", "[unit][doma
     REQUIRE_FALSE(invalidGroup.isValid());
 }
 
-TEST_CASE("Workspace entity gestisce gruppi inclusi e repository diretti", "[unit][domain][workspace]") {
+TEST_CASE (
+"Workspace entity gestisce gruppi inclusi e repository diretti"
+,
+"[unit][domain][workspace]"
+)
+ {
     using gf::groups::bo::GroupId;
     using gf::repositories::bo::RepositoryId;
     using gf::workspaces::bo::Workspace;
@@ -128,7 +148,12 @@ TEST_CASE("Workspace entity gestisce gruppi inclusi e repository diretti", "[uni
     REQUIRE_FALSE(ws.containsDirectRepository(RepositoryId("repo-backend")));
 }
 
-TEST_CASE("WorkspaceSession memorizza stato pannelli, tab aperte e repo attivo", "[unit][domain][session]") {
+TEST_CASE (
+"WorkspaceSession memorizza stato pannelli, tab aperte e repo attivo"
+,
+"[unit][domain][session]"
+)
+ {
     using gf::repositories::bo::RepositoryId;
     using gf::workspaces::bo::PanelLayoutState;
     using gf::workspaces::bo::WorkspaceId;

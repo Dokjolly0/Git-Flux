@@ -1,19 +1,21 @@
 # Git Flux — Linux Developer Utility Scripts
 
-This directory contains utility scripts for building, testing, launching, and maintaining **Git Flux** on Linux operating systems.
+This directory contains utility scripts for building, testing, launching, and maintaining **Git Flux** on Linux
+operating systems.
 
-All scripts are self-contained, support both short and long options (`--help`), and adhere strictly to the project architecture (Zero-Qt Core and Desktop Qt Quick 6).
+All scripts are self-contained, support both short and long options (`--help`), and adhere strictly to the project
+architecture (Zero-Qt Core and Desktop Qt Quick 6).
 
 ---
 
 ## Script Index
 
-| Script | Description | Quick Usage |
-| :--- | :--- | :--- |
-| [`build.sh`](build.sh) | Builds CMake presets (Desktop or Zero-Qt Core), with support for specific targets and clean builds. | `./scripts/linux/build.sh` |
-| [`test.sh`](test.sh) | Executes CTest test suites (unit, MVVM, integration) and headless smoke test. | `./scripts/linux/test.sh` |
-| [`run.sh`](run.sh) | Launches the Git Flux desktop application, optionally with auto-rebuild, GDB, or Valgrind. | `./scripts/linux/run.sh` |
-| [`clean.sh`](clean.sh) | Selectively or globally cleans build artifact directories (`build/qt-linux`, `build/core-linux`). | `./scripts/linux/clean.sh` |
+| Script                 | Description                                                                                                         | Quick Usage                |
+|:-----------------------|:--------------------------------------------------------------------------------------------------------------------|:---------------------------|
+| [`build.sh`](build.sh) | Builds CMake presets (Desktop or Zero-Qt Core), with support for specific targets and clean builds.                 | `./scripts/linux/build.sh` |
+| [`test.sh`](test.sh)   | Executes CTest test suites (unit, MVVM, integration) and headless smoke test.                                       | `./scripts/linux/test.sh`  |
+| [`run.sh`](run.sh)     | Launches the Git Flux desktop application, optionally with auto-rebuild, GDB, or Valgrind.                          | `./scripts/linux/run.sh`   |
+| [`clean.sh`](clean.sh) | Selectively or globally cleans build artifact directories (`build/qt-linux`, `build/core-linux`).                   | `./scripts/linux/clean.sh` |
 | [`check.sh`](check.sh) | Complete local health check / pre-commit verification pipeline (build and test both Core and Desktop + smoke test). | `./scripts/linux/check.sh` |
 
 ---
@@ -42,6 +44,7 @@ Builds the project using CMake Presets.
 ```
 
 ### Supported Options:
+
 - `-q, --qt`: `linux-qt-release` preset (default).
 - `-c, --core`: `linux-core-release` preset (Zero-Qt).
 - `-a, --all`: builds both Core and Desktop.
@@ -124,6 +127,7 @@ Cleans compiled artifact directories.
 ## 5. `check.sh` — Full Health Check (CI / Pre-commit)
 
 Performs a full repository health verification:
+
 1. Build `linux-core-release`
 2. Run CTest on `linux-core-release`
 3. Build `linux-qt-release`

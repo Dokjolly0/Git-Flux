@@ -1,4 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/reporters/catch_reporter_event_listener.hpp>
+#include <catch2/reporters/catch_reporter_registrars.hpp>
 
 #include "desktop/viewmodels/repository_list_model.hpp"
 #include "desktop/viewmodels/group_list_model.hpp"
@@ -7,6 +9,7 @@
 #include "desktop/viewmodels/quick_open_viewmodel.hpp"
 #include "desktop/viewmodels/working_tree_file_list_model.hpp"
 #include "desktop/viewmodels/diff_line_list_model.hpp"
+#include "desktop/services/serial_git_executor.hpp"
 #include "desktop/viewmodels/working_tree_viewmodel.hpp"
 #include "desktop/viewmodels/commit_box_viewmodel.hpp"
 #include "desktop/viewmodels/diff_viewmodel.hpp"
@@ -19,6 +22,7 @@
 #include "desktop/viewmodels/conflict_resolver_viewmodel.hpp"
 #include "desktop/viewmodels/workspace_session_viewmodel.hpp"
 #include "desktop/viewmodels/batch_operations_viewmodel.hpp"
+#include "desktop/bootstrap/app_bootstrap.hpp"
 #include "core/modules/git/ports/repository_git_ops.hpp"
 #include "core/modules/git/ports/fs_watcher_port.hpp"
 #include "core/modules/git/bl/git_working_tree_service.hpp"
@@ -35,7 +39,12 @@
 #include "core/modules/git/bl/multi_repo_batch_coordinator.hpp"
 #include "core/modules/tasks/bl/background_task_runner.hpp"
 
+#include <atomic>
+#include <mutex>
+#include <QThread>
+#include <utility>
 #include <set>
+#include <thread>
 
 #include "infrastructure/persistence/sqlite/connection/sqlite_connection.hpp"
 #include "infrastructure/persistence/sqlite/migrations/schema_migrator.hpp"
@@ -48,7 +57,15 @@
 #include "core/modules/workspaces/bl/workspace_service.hpp"
 
 #include <QGuiApplication>
+#include <QQmlApplicationEngine>
+#include <QQmlComponent>
+#include <QQmlEngine>
+#include <QQuickItem>
+#include <QQuickStyle>
+#include <QQuickWindow>
 #include <QSignalSpy>
+#include <QElapsedTimer>
+#include <QTest>
 #include <filesystem>
 #include <memory>
 
@@ -64,74 +81,100 @@ using namespace gf::groups::bl;
 using namespace gf::workspaces::bo;
 using namespace gf::workspaces::bl;
 
-namespace {
+namespace
+{
+    static int s_argc = 1;
+    static char s_appName[] = "gf_viewmodels_tests";
+    static char* s_argv[] = {s_appName, nullptr};
 
-static int s_argc = 1;
-static char s_appName[] = "gf_viewmodels_tests";
-static char* s_argv[] = {s_appName, nullptr};
-
-void ensureQtApp() {
-    if (!QCoreApplication::instance()) {
-        qputenv("QT_QPA_PLATFORM", "offscreen");
-        new QGuiApplication(s_argc, s_argv);
-    }
-}
-
-struct TestContext {
-    std::filesystem::path tempDir;
-    std::filesystem::path repoAPath;
-    std::filesystem::path repoBPath;
-    std::filesystem::path repoCPath;
-
-    SqliteConnection connection;
-    std::unique_ptr<SqliteRepositoryStore> repoStore;
-    std::unique_ptr<SqliteGroupStore> groupStore;
-    std::unique_ptr<SqliteWorkspaceStore> workspaceStore;
-
-    std::unique_ptr<RepositoryService> repoService;
-    std::unique_ptr<GroupService> groupService;
-    std::unique_ptr<WorkspaceService> workspaceService;
-
-    TestContext() {
-        ensureQtApp();
-
-        auto connResult = SqliteConnection::openInMemory();
-        REQUIRE(connResult.has_value());
-        connection = std::move(*connResult);
-
-        auto migResult = SchemaMigrator::migrateToLatest(connection);
-        REQUIRE(migResult.has_value());
-
-        repoStore = std::make_unique<SqliteRepositoryStore>(connection);
-        groupStore = std::make_unique<SqliteGroupStore>(connection);
-        workspaceStore = std::make_unique<SqliteWorkspaceStore>(connection);
-
-        repoService = std::make_unique<RepositoryService>(*repoStore);
-        groupService = std::make_unique<GroupService>(*groupStore, *repoStore);
-        workspaceService = std::make_unique<WorkspaceService>(*workspaceStore, *groupStore, *repoStore);
-
-        tempDir = std::filesystem::temp_directory_path() / "gf_vm_test_env";
-        std::filesystem::remove_all(tempDir);
-        std::filesystem::create_directories(tempDir);
-
-        repoAPath = tempDir / "repo_alpha";
-        repoBPath = tempDir / "repo_beta";
-        repoCPath = tempDir / "repo_gamma";
-
-        std::filesystem::create_directories(repoAPath / ".git");
-        std::filesystem::create_directories(repoBPath / ".git");
-        std::filesystem::create_directories(repoCPath / ".git");
+    void ensureQtApp()
+    {
+        if (!QCoreApplication::instance())
+        {
+            if (qEnvironmentVariableIsEmpty("QT_PLUGIN_PATH") && std::filesystem::exists(
+                "C:/Qt/6.6.2/msvc2019_64/plugins"))
+            {
+                qputenv("QT_PLUGIN_PATH", "C:/Qt/6.6.2/msvc2019_64/plugins");
+            }
+            qputenv("QT_QPA_PLATFORM", "offscreen");
+            new QGuiApplication(s_argc, s_argv);
+        }
     }
 
-    ~TestContext() {
-        std::error_code ec;
-        std::filesystem::remove_all(tempDir, ec);
-    }
-};
+    struct QtAppCleanupListener : Catch::EventListenerBase
+    {
+        using Catch::EventListenerBase::EventListenerBase;
 
+        void testRunEnded(Catch::TestRunStats const&) override
+        {
+            delete QCoreApplication::instance();
+        }
+    };
+
+    CATCH_REGISTER_LISTENER(QtAppCleanupListener)
+
+    struct TestContext
+    {
+        std::filesystem::path tempDir;
+        std::filesystem::path repoAPath;
+        std::filesystem::path repoBPath;
+        std::filesystem::path repoCPath;
+
+        SqliteConnection connection;
+        std::unique_ptr<SqliteRepositoryStore> repoStore;
+        std::unique_ptr<SqliteGroupStore> groupStore;
+        std::unique_ptr<SqliteWorkspaceStore> workspaceStore;
+
+        std::unique_ptr<RepositoryService> repoService;
+        std::unique_ptr<GroupService> groupService;
+        std::unique_ptr<WorkspaceService> workspaceService;
+
+        TestContext()
+        {
+            ensureQtApp();
+
+            auto connResult = SqliteConnection::openInMemory();
+            REQUIRE(connResult.has_value());
+            connection = std::move(*connResult);
+
+            auto migResult = SchemaMigrator::migrateToLatest(connection);
+            REQUIRE(migResult.has_value());
+
+            repoStore = std::make_unique<SqliteRepositoryStore>(connection);
+            groupStore = std::make_unique<SqliteGroupStore>(connection);
+            workspaceStore = std::make_unique<SqliteWorkspaceStore>(connection);
+
+            repoService = std::make_unique<RepositoryService>(*repoStore);
+            groupService = std::make_unique<GroupService>(*groupStore, *repoStore);
+            workspaceService = std::make_unique<WorkspaceService>(*workspaceStore, *groupStore, *repoStore);
+
+            tempDir = std::filesystem::temp_directory_path() / "gf_vm_test_env";
+            std::filesystem::remove_all(tempDir);
+            std::filesystem::create_directories(tempDir);
+
+            repoAPath = tempDir / "repo_alpha";
+            repoBPath = tempDir / "repo_beta";
+            repoCPath = tempDir / "repo_gamma";
+
+            std::filesystem::create_directories(repoAPath / ".git");
+            std::filesystem::create_directories(repoBPath / ".git");
+            std::filesystem::create_directories(repoCPath / ".git");
+        }
+
+        ~TestContext()
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(tempDir, ec);
+        }
+    };
 } // namespace
 
-TEST_CASE("RepositoryListModel exposes and updates repository data", "[desktop][mvvm]") {
+TEST_CASE (
+"RepositoryListModel exposes and updates repository data"
+,
+"[desktop][mvvm]"
+)
+ {
     ensureQtApp();
     RepositoryListModel model;
     REQUIRE(model.rowCount() == 0);
@@ -177,7 +220,12 @@ TEST_CASE("RepositoryListModel exposes and updates repository data", "[desktop][
     CHECK(model.data(idx1, RepositoryListModel::StatusRole).toString() == "valid");
 }
 
-TEST_CASE("GroupListModel exposes group items and repository associations", "[desktop][mvvm]") {
+TEST_CASE (
+"GroupListModel exposes group items and repository associations"
+,
+"[desktop][mvvm]"
+)
+ {
     ensureQtApp();
     GroupListModel model;
     REQUIRE(model.rowCount() == 0);
@@ -202,7 +250,12 @@ TEST_CASE("GroupListModel exposes group items and repository associations", "[de
     CHECK(item->name == "Backend Services");
 }
 
-TEST_CASE("WorkspaceListModel exposes composition summaries and metadata", "[desktop][mvvm]") {
+TEST_CASE (
+"WorkspaceListModel exposes composition summaries and metadata"
+,
+"[desktop][mvvm]"
+)
+ {
     TestContext ctx;
     auto repoA = *ctx.repoService->registerRepository(RegisterRepositoryRequest{.localPath = ctx.repoAPath, .displayName = std::nullopt});
     auto repoB = *ctx.repoService->registerRepository(RegisterRepositoryRequest{.localPath = ctx.repoBPath, .displayName = std::nullopt});
@@ -223,7 +276,12 @@ TEST_CASE("WorkspaceListModel exposes composition summaries and metadata", "[des
     CHECK(model.data(idx, WorkspaceListModel::SummaryRole).toString().contains("1 repo"));
 }
 
-TEST_CASE("HomeHubViewModel orchestrates catalog operations and search filtering", "[desktop][mvvm]") {
+TEST_CASE (
+"HomeHubViewModel orchestrates catalog operations and search filtering"
+,
+"[desktop][mvvm]"
+)
+ {
     TestContext ctx;
     HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService);
 
@@ -304,7 +362,12 @@ TEST_CASE("HomeHubViewModel orchestrates catalog operations and search filtering
     CHECK(vm.repositoriesCount() == 0);
 }
 
-TEST_CASE("HomeHubViewModel handles explorer paths, .git suffix, and comprehensive error feedback", "[desktop][mvvm]") {
+TEST_CASE (
+"HomeHubViewModel handles explorer paths, .git suffix, and comprehensive error feedback"
+,
+"[desktop][mvvm]"
+)
+ {
     TestContext ctx;
     HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService);
 
@@ -365,7 +428,12 @@ TEST_CASE("HomeHubViewModel handles explorer paths, .git suffix, and comprehensi
     CHECK(vm.extractRepoNameFromUrl("") == "repository");
 }
 
-TEST_CASE("HomeHubViewModel interactive operations: renaming, group repo association, and group opening", "[desktop][mvvm]") {
+TEST_CASE (
+"HomeHubViewModel interactive operations: renaming, group repo association, and group opening"
+,
+"[desktop][mvvm]"
+)
+ {
     TestContext ctx;
     HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService);
 
@@ -440,7 +508,12 @@ TEST_CASE("HomeHubViewModel interactive operations: renaming, group repo associa
     CHECK(vm.lastSuccessMessage().contains("Copiato negli appunti"));
 }
 
-TEST_CASE("QuickOpenViewModel provides multi-group selection and deterministic deduplication", "[desktop][mvvm]") {
+TEST_CASE (
+"QuickOpenViewModel provides multi-group selection and deterministic deduplication"
+,
+"[desktop][mvvm]"
+)
+ {
     TestContext ctx;
     auto repoA = *ctx.repoService->registerRepository(RegisterRepositoryRequest{.localPath = ctx.repoAPath, .displayName = "Repo A"});
     auto repoB = *ctx.repoService->registerRepository(RegisterRepositoryRequest{.localPath = ctx.repoBPath, .displayName = "Repo B"});
@@ -501,55 +574,108 @@ TEST_CASE("QuickOpenViewModel provides multi-group selection and deterministic d
     CHECK(errorSpy.count() == 1);
 }
 
-class MockFullGitOps final : public gf::git::ports::IRepositoryGitOps {
+class MockFullGitOps : public gf::git::ports::IRepositoryGitOps
+{
 public:
+    std::atomic<int> listBranchesCalls{0};
+    std::mutex threadMutex;
+    std::thread::id lastListBranchesThread{};
+    std::vector<gf::git::bo::GitBranch> branchesToReturn{};
+    std::mutex commitLogMutex;
+    std::vector<gf::git::bo::GitCommitLogItem> commitLogToReturn{};
     gf::git::bo::RepoWorkingTreeStatus statusToReturn;
     gf::git::bo::FileDiff diffToReturn;
-    bool getStatusCalled = false;
-    bool stageCalled = false;
-    bool unstageCalled = false;
-    bool discardCalled = false;
-    bool commitCalled = false;
+    std::vector<gf::git::bo::BlameLine> blameToReturn;
+    std::string fileContentToReturn;
+    int lastContextLinesRequested = -999;
+    std::string lastFileContentRevision;
+    // Set from the viewmodels' git worker threads, read by the test thread.
+    std::atomic<bool> getStatusCalled{false};
+    std::atomic<int> getStatusCalls{0};
+    std::atomic<bool> stageCalled{false};
+    std::atomic<bool> unstageCalled{false};
+    std::atomic<bool> discardCalled{false};
+    std::atomic<bool> commitCalled{false};
+    // Execution order of stageAll / createCommit (1, 2, ...), and an optional stageAll delay.
+    std::atomic<int> operationCounter{0};
+    std::atomic<int> stageAllOrder{0};
+    std::atomic<int> commitOrder{0};
+    std::atomic<int> stageAllDelayMs{0};
+    std::atomic<bool> mergeConflicts{false};
+    std::atomic<bool> lastMergeNoFastForward{false};
+    // Selection reads: call counters and an optional delay (to make requests overlap)
+    std::atomic<int> commitFileDiffCalls{0};
+    std::atomic<int> commitFilesCalls{0};
+    std::atomic<int> readDelayMs{0};
+    std::atomic<bool> echoCommitDiffPath{false};
+    std::atomic<int> mergeDelayMs{0};
+    std::atomic<int> remoteDelayMs{0};
+    std::atomic<int> conflictFileCalls{0};
+    std::atomic<bool> echoConflictFilePath{false};
+    std::atomic<int> fastForwardChecks{0};
+    std::atomic<bool> pushNeedsUpstream{false}; // push fails with "no upstream branch" unless setUpstream
+    std::atomic<bool> fetchFailsAuth{false};
+    std::atomic<int> pushCalls{0};
+    std::atomic<bool> lastPushSetUpstream{false};
+    std::atomic<bool> lastPushForce{false};
+    std::atomic<bool> lastPushForceUnconditional{false};
+    std::atomic<bool> lastPushTags{false};
+    std::function<std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>(
+        const gf::git::bo::RemoteOperationOptions&)> pushOverride;
 
     std::expected<gf::git::bo::RepoWorkingTreeStatus, gf::git::ports::GitOpsError>
-    getWorkingTreeStatus(const std::filesystem::path&) override {
+    getWorkingTreeStatus(const std::filesystem::path&) override
+    {
         getStatusCalled = true;
+        ++getStatusCalls;
         return statusToReturn;
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    stageFiles(const std::filesystem::path&, const std::vector<std::string>&) override {
+    stageFiles(const std::filesystem::path&, const std::vector<std::string>&) override
+    {
         stageCalled = true;
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    stageAll(const std::filesystem::path&) override {
+    stageAll(const std::filesystem::path&) override
+    {
+        if (stageAllDelayMs > 0)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(stageAllDelayMs.load()));
+        }
         stageCalled = true;
+        stageAllOrder = ++operationCounter;
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    unstageFiles(const std::filesystem::path&, const std::vector<std::string>&) override {
+    unstageFiles(const std::filesystem::path&, const std::vector<std::string>&) override
+    {
         unstageCalled = true;
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    unstageAll(const std::filesystem::path&) override {
+    unstageAll(const std::filesystem::path&) override
+    {
         unstageCalled = true;
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    discardFiles(const std::filesystem::path&, const std::vector<std::string>&) override {
+    discardFiles(const std::filesystem::path&, const std::vector<std::string>&) override
+    {
         discardCalled = true;
         return {};
     }
 
     std::expected<gf::git::bo::CommitResult, gf::git::ports::GitOpsError>
-    createCommit(const std::filesystem::path&, const gf::git::bo::CommitOptions&) override {
+    createCommit(const std::filesystem::path&, const gf::git::bo::CommitOptions&) override
+    {
         commitCalled = true;
+        commitOrder = ++operationCounter;
         return gf::git::bo::CommitResult{
             .commitSha = "1234567890123456789012345678901234567890",
             .shortSha = "12345678",
@@ -559,208 +685,416 @@ public:
     }
 
     std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
-    getFileDiff(const std::filesystem::path&, const std::string&, gf::git::bo::DiffScope) override {
+    getFileDiff(const std::filesystem::path&, const std::string&, gf::git::bo::DiffScope) override
+    {
         return diffToReturn;
     }
 
+    std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
+    getFileDiffWithContext(const std::filesystem::path& p, const std::string& f, gf::git::bo::DiffScope s,
+                           int contextLines) override
+    {
+        lastContextLinesRequested = contextLines;
+        return getFileDiff(p, f, s);
+    }
+
+    std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
+    getCommitFileDiffWithContext(const std::filesystem::path&, const std::string&, const std::string& filePath,
+                                 int contextLines) override
+    {
+        ++commitFileDiffCalls;
+        if (readDelayMs > 0)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(readDelayMs.load()));
+        }
+        lastContextLinesRequested = contextLines;
+        if (echoCommitDiffPath)
+        {
+            auto diff = diffToReturn;
+            diff.newPath = filePath;
+            diff.oldPath = filePath;
+            return diff;
+        }
+        return diffToReturn;
+    }
+
+    std::expected<std::vector<gf::git::bo::CommitFileChange>, gf::git::ports::GitOpsError>
+    getCommitFiles(const std::filesystem::path&, const std::string& commitSha) override
+    {
+        ++commitFilesCalls;
+        if (readDelayMs > 0)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(readDelayMs.load()));
+        }
+        // One file named after the commit, so a test can tell which request produced the result
+        return std::vector<gf::git::bo::CommitFileChange>{
+            gf::git::bo::CommitFileChange{.path = "file-of-" + commitSha, .additions = 1}
+        };
+    }
+
+    std::expected<std::string, gf::git::ports::GitOpsError>
+    getFileContent(const std::filesystem::path&, const std::string& rev, const std::string&) override
+    {
+        lastFileContentRevision = rev;
+        return fileContentToReturn;
+    }
+
     std::expected<std::vector<gf::git::bo::FileDiff>, gf::git::ports::GitOpsError>
-    getAllDiffs(const std::filesystem::path&, gf::git::bo::DiffScope) override {
+    getAllDiffs(const std::filesystem::path&, gf::git::bo::DiffScope) override
+    {
         return std::vector<gf::git::bo::FileDiff>{diffToReturn};
     }
 
+    std::expected<std::vector<gf::git::bo::BlameLine>, gf::git::ports::GitOpsError>
+    getFileBlame(const std::filesystem::path&, const std::string&, const std::string&) override
+    {
+        return blameToReturn;
+    }
+
     std::expected<std::vector<gf::git::bo::GitBranch>, gf::git::ports::GitOpsError>
-    listBranches(const std::filesystem::path&) override {
-        return std::vector<gf::git::bo::GitBranch>{};
+    listBranches(const std::filesystem::path&) override
+    {
+        ++listBranchesCalls;
+        {
+            std::scoped_lock lock(threadMutex);
+            lastListBranchesThread = std::this_thread::get_id();
+        }
+        return branchesToReturn;
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    createBranch(const std::filesystem::path&, const gf::git::bo::CreateBranchOptions&) override {
+    createBranch(const std::filesystem::path&, const gf::git::bo::CreateBranchOptions&) override
+    {
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    checkoutBranch(const std::filesystem::path&, const gf::git::bo::CheckoutOptions&) override {
+    checkoutBranch(const std::filesystem::path&, const gf::git::bo::CheckoutOptions&) override
+    {
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    deleteBranch(const std::filesystem::path&, const std::string&, bool) override {
+    deleteBranch(const std::filesystem::path&, const std::string&, bool) override
+    {
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    renameBranch(const std::filesystem::path&, const std::string&, const std::string&) override {
+    renameBranch(const std::filesystem::path&, const std::string&, const std::string&) override
+    {
         return {};
     }
 
     std::expected<std::vector<gf::git::bo::GitCommitLogItem>, gf::git::ports::GitOpsError>
-    getCommitLog(const std::filesystem::path&, const gf::git::bo::CommitLogOptions&) override {
-        return std::vector<gf::git::bo::GitCommitLogItem>{};
+    getCommitLog(const std::filesystem::path&, const gf::git::bo::CommitLogOptions&) override
+    {
+        std::lock_guard lock(commitLogMutex);
+        return commitLogToReturn;
+    }
+
+    void setCommitLog(std::vector<gf::git::bo::GitCommitLogItem> log)
+    {
+        std::lock_guard lock(commitLogMutex);
+        commitLogToReturn = std::move(log);
     }
 
     std::expected<std::vector<gf::git::bo::GitTag>, gf::git::ports::GitOpsError>
-    listTags(const std::filesystem::path&) override {
+    listTags(const std::filesystem::path&) override
+    {
         return std::vector<gf::git::bo::GitTag>{};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    createTag(const std::filesystem::path&, const gf::git::bo::CreateTagOptions&) override {
+    createTag(const std::filesystem::path&, const gf::git::bo::CreateTagOptions&) override
+    {
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    deleteTag(const std::filesystem::path&, const std::string&) override {
+    deleteTag(const std::filesystem::path&, const std::string&) override
+    {
         return {};
     }
 
     std::expected<std::vector<gf::git::bo::GitRemote>, gf::git::ports::GitOpsError>
-    listRemotes(const std::filesystem::path&) override {
-        return std::vector<gf::git::bo::GitRemote>{};
+    listRemotes(const std::filesystem::path&) override
+    {
+        return remotesToReturn; // set before the repository is opened (read on the worker)
     }
 
+    std::vector<gf::git::bo::GitRemote> remotesToReturn{};
+
+    // What the HTTPS credential loader of the last network operation produced (worker thread).
+    void recordCredential(const char* operation, const gf::git::bo::RemoteOperationOptions& options)
+    {
+        std::string seen = std::string(operation) + ":";
+        if (options.httpsCredential)
+        {
+            if (auto c = options.httpsCredential()) seen += c->username + "/" + c->password + "@" + c->host;
+        }
+        std::lock_guard lock(credentialMutex);
+        credentialsSeen.push_back(std::move(seen));
+    }
+
+    std::vector<std::string> takeCredentialsSeen()
+    {
+        std::lock_guard lock(credentialMutex);
+        return std::exchange(credentialsSeen, {});
+    }
+
+    std::mutex credentialMutex;
+    std::vector<std::string> credentialsSeen;
+
     std::expected<void, gf::git::ports::GitOpsError>
-    addRemote(const std::filesystem::path&, const std::string&, const std::string&) override {
+    addRemote(const std::filesystem::path&, const std::string&, const std::string&) override
+    {
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    removeRemote(const std::filesystem::path&, const std::string&) override {
+    removeRemote(const std::filesystem::path&, const std::string&) override
+    {
         return {};
     }
 
     std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
-    fetchRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions&) override {
+    fetchRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions& options) override
+    {
+        simulateNetwork();
+        recordCredential("fetch", options);
+        if (fetchFailsAuth)
+        {
+            return std::unexpected(gf::git::ports::GitOpsError{
+                gf::git::ports::GitOpsError::Kind::ExecutionFailed, 1, "git@github.com: Permission denied (publickey)."});
+        }
         return gf::git::bo::RemoteOperationResult{.success = true};
     }
 
     std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
-    pullRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions&) override {
+    pullRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions& options) override
+    {
+        simulateNetwork();
+        recordCredential("pull", options);
         return gf::git::bo::RemoteOperationResult{.success = true};
     }
 
     std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
-    pushRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions&) override {
+    pushRemote(const std::filesystem::path&, const gf::git::bo::RemoteOperationOptions& options) override
+    {
+        simulateNetwork();
+        recordCredential("push", options);
+        ++pushCalls;
+        lastPushSetUpstream = options.setUpstream;
+        lastPushForce = options.force;
+        lastPushForceUnconditional = options.forceUnconditional;
+        lastPushTags = options.tags;
+        if (pushNeedsUpstream && !options.setUpstream)
+        {
+            return std::unexpected(gf::git::ports::GitOpsError{
+                gf::git::ports::GitOpsError::Kind::ExecutionFailed, 1, "fatal: The current branch has no upstream branch."});
+        }
+        if (pushOverride)
+        {
+            return pushOverride(options);
+        }
         return gf::git::bo::RemoteOperationResult{.success = true};
+    }
+
+    void simulateNetwork() const
+    {
+        if (remoteDelayMs > 0)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(remoteDelayMs.load()));
+        }
     }
 
     std::expected<gf::git::bo::MergeResult, gf::git::ports::GitOpsError>
-    mergeBranch(const std::filesystem::path&, const gf::git::bo::MergeOptions&) override {
+    mergeBranch(const std::filesystem::path&, const gf::git::bo::MergeOptions& options) override
+    {
+        lastMergeNoFastForward = options.noFastForward;
+        if (mergeDelayMs > 0)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(mergeDelayMs.load()));
+        }
+        if (mergeConflicts)
+        {
+            return gf::git::bo::MergeResult{
+                .status = gf::git::bo::MergeStatus::Conflict,
+                .conflictedFiles = {"src/a.cpp", "src/b.cpp"}
+            };
+        }
         return gf::git::bo::MergeResult{.status = gf::git::bo::MergeStatus::Merged};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    abortMerge(const std::filesystem::path&) override {
+    abortMerge(const std::filesystem::path&) override
+    {
         return {};
     }
 
     std::vector<gf::git::bo::GitStashItem> stashesToReturn;
-    bool stashPushCalled = false;
-    bool stashPopCalled = false;
-    bool stashApplyCalled = false;
-    bool stashDropCalled = false;
-    bool stashClearCalled = false;
+    std::atomic<bool> stashPushCalled{false};
+    std::atomic<bool> stashPopCalled{false};
+    std::atomic<bool> stashApplyCalled{false};
+    std::atomic<bool> stashDropCalled{false};
+    std::atomic<bool> stashClearCalled{false};
+    std::atomic<bool> stashPopFails{false};
 
     bool rebaseInProgressToReturn = false;
-    bool startRebaseCalled = false;
-    bool continueRebaseCalled = false;
-    bool skipRebaseCalled = false;
-    bool abortRebaseCalled = false;
+    std::atomic<bool> startRebaseCalled{false};
+    std::atomic<bool> continueRebaseCalled{false};
+    std::atomic<bool> skipRebaseCalled{false};
+    std::atomic<bool> abortRebaseCalled{false};
 
     gf::git::bo::ConflictFile conflictFileToReturn;
-    bool applyConflictResolutionCalled = false;
+    std::atomic<bool> applyConflictResolutionCalled{false};
 
     std::expected<std::vector<gf::git::bo::GitStashItem>, gf::git::ports::GitOpsError>
-    listStashes(const std::filesystem::path&) override {
+    listStashes(const std::filesystem::path&) override
+    {
         return stashesToReturn;
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    stashPush(const std::filesystem::path&, const gf::git::bo::StashPushOptions&) override {
+    stashPush(const std::filesystem::path&, const gf::git::bo::StashPushOptions&) override
+    {
         stashPushCalled = true;
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    stashPop(const std::filesystem::path&, const gf::git::bo::StashApplyOptions&) override {
+    stashPop(const std::filesystem::path&, const gf::git::bo::StashApplyOptions&) override
+    {
         stashPopCalled = true;
+        if (stashPopFails)
+        {
+            return std::unexpected(gf::git::ports::GitOpsError{
+                .kind = gf::git::ports::GitOpsError::Kind::InvalidOperation,
+                .exitCode = 1,
+                .message = "conflict while popping"
+            });
+        }
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    stashApply(const std::filesystem::path&, const gf::git::bo::StashApplyOptions&) override {
+    stashApply(const std::filesystem::path&, const gf::git::bo::StashApplyOptions&) override
+    {
         stashApplyCalled = true;
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    stashDrop(const std::filesystem::path&, std::size_t) override {
+    stashDrop(const std::filesystem::path&, std::size_t) override
+    {
         stashDropCalled = true;
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    stashClear(const std::filesystem::path&) override {
+    stashClear(const std::filesystem::path&) override
+    {
         stashClearCalled = true;
         return {};
     }
 
     std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
-    startRebase(const std::filesystem::path&, const gf::git::bo::RebaseOptions&) override {
+    startRebase(const std::filesystem::path&, const gf::git::bo::RebaseOptions&) override
+    {
         startRebaseCalled = true;
         return gf::git::bo::RebaseResult{.status = gf::git::bo::RebaseStatus::Applied, .message = "Rebase started"};
     }
 
     std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
-    continueRebase(const std::filesystem::path&) override {
+    continueRebase(const std::filesystem::path&) override
+    {
         continueRebaseCalled = true;
         return gf::git::bo::RebaseResult{.status = gf::git::bo::RebaseStatus::Finished, .message = "Rebase finished"};
     }
 
     std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
-    skipRebase(const std::filesystem::path&) override {
+    skipRebase(const std::filesystem::path&) override
+    {
         skipRebaseCalled = true;
         return gf::git::bo::RebaseResult{.status = gf::git::bo::RebaseStatus::Skipped, .message = "Rebase skipped"};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    abortRebase(const std::filesystem::path&) override {
+    abortRebase(const std::filesystem::path&) override
+    {
         abortRebaseCalled = true;
         return {};
     }
 
     std::expected<bool, gf::git::ports::GitOpsError>
-    isRebaseInProgress(const std::filesystem::path&) override {
+    isRebaseInProgress(const std::filesystem::path&) override
+    {
         return rebaseInProgressToReturn;
     }
 
     std::expected<gf::git::bo::CherryPickResult, gf::git::ports::GitOpsError>
-    cherryPick(const std::filesystem::path&, const gf::git::bo::CherryPickOptions&) override {
+    cherryPick(const std::filesystem::path&, const gf::git::bo::CherryPickOptions&) override
+    {
         return gf::git::bo::CherryPickResult{.success = true};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    abortCherryPick(const std::filesystem::path&) override {
+    abortCherryPick(const std::filesystem::path&) override
+    {
         return {};
     }
 
     std::expected<gf::git::bo::ConflictFile, gf::git::ports::GitOpsError>
-    getConflictFile(const std::filesystem::path&, const std::string&) override {
+    getConflictFile(const std::filesystem::path&, const std::string& filePath) override
+    {
+        ++conflictFileCalls;
+        if (readDelayMs > 0)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(readDelayMs.load()));
+        }
+        if (echoConflictFilePath)
+        {
+            auto file = conflictFileToReturn;
+            file.filePath = filePath;
+            return file;
+        }
         return conflictFileToReturn;
     }
 
+    std::expected<bool, gf::git::ports::GitOpsError>
+    canFastForwardBranch(const std::filesystem::path&, const std::string& targetBranch,
+                         const std::string& sourceRef) override
+    {
+        ++fastForwardChecks;
+        if (readDelayMs > 0)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(readDelayMs.load()));
+        }
+        // "main" can be fast-forwarded to "feature" only
+        return targetBranch == "main" && sourceRef == "feature";
+    }
+
     std::expected<std::string, gf::git::ports::GitOpsError>
-    getFileStageContent(const std::filesystem::path&, const std::string&, int) override {
+    getFileStageContent(const std::filesystem::path&, const std::string&, int) override
+    {
         return std::string{};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
-    applyConflictResolution(const std::filesystem::path&, const gf::git::bo::ApplyConflictResolutionOptions&) override {
+    applyConflictResolution(const std::filesystem::path&, const gf::git::bo::ApplyConflictResolutionOptions&) override
+    {
         applyConflictResolutionCalled = true;
         return {};
     }
 };
 
-TEST_CASE("WorkingTreeFileListModel and DiffLineListModel MVVM models", "[viewmodel][models]") {
+TEST_CASE (
+"WorkingTreeFileListModel and DiffLineListModel MVVM models"
+,
+"[viewmodel][models]"
+)
+ {
     ensureQtApp();
 
     SECTION("WorkingTreeFileListModel handles items and roles correctly") {
@@ -838,7 +1172,12 @@ TEST_CASE("WorkingTreeFileListModel and DiffLineListModel MVVM models", "[viewmo
     }
 }
 
-TEST_CASE("WorkingTreeViewModel and CommitBoxViewModel reactive behavior", "[viewmodel][session]") {
+TEST_CASE (
+"WorkingTreeViewModel and CommitBoxViewModel reactive behavior"
+,
+"[viewmodel][session]"
+)
+ {
     ensureQtApp();
 
     MockFullGitOps mockOps;
@@ -858,29 +1197,117 @@ TEST_CASE("WorkingTreeViewModel and CommitBoxViewModel reactive behavior", "[vie
             .kind = gf::git::bo::FileChangeKind::Added,
             .statusCode = 'A'
         });
+        mockOps.statusToReturn.unstagedFiles.push_back(gf::git::bo::WorkingTreeFileItem{
+            .path = "b.txt",
+            .originalPath = {},
+            .kind = gf::git::bo::FileChangeKind::Modified,
+            .statusCode = 'M'
+        });
+        mockOps.statusToReturn.conflictedFiles.push_back(gf::git::bo::WorkingTreeFileItem{
+            .path = "merge.txt",
+            .originalPath = {},
+            .kind = gf::git::bo::FileChangeKind::Conflicted,
+            .statusCode = 'U'
+        });
 
         QSignalSpy statusSpy(&wtVm, &WorkingTreeViewModel::statusChanged);
+        QSignalSpy refreshedSpy(&wtVm, &WorkingTreeViewModel::refreshed);
         bool refreshed = wtVm.refresh(QString::fromStdString(validTempDir.string()));
         REQUIRE(refreshed);
+        // Asynchronous: nothing is applied until the git worker delivers the status
+        CHECK(statusSpy.count() == 0);
+        REQUIRE(wtVm.waitForIdle());
         CHECK(statusSpy.count() == 1);
+        CHECK(refreshedSpy.count() == 1);
         CHECK(wtVm.branchName().toStdString() == "feature/phase2");
         CHECK(wtVm.aheadCount() == 2);
         CHECK(wtVm.stagedCount() == 1);
         CHECK(wtVm.stagedModel()->rowCount() == 1);
         CHECK_FALSE(wtVm.isClean());
 
-        // Stage file trigger
+        // The WIP file list flags unmerged paths: opening one starts the conflict resolver
+        const auto wipFiles = wtVm.getAllWorkingFiles();
+        REQUIRE(wipFiles.size() == 3);
+        QHash<QString, bool> conflicted;
+        for (const auto& f : wipFiles)
+        {
+            const auto m = f.toMap();
+            conflicted[m.value("path").toString()] = m.value("isConflicted").toBool();
+        }
+        CHECK(conflicted.value("merge.txt"));
+        CHECK_FALSE(conflicted.value("b.txt"));
+        CHECK_FALSE(conflicted.value("a.txt"));
+
+        // A refresh with nothing new still reports completion, without statusChanged
+        CHECK(wtVm.refresh(QString::fromStdString(validTempDir.string())));
+        REQUIRE(wtVm.waitForIdle());
+        CHECK(statusSpy.count() == 1);
+        CHECK(refreshedSpy.count() == 2);
+
+        // Stage file trigger (busy while the operation runs, then a status re-read)
+        QSignalSpy busySpy(&wtVm, &WorkingTreeViewModel::isBusyChanged);
         CHECK(wtVm.stageFile(QString::fromStdString(validTempDir.string()), "b.txt"));
+        CHECK(wtVm.isBusy());
+        REQUIRE(wtVm.waitForIdle());
+        CHECK_FALSE(wtVm.isBusy());
+        CHECK(busySpy.count() == 2);
         CHECK(mockOps.stageCalled);
+        CHECK(refreshedSpy.count() == 3);
 
         // Unstage file trigger
         CHECK(wtVm.unstageFile(QString::fromStdString(validTempDir.string()), "a.txt"));
+        REQUIRE(wtVm.waitForIdle());
         CHECK(mockOps.unstageCalled);
 
         // Discard file and discard all triggers
         CHECK(wtVm.discardFile(QString::fromStdString(validTempDir.string()), "a.txt"));
+        REQUIRE(wtVm.waitForIdle());
         CHECK(mockOps.discardCalled);
         CHECK(wtVm.discardAll(QString::fromStdString(validTempDir.string())));
+        REQUIRE(wtVm.waitForIdle());
+    }
+
+    SECTION("WorkingTreeViewModel coalesces refreshes and drops stale results") {
+        WorkingTreeViewModel wtVm(statusService, stagingService);
+        QSignalSpy refreshedSpy(&wtVm, &WorkingTreeViewModel::refreshed);
+        const QString path = QString::fromStdString(validTempDir.string());
+
+        // A burst (poll timer + fs watcher + focus) reads the status at most twice
+        mockOps.getStatusCalls = 0;
+        for (int i = 0; i < 10; ++i)
+        {
+            CHECK(wtVm.refresh(path));
+        }
+        REQUIRE(wtVm.waitForIdle());
+        CHECK(mockOps.getStatusCalls.load() == 2);
+        CHECK(refreshedSpy.count() == 2);
+
+        // Clearing while a read is in flight: the late result must not resurrect the old state
+        mockOps.statusToReturn.branch.headName = "stale";
+        CHECK(wtVm.refresh(path));
+        CHECK_FALSE(wtVm.refresh({}));
+        REQUIRE(wtVm.waitForIdle());
+        CHECK(wtVm.branchName().isEmpty());
+        CHECK(refreshedSpy.count() == 2);
+    }
+
+    SECTION("Stage then commit stay ordered on a shared executor") {
+        // The WIP "commit" button stages everything and commits right away: with a shared serial
+        // executor the commit can't overtake a slow stage.
+        SerialGitExecutor executor;
+        WorkingTreeViewModel wtVm(statusService, stagingService, executor);
+        CommitBoxViewModel commitVm(stagingService, executor);
+        const QString path = QString::fromStdString(validTempDir.string());
+
+        mockOps.stageAllDelayMs = 80;
+        CHECK(wtVm.stageAll(path));
+        commitVm.setCommitMessage("feat: stage and commit");
+        CHECK(commitVm.executeCommit(path));
+        REQUIRE(commitVm.waitForIdle());
+        REQUIRE(wtVm.waitForIdle());
+
+        CHECK(mockOps.stageAllOrder.load() == 1);
+        CHECK(mockOps.commitOrder.load() == 2);
     }
 
     SECTION("CommitBoxViewModel validates message and triggers commit") {
@@ -896,6 +1323,11 @@ TEST_CASE("WorkingTreeViewModel and CommitBoxViewModel reactive behavior", "[vie
         QSignalSpy successSpy(&commitVm, &CommitBoxViewModel::commitSucceeded);
         bool committed = commitVm.executeCommit(QString::fromStdString(validTempDir.string()));
         REQUIRE(committed);
+        // Running: busy, and a second commit can't start
+        CHECK(commitVm.isBusy());
+        CHECK_FALSE(commitVm.canCommit());
+        CHECK_FALSE(commitVm.executeCommit(QString::fromStdString(validTempDir.string())));
+        REQUIRE(commitVm.waitForIdle());
         CHECK(mockOps.commitCalled);
         CHECK(successSpy.count() == 1);
 
@@ -905,7 +1337,12 @@ TEST_CASE("WorkingTreeViewModel and CommitBoxViewModel reactive behavior", "[vie
     }
 }
 
-TEST_CASE("WorkspaceSessionViewModel multi-tab orchestration", "[viewmodel][session][tabs]") {
+TEST_CASE (
+"WorkspaceSessionViewModel multi-tab orchestration"
+,
+"[viewmodel][session][tabs]"
+)
+ {
     ensureQtApp();
 
     TestContext ctx;
@@ -998,9 +1435,28 @@ TEST_CASE("WorkspaceSessionViewModel multi-tab orchestration", "[viewmodel][sess
     sessionVm.closeAllTabs();
     CHECK_FALSE(sessionVm.hasOpenTabs());
     CHECK(sessionVm.currentGroupName().isEmpty());
+
+    // Test openWorkspace orchestration: closes previous tabs, sets workspace name, batch opens repos, activates tab 0
+    auto wsRes = ctx.workspaceService->createWorkspace("Production Team", {}, {r1Res->id, r2Res->id});
+    REQUIRE(wsRes.has_value());
+
+    sessionVm.openWorkspace(QString::fromStdString(wsRes->id.value()));
+    CHECK(sessionVm.currentGroupName() == "Production Team");
+    CHECK(sessionVm.tabs().size() == 2);
+    CHECK(sessionVm.hasOpenTabs());
+    CHECK(sessionVm.activeTabIndex() == 0);
+    CHECK(sessionVm.activeRepoName().toStdString() == "Repo 1");
+
+    sessionVm.closeAllTabs();
+    CHECK_FALSE(sessionVm.hasOpenTabs());
 }
 
-TEST_CASE("BranchListModel and CommitHistoryListModel MVVM representations", "[viewmodel][models][branch][history]") {
+TEST_CASE (
+"BranchListModel and CommitHistoryListModel MVVM representations"
+,
+"[viewmodel][models][branch][history]"
+)
+ {
     ensureQtApp();
 
     SECTION("BranchListModel handles branch roles and reset") {
@@ -1132,7 +1588,61 @@ TEST_CASE("BranchListModel and CommitHistoryListModel MVVM representations", "[v
         // Avatar should resolve to Dokjolly0's GitHub avatar because authorName has spaces while committerName is a GitHub handle
         CHECK(model.data(idx, CommitHistoryListModel::AuthorAvatarUrlRole).toString() == "https://github.com/Dokjolly0.png?size=64");
         CHECK(model.data(idx, CommitHistoryListModel::CommitterAvatarUrlRole).toString() == "https://github.com/Dokjolly0.png?size=64");
+
+        std::vector<gf::git::bo::GitCommitLogItem> fullNameCommits = {
+            gf::git::bo::GitCommitLogItem{
+                .sha = "1e4ae7a000000000000000000000000000000000",
+                .shortSha = "1e4ae7a",
+                .parents = {"parent1"},
+                .authorName = "Alex Violatto",
+                .authorEmail = "alexviolattolibero.it@gmail.com",
+                .authorDateIso = "2026-11-10T09:56:48+01:00",
+                .committerName = "Alex Violatto",
+                .committerEmail = "alexviolattolibero.it@gmail.com",
+                .committerDateIso = "2026-11-10T09:56:48+01:00",
+                .subject = "fix(desktop,git): prevent main-thread UI freeze",
+                .body = "",
+                .refDecorations = {}
+            }
+        };
+        model.setCommits(fullNameCommits);
+        REQUIRE(model.rowCount() == 1);
+        auto idxFull = model.index(0);
+        CHECK(model.data(idxFull, CommitHistoryListModel::AuthorAvatarUrlRole).toString() == "https://github.com/Dokjolly0.png?size=64");
+        CHECK(model.data(idxFull, CommitHistoryListModel::CommitterAvatarUrlRole).toString() == "https://github.com/Dokjolly0.png?size=64");
         CHECK(model.data(idx, CommitHistoryListModel::IsMergeRole).toBool() == false);
+    }
+
+    SECTION("CommitHistoryListModel resolves the HEAD commit and looks up rows by SHA") {
+        CommitHistoryListModel model;
+        CHECK(model.headSha().isEmpty());
+
+        // Attached HEAD: "HEAD -> <branch>"
+        model.setCommits({
+            gf::git::bo::GitCommitLogItem{.sha = "aaaa", .refDecorations = {"origin/main"}},
+            gf::git::bo::GitCommitLogItem{.sha = "bbbb", .refDecorations = {"HEAD -> main", "tag: v1.0"}},
+            gf::git::bo::GitCommitLogItem{.sha = "cccc"}
+        });
+        CHECK(model.headSha() == "bbbb");
+        CHECK(model.indexOfSha("bbbb") == 1);
+        CHECK(model.indexOfSha("cccc") == 2);
+        CHECK(model.indexOfSha("missing") == -1);
+        CHECK(model.indexOfSha("") == -1);
+
+        // Detached HEAD: plain "HEAD"; remote HEAD pointers don't count
+        model.setCommits({
+            gf::git::bo::GitCommitLogItem{.sha = "aaaa", .refDecorations = {"origin/HEAD", "origin/main"}},
+            gf::git::bo::GitCommitLogItem{.sha = "cccc", .refDecorations = {"HEAD"}}
+        });
+        CHECK(model.headSha() == "cccc");
+
+        // The WIP row shifts real commits down by one
+        model.setWip(true, 2);
+        CHECK(model.indexOfSha("cccc") == 2);
+
+        // HEAD not in the list (e.g. file history filter)
+        model.setCommits({gf::git::bo::GitCommitLogItem{.sha = "dddd"}});
+        CHECK(model.headSha().isEmpty());
     }
 
     SECTION("CommitHistoryListModel filters commits by message, author, or SHA") {
@@ -1281,9 +1791,895 @@ TEST_CASE("BranchListModel and CommitHistoryListModel MVVM representations", "[v
         CHECK(commitMapGhPages["isOrphan"].toBool() == true);
         CHECK(commitMapGhPages["graphLane"].toInt() == 0);
     }
+
+    SECTION("CommitHistoryListModel renders stashes GitKraken-style without internal helper commits or merge lines")
+    {
+        CommitHistoryListModel model;
+
+        std::vector<gf::git::bo::GitCommitLogItem> commits = {
+            gf::git::bo::GitCommitLogItem{
+                .sha = "stash0_sha",
+                .shortSha = "stash0s",
+                .parents = {"base_sha", "idx_sha", "untracked_sha"},
+                .authorName = "Developer",
+                .authorEmail = "dev@test.com",
+                .authorDateIso = "2026-11-18T12:05:00Z",
+                .subject = "On main: my stashed work",
+                .refDecorations = {"refs/stash"}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "untracked_sha",
+                .shortSha = "untr000",
+                .parents = {},
+                .authorName = "Developer",
+                .authorEmail = "dev@test.com",
+                .authorDateIso = "2026-11-18T12:05:00Z",
+                .subject = "untracked files on main: base_sh base commit",
+                .refDecorations = {}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "idx_sha",
+                .shortSha = "idx0000",
+                .parents = {"base_sha"},
+                .authorName = "Developer",
+                .authorEmail = "dev@test.com",
+                .authorDateIso = "2026-11-18T12:05:00Z",
+                .subject = "index on main: base_sh base commit",
+                .refDecorations = {}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "base_sha",
+                .shortSha = "base_sh",
+                .parents = {"root_sha"},
+                .authorName = "Developer",
+                .authorEmail = "dev@test.com",
+                .authorDateIso = "2026-11-18T11:00:00Z",
+                .subject = "base commit",
+                .refDecorations = {"HEAD -> main"}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "root_sha",
+                .shortSha = "root_sh",
+                .parents = {},
+                .authorName = "Developer",
+                .authorEmail = "dev@test.com",
+                .authorDateIso = "2026-11-18T10:00:00Z",
+                .subject = "initial commit",
+                .refDecorations = {}
+            }
+        };
+
+        model.setCommits(commits);
+
+        // Internal helper commits (index on ... and untracked files on ...) are stripped
+        REQUIRE(model.rowCount() == 3);
+
+        const auto idxStash = model.index(0);
+        const auto idxBase = model.index(1);
+        const auto idxRoot = model.index(2);
+
+        CHECK(model.data(idxStash, CommitHistoryListModel::ShaRole).toString() == "stash0_sha");
+        CHECK(model.data(idxStash, CommitHistoryListModel::IsStashRole).toBool() == true);
+        CHECK(model.data(idxStash, CommitHistoryListModel::IsMergeRole).toBool() == false);
+        CHECK(model.data(idxStash, CommitHistoryListModel::IsOrphanRole).toBool() == false);
+        CHECK(model.data(idxStash, CommitHistoryListModel::StashSelectorRole).toString() == "stash@{0}");
+
+        // Only base commit remains as parent
+        const auto stashParents = model.data(idxStash, CommitHistoryListModel::ParentsRole).toStringList();
+        REQUIRE(stashParents.size() == 1);
+        CHECK(stashParents[0] == "base_sha");
+
+        // Stash sits in a side lane off the main trunk (lane 1), while HEAD stays on lane 0
+        const int stashLane = model.data(idxStash, CommitHistoryListModel::GraphLaneRole).toInt();
+        const int baseLane = model.data(idxBase, CommitHistoryListModel::GraphLaneRole).toInt();
+        CHECK(baseLane == 0);
+        CHECK(stashLane == 1);
+        CHECK(model.data(idxRoot, CommitHistoryListModel::GraphLaneRole).toInt() == 0);
+        CHECK(model.data(idxStash, CommitHistoryListModel::GraphColorRole).toString() == "#F59E0B");
+
+        // Stash route is dashed and base commit receives a dashed inbound curve from the stash lane
+        const auto stashRoutes = model.data(idxStash, CommitHistoryListModel::GraphRoutesRole).toList();
+        REQUIRE(stashRoutes.size() == 1);
+        CHECK(stashRoutes[0].toMap()["dashed"].toBool() == true);
+        CHECK(stashRoutes[0].toMap()["fromLane"].toInt() == stashLane);
+
+        const auto baseRoutes = model.data(idxBase, CommitHistoryListModel::GraphRoutesRole).toList();
+        bool foundDashedCurveToBase = false;
+        for (const auto& rv : baseRoutes)
+        {
+            const auto rm = rv.toMap();
+            if (rm["dashed"].toBool() && rm["fromLane"].toInt() == stashLane && rm["toLane"].toInt() == baseLane)
+            {
+                foundDashedCurveToBase = true;
+            }
+        }
+        CHECK(foundDashedCurveToBase);
+
+        // Structured badge is a stash badge, NOT a remote branch badge
+        const auto decs = model.data(idxStash, CommitHistoryListModel::StructuredDecorationsRole).toList();
+        REQUIRE(decs.size() == 1);
+        CHECK(decs[0].toMap()["type"].toString() == "stash");
+        CHECK(decs[0].toMap()["label"].toString() == "📦 stash@{0}");
+
+        // Adding WIP attaches WIP to HEAD (base_sha), not to the stash commit
+        model.setWip(true, 2);
+        REQUIRE(model.rowCount() == 4);
+        CHECK(model.data(model.index(0), CommitHistoryListModel::ShaRole).toString() == "WIP");
+        CHECK(model.data(model.index(0), CommitHistoryListModel::ParentsRole).toStringList() == QStringList{"base_sha"});
+    }
+
+    SECTION("CommitHistoryListModel computes reachable commit counts for branch tips in-memory") {
+        CommitHistoryListModel model;
+
+        // DAG:
+        //   c0 (root) <- c1 (tag: v1.0) <- c3 <- c4 (HEAD -> main, origin/main)
+        //             <- c2 (feature/x)  <-/
+        //   g0 <- g1 (gh-pages)
+        //   stash0 -> base c4
+        std::vector<gf::git::bo::GitCommitLogItem> commits = {
+            gf::git::bo::GitCommitLogItem{
+                .sha = "stash0",
+                .parents = {"c4"},
+                .subject = "WIP on main",
+                .refDecorations = {"refs/stash"}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "c4",
+                .parents = {"c3"},
+                .subject = "release prep",
+                .refDecorations = {"HEAD -> main", "origin/main"}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "c3",
+                .parents = {"c1", "c2"},
+                .subject = "merge feature/x",
+                .refDecorations = {}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "c2",
+                .parents = {"c0"},
+                .subject = "feature work",
+                .refDecorations = {"feature/x"}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "c1",
+                .parents = {"c0"},
+                .subject = "tagged commit",
+                .refDecorations = {"tag: v1.0"}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "c0",
+                .parents = {},
+                .subject = "initial",
+                .refDecorations = {}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "g1",
+                .parents = {"g0"},
+                .subject = "publish docs",
+                .refDecorations = {"gh-pages"}
+            },
+            gf::git::bo::GitCommitLogItem{
+                .sha = "g0",
+                .parents = {},
+                .subject = "init gh-pages",
+                .refDecorations = {}
+            }
+        };
+
+        model.setCommits(commits);
+        model.setWip(true, 1);
+
+        CHECK(model.data(model.index(0), CommitHistoryListModel::BranchCommitCountRole).toInt() == 0); // WIP
+        CHECK(model.data(model.index(model.indexOfSha("stash0")), CommitHistoryListModel::BranchCommitCountRole).toInt() == 0);
+        CHECK(model.data(model.index(model.indexOfSha("c4")), CommitHistoryListModel::BranchCommitCountRole).toInt() == 5);
+        CHECK(model.data(model.index(model.indexOfSha("c3")), CommitHistoryListModel::BranchCommitCountRole).toInt() == 0);
+        CHECK(model.data(model.index(model.indexOfSha("c2")), CommitHistoryListModel::BranchCommitCountRole).toInt() == 2);
+        CHECK(model.data(model.index(model.indexOfSha("c1")), CommitHistoryListModel::BranchCommitCountRole).toInt() == 0);
+        CHECK(model.data(model.index(model.indexOfSha("c0")), CommitHistoryListModel::BranchCommitCountRole).toInt() == 0);
+        CHECK(model.data(model.index(model.indexOfSha("g1")), CommitHistoryListModel::BranchCommitCountRole).toInt() == 2);
+
+        CHECK(model.getCommit(model.indexOfSha("c4"))["branchCommitCount"].toInt() == 5);
+
+        // Filtering rows preserves the true full-DAG branch commit count
+        model.setSearchFilter("feature work");
+        REQUIRE(model.rowCount() == 1);
+        CHECK(model.data(model.index(0), CommitHistoryListModel::ShaRole).toString() == "c2");
+        CHECK(model.data(model.index(0), CommitHistoryListModel::BranchCommitCountRole).toInt() == 2);
+        model.setSearchFilter("");
+
+        // Partial DAG (e.g. file history mode) suppresses branch commit counts
+        model.setCommits(commits, false);
+        CHECK(model.data(model.index(model.indexOfSha("c4")), CommitHistoryListModel::BranchCommitCountRole).toInt() == 0);
+        CHECK(model.data(model.index(model.indexOfSha("c2")), CommitHistoryListModel::BranchCommitCountRole).toInt() == 0);
+    }
+
+    SECTION("CommitHistoryListModel::findTargetBranchAt resolves local/remote target branches and ignores tags, stashes, or same ref") {
+        CommitHistoryListModel model;
+
+        gf::git::bo::GitCommitLogItem c0;
+        c0.sha = "aaaa000";
+        c0.shortSha = "aaaa000";
+        c0.subject = "Main aligned with origin";
+        c0.refDecorations = {"HEAD -> main", "origin/main", "tag: v1.0.0"};
+
+        gf::git::bo::GitCommitLogItem c1;
+        c1.sha = "bbbb111";
+        c1.shortSha = "bbbb111";
+        c1.subject = "Feature and remote";
+        c1.refDecorations = {"feature/ui", "origin/release"};
+
+        gf::git::bo::GitCommitLogItem c2;
+        c2.sha = "cccc222";
+        c2.shortSha = "cccc222";
+        c2.subject = "Tag only commit";
+        c2.refDecorations = {"tag: v0.9.0"};
+
+        gf::git::bo::GitCommitLogItem c3;
+        c3.sha = "dddd333";
+        c3.shortSha = "dddd333";
+        c3.subject = "Stash commit";
+        c3.refDecorations = {"refs/stash"};
+
+        gf::git::bo::GitCommitLogItem c4;
+        c4.sha = "eeee444";
+        c4.shortSha = "eeee444";
+        c4.subject = "Plain commit";
+
+        model.setCommits({c0, c1, c2, c3, c4});
+        model.setWip(true, 2); // Index 0 is WIP, commits shift to 1..5
+
+        CHECK(model.findTargetBranchAt(-1, "develop").isEmpty());
+        CHECK(model.findTargetBranchAt(99, "develop").isEmpty());
+        CHECK(model.findTargetBranchAt(0, "develop").isEmpty()); // WIP row
+        CHECK(model.findTargetBranchAt(1, "develop") == "origin/main"); // Aligned main+origin/main shows origin/main
+        CHECK(model.findTargetBranchAt(1, "main").isEmpty()); // Same branch ref excluded
+        CHECK(model.findTargetBranchAt(1, "origin/main").isEmpty());
+        CHECK(model.findTargetBranchAt(2, "develop") == "feature/ui"); // Local preferred over remote
+        CHECK(model.findTargetBranchAt(2, "feature/ui") == "origin/release"); // Fallback to remote when local is excluded
+        CHECK(model.findTargetBranchAt(3, "develop").isEmpty()); // Tag-only commit
+        CHECK(model.findTargetBranchAt(4, "develop").isEmpty()); // Stash commit
+        CHECK(model.findTargetBranchAt(5, "develop").isEmpty()); // Plain commit
+    }
+
+    SECTION("CommitHistoryListModel infers owning branch for commits without a branch tip") {
+        CommitHistoryListModel model;
+
+        // DAG:
+        // D2 [HEAD -> develop, origin/develop] -> parents: [D1, X2]
+        // X2 (deleted merged branch) -> parents: [X1]
+        // X1 -> parents: [D1]
+        // F2 [feature/old] -> parents: [F1]
+        // F1 -> parents: [M2]
+        // D1 (merge of F2) -> parents: [M2, F2]
+        // M2 [main, origin/main] -> parents: [M1]
+        // M1 -> parents: []
+        // G2 [origin/gh-pages] -> parents: [G1]
+        // G1 -> parents: []
+        // S0 [refs/stash] -> parents: [D2]
+        auto makeCommit = [](std::string sha, std::string subj, std::vector<std::string> parents, std::vector<std::string> decs = {}) {
+            gf::git::bo::GitCommitLogItem c;
+            c.sha = std::move(sha);
+            c.shortSha = c.sha;
+            c.subject = std::move(subj);
+            c.parents = std::move(parents);
+            c.refDecorations = std::move(decs);
+            return c;
+        };
+
+        std::vector<gf::git::bo::GitCommitLogItem> commits = {
+            makeCommit("S0", "On develop: stash", {"D2"}, {"refs/stash"}),
+            makeCommit("D2", "Merge deleted branch into develop", {"D1", "X2"}, {"HEAD -> develop", "origin/develop"}),
+            makeCommit("X2", "Deleted feature tip", {"X1"}),
+            makeCommit("X1", "Deleted feature base", {"D1"}),
+            makeCommit("F2", "Old feature tip", {"F1"}, {"feature/old"}),
+            makeCommit("F1", "Old feature work", {"M2"}),
+            makeCommit("D1", "Develop commit", {"M2", "F2"}),
+            makeCommit("M2", "Main tip", {"M1"}, {"main", "origin/main"}),
+            makeCommit("M1", "Initial main commit", {}),
+            makeCommit("G2", "Pages tip", {"G1"}, {"origin/gh-pages"}),
+            makeCommit("G1", "Pages older commit", {})
+        };
+
+        model.setCommits(commits, true);
+        model.setWip(true, 1);
+
+        auto inferred = [&](const QString& sha) {
+            const int row = model.indexOfSha(sha);
+            REQUIRE(row >= 0);
+            return model.data(model.index(row), CommitHistoryListModel::InferredBranchRole).toString();
+        };
+
+        CHECK(model.data(model.index(0), CommitHistoryListModel::InferredBranchRole).toString().isEmpty()); // WIP
+        CHECK(inferred("S0").isEmpty()); // Stash
+        CHECK(inferred("D2") == "develop");
+        CHECK(inferred("D1") == "develop");
+        CHECK(inferred("X2") == "develop"); // Deleted merged branch falls back to develop
+        CHECK(inferred("X1") == "develop");
+        CHECK(inferred("F2") == "feature/old");
+        CHECK(inferred("F1") == "feature/old"); // Existing feature branch keeps its first-parent commits
+        CHECK(inferred("M2") == "main");
+        CHECK(inferred("M1") == "main");
+        CHECK(inferred("G2") == "origin/gh-pages");
+        CHECK(inferred("G1") == "origin/gh-pages");
+        CHECK(model.data(model.index(model.indexOfSha("G1")), CommitHistoryListModel::InferredBranchColorRole).toString() == "#A855F7");
+
+        // Filtering preserves the full-DAG inferred branch
+        model.setSearchFilter("Old feature work");
+        REQUIRE(model.rowCount() == 1);
+        CHECK(model.data(model.index(0), CommitHistoryListModel::InferredBranchRole).toString() == "feature/old");
+        // Progressive reachable commit counts work even on intermediate commits and while filtered
+        CHECK(model.reachableCommitCount("F1") == 3); // F1 -> M2 -> M1
+        model.setSearchFilter("");
+
+        // Verify progressive reachableCommitCount along the DAG (no double-counting on merges)
+        CHECK(model.reachableCommitCount("WIP") == 0);
+        CHECK(model.reachableCommitCount("S0") == 0);
+        CHECK(model.reachableCommitCount("M1") == 1);
+        CHECK(model.reachableCommitCount("M2") == 2);
+        CHECK(model.reachableCommitCount("F1") == 3);
+        CHECK(model.reachableCommitCount("F2") == 4);
+        CHECK(model.reachableCommitCount("D1") == 5); // D1 + M2 + M1 + F2 + F1
+        CHECK(model.reachableCommitCount("X1") == 6); // X1 + D1 subtree (5)
+        CHECK(model.reachableCommitCount("X2") == 7);
+        CHECK(model.reachableCommitCount("D2") == 8); // D2 + D1(5) + X2 + X1 (no double-count)
+        CHECK(model.reachableCommitCount("G1") == 1);
+        CHECK(model.reachableCommitCount("G2") == 2);
+
+        // Partial DAG suppresses reachableCommitCount
+        model.setCommits(commits, false);
+        CHECK(model.reachableCommitCount("D1") == 0);
+        CHECK(model.reachableCommitCount("M1") == 0);
+    }
 }
 
-TEST_CASE("BranchManagerViewModel operations and signal propagation", "[viewmodel][branch][manager]") {
+TEST_CASE (
+"BranchManagerViewModel asks the history to follow HEAD"
+,
+"[viewmodel][branch][manager][head]"
+)
+ {
+    ensureQtApp();
+
+    MockFullGitOps mockOps;
+    gf::git::bl::GitBranchService branchService(mockOps);
+    gf::git::bl::GitHistoryService historyService(mockOps);
+    gf::git::bl::GitRemoteMergeService remoteMergeService(mockOps);
+    BranchManagerViewModel branchVm(branchService, historyService, remoteMergeService);
+    QSignalSpy headSpy(&branchVm, &BranchManagerViewModel::followHeadRequested);
+
+    const auto commit = [](std::string sha, std::vector<std::string> decorations = {}) {
+        return gf::git::bo::GitCommitLogItem{.sha = std::move(sha), .refDecorations = std::move(decorations)};
+    };
+
+    const auto repoA = std::filesystem::temp_directory_path() / "gf-head-a";
+    const auto repoB = std::filesystem::temp_directory_path() / "gf-head-b";
+    std::filesystem::create_directories(repoA);
+    std::filesystem::create_directories(repoB);
+
+    // First load of a repository: nothing "moved"
+    mockOps.setCommitLog({commit("c2", {"HEAD -> main"}), commit("c1")});
+    branchVm.setRepositoryPath(QString::fromStdString(repoA.string()));
+    REQUIRE(branchVm.waitForIdle());
+    CHECK(headSpy.count() == 0);
+
+    // Reload with HEAD unchanged: no signal
+    branchVm.refresh();
+    REQUIRE(branchVm.waitForIdle());
+    CHECK(headSpy.count() == 0);
+
+    // Checkout of an older commit (detached HEAD)
+    mockOps.setCommitLog({commit("c2", {"main"}), commit("c1", {"HEAD"})});
+    branchVm.refresh();
+    REQUIRE(branchVm.waitForIdle());
+    REQUIRE(headSpy.count() == 1);
+    CHECK(headSpy.at(0).at(0).toString() == "c1");
+
+    // New commit / merge on top: HEAD moves forward
+    mockOps.setCommitLog({commit("c3", {"HEAD -> main"}), commit("c2"), commit("c1")});
+    branchVm.refresh();
+    REQUIRE(branchVm.waitForIdle());
+    REQUIRE(headSpy.count() == 2);
+    CHECK(headSpy.at(1).at(0).toString() == "c3");
+
+    // Pull with nothing new: HEAD doesn't move, but the view must still go back to HEAD
+    CHECK(branchVm.pullRemote("origin", "default"));
+    REQUIRE(branchVm.waitForIdle());
+    REQUIRE(headSpy.count() == 3);
+    CHECK(headSpy.at(2).at(0).toString() == "c3");
+
+    // The request is one-shot: a later plain reload doesn't repeat it
+    branchVm.refresh();
+    REQUIRE(branchVm.waitForIdle());
+    CHECK(headSpy.count() == 3);
+
+    // Checkout of a branch on the same commit also selects HEAD
+    CHECK(branchVm.checkoutBranch("main"));
+    REQUIRE(branchVm.waitForIdle());
+    REQUIRE(headSpy.count() == 4);
+    CHECK(headSpy.at(3).at(0).toString() == "c3");
+
+    // Switching to another repository is not a HEAD move
+    mockOps.setCommitLog({commit("x1", {"HEAD -> main"})});
+    branchVm.setRepositoryPath(QString::fromStdString(repoB.string()));
+    REQUIRE(branchVm.waitForIdle());
+    CHECK(headSpy.count() == 4);
+
+    std::error_code ec;
+    std::filesystem::remove_all(repoA, ec);
+    std::filesystem::remove_all(repoB, ec);
+}
+
+TEST_CASE (
+"BranchManagerViewModel runs local operations asynchronously"
+,
+"[viewmodel][branch][async][operations]"
+)
+ {
+    ensureQtApp();
+
+    MockFullGitOps mockOps;
+    gf::git::bl::GitBranchService branchService(mockOps);
+    gf::git::bl::GitHistoryService historyService(mockOps);
+    gf::git::bl::GitRemoteMergeService remoteMergeService(mockOps);
+    BranchManagerViewModel branchVm(branchService, historyService, remoteMergeService);
+    const auto repoA = std::filesystem::temp_directory_path() / "gf-ops-a";
+    const auto repoB = std::filesystem::temp_directory_path() / "gf-ops-b";
+    std::filesystem::create_directories(repoA);
+    std::filesystem::create_directories(repoB);
+
+    branchVm.setRepositoryPath(QString::fromStdString(repoA.string()));
+    REQUIRE(branchVm.waitForIdle());
+
+    QSignalSpy finishedSpy(&branchVm, &BranchManagerViewModel::operationFinished);
+    QSignalSpy conflictsSpy(&branchVm, &BranchManagerViewModel::conflictsChanged);
+
+    SECTION("each operation gets its own id, reported with its outcome") {
+        REQUIRE(branchVm.createTag("v1"));
+        const int tagId = branchVm.lastOperationId();
+        REQUIRE(branchVm.deleteBranch("old"));
+        const int deleteId = branchVm.lastOperationId();
+        CHECK(tagId != deleteId);
+        CHECK(branchVm.isBusy());
+        CHECK(finishedSpy.count() == 0); // nothing ran on the GUI thread
+
+        REQUIRE(branchVm.waitForIdle());
+        REQUIRE(finishedSpy.count() == 2);
+        // Serial executor: completions arrive in submission order
+        CHECK(finishedSpy.at(0).at(0).toInt() == tagId);
+        CHECK(finishedSpy.at(0).at(1).toBool());
+        CHECK(finishedSpy.at(1).at(0).toInt() == deleteId);
+        CHECK_FALSE(branchVm.isBusy());
+
+        // Invalid input is rejected synchronously: no id, no completion
+        const int before = branchVm.lastOperationId();
+        CHECK_FALSE(branchVm.createTag("   "));
+        CHECK(branchVm.lastOperationId() == before);
+    }
+
+    SECTION("a merge with conflicts exposes the conflicted files and fails") {
+        mockOps.mergeConflicts = true;
+        REQUIRE(branchVm.mergeBranch("feature"));
+        REQUIRE(branchVm.waitForIdle());
+        REQUIRE(finishedSpy.count() == 1);
+        CHECK_FALSE(finishedSpy.at(0).at(1).toBool());
+        CHECK(branchVm.hasConflicts());
+        CHECK(branchVm.conflictedFiles() == QStringList{"src/a.cpp", "src/b.cpp"});
+    }
+
+    SECTION("switching repository mid-operation reports the outcome but keeps the new state") {
+        mockOps.mergeConflicts = true;
+        mockOps.mergeDelayMs = 80;
+        REQUIRE(branchVm.mergeBranch("feature"));
+        branchVm.setRepositoryPath(QString::fromStdString(repoB.string()));
+        REQUIRE(branchVm.waitForIdle());
+        REQUIRE(finishedSpy.count() == 1);
+        CHECK_FALSE(finishedSpy.at(0).at(1).toBool());
+        // The conflicts belong to repo A: repo B, now shown, must not inherit them
+        CHECK_FALSE(branchVm.hasConflicts());
+        CHECK(conflictsSpy.count() == 0);
+    }
+
+    std::error_code ec;
+    std::filesystem::remove_all(repoA, ec);
+    std::filesystem::remove_all(repoB, ec);
+}
+
+TEST_CASE (
+"BranchManagerViewModel runs fetch, pull and push off the GUI thread"
+,
+"[viewmodel][branch][async][remote]"
+)
+ {
+    ensureQtApp();
+
+    MockFullGitOps mockOps;
+    gf::git::bl::GitBranchService branchService(mockOps);
+    gf::git::bl::GitHistoryService historyService(mockOps);
+    gf::git::bl::GitRemoteMergeService remoteMergeService(mockOps);
+    BranchManagerViewModel branchVm(branchService, historyService, remoteMergeService);
+    const auto repo = std::filesystem::temp_directory_path() / "gf-remote-a";
+    std::filesystem::create_directories(repo);
+
+    branchVm.setRepositoryPath(QString::fromStdString(repo.string()));
+    REQUIRE(branchVm.waitForIdle());
+
+    QSignalSpy finishedSpy(&branchVm, &BranchManagerViewModel::operationFinished);
+
+    SECTION("a slow network operation returns immediately and completes later") {
+        mockOps.remoteDelayMs = 150;
+        QElapsedTimer timer;
+        timer.start();
+        REQUIRE(branchVm.fetchRemote("origin"));
+        const int fetchId = branchVm.lastOperationId();
+        REQUIRE(branchVm.pullRemote("origin", "default"));
+        const int pullId = branchVm.lastOperationId();
+        REQUIRE(branchVm.pushRemote("origin"));
+        const int pushId = branchVm.lastOperationId();
+        CHECK(timer.elapsed() < 100); // the GUI thread did not wait for the network
+        CHECK(branchVm.isBusy());
+        CHECK(branchVm.statusMessage().contains("Push"));
+        CHECK(branchVm.remoteOperation() == "push"); // the last one started
+        CHECK(finishedSpy.count() == 0);
+
+        REQUIRE(branchVm.waitForIdle());
+        REQUIRE(finishedSpy.count() == 3);
+        // Same serial lane as the local operations: completions in submission order
+        CHECK(finishedSpy.at(0).at(0).toInt() == fetchId);
+        CHECK(finishedSpy.at(1).at(0).toInt() == pullId);
+        CHECK(finishedSpy.at(2).at(0).toInt() == pushId);
+        for (const auto& args : finishedSpy)
+        {
+            CHECK(args.at(1).toBool());
+        }
+        CHECK_FALSE(branchVm.isBusy());
+        CHECK(branchVm.remoteOperation().isEmpty());
+    }
+
+    SECTION("a local operation or a reload does not count as a network operation") {
+        branchVm.refresh();
+        REQUIRE(branchVm.createTag("v1"));
+        CHECK(branchVm.isBusy());
+        CHECK(branchVm.remoteOperation().isEmpty());
+        REQUIRE(branchVm.waitForIdle());
+    }
+
+    SECTION("a push without upstream is retried with --set-upstream on the worker") {
+        mockOps.pushNeedsUpstream = true;
+        REQUIRE(branchVm.pushRemote("origin"));
+        REQUIRE(branchVm.waitForIdle());
+        REQUIRE(finishedSpy.count() == 1);
+        CHECK(finishedSpy.at(0).at(1).toBool());
+        CHECK(mockOps.pushCalls == 2);
+        CHECK(mockOps.lastPushSetUpstream);
+    }
+
+    SECTION("network failures are reported with a readable message") {
+        mockOps.fetchFailsAuth = true;
+        REQUIRE(branchVm.fetchRemote("origin"));
+        REQUIRE(branchVm.waitForIdle());
+        REQUIRE(finishedSpy.count() == 1);
+        CHECK_FALSE(finishedSpy.at(0).at(1).toBool());
+        CHECK(finishedSpy.at(0).at(2).toString().contains("Autenticazione SSH fallita"));
+        CHECK(branchVm.statusMessage().contains("Autenticazione SSH fallita"));
+    }
+
+    SECTION("an empty repository path is rejected synchronously") {
+        BranchManagerViewModel emptyVm(branchService, historyService, remoteMergeService);
+        CHECK_FALSE(emptyVm.fetchRemote("origin"));
+        CHECK_FALSE(emptyVm.pullRemote("origin"));
+        CHECK_FALSE(emptyVm.pushRemote("origin"));
+    }
+
+    SECTION("a non-fast-forward rejection requests force-with-lease confirmation before retrying") {
+        QSignalSpy completedSpy(&branchVm, &BranchManagerViewModel::operationCompleted);
+        QSignalSpy confirmSpy(&branchVm, &BranchManagerViewModel::forcePushConfirmationRequested);
+
+        mockOps.pushOverride = [](const gf::git::bo::RemoteOperationOptions& opts)
+            -> std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
+        {
+            if (!opts.force && !opts.forceUnconditional)
+            {
+                return std::unexpected(gf::git::ports::GitOpsError{
+                    .kind = gf::git::ports::GitOpsError::Kind::RemoteRejected,
+                    .exitCode = 1,
+                    .message = "To origin\n ! [rejected] main -> main (non-fast-forward)\nerror: failed to push some refs"
+                });
+            }
+            return gf::git::bo::RemoteOperationResult{.success = true};
+        };
+
+        REQUIRE(branchVm.pushRemote("origin", false, false, false));
+        REQUIRE(branchVm.waitForIdle());
+
+        REQUIRE(confirmSpy.count() == 1);
+        CHECK(completedSpy.count() == 0); // no red toast behind the confirmation dialog
+        REQUIRE(finishedSpy.count() == 1);
+        CHECK_FALSE(finishedSpy.at(0).at(1).toBool());
+
+        const auto args = confirmSpy.at(0);
+        CHECK(args.at(0).toString() == "origin");
+        CHECK(args.at(2).toBool() == false); // setUpstream
+        CHECK(args.at(3).toBool() == false); // tags
+        CHECK(args.at(4).toBool() == false); // requiresUnconditionalForce -> --force-with-lease suffices
+        CHECK(args.at(5).toString().contains("diverge"));
+        CHECK(args.at(6).toString().contains("non-fast-forward"));
+
+        // User confirms the dialog -> retries with force-with-lease
+        REQUIRE(branchVm.pushRemote(args.at(0).toString(), args.at(2).toBool(), true, args.at(3).toBool(),
+                                    args.at(4).toBool()));
+        REQUIRE(branchVm.waitForIdle());
+
+        CHECK(mockOps.lastPushForce.load());
+        CHECK_FALSE(mockOps.lastPushForceUnconditional.load());
+        REQUIRE(completedSpy.count() == 1);
+        CHECK(completedSpy.at(0).at(0).toBool());
+        CHECK(completedSpy.at(0).at(1).toString().contains("force-with-lease"));
+    }
+
+    SECTION("a fetch-first rejection requests unconditional force confirmation and preserves auto set-upstream") {
+        QSignalSpy completedSpy(&branchVm, &BranchManagerViewModel::operationCompleted);
+        QSignalSpy confirmSpy(&branchVm, &BranchManagerViewModel::forcePushConfirmationRequested);
+
+        mockOps.pushNeedsUpstream = true;
+        mockOps.pushOverride = [](const gf::git::bo::RemoteOperationOptions& opts)
+            -> std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
+        {
+            if (!opts.forceUnconditional)
+            {
+                return std::unexpected(gf::git::ports::GitOpsError{
+                    .kind = gf::git::ports::GitOpsError::Kind::RemoteRejected,
+                    .exitCode = 1,
+                    .message = "To origin\n ! [rejected] main -> main (fetch first)\nerror: failed to push some refs"
+                });
+            }
+            return gf::git::bo::RemoteOperationResult{.success = true};
+        };
+
+        REQUIRE(branchVm.pushRemote("origin", false, false, false));
+        REQUIRE(branchVm.waitForIdle());
+
+        REQUIRE(confirmSpy.count() == 1);
+        CHECK(completedSpy.count() == 0);
+        const auto args = confirmSpy.at(0);
+        CHECK(args.at(2).toBool() == true);  // setUpstream auto-retry preserved
+        CHECK(args.at(4).toBool() == true);  // requiresUnconditionalForce -> --force needed
+
+        // User confirms unconditional --force
+        REQUIRE(branchVm.pushRemote(args.at(0).toString(), args.at(2).toBool(), true, args.at(3).toBool(),
+                                    args.at(4).toBool()));
+        REQUIRE(branchVm.waitForIdle());
+
+        CHECK(mockOps.lastPushSetUpstream.load());
+        CHECK(mockOps.lastPushForceUnconditional.load());
+        REQUIRE(completedSpy.count() == 1);
+        CHECK(completedSpy.at(0).at(0).toBool());
+        CHECK(completedSpy.at(0).at(1).toString().contains("(force)"));
+    }
+
+    SECTION("a stale-info rejection on force-with-lease escalates to unconditional force, then stops") {
+        QSignalSpy completedSpy(&branchVm, &BranchManagerViewModel::operationCompleted);
+        QSignalSpy confirmSpy(&branchVm, &BranchManagerViewModel::forcePushConfirmationRequested);
+
+        mockOps.pushOverride = [](const gf::git::bo::RemoteOperationOptions&)
+            -> std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
+        {
+            return std::unexpected(gf::git::ports::GitOpsError{
+                .kind = gf::git::ports::GitOpsError::Kind::RemoteRejected,
+                .exitCode = 1,
+                .message = "To origin\n ! [rejected] main -> main (stale info)\nerror: failed to push some refs"
+            });
+        };
+
+        REQUIRE(branchVm.pushRemote("origin", false, true, false, false));
+        REQUIRE(branchVm.waitForIdle());
+
+        REQUIRE(confirmSpy.count() == 1);
+        CHECK(confirmSpy.at(0).at(4).toBool() == true); // requiresUnconditionalForce
+
+        // Even if unconditional --force somehow returns RemoteRejected, it must NOT prompt in a loop
+        REQUIRE(branchVm.pushRemote("origin", false, true, false, true));
+        REQUIRE(branchVm.waitForIdle());
+
+        CHECK(confirmSpy.count() == 1);
+        REQUIRE(completedSpy.count() == 1);
+        CHECK_FALSE(completedSpy.at(0).at(0).toBool());
+    }
+
+    SECTION("a server-side remote rejected hook error does not prompt for force push") {
+        QSignalSpy completedSpy(&branchVm, &BranchManagerViewModel::operationCompleted);
+        QSignalSpy confirmSpy(&branchVm, &BranchManagerViewModel::forcePushConfirmationRequested);
+
+        mockOps.pushOverride = [](const gf::git::bo::RemoteOperationOptions&)
+            -> std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
+        {
+            return std::unexpected(gf::git::ports::GitOpsError{
+                .kind = gf::git::ports::GitOpsError::Kind::RemoteRejected,
+                .exitCode = 1,
+                .message = "To origin\n ! [remote rejected] main -> main (protected branch hook declined)"
+            });
+        };
+
+        REQUIRE(branchVm.pushRemote("origin", false, false, false));
+        REQUIRE(branchVm.waitForIdle());
+
+        CHECK(confirmSpy.count() == 0);
+        REQUIRE(completedSpy.count() == 1);
+        CHECK_FALSE(completedSpy.at(0).at(0).toBool());
+    }
+
+    std::error_code ec;
+    std::filesystem::remove_all(repo, ec);
+}
+
+TEST_CASE (
+"Selection reads are asynchronous and only the latest result is applied"
+,
+"[viewmodel][async][latest]"
+)
+ {
+    ensureQtApp();
+
+    MockFullGitOps mockOps;
+    const auto repoDir = std::filesystem::temp_directory_path();
+    const QString repoPath = QString::fromStdString(repoDir.string());
+    gf::git::bo::DiffHunk hunk;
+    hunk.header = "@@ -1 +1 @@";
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Addition, .content = "x"});
+    mockOps.diffToReturn.hunks = {hunk};
+
+    SECTION("a burst of commit-file diffs runs git at most twice and shows the last file") {
+        gf::git::bl::GitDiffService diffService(mockOps);
+        DiffViewModel diffVm(diffService);
+        QSignalSpy loadedSpy(&diffVm, &DiffViewModel::diffLoaded);
+        mockOps.echoCommitDiffPath = true;
+        mockOps.readDelayMs = 30;
+
+        for (int i = 0; i < 10; ++i)
+        {
+            REQUIRE(diffVm.loadCommitFileDiff(repoPath, "c0ffee1", QStringLiteral("file%1.cpp").arg(i)));
+        }
+        CHECK(diffVm.isLoading());
+        REQUIRE(diffVm.waitForIdle());
+        CHECK_FALSE(diffVm.isLoading());
+
+        // The first request may already be running when the burst arrives; the 8 in between are
+        // skipped before git runs.
+        CHECK(mockOps.commitFileDiffCalls.load() <= 2);
+        CHECK(diffVm.filePath() == "file9.cpp");
+        CHECK(loadedSpy.count() == 1);
+    }
+
+    SECTION("clear() drops a diff that is still being read") {
+        gf::git::bl::GitDiffService diffService(mockOps);
+        DiffViewModel diffVm(diffService);
+        mockOps.readDelayMs = 50;
+        REQUIRE(diffVm.loadCommitFileDiff(repoPath, "c0ffee1", "late.cpp"));
+        diffVm.clear();
+        CHECK_FALSE(diffVm.isLoading());
+        // Give the late result time to arrive: it must not be applied
+        QTest::qWait(150);
+        CHECK(diffVm.filePath().isEmpty());
+        CHECK(diffVm.isEmpty());
+    }
+
+    SECTION("commit files: only the selection the user stops on is reported") {
+        gf::git::bl::GitBranchService branchService(mockOps);
+        gf::git::bl::GitHistoryService historyService(mockOps);
+        gf::git::bl::GitRemoteMergeService remoteMergeService(mockOps);
+        BranchManagerViewModel branchVm(branchService, historyService, remoteMergeService);
+        branchVm.setRepositoryPath(repoPath);
+        REQUIRE(branchVm.waitForIdle());
+
+        QSignalSpy filesSpy(&branchVm, &BranchManagerViewModel::commitFilesLoaded);
+        mockOps.readDelayMs = 30;
+        for (int i = 0; i < 10; ++i)
+        {
+            branchVm.requestCommitFiles(QStringLiteral("sha%1").arg(i));
+        }
+        CHECK(filesSpy.count() == 0); // nothing on the GUI thread
+        REQUIRE(filesSpy.wait(5000));
+        QTest::qWait(100); // a stale result arriving late would show up here
+        REQUIRE(filesSpy.count() == 1);
+        CHECK(filesSpy.at(0).at(0).toString() == "sha9");
+        const auto files = filesSpy.at(0).at(1).toList();
+        REQUIRE(files.size() == 1);
+        CHECK(files.at(0).toMap().value("path").toString() == "file-of-sha9");
+        CHECK(mockOps.commitFilesCalls.load() <= 2);
+    }
+
+    SECTION("leaving file history before it loads keeps the full history") {
+        gf::git::bl::GitBranchService branchService(mockOps);
+        gf::git::bl::GitHistoryService historyService(mockOps);
+        gf::git::bl::GitRemoteMergeService remoteMergeService(mockOps);
+        BranchManagerViewModel branchVm(branchService, historyService, remoteMergeService);
+        branchVm.setRepositoryPath(repoPath);
+        REQUIRE(branchVm.waitForIdle());
+
+        QSignalSpy historySpy(&branchVm, &BranchManagerViewModel::fileHistoryPathChanged);
+        REQUIRE(branchVm.loadFileHistory("src/main.cpp"));
+        branchVm.clearFileHistory();
+        REQUIRE(branchVm.waitForIdle());
+        CHECK(branchVm.fileHistoryPath().isEmpty());
+        CHECK(historySpy.count() == 0);
+    }
+}
+
+TEST_CASE (
+"BranchManagerViewModel passes the saved token of each remote to fetch, pull and push"
+,
+"[viewmodel][branch][remote][credentials]"
+)
+ {
+    ensureQtApp();
+
+    MockFullGitOps mockOps;
+    mockOps.remotesToReturn = {
+        {.name = "origin", .fetchUrl = "https://github.com/Dokjolly0/RemoteViewer.git",
+         .pushUrl = "https://github.com/Dokjolly0/RemoteViewer.git"},
+        {.name = "lan", .fetchUrl = "http://192.168.1.122:3000/Dokjolly/FileHub.git",
+         .pushUrl = "git@git.alexviolatto.dev:Dokjolly/FileHub.git"},
+        {.name = "plain", .fetchUrl = "https://example.org/x.git", .pushUrl = "https://example.org/x.git"},
+    };
+    gf::git::bl::GitBranchService branchService(mockOps);
+    gf::git::bl::GitHistoryService historyService(mockOps);
+    gf::git::bl::GitRemoteMergeService remoteMergeService(mockOps);
+    BranchManagerViewModel branchVm(branchService, historyService, remoteMergeService);
+
+    QStringList resolvedOnGuiThread;
+    branchVm.setHttpsCredentialResolver([&](const QString& url) -> gf::git::bo::HttpsCredentialLoader
+    {
+        CHECK(QThread::currentThread() == QCoreApplication::instance()->thread());
+        resolvedOnGuiThread << url;
+        if (url.startsWith("https://github.com/"))
+        {
+            return [] { return std::optional(gf::git::bo::HttpsCredential{"x-access-token", "ghp_saved", "github.com"}); };
+        }
+        if (url.startsWith("http://192.168.1.122"))
+        {
+            return [] { return std::optional(gf::git::bo::HttpsCredential{"alex", "forgejo", "192.168.1.122"}); };
+        }
+        return {};
+    });
+
+    const auto repo = std::filesystem::temp_directory_path() / "gf-remote-credentials";
+    std::filesystem::create_directories(repo);
+    branchVm.setRepositoryPath(QString::fromStdString(repo.string()));
+    REQUIRE(branchVm.waitForIdle());
+
+    REQUIRE(branchVm.fetchRemote("origin"));
+    REQUIRE(branchVm.pullRemote("origin"));
+    REQUIRE(branchVm.pushRemote("origin"));
+    REQUIRE(branchVm.fetchRemote("lan"));
+    REQUIRE(branchVm.pushRemote("lan")); // SSH push URL: no token
+    REQUIRE(branchVm.fetchRemote("plain")); // no profile for this server
+    REQUIRE(branchVm.fetchRemote("missing"));
+    REQUIRE(branchVm.fetchRemote("whatever", true)); // --all: origin's token, bound to its host
+    REQUIRE(branchVm.waitForIdle());
+
+    const std::vector<std::string> expected{
+        "fetch:x-access-token/ghp_saved@github.com",
+        "pull:x-access-token/ghp_saved@github.com",
+        "push:x-access-token/ghp_saved@github.com",
+        "fetch:alex/forgejo@192.168.1.122",
+        "push:",
+        "fetch:",
+        "fetch:",
+        "fetch:x-access-token/ghp_saved@github.com",
+    };
+    CHECK(mockOps.takeCredentialsSeen() == expected);
+    CHECK(resolvedOnGuiThread.contains("git@git.alexviolatto.dev:Dokjolly/FileHub.git"));
+
+    std::error_code ec;
+    std::filesystem::remove_all(repo, ec);
+}
+
+TEST_CASE (
+"BranchManagerViewModel operations and signal propagation"
+,
+"[viewmodel][branch][manager]"
+)
+ {
     ensureQtApp();
 
     MockFullGitOps mockOps;
@@ -1295,6 +2691,7 @@ TEST_CASE("BranchManagerViewModel operations and signal propagation", "[viewmode
     auto tempDir = std::filesystem::temp_directory_path();
 
     branchVm.setRepositoryPath(QString::fromStdString(tempDir.string()));
+    REQUIRE(branchVm.waitForIdle());
 
     QSignalSpy switchedSpy(&branchVm, &BranchManagerViewModel::branchSwitched);
     QSignalSpy completedSpy(&branchVm, &BranchManagerViewModel::operationCompleted);
@@ -1302,28 +2699,37 @@ TEST_CASE("BranchManagerViewModel operations and signal propagation", "[viewmode
     // Checkout
     bool checkedOut = branchVm.checkoutBranch("main");
     CHECK(checkedOut);
+    // Checkout runs on the background worker: wait for it (and the coalesced refresh) to finish
+    REQUIRE(branchVm.waitForIdle());
+    CHECK_FALSE(branchVm.isBusy());
     CHECK(switchedSpy.count() == 1);
     CHECK(completedSpy.count() == 1);
 
     // Create branch
     bool created = branchVm.createBranch("feature/test", true);
     CHECK(created);
+    REQUIRE(branchVm.waitForIdle());
     CHECK(switchedSpy.count() == 2);
     CHECK(completedSpy.count() == 2);
 
     // Delete branch
     bool deleted = branchVm.deleteBranch("feature/test", false);
     CHECK(deleted);
+    REQUIRE(branchVm.waitForIdle());
     CHECK(completedSpy.count() == 3);
 
     // Rename branch
     bool renamed = branchVm.renameBranch("old-name", "new-name");
     CHECK(renamed);
+    REQUIRE(branchVm.waitForIdle());
     CHECK(completedSpy.count() == 4);
 
-    // Merge branch
-    bool merged = branchVm.mergeBranch("feature/test", false);
+    // Merge branch (defaults to --no-ff so an explicit Merge always creates a merge commit)
+    mockOps.lastMergeNoFastForward = false;
+    bool merged = branchVm.mergeBranch("feature/test");
     CHECK(merged);
+    REQUIRE(branchVm.waitForIdle());
+    CHECK(mockOps.lastMergeNoFastForward.load() == true);
     CHECK(completedSpy.count() == 5);
 
     // Remote operations with options
@@ -1336,15 +2742,19 @@ TEST_CASE("BranchManagerViewModel operations and signal propagation", "[viewmode
     CHECK(branchVm.pushRemote("origin", true, false, false));
     CHECK(branchVm.pushRemote("origin", false, true, false));
     CHECK(branchVm.pushRemote("origin", false, false, true));
+    REQUIRE(branchVm.waitForIdle());
 
     // Branch creation with custom start point
     CHECK(branchVm.createBranch("feature/from-commit", true, "a1b2c3d"));
+    REQUIRE(branchVm.waitForIdle());
 
     // Remote URL manipulation and SSH conversion
     CHECK(branchVm.setRemoteUrl("origin", "https://github.com/Dokjolly0/Git-Flux.git"));
+    REQUIRE(branchVm.waitForIdle());
     CHECK(branchVm.remoteUrl() == "https://github.com/Dokjolly0/Git-Flux.git");
 
     CHECK(branchVm.convertRemoteToSsh("origin"));
+    REQUIRE(branchVm.waitForIdle());
     CHECK(branchVm.remoteUrl() == "git@github.com:Dokjolly0/Git-Flux.git");
 
     // Pull Request URL Generation
@@ -1355,6 +2765,7 @@ TEST_CASE("BranchManagerViewModel operations and signal propagation", "[viewmode
 
     // GitLab PR URL
     CHECK(branchVm.setRemoteUrl("origin", "https://gitlab.com/group/my-project.git"));
+    REQUIRE(branchVm.waitForIdle());
     QString gitlabPrUrl = branchVm.buildPullRequestUrl("feature/x", "main", "Title", "Body");
     CHECK(gitlabPrUrl.contains("https://gitlab.com/group/my-project/-/merge_requests/new"));
     CHECK(gitlabPrUrl.contains("source_branch"));
@@ -1362,6 +2773,7 @@ TEST_CASE("BranchManagerViewModel operations and signal propagation", "[viewmode
 
     // Bitbucket PR URL
     CHECK(branchVm.setRemoteUrl("origin", "git@bitbucket.org:org/repo.git"));
+    REQUIRE(branchVm.waitForIdle());
     QString bitbucketPrUrl = branchVm.buildPullRequestUrl("feature/y", "main");
     CHECK(bitbucketPrUrl.contains("https://bitbucket.org/org/repo/pull-requests/new"));
     CHECK(bitbucketPrUrl.contains("source=feature/y"));
@@ -1370,19 +2782,39 @@ TEST_CASE("BranchManagerViewModel operations and signal propagation", "[viewmode
     gf::git::bl::GitRebaseService rebaseService(mockOps);
     BranchManagerViewModel branchVmWithRebase(branchService, historyService, remoteMergeService, &rebaseService);
     branchVmWithRebase.setRepositoryPath(QString::fromStdString(tempDir.string()));
+    REQUIRE(branchVmWithRebase.waitForIdle());
 
     CHECK(branchVmWithRebase.checkoutCommit("c0ffee1"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.resetCommit("c0ffee1", "soft"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.resetCommit("c0ffee1", "mixed"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.resetCommit("c0ffee1", "hard"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.revertCommit("c0ffee1"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.cherryPickCommit("c0ffee1"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.createTag("v1.0.0", "c0ffee1", "Annotated tag"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.deleteTag("v1.0.0"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.createWorktree(QString::fromStdString((tempDir / "wt_test").string()), "c0ffee1"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.rebaseOnto("main"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.rebaseBranch("feature/test", "main"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
+    mockOps.lastMergeNoFastForward = false;
     CHECK(branchVmWithRebase.mergeBranchInto("feature/test", "main"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
+    CHECK(mockOps.lastMergeNoFastForward.load() == true);
+
+    mockOps.lastMergeNoFastForward = false;
+    CHECK(branchVmWithRebase.mergeBranchInto("feature/test", "develop"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
+    CHECK(mockOps.lastMergeNoFastForward.load() == true);
 
     branchVmWithRebase.copyToClipboard("sample commit sha");
 
@@ -1390,6 +2822,7 @@ TEST_CASE("BranchManagerViewModel operations and signal propagation", "[viewmode
     QSignalSpy fileHistorySpy(&branchVmWithRebase, &BranchManagerViewModel::fileHistoryPathChanged);
     CHECK(branchVmWithRebase.fileHistoryPath().isEmpty());
     CHECK(branchVmWithRebase.loadFileHistory("src/main.cpp"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.fileHistoryPath() == "src/main.cpp");
     CHECK(fileHistorySpy.count() == 1);
 
@@ -1397,11 +2830,71 @@ TEST_CASE("BranchManagerViewModel operations and signal propagation", "[viewmode
     CHECK(branchVmWithRebase.fileHistoryPath().isEmpty());
     CHECK(fileHistorySpy.count() == 2);
 
-    auto repoFiles = branchVmWithRebase.listRepositoryFiles();
-    (void)repoFiles;
+    QSignalSpy repoFilesSpy(&branchVmWithRebase, &BranchManagerViewModel::repositoryFilesLoaded);
+    branchVmWithRebase.requestRepositoryFiles();
+    REQUIRE(branchVmWithRebase.waitForIdle());
+    // Without a repository the (empty) answer is immediate, otherwise it arrives from the worker
+    REQUIRE((repoFilesSpy.count() == 1 || repoFilesSpy.wait(5000)));
 }
 
-TEST_CASE("StashListModel and StashManagerViewModel operations", "[viewmodel][stash]") {
+TEST_CASE (
+"BranchManagerViewModel coalesces refreshes and runs git reads off the GUI thread"
+,
+"[viewmodel][branch][async]"
+)
+ {
+    ensureQtApp();
+
+    MockFullGitOps mockOps;
+    mockOps.branchesToReturn = {
+        gf::git::bo::GitBranch{.name = "main", .isCurrent = true},
+        gf::git::bo::GitBranch{.name = "develop"}
+    };
+    gf::git::bl::GitBranchService branchService(mockOps);
+    gf::git::bl::GitHistoryService historyService(mockOps);
+    gf::git::bl::GitRemoteMergeService remoteMergeService(mockOps);
+
+    BranchManagerViewModel branchVm(branchService, historyService, remoteMergeService);
+    const auto tempDir = std::filesystem::temp_directory_path();
+
+    // setRepositoryPath + several refresh() requests in the same event-loop iteration => one reload
+    branchVm.setRepositoryPath(QString::fromStdString(tempDir.string()));
+    branchVm.refresh();
+    branchVm.refresh();
+    branchVm.setRepositoryPath(QString::fromStdString(tempDir.string())); // same path: no reset
+    branchVm.refresh();
+    CHECK(mockOps.listBranchesCalls.load() == 0); // nothing ran synchronously
+
+    REQUIRE(branchVm.waitForIdle());
+    CHECK(mockOps.listBranchesCalls.load() == 1);
+    {
+        std::scoped_lock lock(mockOps.threadMutex);
+        CHECK(mockOps.lastListBranchesThread != std::this_thread::get_id());
+    }
+    CHECK(branchVm.currentBranch() == "main");
+    CHECK_FALSE(branchVm.isBusy());
+
+    // Checkout returns immediately; branch state and signals arrive once the worker is done
+    QSignalSpy switchedSpy(&branchVm, &BranchManagerViewModel::branchSwitched);
+    mockOps.branchesToReturn = {
+        gf::git::bo::GitBranch{.name = "main"},
+        gf::git::bo::GitBranch{.name = "develop", .isCurrent = true}
+    };
+    REQUIRE(branchVm.checkoutBranch("develop"));
+    CHECK(branchVm.isBusy());
+    REQUIRE(branchVm.waitForIdle());
+    CHECK(switchedSpy.count() == 1);
+    CHECK(switchedSpy.at(0).at(0).toString() == "develop");
+    CHECK(branchVm.currentBranch() == "develop");
+    CHECK_FALSE(branchVm.isBusy());
+}
+
+TEST_CASE (
+"StashListModel and StashManagerViewModel operations"
+,
+"[viewmodel][stash]"
+)
+ {
     ensureQtApp();
 
     SECTION("StashListModel manages items and exposes correct roles") {
@@ -1468,13 +2961,15 @@ TEST_CASE("StashListModel and StashManagerViewModel operations", "[viewmodel][st
 
         QSignalSpy opSpy(&vm, &StashManagerViewModel::operationSucceeded);
 
-        // Refresh populates stashesModel
+        // Refresh populates stashesModel (asynchronously)
         vm.refresh();
+        REQUIRE(vm.waitForIdle());
         CHECK(vm.stashesModel()->rowCount() == 1);
 
         // Push
         bool pushed = vm.push("New stash message", true, false);
         CHECK(pushed);
+        REQUIRE(vm.waitForIdle());
         CHECK(mockOps.stashPushCalled);
         CHECK(opSpy.count() == 1);
         CHECK(opSpy.takeFirst().at(0).toString() == "push");
@@ -1482,6 +2977,7 @@ TEST_CASE("StashListModel and StashManagerViewModel operations", "[viewmodel][st
         // Apply
         bool applied = vm.apply(0, false);
         CHECK(applied);
+        REQUIRE(vm.waitForIdle());
         CHECK(mockOps.stashApplyCalled);
         CHECK(opSpy.count() == 1);
         CHECK(opSpy.takeFirst().at(0).toString() == "apply");
@@ -1489,6 +2985,7 @@ TEST_CASE("StashListModel and StashManagerViewModel operations", "[viewmodel][st
         // Pop
         bool popped = vm.pop(0, false);
         CHECK(popped);
+        REQUIRE(vm.waitForIdle());
         CHECK(mockOps.stashPopCalled);
         CHECK(opSpy.count() == 1);
         CHECK(opSpy.takeFirst().at(0).toString() == "pop");
@@ -1496,6 +2993,7 @@ TEST_CASE("StashListModel and StashManagerViewModel operations", "[viewmodel][st
         // Drop
         bool dropped = vm.drop(0);
         CHECK(dropped);
+        REQUIRE(vm.waitForIdle());
         CHECK(mockOps.stashDropCalled);
         CHECK(opSpy.count() == 1);
         CHECK(opSpy.takeFirst().at(0).toString() == "drop");
@@ -1503,13 +3001,29 @@ TEST_CASE("StashListModel and StashManagerViewModel operations", "[viewmodel][st
         // Clear
         bool cleared = vm.clear();
         CHECK(cleared);
+        REQUIRE(vm.waitForIdle());
         CHECK(mockOps.stashClearCalled);
         CHECK(opSpy.count() == 1);
         CHECK(opSpy.takeFirst().at(0).toString() == "clear");
+
+        // Failures are reported, not swallowed
+        QSignalSpy failSpy(&vm, &StashManagerViewModel::operationFailed);
+        mockOps.stashPopFails = true;
+        CHECK(vm.pop(0, false));
+        REQUIRE(vm.waitForIdle());
+        REQUIRE(failSpy.count() == 1);
+        CHECK(failSpy.at(0).at(0).toString() == "pop");
+        CHECK(vm.hasError());
+        CHECK(opSpy.count() == 0);
     }
 }
 
-TEST_CASE("ConflictHunkListModel and ConflictResolverViewModel 3-way conflict resolution", "[viewmodel][conflict]") {
+TEST_CASE (
+"ConflictHunkListModel and ConflictResolverViewModel 3-way conflict resolution"
+,
+"[viewmodel][conflict]"
+)
+ {
     ensureQtApp();
 
     SECTION("ConflictHunkListModel tracks resolution state") {
@@ -1601,6 +3115,9 @@ TEST_CASE("ConflictHunkListModel and ConflictResolverViewModel 3-way conflict re
         // Load conflict file
         bool loaded = vm.loadFile("src/main.cpp");
         CHECK(loaded);
+        CHECK(vm.isLoading());
+        REQUIRE(vm.waitForIdle());
+        CHECK_FALSE(vm.isLoading());
         CHECK(vm.currentFilePath() == "src/main.cpp");
         CHECK(vm.totalHunks() == 1);
         CHECK(vm.resolvedHunks() == 0);
@@ -1614,13 +3131,20 @@ TEST_CASE("ConflictHunkListModel and ConflictResolverViewModel 3-way conflict re
         // Apply resolution
         bool applied = vm.applyResolution(true);
         CHECK(applied);
+        CHECK(vm.isBusy());
+        REQUIRE(vm.waitForIdle());
         CHECK(mockOps.applyConflictResolutionCalled);
         CHECK(resAppliedSpy.count() == 1);
         CHECK(resAppliedSpy.takeFirst().at(0).toString() == "src/main.cpp");
     }
 }
 
-TEST_CASE("WorkspaceSessionViewModel Rebase operations and state tracking", "[viewmodel][session][rebase]") {
+TEST_CASE (
+"WorkspaceSessionViewModel Rebase operations and state tracking"
+,
+"[viewmodel][session][rebase]"
+)
+ {
     ensureQtApp();
 
     TestContext ctx;
@@ -1664,22 +3188,26 @@ TEST_CASE("WorkspaceSessionViewModel Rebase operations and state tracking", "[vi
     QSignalSpy rebaseSucceededSpy(&sessionVm, &WorkspaceSessionViewModel::rebaseSucceeded);
     bool rebaseStarted = sessionVm.startRebase("main");
     CHECK(rebaseStarted);
+    REQUIRE(sessionVm.waitForIdle());
     CHECK(mockOps.startRebaseCalled);
     CHECK(rebaseSucceededSpy.count() == 1);
 
     // Continue rebase
     bool cont = sessionVm.continueRebase();
     CHECK(cont);
+    REQUIRE(sessionVm.waitForIdle());
     CHECK(mockOps.continueRebaseCalled);
 
     // Skip rebase
     bool skipped = sessionVm.skipRebase();
     CHECK(skipped);
+    REQUIRE(sessionVm.waitForIdle());
     CHECK(mockOps.skipRebaseCalled);
 
     // Abort rebase
     bool aborted = sessionVm.abortRebase();
     CHECK(aborted);
+    REQUIRE(sessionVm.waitForIdle());
     CHECK(mockOps.abortRebaseCalled);
 
     // Sub-viewmodels accessors
@@ -1688,31 +3216,42 @@ TEST_CASE("WorkspaceSessionViewModel Rebase operations and state tracking", "[vi
     CHECK(sessionVm.workingTree()->conflictedModel() != nullptr);
 }
 
-class MockFsWatcherPort final : public gf::git::ports::IFsWatcherPort {
+class MockFsWatcherPort final : public gf::git::ports::IFsWatcherPort
+{
 public:
     std::set<std::filesystem::path> watchedPaths;
     gf::git::ports::FsRawEventCallback eventCb;
 
-    std::expected<void, gf::git::ports::FsWatcherError> watchRepository(const std::filesystem::path& repoPath) override {
+    std::expected<void, gf::git::ports::FsWatcherError> watchRepository(const std::filesystem::path& repoPath) override
+    {
         watchedPaths.insert(repoPath);
         return {};
     }
 
-    std::expected<void, gf::git::ports::FsWatcherError> unwatchRepository(const std::filesystem::path& repoPath) override {
+    std::expected<void, gf::git::ports::FsWatcherError>
+    unwatchRepository(const std::filesystem::path& repoPath) override
+    {
         watchedPaths.erase(repoPath);
         return {};
     }
 
-    bool isWatching(const std::filesystem::path& repoPath) const override {
+    bool isWatching(const std::filesystem::path& repoPath) const override
+    {
         return watchedPaths.contains(repoPath);
     }
 
-    void setEventCallback(gf::git::ports::FsRawEventCallback cb) override {
+    void setEventCallback(gf::git::ports::FsRawEventCallback cb) override
+    {
         eventCb = std::move(cb);
     }
 };
 
-TEST_CASE("WorkspaceSessionViewModel - Watcher Integration & Auto-Refresh", "[desktop][viewmodels][watcher]") {
+TEST_CASE (
+"WorkspaceSessionViewModel - Watcher Integration & Auto-Refresh"
+,
+"[desktop][viewmodels][watcher]"
+)
+ {
     TestContext ctx;
     auto r1Res = ctx.repoService->registerRepository({
         .localPath = ctx.repoAPath,
@@ -1763,14 +3302,16 @@ TEST_CASE("WorkspaceSessionViewModel - Watcher Integration & Auto-Refresh", "[de
     watcherService.onRawEvent(event);
     watcherService.flushAll();
 
-    // Process queued Qt events (QMetaObject::invokeMethod)
+    // Process queued Qt events (QMetaObject::invokeMethod), then the asynchronous status read
     QCoreApplication::processEvents();
+    REQUIRE(sessionVm.workingTree()->waitForIdle());
 
     CHECK(mockOps.getStatusCalled);
 
     // Test checkWorkingTreeUpdates
     mockOps.getStatusCalled = false;
     sessionVm.checkWorkingTreeUpdates();
+    REQUIRE(sessionVm.workingTree()->waitForIdle());
     CHECK(mockOps.getStatusCalled);
 
     // Closing repository tab stops watching
@@ -1778,7 +3319,12 @@ TEST_CASE("WorkspaceSessionViewModel - Watcher Integration & Auto-Refresh", "[de
     CHECK_FALSE(watcherPort.isWatching(ctx.repoAPath));
 }
 
-TEST_CASE("BatchOperationsViewModel - Batch Execution & Status Reporting", "[desktop][viewmodels][batch]") {
+TEST_CASE (
+"BatchOperationsViewModel - Batch Execution & Status Reporting"
+,
+"[desktop][viewmodels][batch]"
+)
+ {
     TestContext ctx;
     auto r1Res = ctx.repoService->registerRepository({
         .localPath = ctx.repoAPath,
@@ -1870,7 +3416,12 @@ TEST_CASE("BatchOperationsViewModel - Batch Execution & Status Reporting", "[des
     }
 }
 
-TEST_CASE("DiffViewModel - View mode switching and property invariants", "[desktop][viewmodels]") {
+TEST_CASE (
+"DiffViewModel - View mode switching and property invariants"
+,
+"[desktop][viewmodels]"
+)
+ {
     MockFullGitOps mockOps;
     gf::git::bl::GitDiffService diffService(mockOps);
 
@@ -1887,25 +3438,30 @@ TEST_CASE("DiffViewModel - View mode switching and property invariants", "[deskt
 
     // Switch to inline
     diffVm.setViewMode("inline");
+    REQUIRE(diffVm.waitForIdle());
     CHECK(diffVm.viewMode() == "inline");
     CHECK(modeSpy.count() == 1);
 
     // Redundant switch should not re-emit
     diffVm.setViewMode("inline");
+    REQUIRE(diffVm.waitForIdle());
     CHECK(modeSpy.count() == 1);
 
     // Switch to hunk
     diffVm.setViewMode("hunk");
+    REQUIRE(diffVm.waitForIdle());
     CHECK(diffVm.viewMode() == "hunk");
     CHECK(modeSpy.count() == 2);
 
     // Switch to blame
     diffVm.setViewMode("blame");
+    REQUIRE(diffVm.waitForIdle());
     CHECK(diffVm.viewMode() == "blame");
     CHECK(modeSpy.count() == 3);
 
     // Switch back to split
     diffVm.setViewMode("split");
+    REQUIRE(diffVm.waitForIdle());
     CHECK(diffVm.viewMode() == "split");
     CHECK(modeSpy.count() == 4);
 
@@ -1921,16 +3477,179 @@ TEST_CASE("DiffViewModel - View mode switching and property invariants", "[deskt
     mockOps.diffToReturn.newPath = "test.txt";
     mockOps.diffToReturn.oldPath = "test.txt";
 
-    CHECK(diffVm.loadDiff("/tmp", "test.txt", "unstaged"));
+    CHECK(diffVm.loadDiff(QString::fromStdString(std::filesystem::temp_directory_path().string()), "test.txt", "unstaged"));
+    REQUIRE(diffVm.waitForIdle());
     CHECK(diffVm.maxLineLength() == 48);
 
     diffVm.clear();
     CHECK(diffVm.maxLineLength() == 0);
 }
 
+TEST_CASE("DiffViewModel - Overview scrollbar markers for split, inline, and hunk modes", "[desktop][viewmodels]")
+{
+    ensureQtApp();
+    MockFullGitOps mockOps;
+    gf::git::bl::GitDiffService diffService(mockOps);
+    DiffViewModel diffVm(diffService);
+
+    CHECK(diffVm.splitOverviewMarkers().isEmpty());
+    CHECK(diffVm.inlineOverviewMarkers().isEmpty());
+    CHECK(diffVm.hunkOverviewMarkers().isEmpty());
+
+    const QString repoPath = QString::fromStdString(std::filesystem::temp_directory_path().string());
+
+    // 1. Mixed modification: header (28) + 2 context (40) + 2 deletions + 3 additions (split: 60, inline: 100) + 2 context (40)
+    gf::git::bo::DiffHunk hunk;
+    hunk.header = "@@ -1,6 +1,7 @@";
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Context, .oldLineNumber = 1, .newLineNumber = 1, .content = "c1"});
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Context, .oldLineNumber = 2, .newLineNumber = 2, .content = "c2"});
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Deletion, .oldLineNumber = 3, .content = "d1"});
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Deletion, .oldLineNumber = 4, .content = "d2"});
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Addition, .newLineNumber = 3, .content = "a1"});
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Addition, .newLineNumber = 4, .content = "a2"});
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Addition, .newLineNumber = 5, .content = "a3"});
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Context, .oldLineNumber = 5, .newLineNumber = 6, .content = "c3"});
+    hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Context, .oldLineNumber = 6, .newLineNumber = 7, .content = "c4"});
+
+    mockOps.diffToReturn = gf::git::bo::FileDiff{};
+    mockOps.diffToReturn.oldPath = "file.cpp";
+    mockOps.diffToReturn.newPath = "file.cpp";
+    mockOps.diffToReturn.hunks = {hunk};
+
+    REQUIRE(diffVm.loadDiff(repoPath, "file.cpp", "unstaged"));
+    REQUIRE(diffVm.waitForIdle());
+
+    // Split mode: total height = 28 + 20*2 + 20*3 + 20*2 = 168
+    // Old (deletions): [68/168, 108/168], New (additions): [68/168, 128/168]
+    const auto splitMarkers = diffVm.splitOverviewMarkers();
+    REQUIRE(splitMarkers.size() == 2);
+    const auto splitOld = splitMarkers[0].toMap();
+    const auto splitNew = splitMarkers[1].toMap();
+    CHECK(splitOld["side"].toString() == "old");
+    CHECK(splitOld["start"].toDouble() > 0.39);
+    CHECK(splitOld["start"].toDouble() < 0.42);
+    CHECK(splitOld["end"].toDouble() > 0.63);
+    CHECK(splitOld["end"].toDouble() < 0.66);
+    CHECK(splitNew["side"].toString() == "new");
+    CHECK(splitNew["start"].toDouble() > 0.39);
+    CHECK(splitNew["end"].toDouble() > 0.75);
+    CHECK(splitNew["end"].toDouble() < 0.78);
+
+    // Inline mode: deletions come before additions (merged separately)
+    const auto inlineMarkers = diffVm.inlineOverviewMarkers();
+    REQUIRE(inlineMarkers.size() == 2);
+    const auto inlineOld = inlineMarkers[0].toMap();
+    const auto inlineNew = inlineMarkers[1].toMap();
+    CHECK(inlineOld["side"].toString() == "old");
+    CHECK(inlineNew["side"].toString() == "new");
+    CHECK(inlineOld["end"].toDouble() <= inlineNew["start"].toDouble() + 1e-6);
+
+    // Hunk mode: contiguous deletions and contiguous additions each merge across the 4px card spacing
+    const auto hunkMarkers = diffVm.hunkOverviewMarkers();
+    REQUIRE(hunkMarkers.size() == 2);
+    CHECK(hunkMarkers[0].toMap()["side"].toString() == "old");
+    CHECK(hunkMarkers[1].toMap()["side"].toString() == "new");
+
+    // 2. New file (only additions -> only "new" side markers)
+    gf::git::bo::DiffHunk newHunk;
+    newHunk.header = "@@ -0,0 +1,2 @@";
+    newHunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Addition, .newLineNumber = 1, .content = "n1"});
+    newHunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Addition, .newLineNumber = 2, .content = "n2"});
+    mockOps.diffToReturn = gf::git::bo::FileDiff{};
+    mockOps.diffToReturn.newPath = "added.cpp";
+    mockOps.diffToReturn.isNewFile = true;
+    mockOps.diffToReturn.hunks = {newHunk};
+
+    REQUIRE(diffVm.loadDiff(repoPath, "added.cpp", "unstaged"));
+    REQUIRE(diffVm.waitForIdle());
+    REQUIRE(diffVm.splitOverviewMarkers().size() == 1);
+    CHECK(diffVm.splitOverviewMarkers()[0].toMap()["side"].toString() == "new");
+    REQUIRE(diffVm.inlineOverviewMarkers().size() == 1);
+    CHECK(diffVm.inlineOverviewMarkers()[0].toMap()["side"].toString() == "new");
+
+    // 3. Deleted file (only deletions -> only "old" side markers)
+    gf::git::bo::DiffHunk delHunk;
+    delHunk.header = "@@ -1,2 +0,0 @@";
+    delHunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Deletion, .oldLineNumber = 1, .content = "o1"});
+    delHunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Deletion, .oldLineNumber = 2, .content = "o2"});
+    mockOps.diffToReturn = gf::git::bo::FileDiff{};
+    mockOps.diffToReturn.oldPath = "removed.cpp";
+    mockOps.diffToReturn.isDeletedFile = true;
+    mockOps.diffToReturn.hunks = {delHunk};
+
+    REQUIRE(diffVm.loadDiff(repoPath, "removed.cpp", "unstaged"));
+    REQUIRE(diffVm.waitForIdle());
+    REQUIRE(diffVm.splitOverviewMarkers().size() == 1);
+    CHECK(diffVm.splitOverviewMarkers()[0].toMap()["side"].toString() == "old");
+    REQUIRE(diffVm.inlineOverviewMarkers().size() == 1);
+    CHECK(diffVm.inlineOverviewMarkers()[0].toMap()["side"].toString() == "old");
+
+    // 4. Clear resets all overview marker lists
+    diffVm.clear();
+    CHECK(diffVm.splitOverviewMarkers().isEmpty());
+    CHECK(diffVm.inlineOverviewMarkers().isEmpty());
+    CHECK(diffVm.hunkOverviewMarkers().isEmpty());
+}
+
+TEST_CASE("DiffViewModel - extractSelectedText across inline, split, hunk, and blame", "[desktop][viewmodels]")
+{
+    ensureQtApp();
+    MockFullGitOps mockOps;
+    gf::git::bl::GitDiffService diffService(mockOps);
+    DiffViewModel diffVm(diffService);
+
+    const QString repoPath = QString::fromStdString(std::filesystem::temp_directory_path().string());
+
+    gf::git::bo::DiffHunk hunk1;
+    hunk1.header = "@@ -1,3 +1,4 @@";
+    hunk1.lines.push_back({.kind = gf::git::bo::DiffLineKind::Context, .oldLineNumber = 1, .newLineNumber = 1, .content = "int main() {"});
+    hunk1.lines.push_back({.kind = gf::git::bo::DiffLineKind::Deletion, .oldLineNumber = 2, .content = "\tint oldVal = 1;"});
+    hunk1.lines.push_back({.kind = gf::git::bo::DiffLineKind::Addition, .newLineNumber = 2, .content = "\tint newVal = 2;"});
+    hunk1.lines.push_back({.kind = gf::git::bo::DiffLineKind::Addition, .newLineNumber = 3, .content = "\treturn newVal;"});
+    hunk1.lines.push_back({.kind = gf::git::bo::DiffLineKind::Context, .oldLineNumber = 3, .newLineNumber = 4, .content = "}"});
+
+    mockOps.diffToReturn = gf::git::bo::FileDiff{};
+    mockOps.diffToReturn.oldPath = "main.cpp";
+    mockOps.diffToReturn.newPath = "main.cpp";
+    mockOps.diffToReturn.hunks = {hunk1};
+
+    mockOps.blameToReturn = {
+        gf::git::bo::BlameLine{.commitSha = "1111111", .shortSha = "1111111", .author = "Alice", .authorEmail = "a@b.c", .date = "2026-11-18", .lineNumber = 1, .content = "int main() {"},
+        gf::git::bo::BlameLine{.commitSha = "1111111", .shortSha = "1111111", .author = "Alice", .authorEmail = "a@b.c", .date = "2026-11-18", .lineNumber = 2, .content = "\treturn 2;"}
+    };
+
+    REQUIRE(diffVm.loadDiff(repoPath, "main.cpp", "unstaged"));
+    REQUIRE(diffVm.waitForIdle());
+
+    // Inline: row 0 = header, row 1 = context, row 2 = deletion ("\tint oldVal = 1;" -> "    int oldVal = 1;")
+    CHECK(diffVm.extractSelectedText("inline", 2, 4, 2, 14).toStdString() == "int oldVal");
+    // Multi-line inline including header row 0 skips header cleanly
+    CHECK(diffVm.extractSelectedText("inline", 0, 0, 3, 19).toStdString() == "int main() {\n    int oldVal = 1;\n    int newVal = 2;");
+    // Reversed inline selection works identically
+    CHECK(diffVm.extractSelectedText("inline", 3, 19, 1, 0).toStdString() == "int main() {\n    int oldVal = 1;\n    int newVal = 2;");
+
+    // Split: row 0 = header, row 1 = context, row 2 = (del/add), row 3 = (empty/add), row 4 = context
+    CHECK(diffVm.extractSelectedText("split-right", 2, 4, 3, 18).toStdString() == "int newVal = 2;\n    return newVal;");
+    // Split-left across row 3 (empty filler on left) skips the empty filler row
+    CHECK(diffVm.extractSelectedText("split-left", 1, 0, 4, 1).toStdString() == "int main() {\n    int oldVal = 1;\n}");
+
+    // Hunk: index 0..4 inside hunk 0
+    CHECK(diffVm.extractSelectedText("hunk", 2, 4, 3, 18, 0).toStdString() == "int newVal = 2;\n    return newVal;");
+
+    // Blame
+    REQUIRE(diffVm.loadBlame(repoPath, "", "main.cpp"));
+    REQUIRE(diffVm.waitForIdle());
+    CHECK(diffVm.extractSelectedText("blame", 0, 4, 1, 11).toStdString() == "main() {\n    return ");
+}
+
 #include "desktop/viewmodels/remote_repo_list_model.hpp"
 
-TEST_CASE("RemoteRepoListModel: Real-Time Filtering and Protocol Switching", "[desktop][viewmodels][remote_repo]") {
+TEST_CASE (
+"RemoteRepoListModel: Real-Time Filtering and Protocol Switching"
+,
+"[desktop][viewmodels][remote_repo]"
+)
+ {
     using namespace gf::desktop::viewmodels;
 
     RemoteRepoListModel model;
@@ -2024,7 +3743,12 @@ TEST_CASE("RemoteRepoListModel: Real-Time Filtering and Protocol Switching", "[d
     CHECK(model.searchFilter().isEmpty());
 }
 
-TEST_CASE("HomeHubViewModel: resetCloneState Resets All Progress and Cache", "[desktop][viewmodels][clone_reset]") {
+TEST_CASE (
+"HomeHubViewModel: resetCloneState Resets All Progress and Cache"
+,
+"[desktop][viewmodels][clone_reset]"
+)
+ {
     TestContext ctx;
 
     HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService, nullptr);
@@ -2045,7 +3769,12 @@ TEST_CASE("HomeHubViewModel: resetCloneState Resets All Progress and Cache", "[d
     CHECK(vm.lastError().isEmpty());
 }
 
-TEST_CASE("HomeHubViewModel: lastCloneDestinationPath persistence and signals", "[desktop][viewmodels][clone_dest]") {
+TEST_CASE (
+"HomeHubViewModel: lastCloneDestinationPath persistence and signals"
+,
+"[desktop][viewmodels][clone_dest]"
+)
+ {
     TestContext ctx;
 
     HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService, nullptr);
@@ -2075,7 +3804,12 @@ TEST_CASE("HomeHubViewModel: lastCloneDestinationPath persistence and signals", 
     CHECK(destSpy.count() == 0);
 }
 
-TEST_CASE("HomeHubViewModel: section visibility customization and persistence rules", "[desktop][viewmodels][sections]") {
+TEST_CASE (
+"HomeHubViewModel: section visibility customization and persistence rules"
+,
+"[desktop][viewmodels][sections]"
+)
+ {
     TestContext ctx;
     HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService, nullptr);
 
@@ -2111,7 +3845,12 @@ TEST_CASE("HomeHubViewModel: section visibility customization and persistence ru
     CHECK(grpSpy.count() == 2);
 }
 
-TEST_CASE("HomeHubViewModel: workspace repo composition and available repos filtering", "[desktop][viewmodels][workspace_composition]") {
+TEST_CASE (
+"HomeHubViewModel: workspace repo composition and available repos filtering"
+,
+"[desktop][viewmodels][workspace_composition]"
+)
+ {
     TestContext ctx;
     HomeHubViewModel vm(*ctx.repoService, *ctx.groupService, *ctx.workspaceService, nullptr);
 
@@ -2203,3 +3942,1666 @@ TEST_CASE("HomeHubViewModel: workspace repo composition and available repos filt
 
 
 
+
+
+TEST_CASE (
+"DiffViewModel - Context lines, Markdown preview, Rich Diff e evidenziazione multi-riga"
+,
+"[desktop][viewmodels][diff][markdown]"
+)
+ {
+    ensureQtApp();
+
+    MockFullGitOps mockOps;
+    gf::git::bl::GitDiffService diffService(mockOps);
+    DiffViewModel diffVm(diffService);
+
+    const QString repoPath = QString::fromStdString(std::filesystem::temp_directory_path().string());
+
+    CHECK(diffVm.contextLines() == 10);
+    CHECK_FALSE(diffVm.isFullContext());
+    CHECK_FALSE(diffVm.isMarkdown());
+    CHECK_FALSE(diffVm.isMarkdownRendered());
+    CHECK(diffVm.showMarkdownRichDiff());
+
+    SECTION("Controllo dinamico delle righe di contesto e full-context toggle") {
+        QSignalSpy ctxSpy(&diffVm, &DiffViewModel::contextLinesChanged);
+        QSignalSpy loadedSpy(&diffVm, &DiffViewModel::diffLoaded);
+
+        gf::git::bo::DiffHunk hunk;
+        hunk.header = "@@ -1,2 +1,2 @@";
+        hunk.oldStartLine = 1;
+        hunk.newStartLine = 1;
+        hunk.lines = {
+            {.kind = gf::git::bo::DiffLineKind::Context, .oldLineNumber = 1, .newLineNumber = 1, .content = "int a = 1;"},
+            {.kind = gf::git::bo::DiffLineKind::Addition, .oldLineNumber = std::nullopt, .newLineNumber = 2, .content = "int b = 2;"}
+        };
+        mockOps.diffToReturn.oldPath = "src/main.cpp";
+        mockOps.diffToReturn.newPath = "src/main.cpp";
+        mockOps.diffToReturn.additionsCount = 1;
+        mockOps.diffToReturn.hunks = {hunk};
+
+        REQUIRE(diffVm.loadDiff(repoPath, "src/main.cpp", "unstaged"));
+        REQUIRE(diffVm.waitForIdle());
+        CHECK(mockOps.lastContextLinesRequested == 10);
+        CHECK(loadedSpy.count() == 1);
+
+        diffVm.setContextLines(25);
+        REQUIRE(diffVm.waitForIdle());
+        CHECK(diffVm.contextLines() == 25);
+        CHECK(mockOps.lastContextLinesRequested == 25);
+        CHECK(ctxSpy.count() == 1);
+        CHECK(loadedSpy.count() == 2);
+
+        diffVm.expandContext(15);
+        REQUIRE(diffVm.waitForIdle());
+        CHECK(diffVm.contextLines() == 40);
+        CHECK(mockOps.lastContextLinesRequested == 40);
+        CHECK(ctxSpy.count() == 2);
+
+        diffVm.toggleFullContext();
+        REQUIRE(diffVm.waitForIdle());
+        CHECK(diffVm.contextLines() == -1);
+        CHECK(diffVm.isFullContext());
+        CHECK(mockOps.lastContextLinesRequested == -1);
+
+        diffVm.toggleFullContext();
+        REQUIRE(diffVm.waitForIdle());
+        CHECK(diffVm.contextLines() == 40);
+        CHECK_FALSE(diffVm.isFullContext());
+        CHECK(mockOps.lastContextLinesRequested == 40);
+    }
+
+    SECTION("Markdown preview, TOC, blocchi box-drawing, Rich Diff e stato multi-riga negli hunk") {
+        const std::string mdContent =
+            "# Architettura\n"
+            "\n"
+            "Testo con class e https://example.com\n"
+            "\n"
+            "```text\n"
+            "file-service/\n"
+            "├── cmd/\n"
+            "├── tree/   # folders\n"
+            "└── README.md\n"
+            "```\n"
+            "\n"
+            "```go\n"
+            "func main() {}\n"
+            "```\n"
+            "\n"
+            "| Modulo | Stato |\n"
+            "| --- | --- |\n"
+            "| Core | OK |\n";
+
+        mockOps.fileContentToReturn = mdContent;
+
+        gf::git::bo::DiffHunk mdHunk;
+        mdHunk.header = "@@ -1,18 +1,18 @@";
+        mdHunk.oldStartLine = 1;
+        mdHunk.newStartLine = 1;
+        mdHunk.lines = {
+            {.kind = gf::git::bo::DiffLineKind::Context,  .oldLineNumber = 1,  .newLineNumber = 1,  .content = "# Architettura"},
+            {.kind = gf::git::bo::DiffLineKind::Context,  .oldLineNumber = 3,  .newLineNumber = 3,  .content = "Testo con class e https://example.com"},
+            {.kind = gf::git::bo::DiffLineKind::Context,  .oldLineNumber = 5,  .newLineNumber = 5,  .content = "```text"},
+            {.kind = gf::git::bo::DiffLineKind::Context,  .oldLineNumber = 6,  .newLineNumber = 6,  .content = "file-service/"},
+            {.kind = gf::git::bo::DiffLineKind::Context,  .oldLineNumber = 7,  .newLineNumber = 7,  .content = "├── cmd/"},
+            {.kind = gf::git::bo::DiffLineKind::Context,  .oldLineNumber = 8,  .newLineNumber = 8,  .content = "├── tree/   # folders"},
+            {.kind = gf::git::bo::DiffLineKind::Context,  .oldLineNumber = 10, .newLineNumber = 10, .content = "```"},
+            {.kind = gf::git::bo::DiffLineKind::Context,  .oldLineNumber = 12, .newLineNumber = 12, .content = "```go"},
+            {.kind = gf::git::bo::DiffLineKind::Addition, .oldLineNumber = std::nullopt, .newLineNumber = 13, .content = "func main() {}"},
+            {.kind = gf::git::bo::DiffLineKind::Context,  .oldLineNumber = 14, .newLineNumber = 14, .content = "```"}
+        };
+        mockOps.diffToReturn.oldPath = "README.md";
+        mockOps.diffToReturn.newPath = "README.md";
+        mockOps.diffToReturn.additionsCount = 1;
+        mockOps.diffToReturn.deletionsCount = 0;
+        mockOps.diffToReturn.hunks = {mdHunk};
+
+        REQUIRE(diffVm.loadDiff(repoPath, "README.md", "unstaged"));
+        REQUIRE(diffVm.waitForIdle());
+        CHECK(diffVm.isMarkdown());
+        CHECK(diffVm.markdownSource() == QString::fromStdString(mdContent));
+        REQUIRE(diffVm.markdownToc().size() == 1);
+        CHECK(diffVm.markdownToc()[0].toMap()[QStringLiteral("anchor")].toString() == QStringLiteral("architettura"));
+
+        bool foundTreeCard = false;
+        bool foundGoCard = false;
+        bool foundTable = false;
+        for (const QVariant& item : diffVm.markdownBlocks()) {
+            const QVariantMap blk = item.toMap();
+            const QString kind = blk[QStringLiteral("kind")].toString();
+            if (kind == QStringLiteral("code")) {
+                const QString lang = blk[QStringLiteral("languageTag")].toString();
+                if (lang == QStringLiteral("text")) {
+                    foundTreeCard = true;
+                    CHECK(blk[QStringLiteral("rawText")].toString().contains(QStringLiteral("├── cmd/")));
+                    CHECK(blk[QStringLiteral("html")].toString().contains(QStringLiteral("├──")));
+                    CHECK_FALSE(blk[QStringLiteral("html")].toString().contains(QStringLiteral("#7F848E")));
+                } else if (lang == QStringLiteral("go")) {
+                    foundGoCard = true;
+                    CHECK(blk[QStringLiteral("changeStatus")].toString() == QStringLiteral("added"));
+                }
+            } else if (kind == QStringLiteral("table")) {
+                foundTable = true;
+            }
+        }
+        CHECK(foundTreeCard);
+        CHECK(foundGoCard);
+        CHECK(foundTable);
+
+        // Verify hunk line highlighting respects multi-line Markdown fence state
+        bool proseWithoutKeywordColor = false;
+        bool goLineWithKeywordColor = false;
+        for (int row = 0; row < diffVm.linesModel()->rowCount(); ++row) {
+            QModelIndex idx = diffVm.linesModel()->index(row, 0);
+            QString raw = diffVm.linesModel()->data(idx, DiffLineListModel::ContentRole).toString();
+            QString rich = diffVm.linesModel()->data(idx, DiffLineListModel::RichContentRole).toString();
+            if (raw.contains(QStringLiteral("Testo con class"))) {
+                proseWithoutKeywordColor = !rich.contains(QStringLiteral("#C678DD"));
+            } else if (raw == QStringLiteral("func main() {}")) {
+                goLineWithKeywordColor = rich.contains(QStringLiteral("#C678DD"));
+            }
+        }
+        CHECK(proseWithoutKeywordColor);
+        CHECK(goLineWithKeywordColor);
+
+        // Sticky rendered mode across non-md -> md transitions
+        QSignalSpy renderedSpy(&diffVm, &DiffViewModel::markdownRenderedChanged);
+        diffVm.toggleMarkdownRendered();
+        CHECK(diffVm.isMarkdownRendered());
+        CHECK(renderedSpy.count() == 1);
+
+        QSignalSpy richDiffSpy(&diffVm, &DiffViewModel::showMarkdownRichDiffChanged);
+        diffVm.setShowMarkdownRichDiff(false);
+        CHECK_FALSE(diffVm.showMarkdownRichDiff());
+        CHECK(richDiffSpy.count() == 1);
+
+        // Load a C++ file -> isMarkdownRendered becomes false automatically
+        mockOps.fileContentToReturn.clear();
+        gf::git::bo::DiffHunk cppHunk;
+        cppHunk.header = "@@ -1,1 +1,1 @@";
+        cppHunk.lines = {{.kind = gf::git::bo::DiffLineKind::Addition, .newLineNumber = 1, .content = "int x = 0;"}};
+        mockOps.diffToReturn.oldPath = "src/app.cpp";
+        mockOps.diffToReturn.newPath = "src/app.cpp";
+        mockOps.diffToReturn.hunks = {cppHunk};
+
+        REQUIRE(diffVm.loadDiff(repoPath, "src/app.cpp", "unstaged"));
+        REQUIRE(diffVm.waitForIdle());
+        CHECK_FALSE(diffVm.isMarkdown());
+        CHECK_FALSE(diffVm.isMarkdownRendered());
+        CHECK(diffVm.markdownBlocks().isEmpty());
+
+        // Switching back to .md remembers sticky rendered preference
+        mockOps.fileContentToReturn = "# Docs\n";
+        gf::git::bo::DiffHunk docsHunk;
+        docsHunk.header = "@@ -1,1 +1,1 @@";
+        docsHunk.lines = {{.kind = gf::git::bo::DiffLineKind::Addition, .newLineNumber = 1, .content = "# Docs"}};
+        mockOps.diffToReturn.oldPath = "DOCS.md";
+        mockOps.diffToReturn.newPath = "DOCS.md";
+        mockOps.diffToReturn.hunks = {docsHunk};
+
+        REQUIRE(diffVm.loadDiff(repoPath, "DOCS.md", "unstaged"));
+        REQUIRE(diffVm.waitForIdle());
+        CHECK(diffVm.isMarkdown());
+        CHECK(diffVm.isMarkdownRendered());
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// GitProfilesViewModel: token key derivation off the GUI thread
+// ---------------------------------------------------------------------------------------------
+
+#include "desktop/viewmodels/git_profiles_viewmodel.hpp"
+#include "infrastructure/persistence/sqlite/connection/sqlite_connection.hpp"
+#include "infrastructure/persistence/sqlite/migrations/schema_migrator.hpp"
+
+#include <QNetworkAccessManager>
+#include <QTcpServer>
+#include <QTcpSocket>
+#include <fstream>
+
+namespace
+{
+    // Minimal HTTP server standing in for a Gitea API: records the Authorization header of each
+    // request and answers with an empty repository list.
+    class FakeGiteaServer final : public QObject
+    {
+    public:
+        FakeGiteaServer()
+        {
+            QObject::connect(&m_server, &QTcpServer::newConnection, this, [this]()
+            {
+                while (auto* socket = m_server.nextPendingConnection())
+                {
+                    QObject::connect(socket, &QTcpSocket::readyRead, socket, [this, socket]()
+                    {
+                        m_buffers[socket] += socket->readAll();
+                        const QByteArray& request = m_buffers[socket];
+                        if (!request.contains("\r\n\r\n")) return;
+
+                        QString authorization;
+                        for (const auto& line : request.split('\n'))
+                        {
+                            if (line.toLower().startsWith("authorization:"))
+                            {
+                                authorization = QString::fromUtf8(line.mid(14)).trimmed();
+                            }
+                        }
+                        authorizations.append(authorization);
+                        socket->write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                                      "Content-Length: 2\r\nConnection: close\r\n\r\n[]");
+                        socket->disconnectFromHost();
+                        m_buffers.remove(socket);
+                    });
+                    QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+                }
+            });
+            m_server.listen(QHostAddress::LocalHost, 0);
+        }
+
+        [[nodiscard]] QString url() const
+        {
+            return QStringLiteral("http://127.0.0.1:%1").arg(m_server.serverPort());
+        }
+
+        QStringList authorizations;
+
+    private:
+        QTcpServer m_server;
+        QHash<QTcpSocket*, QByteArray> m_buffers;
+    };
+
+    template <typename Predicate>
+    bool waitUntil(Predicate predicate, int timeoutMs = 5000)
+    {
+        QElapsedTimer timer;
+        timer.start();
+        while (!predicate())
+        {
+            if (timer.elapsed() > timeoutMs) return false;
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+            QThread::msleep(1);
+        }
+        return true;
+    }
+} // namespace
+
+TEST_CASE (
+"GitProfilesViewModel derives token keys off the GUI thread"
+,
+"[viewmodel][profiles][async]"
+)
+ {
+    ensureQtApp();
+    using gf::desktop::viewmodels::GitProfilesViewModel;
+
+    const auto baseDir = std::filesystem::temp_directory_path() / "gf-profiles-async";
+    std::filesystem::remove_all(baseDir);
+    std::filesystem::create_directories(baseDir / "home");
+
+    auto connRes = gf::infra::persistence::sqlite::SqliteConnection::openInMemory();
+    REQUIRE(connRes.has_value());
+    REQUIRE(gf::infra::persistence::sqlite::SchemaMigrator::migrateToLatest(*connRes).has_value());
+    gf::infra::persistence::profiles::SqliteProfileStore store(*connRes);
+    gf::infra::security::CryptoVault vault(baseDir / "vault");
+    gf::infra::git::credentials::SystemCredentialDetector detector(baseDir / "home");
+    QNetworkAccessManager nam;
+    gf::desktop::services::GitProviderApiClient apiClient(&nam);
+    FakeGiteaServer server;
+
+    // A stored custom Gitea profile with an encrypted token
+    gf::core::git::bo::GitProviderProfile profile;
+    profile.id = "custom_gitea.local";
+    profile.providerType = gf::core::git::bo::GitProviderType::Custom;
+    profile.displayName = "Local Gitea";
+    profile.host = "gitea.local";
+    profile.customApiUrl = server.url().toStdString();
+    auto secret = vault.encrypt("first-token");
+    REQUIRE(secret.has_value());
+    profile.tokenSecret = *secret;
+    profile.hasToken = true;
+    REQUIRE(store.saveProfile(profile).has_value());
+
+    // Reference cost of one key derivation on this machine
+    QElapsedTimer kdfTimer;
+    kdfTimer.start();
+    REQUIRE(vault.decrypt(profile.tokenSecret).has_value());
+    const auto kdfMs = kdfTimer.elapsed();
+
+    GitProfilesViewModel vm(store, vault, detector, &apiClient);
+    vm.initialize();
+    REQUIRE(vm.waitForIdle());
+
+    SECTION("selecting a profile decrypts its token in the background") {
+        QElapsedTimer timer;
+        timer.start();
+        vm.selectProfile("custom_gitea.local");
+        const auto selectMs = timer.elapsed();
+        CHECK(vm.isFetching());
+        INFO("key derivation " << kdfMs << " ms, selectProfile " << selectMs << " ms");
+        CHECK(selectMs * 2 < kdfMs + 2); // did not run the derivation on the calling thread
+
+        REQUIRE(waitUntil([&] { return !vm.isFetching(); }));
+        REQUIRE(server.authorizations.size() == 1);
+        CHECK(server.authorizations.at(0) == "token first-token");
+        CHECK(vm.fetchError().isEmpty());
+    }
+
+    SECTION("switching away before the token is ready drops the request") {
+        vm.selectProfile("custom_gitea.local");
+        vm.selectProfile("url");
+        CHECK_FALSE(vm.isFetching());
+        REQUIRE(vm.waitForIdle());
+        waitUntil([] { return false; }, 200); // give a stray request the time to show up
+        CHECK(server.authorizations.isEmpty());
+        CHECK_FALSE(vm.isFetching());
+    }
+
+    SECTION("saving a token encrypts it in the background, then reloads with it") {
+        vm.selectProfile("custom_gitea.local");
+        REQUIRE(waitUntil([&] { return !vm.isFetching(); }));
+        server.authorizations.clear();
+
+        QElapsedTimer timer;
+        timer.start();
+        vm.saveProfileToken("custom_gitea.local", "  second-token  ", QString());
+        CHECK(timer.elapsed() * 2 < kdfMs + 2);
+
+        REQUIRE(vm.waitForIdle());
+        REQUIRE(waitUntil([&] { return !server.authorizations.isEmpty() && !vm.isFetching(); }));
+        CHECK(server.authorizations.last() == "token second-token");
+
+        auto stored = store.getAllProfiles();
+        REQUIRE(stored.has_value());
+        const auto it = std::find_if(stored->begin(), stored->end(),
+                                     [](const auto& p) { return p.id == "custom_gitea.local"; });
+        REQUIRE(it != stored->end());
+        auto decrypted = vault.decrypt(it->tokenSecret);
+        REQUIRE(decrypted.has_value());
+        CHECK(*decrypted == "second-token");
+    }
+
+    SECTION("a custom profile with a token is added once the token is encrypted") {
+        vm.addCustomProfile("git.example.org", "Example Git", "third-token", server.url());
+        REQUIRE(vm.waitForIdle());
+        CHECK(vm.activeProfileId() == "manual_git.example.org");
+        CHECK(vm.activeProfileHasToken());
+        REQUIRE(waitUntil([&] { return !server.authorizations.isEmpty() && !vm.isFetching(); }));
+        CHECK(server.authorizations.last() == "token third-token");
+    }
+
+    SECTION("a server added by hand survives a restart even without 'git' in its host") {
+        vm.addCustomProfile("  https://Code.Example.COM/  ", "Code", QString(), server.url(), "alex");
+        REQUIRE(vm.waitForIdle());
+        CHECK(vm.activeProfileId() == "manual_code.example.com");
+        CHECK(vm.activeProfileHost() == "code.example.com");
+        CHECK(vm.activeProfileUsername() == "alex");
+
+        // A second view model over the same store simulates restarting the app.
+        GitProfilesViewModel restarted(store, vault, detector, &apiClient);
+        restarted.initialize();
+        REQUIRE(restarted.waitForIdle());
+        const auto list = restarted.profiles();
+        const auto found = std::ranges::find_if(list, [](const QVariant& v)
+        {
+            return v.toMap().value("id").toString() == "manual_code.example.com";
+        });
+        const bool foundProfile = found != list.end();
+        REQUIRE(foundProfile);
+        CHECK(found->toMap().value("removable").toBool());
+    }
+
+    SECTION("a server added by hand can be removed, built-in ones can't") {
+        vm.addCustomProfile("forge.lan", QString(), QString(), server.url());
+        REQUIRE(vm.waitForIdle());
+        REQUIRE(vm.activeProfileId() == "manual_forge.lan");
+
+        vm.removeCustomProfile("manual_forge.lan");
+        CHECK(vm.activeProfileId() == "url");
+        vm.removeCustomProfile("github");
+
+        auto stored = store.getAllProfiles();
+        REQUIRE(stored.has_value());
+        CHECK(std::none_of(stored->begin(), stored->end(),
+                           [](const auto& p) { return p.id == "manual_forge.lan"; }));
+        CHECK(std::any_of(stored->begin(), stored->end(), [](const auto& p) { return p.id == "github"; }));
+    }
+
+    std::error_code ec;
+    std::filesystem::remove_all(baseDir, ec);
+}
+
+TEST_CASE (
+"GitProfilesViewModel links a server added by hand to its ssh config Host alias"
+,
+"[viewmodel][profiles]"
+)
+ {
+    ensureQtApp();
+    using gf::desktop::viewmodels::GitProfilesViewModel;
+
+    // Home LAN setup: the public domain is a Host alias pointing at the LAN IP, SSH on 2222.
+    const auto baseDir = std::filesystem::temp_directory_path() / "gf-profiles-ssh-alias";
+    std::filesystem::remove_all(baseDir);
+    std::filesystem::create_directories(baseDir / "home" / ".ssh");
+    { std::ofstream(baseDir / "home" / ".ssh" / "id_ed25519") << "dummy"; }
+    {
+        std::ofstream cfg(baseDir / "home" / ".ssh" / "config");
+        cfg << "Host git.example.dev\n"
+               "    HostName 192.168.1.10\n"
+               "    Port 2222\n"
+               "    User git\n"
+               "    IdentityFile ~/.ssh/id_ed25519\n";
+    }
+
+    auto connRes = gf::infra::persistence::sqlite::SqliteConnection::openInMemory();
+    REQUIRE(connRes.has_value());
+    REQUIRE(gf::infra::persistence::sqlite::SchemaMigrator::migrateToLatest(*connRes).has_value());
+    gf::infra::persistence::profiles::SqliteProfileStore store(*connRes);
+    gf::infra::security::CryptoVault vault(baseDir / "vault");
+    gf::infra::git::credentials::SystemCredentialDetector detector(baseDir / "home");
+    QNetworkAccessManager nam;
+    gf::desktop::services::GitProviderApiClient apiClient(&nam);
+    FakeGiteaServer server;
+
+    GitProfilesViewModel vm(store, vault, detector, &apiClient);
+    vm.initialize();
+    REQUIRE(vm.waitForIdle());
+
+    vm.addCustomProfile("https://git.example.dev/", "Casa", QString(), server.url());
+    REQUIRE(vm.waitForIdle());
+    CHECK(vm.activeProfileId() == "manual_git.example.dev");
+    CHECK(vm.activeProfileHasSsh());
+
+    // After a restart the detected block augments the manual profile instead of duplicating it.
+    GitProfilesViewModel restarted(store, vault, detector, &apiClient);
+    restarted.initialize();
+    REQUIRE(restarted.waitForIdle());
+    int customCount = 0;
+    for (const auto& v : restarted.profiles())
+    {
+        const auto id = v.toMap().value("id").toString();
+        if (id.startsWith("custom_") || id.startsWith("manual_")) ++customCount;
+    }
+    CHECK(customCount == 1);
+    restarted.selectProfile("manual_git.example.dev");
+    CHECK(restarted.activeProfileHasSsh());
+
+    std::error_code ec;
+    std::filesystem::remove_all(baseDir, ec);
+}
+
+TEST_CASE (
+"GitProfilesViewModel resolves provider icon sources for built-in and custom providers"
+,
+"[viewmodel][profiles]"
+)
+ {
+    ensureQtApp();
+    using gf::desktop::viewmodels::GitProfilesViewModel;
+
+    const auto baseDir = std::filesystem::temp_directory_path() / "gf-profiles-icons";
+    std::filesystem::remove_all(baseDir);
+    std::filesystem::create_directories(baseDir / "home");
+
+    auto connRes = gf::infra::persistence::sqlite::SqliteConnection::openInMemory();
+    REQUIRE(connRes.has_value());
+    REQUIRE(gf::infra::persistence::sqlite::SchemaMigrator::migrateToLatest(*connRes).has_value());
+    gf::infra::persistence::profiles::SqliteProfileStore store(*connRes);
+    gf::infra::security::CryptoVault vault(baseDir / "vault");
+    gf::infra::git::credentials::SystemCredentialDetector detector(baseDir / "home");
+    QNetworkAccessManager nam;
+    gf::desktop::services::GitProviderApiClient apiClient(&nam);
+    FakeGiteaServer server;
+
+    GitProfilesViewModel vm(store, vault, detector, &apiClient);
+    vm.initialize();
+    REQUIRE(vm.waitForIdle());
+
+    vm.addCustomProfile("gitea.example.com", "My Gitea", QString(), server.url());
+    REQUIRE(vm.waitForIdle());
+    vm.addCustomProfile("forgejo.example.com", "My Forgejo", QString(), server.url());
+    REQUIRE(vm.waitForIdle());
+    vm.addCustomProfile("codeberg.org", "Codeberg", QString(), server.url());
+    REQUIRE(vm.waitForIdle());
+    vm.addCustomProfile("git.internal.lan", "Internal Git", QString(), server.url());
+    REQUIRE(vm.waitForIdle());
+
+    auto findIcon = [&](const QString& id) -> QString
+    {
+        for (const auto& entry : vm.profiles())
+        {
+            const auto map = entry.toMap();
+            if (map.value("id").toString() == id) return map.value("iconSource").toString();
+        }
+        return {};
+    };
+
+    const QString prefix = QStringLiteral("qrc:/qt/qml/GitFlux/Desktop/assets/icons/providers/");
+    CHECK(findIcon("url") == prefix + "url.png");
+    CHECK(findIcon("github") == prefix + "github.png");
+    CHECK(findIcon("bitbucket") == prefix + "bitbucket.png");
+    CHECK(findIcon("gitlab") == prefix + "gitlab.png");
+    CHECK(findIcon("manual_gitea.example.com") == prefix + "gitea.png");
+    CHECK(findIcon("manual_forgejo.example.com") == prefix + "forgejo.png");
+    CHECK(findIcon("manual_codeberg.org") == prefix + "codeberg.png");
+    CHECK(findIcon("manual_git.internal.lan") == prefix + "server.png");
+
+    vm.selectProfile("bitbucket");
+    CHECK(vm.activeProfileIconSource() == prefix + "bitbucket.png");
+    vm.selectProfile("url");
+    CHECK(vm.activeProfileIconSource() == prefix + "url.png");
+
+    std::error_code ec;
+    std::filesystem::remove_all(baseDir, ec);
+}
+
+TEST_CASE (
+"GitProfilesViewModel checks the SSH key and guides the user when it is rejected"
+,
+"[viewmodel][profiles][ssh]"
+)
+ {
+    ensureQtApp();
+    using gf::desktop::viewmodels::GitProfilesViewModel;
+
+    const auto baseDir = std::filesystem::temp_directory_path() / "gf-profiles-ssh-check";
+    std::filesystem::remove_all(baseDir);
+    std::filesystem::create_directories(baseDir / "home" / ".ssh");
+    { std::ofstream(baseDir / "home" / ".ssh" / "id_ed25519") << "dummy"; }
+
+    // Fake "ssh": answers like GitHub does for an unregistered key (or a greeting when told so).
+    const auto fakeSsh = baseDir / "fake-ssh.sh";
+    const auto modeFile = baseDir / "mode";
+    { std::ofstream(modeFile) << "reject"; }
+    {
+        std::ofstream script(fakeSsh);
+        script << "#!/bin/sh\n"
+                  "if [ \"$(cat '" << modeFile.string() << "')\" = ok ]; then\n"
+                  "  echo \"Hi octocat! You've successfully authenticated, but GitHub does not provide shell access.\"\n"
+                  "  exit 1\n"
+                  "fi\n"
+                  "echo 'git@github.com: Permission denied (publickey).' >&2\n"
+                  "exit 255\n";
+    }
+    std::filesystem::permissions(fakeSsh, std::filesystem::perms::owner_all);
+
+    auto connRes = gf::infra::persistence::sqlite::SqliteConnection::openInMemory();
+    REQUIRE(connRes.has_value());
+    REQUIRE(gf::infra::persistence::sqlite::SchemaMigrator::migrateToLatest(*connRes).has_value());
+    gf::infra::persistence::profiles::SqliteProfileStore store(*connRes);
+    gf::infra::security::CryptoVault vault(baseDir / "vault");
+    gf::infra::git::credentials::SystemCredentialDetector detector(baseDir / "home");
+    QNetworkAccessManager nam;
+    gf::desktop::services::GitProviderApiClient apiClient(&nam);
+    gf::desktop::services::SshConnectionProbe probe;
+    probe.setProgram(QString::fromStdString(fakeSsh.string()));
+
+    GitProfilesViewModel vm(store, vault, detector, &apiClient, nullptr, &probe);
+    vm.initialize(); // selects "github", which has the default key ~/.ssh/id_ed25519
+    REQUIRE(vm.waitForIdle());
+    REQUIRE(vm.activeProfileHasSsh());
+
+    REQUIRE(waitUntil([&] { return vm.sshCheckState() != "checking" && !vm.sshCheckState().isEmpty(); }));
+    CHECK(vm.sshCheckState() == "sshKeyRejected");
+    CHECK(vm.sshCheckOutput().contains("Permission denied"));
+    CHECK(vm.selectedProtocol() == "https"); // switched away from the failing protocol
+    CHECK(vm.sshAutoSwitchedToHttps());
+
+    const auto guide = vm.troubleshootingGuide("sshKeyRejected");
+    CHECK(guide.value("title").toString().contains("GitHub"));
+    const auto steps = guide.value("steps").toList();
+    REQUIRE(steps.size() >= 3);
+    bool hasSettingsLink = false;
+    bool hasRecheck = false;
+    for (const auto& step : steps)
+    {
+        const auto m = step.toMap();
+        hasSettingsLink = hasSettingsLink || m.value("url").toString() == "https://github.com/settings/keys";
+        hasRecheck = hasRecheck || m.value("action").toString() == "recheckSsh";
+    }
+    CHECK(hasSettingsLink);
+    CHECK(hasRecheck);
+
+    // A failure isn't cached: selecting the provider again checks again.
+    vm.selectProfile("url");
+    vm.selectProfile("github");
+    CHECK(vm.sshCheckState() == "checking");
+    REQUIRE(waitUntil([&] { return vm.sshCheckState() == "sshKeyRejected"; }));
+    CHECK(vm.selectedProtocol() == "https");
+    CHECK(vm.sshAutoSwitchedToHttps());
+
+    // The user registers the key: the background re-check picks it up without "checking" flashes
+    // and goes back to SSH, since it was the app that moved to HTTPS.
+    { std::ofstream(modeFile) << "ok"; }
+    vm.recheckSshIfFailing();
+    CHECK(vm.sshCheckState() == "sshKeyRejected");
+    REQUIRE(waitUntil([&] { return vm.sshCheckState() == "ok"; }));
+    CHECK(vm.sshCheckAccount() == "octocat");
+    CHECK(vm.selectedProtocol() == "ssh");
+    CHECK_FALSE(vm.sshAutoSwitchedToHttps());
+
+    // Once accepted, it's cached and not checked again.
+    vm.recheckSshIfFailing();
+    vm.selectProfile("url");
+    vm.selectProfile("github");
+    CHECK(vm.sshCheckState() == "ok");
+
+    std::error_code ec;
+    std::filesystem::remove_all(baseDir, ec);
+}
+
+TEST_CASE (
+"GitProfilesViewModel provides the saved token for HTTPS clones of the same host"
+,
+"[viewmodel][profiles][https]"
+)
+ {
+    ensureQtApp();
+    using gf::desktop::viewmodels::GitProfilesViewModel;
+
+    const auto baseDir = std::filesystem::temp_directory_path() / "gf-profiles-https-cred";
+    std::filesystem::remove_all(baseDir);
+    std::filesystem::create_directories(baseDir / "home");
+
+    auto connRes = gf::infra::persistence::sqlite::SqliteConnection::openInMemory();
+    REQUIRE(connRes.has_value());
+    REQUIRE(gf::infra::persistence::sqlite::SchemaMigrator::migrateToLatest(*connRes).has_value());
+    gf::infra::persistence::profiles::SqliteProfileStore store(*connRes);
+    gf::infra::security::CryptoVault vault(baseDir / "vault");
+    gf::infra::git::credentials::SystemCredentialDetector detector(baseDir / "home");
+    QNetworkAccessManager nam;
+    gf::desktop::services::GitProviderApiClient apiClient(&nam);
+    FakeGiteaServer server;
+
+    GitProfilesViewModel vm(store, vault, detector, &apiClient);
+    vm.initialize();
+    REQUIRE(vm.waitForIdle());
+
+    vm.saveProfileToken("github", "ghp_saved", "Dokjolly0");
+    vm.addCustomProfile("git.example.dev", "Forgejo", "forgejo-token", server.url(), "alex");
+    REQUIRE(vm.waitForIdle());
+
+    SECTION("GitHub: saved token with the account name") {
+        const auto loader = vm.httpsCredentialLoader("https://github.com/Dokjolly0/RemoteViewer.git");
+        REQUIRE(loader);
+        const auto cred = loader();
+        REQUIRE(cred.has_value());
+        CHECK(cred->username == "Dokjolly0");
+        CHECK(cred->password == "ghp_saved");
+    }
+
+    SECTION("self-hosted server matched by host, even with the API on a LAN address") {
+        const auto loader = vm.httpsCredentialLoader("https://Git.Example.dev/alex/repo.git");
+        REQUIRE(loader);
+        const auto cred = loader();
+        REQUIRE(cred.has_value());
+        CHECK(cred->username == "alex");
+        CHECK(cred->password == "forgejo-token");
+    }
+
+    SECTION("no token for SSH URLs or unknown hosts") {
+        CHECK_FALSE(vm.httpsCredentialLoader("git@github.com:Dokjolly0/RemoteViewer.git"));
+        CHECK_FALSE(vm.httpsCredentialLoader("https://example.org/a/b.git"));
+    }
+
+    std::error_code ec;
+    std::filesystem::remove_all(baseDir, ec);
+}
+
+// ---------------------------------------------------------------------------------------------
+// DiffViewModel: highlighting cost on the GUI thread
+// ---------------------------------------------------------------------------------------------
+
+namespace
+{
+    gf::git::bo::FileDiff makeLargeCppDiff(int hunks, int linesPerHunk)
+    {
+        gf::git::bo::FileDiff diff;
+        diff.oldPath = diff.newPath = "src/big_file.cpp";
+        int oldLine = 1;
+        int newLine = 1;
+        for (int h = 0; h < hunks; ++h)
+        {
+            gf::git::bo::DiffHunk hunk;
+            hunk.oldStartLine = oldLine;
+            hunk.newStartLine = newLine;
+            hunk.header = "@@ -" + std::to_string(oldLine) + " +" + std::to_string(newLine) + " @@";
+            for (int i = 0; i < linesPerHunk; ++i)
+            {
+                gf::git::bo::DiffLine line;
+                const int k = i % 3;
+                line.kind = k == 0 ? gf::git::bo::DiffLineKind::Context
+                                   : (k == 1 ? gf::git::bo::DiffLineKind::Deletion : gf::git::bo::DiffLineKind::Addition);
+                line.content = "    for (const auto& item : items) { if (item.value > " + std::to_string(i) +
+                               ") { result.push_back(std::string(\"value\") + item.name); } } // comment";
+                if (line.kind != gf::git::bo::DiffLineKind::Addition) line.oldLineNumber = oldLine++;
+                if (line.kind != gf::git::bo::DiffLineKind::Deletion) line.newLineNumber = newLine++;
+                if (line.kind == gf::git::bo::DiffLineKind::Addition) ++diff.additionsCount;
+                if (line.kind == gf::git::bo::DiffLineKind::Deletion) ++diff.deletionsCount;
+                hunk.lines.push_back(std::move(line));
+            }
+            diff.hunks.push_back(std::move(hunk));
+        }
+        return diff;
+    }
+} // namespace
+
+TEST_CASE (
+"DiffViewModel applies a large diff without blocking the GUI thread"
+,
+"[viewmodel][diff][async][perf]"
+)
+ {
+    ensureQtApp();
+    MockFullGitOps mockOps;
+    mockOps.diffToReturn = makeLargeCppDiff(50, 100); // 5000 lines, the render cap
+    gf::git::bl::GitDiffService diffService(mockOps);
+    DiffViewModel diffVm(diffService);
+
+    // GUI-thread time from the moment the result is delivered to diffLoaded
+    QElapsedTimer applyTimer;
+    qint64 applyMs = -1;
+    QObject::connect(&diffVm, &DiffViewModel::isLoadingChanged, &diffVm, [&]()
+    {
+        if (!diffVm.isLoading()) applyTimer.start();
+    });
+    QObject::connect(&diffVm, &DiffViewModel::diffLoaded, &diffVm, [&]() { applyMs = applyTimer.elapsed(); });
+
+    const auto repo = std::filesystem::temp_directory_path() / "gf-diff-perf";
+    std::filesystem::create_directories(repo);
+    REQUIRE(diffVm.loadCommitFileDiff(QString::fromStdString(repo.string()), "abc123", "src/big_file.cpp"));
+    REQUIRE(diffVm.waitForIdle());
+    REQUIRE(applyMs >= 0);
+    WARN("GUI-thread apply of a 5000-line diff: " << applyMs << " ms");
+    CHECK(applyMs < 25); // highlighting and row building ran on the worker (~40 ms when inline)
+
+    auto* model = diffVm.linesModel();
+    CHECK(diffVm.hunks().size() == 50);
+    CHECK(diffVm.splitLines().size() > 50);
+    CHECK(model->rowCount() == 5050); // 50 headers + 5000 lines
+    CHECK(model->data(model->index(0, 0), DiffLineListModel::LineKindRole).toString() == "header");
+
+    // Inline and split views share the same highlighted text (highlighted once)
+    const auto inlineRich = model->data(model->index(1, 0), DiffLineListModel::RichContentRole).toString();
+    CHECK(inlineRich.contains("<span"));
+    const auto firstHunkLines = diffVm.hunks().at(0).toMap().value("lines").toList();
+    CHECK(firstHunkLines.at(0).toMap().value("richContent").toString() == inlineRich);
+    const auto firstSplitRow = diffVm.splitLines().at(1).toMap(); // row 0 is the hunk header
+    CHECK(firstSplitRow.value("leftRichContent").toString() == inlineRich);
+    CHECK(diffVm.maxLineLength() > 50);
+
+    SECTION("reloading an unchanged diff keeps the current view") {
+        QSignalSpy loadedSpy(&diffVm, &DiffViewModel::diffLoaded);
+        REQUIRE(diffVm.loadCommitFileDiff(QString::fromStdString(repo.string()), "abc123", "src/big_file.cpp"));
+        REQUIRE(diffVm.waitForIdle());
+        CHECK(loadedSpy.count() == 0);
+        CHECK(model->rowCount() == 5050);
+    }
+
+    SECTION("a changed diff of the same file is rebuilt") {
+        QSignalSpy loadedSpy(&diffVm, &DiffViewModel::diffLoaded);
+        mockOps.diffToReturn = makeLargeCppDiff(2, 10);
+        REQUIRE(diffVm.loadCommitFileDiff(QString::fromStdString(repo.string()), "abc123", "src/big_file.cpp"));
+        REQUIRE(diffVm.waitForIdle());
+        CHECK(loadedSpy.count() == 1);
+        CHECK(model->rowCount() == 22);
+        CHECK(diffVm.hunks().size() == 2);
+    }
+
+    SECTION("diffs over the render cap are truncated in every view") {
+        mockOps.diffToReturn = makeLargeCppDiff(60, 100); // 6000 lines
+        REQUIRE(diffVm.loadCommitFileDiff(QString::fromStdString(repo.string()), "abc123", "src/big_file.cpp"));
+        REQUIRE(diffVm.waitForIdle());
+        CHECK(diffVm.hunks().size() == 50);
+        CHECK(model->rowCount() == 5051); // + truncation notice
+        const auto notice = model->data(model->index(5050, 0), DiffLineListModel::ContentRole).toString();
+        CHECK(notice.contains("troncato"));
+        CHECK(diffVm.splitLines().last().toMap().value("hunkHeader").toString().contains("troncato"));
+    }
+
+    std::error_code ec;
+    std::filesystem::remove_all(repo, ec);
+}
+
+TEST_CASE (
+"Conflict file loading and fast-forward checks run off the GUI thread, latest wins"
+,
+"[viewmodel][conflict][branch][async][latest]"
+)
+ {
+    ensureQtApp();
+
+    MockFullGitOps mockOps;
+    mockOps.conflictFileToReturn = gf::git::bo::ConflictFile{
+        .filePath = "src/a.cpp",
+        .isBinary = false,
+        .hunks = {
+            gf::git::bo::ConflictHunk{
+                .hunkIndex = 0, .startLine = 1, .baseContent = "",
+                .oursContent = "ours", .theirsContent = "theirs",
+                .chosenSide = std::nullopt, .customContent = std::nullopt, .isResolved = false
+            }
+        },
+        .fullContentWithMarkers = "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> feature\n"
+    };
+    mockOps.echoConflictFilePath = true;
+    const auto repo = std::filesystem::temp_directory_path() / "gf-conflict-async";
+    std::filesystem::create_directories(repo);
+
+    SECTION("conflict resolver: only the last requested file is shown") {
+        gf::git::bl::GitConflictService conflictService(mockOps);
+        ConflictResolverViewModel vm(conflictService);
+        vm.setRepoPath(QString::fromStdString(repo.string()));
+        QSignalSpy fileSpy(&vm, &ConflictResolverViewModel::currentFilePathChanged);
+
+        mockOps.readDelayMs = 40;
+        for (int i = 0; i < 5; ++i)
+        {
+            REQUIRE(vm.loadFile(QStringLiteral("src/file%1.cpp").arg(i)));
+        }
+        CHECK(vm.isLoading());
+        CHECK(vm.currentFilePath().isEmpty()); // nothing read on the GUI thread
+        REQUIRE(vm.waitForIdle());
+        CHECK(vm.currentFilePath() == "src/file4.cpp");
+        CHECK(vm.totalHunks() == 1);
+        CHECK(mockOps.conflictFileCalls <= 2); // superseded reads skipped before running git
+
+        // Closing (clear) before the read completes: nothing lands afterwards
+        REQUIRE(vm.loadFile("src/late.cpp"));
+        vm.clear();
+        CHECK_FALSE(vm.isLoading());
+        REQUIRE(vm.waitForIdle());
+        waitUntil([] { return false; }, 100);
+        CHECK(vm.currentFilePath().isEmpty());
+        CHECK(vm.totalHunks() == 0);
+    }
+
+    SECTION("conflict resolver: a failed read reports the error") {
+        gf::git::bl::GitConflictService conflictService(mockOps);
+        ConflictResolverViewModel vm(conflictService);
+        vm.setRepoPath(QString::fromStdString((repo / "missing").string())); // fails path validation
+        REQUIRE(vm.loadFile("src/a.cpp"));
+        REQUIRE(vm.waitForIdle());
+        CHECK(vm.hasError());
+        CHECK(vm.currentFilePath().isEmpty());
+    }
+
+    SECTION("fast-forward check: asynchronous, only the latest answer is delivered") {
+        gf::git::bl::GitBranchService branchService(mockOps);
+        gf::git::bl::GitHistoryService historyService(mockOps);
+        gf::git::bl::GitRemoteMergeService remoteMergeService(mockOps);
+        BranchManagerViewModel branchVm(branchService, historyService, remoteMergeService);
+        branchVm.setRepositoryPath(QString::fromStdString(repo.string()));
+        REQUIRE(branchVm.waitForIdle());
+
+        QSignalSpy ffSpy(&branchVm, &BranchManagerViewModel::fastForwardCheckReady);
+        mockOps.readDelayMs = 40;
+        branchVm.requestFastForwardCheck("feature", "main");
+        branchVm.requestFastForwardCheck("origin/main", "feature"); // menu reopened on other branches
+        CHECK(ffSpy.count() == 0);
+        REQUIRE(ffSpy.wait(2000));
+        waitUntil([] { return false; }, 120);
+        REQUIRE(ffSpy.count() == 1);
+        CHECK(ffSpy.at(0).at(0).toString() == "origin/main");
+        CHECK(ffSpy.at(0).at(1).toString() == "feature");
+        CHECK(ffSpy.at(0).at(2).toBool()); // "origin/" stripped: main -> feature is possible
+
+        branchVm.requestFastForwardCheck("feature", "main");
+        REQUIRE(ffSpy.wait(2000));
+        CHECK_FALSE(ffSpy.last().at(2).toBool());
+
+        // Invalid input still answers asynchronously (single code path for the menu)
+        branchVm.requestFastForwardCheck("", "main");
+        CHECK(ffSpy.count() == 2);
+        REQUIRE(ffSpy.wait(2000));
+        CHECK_FALSE(ffSpy.last().at(2).toBool());
+    }
+
+    std::error_code ec;
+    std::filesystem::remove_all(repo, ec);
+}
+
+TEST_CASE("Flux UI Kit QML components load and instantiate cleanly", "[qml][ui]")
+{
+    ensureQtApp();
+    QQuickStyle::setStyle(QStringLiteral("Basic"));
+
+    QQmlEngine engine;
+    const auto qmlBaseDir = std::filesystem::path(__FILE__).parent_path().parent_path().parent_path()
+        / "src" / "desktop" / "ui" / "qml";
+
+    auto requireValidComponent = [&](const std::filesystem::path& filePath) -> std::unique_ptr<QObject>
+    {
+        QQmlComponent component(&engine, QUrl::fromLocalFile(QString::fromStdString(filePath.string())));
+        INFO("QML component errors for " << filePath.string() << ": " << component.errorString().toStdString());
+        REQUIRE(component.isReady());
+        std::unique_ptr<QObject> obj(component.create());
+        REQUIRE(obj != nullptr);
+        return obj;
+    };
+
+    auto themeObj = requireValidComponent(qmlBaseDir / "themes" / "FluxTheme.qml");
+    CHECK(themeObj->property("radiusSm").toInt() == 8);
+    CHECK(themeObj->property("radiusMd").toInt() == 10);
+    CHECK(themeObj->property("radiusLg").toInt() == 14);
+    CHECK(themeObj->property("animFast").toInt() == 120);
+
+    auto menuObj = requireValidComponent(qmlBaseDir / "views" / "FluxMenu.qml");
+    CHECK(menuObj->property("topPadding").toReal() == 6.0);
+
+    auto menuItemObj = requireValidComponent(qmlBaseDir / "views" / "FluxMenuItem.qml");
+    CHECK_FALSE(menuItemObj->property("isDestructive").toBool());
+    menuItemObj->setProperty("text", QStringLiteral("🗑 Elimina branch..."));
+    CHECK(menuItemObj->property("isDestructive").toBool());
+
+    auto separatorObj = requireValidComponent(qmlBaseDir / "views" / "FluxMenuSeparator.qml");
+    CHECK(separatorObj->property("implicitHeight").toReal() == 9.0);
+
+    auto checkBoxObj = requireValidComponent(qmlBaseDir / "views" / "FluxCheckBox.qml");
+    CHECK(checkBoxObj->property("fontSize").toInt() == 11);
+
+    auto branchSwitcherObj = requireValidComponent(qmlBaseDir / "views" / "BranchSwitcherDropdown.qml");
+    CHECK(branchSwitcherObj->property("implicitHeight").toInt() == 32);
+
+    requireValidComponent(qmlBaseDir / "views" / "CreateBranchModal.qml");
+    requireValidComponent(qmlBaseDir / "views" / "CreateTagModal.qml");
+    requireValidComponent(qmlBaseDir / "views" / "CreateWorktreeModal.qml");
+    requireValidComponent(qmlBaseDir / "views" / "PullRequestModal.qml");
+    requireValidComponent(qmlBaseDir / "views" / "BranchManagerModal.qml");
+    requireValidComponent(qmlBaseDir / "views" / "StashManagerModal.qml");
+    requireValidComponent(qmlBaseDir / "views" / "BatchProgressModal.qml");
+    requireValidComponent(qmlBaseDir / "views" / "ConflictResolverModal.qml");
+    requireValidComponent(qmlBaseDir / "views" / "CloneRepositoryModal.qml");
+    requireValidComponent(qmlBaseDir / "views" / "CommitBox.qml");
+    requireValidComponent(qmlBaseDir / "views" / "WorkingTreePanel.qml");
+    requireValidComponent(qmlBaseDir / "views" / "DiffOverviewScrollBar.qml");
+    requireValidComponent(qmlBaseDir / "views" / "DiffViewerPanel.qml");
+    requireValidComponent(qmlBaseDir / "views" / "MarkdownPreviewView.qml");
+    requireValidComponent(qmlBaseDir / "views" / "RichFilePreviewView.qml");
+    requireValidComponent(qmlBaseDir / "views" / "EditCommitMessageModal.qml");
+    requireValidComponent(qmlBaseDir / "views" / "CommitHistoryPanel.qml");
+    requireValidComponent(qmlBaseDir / "views" / "WorkspaceSessionView.qml");
+
+    gf::desktop::AppBootstrap bootstrap(":memory:");
+    bootstrap.initialize();
+    QQmlApplicationEngine appEngine;
+    bootstrap.registerWithQml(appEngine);
+    {
+        QQmlComponent hubComp(&appEngine, QUrl::fromLocalFile(QString::fromStdString((qmlBaseDir / "views" / "HomeHubView.qml").string())));
+        INFO("QML component errors for HomeHubView.qml: " << hubComp.errorString().toStdString());
+        REQUIRE(hubComp.isReady());
+        std::unique_ptr<QObject> hubObj(hubComp.create());
+        REQUIRE(hubObj != nullptr);
+    }
+    {
+        QQmlComponent quickOpenComp(&appEngine, QUrl::fromLocalFile(QString::fromStdString((qmlBaseDir / "views" / "QuickOpenModal.qml").string())));
+        INFO("QML component errors for QuickOpenModal.qml: " << quickOpenComp.errorString().toStdString());
+        REQUIRE(quickOpenComp.isReady());
+        std::unique_ptr<QObject> quickOpenObj(quickOpenComp.create());
+        REQUIRE(quickOpenObj != nullptr);
+    }
+
+    SECTION("Topbar Stash and Pop buttons are visible only when WIP changes or stashes exist")
+    {
+        TestContext ctx;
+        auto r1Res = ctx.repoService->registerRepository({
+            .localPath = ctx.repoAPath,
+            .displayName = "Repo 1"
+        });
+        REQUIRE(r1Res.has_value());
+
+        MockFullGitOps mockOps;
+        mockOps.statusToReturn = gf::git::bo::RepoWorkingTreeStatus{}; // clean working tree
+        mockOps.stashesToReturn.clear();                               // 0 stashes
+
+        gf::git::bl::GitWorkingTreeService statusService(mockOps);
+        gf::git::bl::GitStagingService stagingService(mockOps);
+        gf::git::bl::GitDiffService diffService(mockOps);
+        gf::git::bl::GitBranchService branchService(mockOps);
+        gf::git::bl::GitHistoryService historyService(mockOps);
+        gf::git::bl::GitRemoteMergeService remoteMergeService(mockOps);
+        gf::git::bl::GitStashService stashService(mockOps);
+        gf::git::bl::GitRebaseService rebaseService(mockOps);
+        gf::git::bl::GitConflictService conflictService(mockOps);
+
+        WorkspaceSessionViewModel sessionVm(
+            *ctx.repoService,
+            *ctx.workspaceService,
+            statusService,
+            stagingService,
+            diffService,
+            branchService,
+            historyService,
+            remoteMergeService,
+            stashService,
+            rebaseService,
+            conflictService
+        );
+
+        auto sessionViewObj = requireValidComponent(qmlBaseDir / "views" / "WorkspaceSessionView.qml");
+        sessionViewObj->setProperty("sessionVm", QVariant::fromValue(static_cast<QObject*>(&sessionVm)));
+
+        auto* stashBtn = sessionViewObj->findChild<QObject*>(QStringLiteral("topbarStashButton"));
+        auto* popBtn = sessionViewObj->findChild<QObject*>(QStringLiteral("topbarPopButton"));
+        REQUIRE(stashBtn != nullptr);
+        REQUIRE(popBtn != nullptr);
+
+        // 1. Clean working tree and 0 stashes -> neither Stash nor Pop is shown
+        sessionVm.openRepository(
+            QString::fromStdString(r1Res->id.value()),
+            QStringLiteral("Repo 1"),
+            QString::fromStdString(ctx.repoAPath.string())
+        );
+        REQUIRE(sessionVm.waitForIdle());
+        CHECK_FALSE(sessionViewObj->property("hasWipChanges").toBool());
+        CHECK_FALSE(sessionViewObj->property("hasStashes").toBool());
+        CHECK_FALSE(stashBtn->property("visible").toBool());
+        CHECK_FALSE(popBtn->property("visible").toBool());
+
+        // 2. WIP changes present and 0 stashes -> only Stash is shown, Pop is hidden
+        gf::git::bo::WorkingTreeFileItem dirtyFile{
+            .path = "src/main.cpp",
+            .originalPath = {},
+            .kind = gf::git::bo::FileChangeKind::Modified,
+            .statusCode = 'M'
+        };
+        mockOps.statusToReturn.unstagedFiles = {dirtyFile};
+        sessionVm.checkWorkingTreeUpdates();
+        REQUIRE(sessionVm.waitForIdle());
+        CHECK(sessionViewObj->property("hasWipChanges").toBool());
+        CHECK_FALSE(sessionViewObj->property("hasStashes").toBool());
+        CHECK(stashBtn->property("visible").toBool());
+        CHECK_FALSE(popBtn->property("visible").toBool());
+
+        // 3. Stash pushed (clean WIP, 1 stash) -> Stash is hidden, Pop is shown
+        mockOps.statusToReturn.unstagedFiles.clear();
+        mockOps.stashesToReturn = {
+            gf::git::bo::GitStashItem{
+                .index = 0,
+                .selector = "stash@{0}",
+                .commitSha = "abc1234",
+                .dateIso = "2026-11-18",
+                .message = "WIP on main",
+                .branchName = "main"
+            }
+        };
+        REQUIRE(sessionVm.stashManager()->push(QStringLiteral("WIP on main")));
+        REQUIRE(sessionVm.waitForIdle());
+        CHECK_FALSE(sessionViewObj->property("hasWipChanges").toBool());
+        CHECK(sessionViewObj->property("hasStashes").toBool());
+        CHECK(sessionViewObj->property("stashCount").toInt() == 1);
+        CHECK_FALSE(stashBtn->property("visible").toBool());
+        CHECK(popBtn->property("visible").toBool());
+
+        // 4. Both WIP changes and 1 stash present -> both Stash and Pop are shown
+        mockOps.statusToReturn.unstagedFiles = {dirtyFile};
+        sessionVm.checkWorkingTreeUpdates();
+        REQUIRE(sessionVm.waitForIdle());
+        CHECK(sessionViewObj->property("hasWipChanges").toBool());
+        CHECK(sessionViewObj->property("hasStashes").toBool());
+        CHECK(stashBtn->property("visible").toBool());
+        CHECK(popBtn->property("visible").toBool());
+    }
+
+    SECTION("DiffOverviewScrollBar computes thumb geometry and scrolls attached Flickable")
+    {
+        QQmlComponent flickComp(&engine);
+        flickComp.setData(
+            "import QtQuick\n"
+            "Flickable {\n"
+            "    width: 300\n"
+            "    height: 200\n"
+            "    contentWidth: 300\n"
+            "    contentHeight: 2000\n"
+            "}\n",
+            QUrl()
+        );
+        REQUIRE(flickComp.isReady());
+        std::unique_ptr<QObject> flickObj(flickComp.create());
+        REQUIRE(flickObj != nullptr);
+
+        auto barObj = requireValidComponent(qmlBaseDir / "views" / "DiffOverviewScrollBar.qml");
+        CHECK(barObj->property("implicitWidth").toInt() == 28);
+        barObj->setProperty("width", 28);
+        barObj->setProperty("height", 200);
+        barObj->setProperty("flickable", QVariant::fromValue(flickObj.get()));
+
+        QVariantList markers;
+        markers.append(QVariantMap{{"start", 0.1}, {"end", 0.2}, {"side", "old"}});
+        markers.append(QVariantMap{{"start", 0.5}, {"end", 0.6}, {"side", "new"}});
+        barObj->setProperty("markers", markers);
+
+        CHECK(barObj->property("scrollable").toBool());
+        CHECK(barObj->property("maxScroll").toReal() == 1800.0);
+        CHECK(barObj->property("thumbY").toReal() == 0.0);
+
+        const double maxThumbY = barObj->property("maxThumbY").toReal();
+        REQUIRE(maxThumbY > 0.0);
+
+        // Scroll to the midpoint of the track
+        QMetaObject::invokeMethod(barObj.get(), "scrollToThumbY", Q_ARG(QVariant, maxThumbY * 0.5));
+        CHECK(flickObj->property("contentY").toReal() == 900.0);
+        CHECK(barObj->property("thumbY").toReal() == maxThumbY * 0.5);
+
+        // Scroll to the bottom of the track
+        QMetaObject::invokeMethod(barObj.get(), "scrollToThumbY", Q_ARG(QVariant, maxThumbY));
+        CHECK(flickObj->property("contentY").toReal() == 1800.0);
+    }
+
+    SECTION("DiffViewerPanel selection and copy integration")
+    {
+        MockFullGitOps mockOps;
+        gf::git::bl::GitDiffService diffService(mockOps);
+        DiffViewModel diffVm(diffService);
+
+        gf::git::bo::DiffHunk hunk;
+        hunk.header = "@@ -1,1 +1,2 @@";
+        hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Context, .oldLineNumber = 1, .newLineNumber = 1, .content = "alpha"});
+        hunk.lines.push_back({.kind = gf::git::bo::DiffLineKind::Addition, .newLineNumber = 2, .content = "beta"});
+        mockOps.diffToReturn.oldPath = "sample.txt";
+        mockOps.diffToReturn.newPath = "sample.txt";
+        mockOps.diffToReturn.hunks = {hunk};
+
+        REQUIRE(diffVm.loadDiff(QString::fromStdString(std::filesystem::temp_directory_path().string()), "sample.txt", "unstaged"));
+        REQUIRE(diffVm.waitForIdle());
+
+        auto panelObj = requireValidComponent(qmlBaseDir / "views" / "DiffViewerPanel.qml");
+        QQuickWindow window;
+        window.resize(1200, 800);
+        auto* panelItem = qobject_cast<QQuickItem*>(panelObj.get());
+        REQUIRE(panelItem != nullptr);
+        panelItem->setParentItem(window.contentItem());
+        panelItem->setSize(QSizeF(1200, 800));
+        window.show();
+        QCoreApplication::processEvents();
+
+        static thread_local int s_rangeErrorCount = 0;
+        s_rangeErrorCount = 0;
+        const auto prevHandler = qInstallMessageHandler(
+            [](QtMsgType type, const QMessageLogContext& ctx, const QString& msg)
+            {
+                if (msg.contains(QStringLiteral("RangeError")) || msg.contains(QStringLiteral("Maximum call stack")))
+                {
+                    ++s_rangeErrorCount;
+                }
+                (void)type;
+                (void)ctx;
+            });
+
+        panelObj->setProperty("diffViewer", QVariant::fromValue(static_cast<QObject*>(&diffVm)));
+        QCoreApplication::processEvents();
+
+        CHECK_FALSE(panelObj->property("hasSelection").toBool());
+        QMetaObject::invokeMethod(panelObj.get(), "selectAllInActiveView");
+        QCoreApplication::processEvents();
+        CHECK(panelObj->property("hasSelection").toBool());
+        CHECK(panelObj->property("selTarget").toString() == "split-right");
+        CHECK(s_rangeErrorCount == 0);
+
+        // Rapid file switching with active selection and mixed modes must not recurse or stall
+        const QString repoStr = QString::fromStdString(std::filesystem::temp_directory_path().string());
+        for (int i = 0; i < 6; ++i)
+        {
+            const QString nextPath = (i % 2 == 0) ? QStringLiteral("doc_%1.md").arg(i) : QStringLiteral("src_%1.cpp").arg(i);
+            mockOps.diffToReturn.oldPath = nextPath.toStdString();
+            mockOps.diffToReturn.newPath = nextPath.toStdString();
+            REQUIRE(diffVm.loadDiff(repoStr, nextPath, "unstaged"));
+            CHECK(diffVm.loadingFilePath() == nextPath);
+        }
+        REQUIRE(diffVm.waitForIdle());
+        QCoreApplication::processEvents();
+        CHECK(diffVm.filePath() == "src_5.cpp");
+        CHECK(diffVm.loadingFilePath().isEmpty());
+        CHECK(s_rangeErrorCount == 0);
+
+        QMetaObject::invokeMethod(panelObj.get(), "clearSelection");
+        QCoreApplication::processEvents();
+        CHECK_FALSE(panelObj->property("hasSelection").toBool());
+        CHECK(s_rangeErrorCount == 0);
+
+        qInstallMessageHandler(prevHandler);
+        panelItem->setParentItem(nullptr);
+    }
+}
+
+#include "desktop/services/diff_file_inspector.hpp"
+#include "desktop/services/diff_image_provider.hpp"
+#include <QBuffer>
+#include <QImage>
+
+namespace
+{
+    std::string makeTestPngBytes(int width, int height, QColor fillColor, bool drawRedBox = false)
+    {
+        QImage img(width, height, QImage::Format_ARGB32);
+        img.fill(fillColor);
+        if (drawRedBox)
+        {
+            for (int y = 0; y < height / 2; ++y)
+            {
+                for (int x = 0; x < width / 2; ++x)
+                {
+                    img.setPixelColor(x, y, QColor(220, 38, 38, 255));
+                }
+            }
+        }
+        QByteArray ba;
+        QBuffer buf(&ba);
+        buf.open(QIODevice::WriteOnly);
+        img.save(&buf, "PNG");
+        return std::string(ba.constData(), static_cast<std::size_t>(ba.size()));
+    }
+
+    // Builds a minimal valid uncompressed (stored) ZIP archive with the given entries.
+    std::string makeTestZipBytes(const std::vector<std::pair<std::string, std::string>>& files)
+    {
+        auto pushLE16 = [](std::string& s, std::uint16_t v)
+        {
+            s.push_back(static_cast<char>(v & 0xFF));
+            s.push_back(static_cast<char>((v >> 8) & 0xFF));
+        };
+        auto pushLE32 = [](std::string& s, std::uint32_t v)
+        {
+            s.push_back(static_cast<char>(v & 0xFF));
+            s.push_back(static_cast<char>((v >> 8) & 0xFF));
+            s.push_back(static_cast<char>((v >> 16) & 0xFF));
+            s.push_back(static_cast<char>((v >> 24) & 0xFF));
+        };
+        auto simpleHash = [](const std::string& data) -> std::uint32_t
+        {
+            std::uint32_t h = 2166136261u;
+            for (unsigned char c : data) h = (h ^ c) * 16777619u;
+            return h;
+        };
+
+        std::string zip;
+        struct CdRec { std::string name; std::uint32_t crc; std::uint32_t size; std::uint32_t offset; };
+        std::vector<CdRec> records;
+
+        for (const auto& [name, content] : files)
+        {
+            const std::uint32_t offset = static_cast<std::uint32_t>(zip.size());
+            const std::uint32_t crc = simpleHash(content);
+            const std::uint32_t sz = static_cast<std::uint32_t>(content.size());
+            pushLE32(zip, 0x04034b50u);
+            pushLE16(zip, 20); pushLE16(zip, 0); pushLE16(zip, 0); pushLE16(zip, 0); pushLE16(zip, 0);
+            pushLE32(zip, crc); pushLE32(zip, sz); pushLE32(zip, sz);
+            pushLE16(zip, static_cast<std::uint16_t>(name.size())); pushLE16(zip, 0);
+            zip.append(name);
+            zip.append(content);
+            records.push_back({name, crc, sz, offset});
+        }
+
+        const std::uint32_t cdOffset = static_cast<std::uint32_t>(zip.size());
+        for (const auto& r : records)
+        {
+            pushLE32(zip, 0x02014b50u);
+            pushLE16(zip, 20); pushLE16(zip, 20); pushLE16(zip, 0); pushLE16(zip, 0);
+            pushLE16(zip, 0); pushLE16(zip, 0);
+            pushLE32(zip, r.crc); pushLE32(zip, r.size); pushLE32(zip, r.size);
+            pushLE16(zip, static_cast<std::uint16_t>(r.name.size()));
+            pushLE16(zip, 0); pushLE16(zip, 0); pushLE16(zip, 0); pushLE16(zip, 0);
+            pushLE32(zip, 0); pushLE32(zip, r.offset);
+            zip.append(r.name);
+        }
+        const std::uint32_t cdSize = static_cast<std::uint32_t>(zip.size()) - cdOffset;
+
+        pushLE32(zip, 0x06054b50u);
+        pushLE16(zip, 0); pushLE16(zip, 0);
+        pushLE16(zip, static_cast<std::uint16_t>(records.size()));
+        pushLE16(zip, static_cast<std::uint16_t>(records.size()));
+        pushLE32(zip, cdSize);
+        pushLE32(zip, cdOffset);
+        pushLE16(zip, 0);
+        return zip;
+    }
+
+    class MockBlobGitOps final : public MockFullGitOps
+    {
+    public:
+        std::map<std::string, gf::git::bo::FileBlob> blobsByRev;
+
+        std::expected<gf::git::bo::FileBlob, gf::git::ports::GitOpsError>
+        getFileBlob(const std::filesystem::path&, const std::string& revision, const std::string&, std::size_t) override
+        {
+            if (const auto it = blobsByRev.find(revision); it != blobsByRev.end())
+            {
+                return it->second;
+            }
+            return std::unexpected(gf::git::ports::GitOpsError{
+                .kind = gf::git::ports::GitOpsError::Kind::PathNotFound,
+                .exitCode = 1,
+                .message = "not found",
+                .command = "git show"
+            });
+        }
+    };
+} // namespace
+
+TEST_CASE("DiffViewModel and DiffFileInspector preview images, archives, and binary files", "[viewmodel][diff][binary]")
+{
+    ensureQtApp();
+
+    SECTION("Modified PNG image exposes dimensions, pixel diff, and image provider URLs")
+    {
+        MockBlobGitOps mockOps;
+        mockOps.diffToReturn.oldPath = "assets/banner.png";
+        mockOps.diffToReturn.newPath = "assets/banner.png";
+        mockOps.diffToReturn.isBinary = true;
+
+        const std::string oldPng = makeTestPngBytes(32, 32, QColor(15, 23, 42, 255), false);
+        const std::string newPng = makeTestPngBytes(32, 32, QColor(15, 23, 42, 255), true);
+        mockOps.blobsByRev[":0"] = gf::git::bo::FileBlob{.bytes = oldPng, .totalSize = oldPng.size()};
+        mockOps.blobsByRev["WORKTREE"] = gf::git::bo::FileBlob{.bytes = newPng, .totalSize = newPng.size()};
+
+        gf::git::bl::GitDiffService diffService(mockOps);
+        DiffViewModel vm(diffService);
+
+        REQUIRE(vm.loadDiff(QString::fromStdString(std::filesystem::temp_directory_path().string()),
+                            QStringLiteral("assets/banner.png"), QStringLiteral("unstaged")));
+        REQUIRE(vm.waitForIdle());
+
+        CHECK(vm.isBinary());
+        CHECK(vm.hasRichPreview());
+        CHECK(vm.isImage());
+        CHECK(vm.hasVisualPreview());
+        CHECK(vm.fileKind() == "image");
+        CHECK(vm.formatBadge() == "PNG");
+        CHECK(vm.oldImageWidth() == 32);
+        CHECK(vm.oldImageHeight() == 32);
+        CHECK(vm.newImageWidth() == 32);
+        CHECK(vm.newImageHeight() == 32);
+        // Quarter of 32x32 image changed (25%)
+        CHECK(std::abs(vm.imageDiffPercent() - 25.0) < 0.5);
+        CHECK(vm.oldImageUrl().startsWith("image://diffpreview/"));
+        CHECK(vm.newImageUrl().startsWith("image://diffpreview/"));
+        CHECK(vm.diffImageUrl().startsWith("image://diffpreview/"));
+
+        gf::desktop::DiffImageProvider provider;
+        QSize sz;
+        const QString oldId = vm.oldImageUrl().mid(QStringLiteral("image://diffpreview/").size());
+        const QString diffId = vm.diffImageUrl().mid(QStringLiteral("image://diffpreview/").size());
+        CHECK(provider.requestImage(oldId, &sz, QSize()).size() == QSize(32, 32));
+        CHECK(provider.requestImage(diffId, &sz, QSize()).size() == QSize(32, 32));
+    }
+
+    SECTION("Switching repeatedly between image files produces unique monotonic image URLs")
+    {
+        MockBlobGitOps mockOps;
+        mockOps.diffToReturn.isBinary = true;
+        mockOps.diffToReturn.isNewFile = true;
+
+        const std::string pngA = makeTestPngBytes(64, 64, QColor(255, 0, 0, 255), false);
+        const std::string pngB = makeTestPngBytes(48, 48, QColor(0, 255, 0, 255), false);
+
+        gf::git::bl::GitDiffService diffService(mockOps);
+        DiffViewModel vm(diffService);
+        gf::desktop::DiffImageProvider provider;
+        const QString repo = QString::fromStdString(std::filesystem::temp_directory_path().string());
+
+        mockOps.diffToReturn.oldPath = "icons/a.png";
+        mockOps.diffToReturn.newPath = "icons/a.png";
+        mockOps.blobsByRev["WORKTREE"] = gf::git::bo::FileBlob{.bytes = pngA, .totalSize = pngA.size()};
+        REQUIRE(vm.loadDiff(repo, QStringLiteral("icons/a.png"), QStringLiteral("untracked")));
+        REQUIRE(vm.waitForIdle());
+        const QString urlA1 = vm.newImageUrl();
+        CHECK(vm.newImageWidth() == 64);
+
+        mockOps.diffToReturn.oldPath = "icons/b.png";
+        mockOps.diffToReturn.newPath = "icons/b.png";
+        mockOps.blobsByRev["WORKTREE"] = gf::git::bo::FileBlob{.bytes = pngB, .totalSize = pngB.size()};
+        REQUIRE(vm.loadDiff(repo, QStringLiteral("icons/b.png"), QStringLiteral("untracked")));
+        REQUIRE(vm.waitForIdle());
+        const QString urlB = vm.newImageUrl();
+        CHECK(vm.newImageWidth() == 48);
+        CHECK(urlB != urlA1);
+
+        QSize sz;
+        const QImage imgB = provider.requestImage(urlB.mid(QStringLiteral("image://diffpreview/").size()), &sz, QSize());
+        REQUIRE(imgB.size() == QSize(48, 48));
+        CHECK(imgB.pixelColor(0, 0).green() == 255);
+
+        // Switching back to a.png must also produce a brand-new URL
+        mockOps.diffToReturn.oldPath = "icons/a.png";
+        mockOps.diffToReturn.newPath = "icons/a.png";
+        mockOps.blobsByRev["WORKTREE"] = gf::git::bo::FileBlob{.bytes = pngA, .totalSize = pngA.size()};
+        REQUIRE(vm.loadDiff(repo, QStringLiteral("icons/a.png"), QStringLiteral("untracked")));
+        REQUIRE(vm.waitForIdle());
+        const QString urlA2 = vm.newImageUrl();
+        CHECK(urlA2 != urlB);
+        CHECK(urlA2 != urlA1);
+        const QImage imgA2 = provider.requestImage(urlA2.mid(QStringLiteral("image://diffpreview/").size()), &sz, QSize());
+        REQUIRE(imgA2.size() == QSize(64, 64));
+        CHECK(imgA2.pixelColor(0, 0).red() == 255);
+    }
+
+    SECTION("ZIP archive diff classifies added, removed, modified, and unchanged entries")
+    {
+        const std::string oldZip = makeTestZipBytes({
+            {"keep.txt", "same"},
+            {"edit.txt", "before"},
+            {"gone.txt", "removed"}
+        });
+        const std::string newZip = makeTestZipBytes({
+            {"keep.txt", "same"},
+            {"edit.txt", "after-updated"},
+            {"added.txt", "hello"}
+        });
+
+        const auto insp = gf::desktop::DiffFileInspector::inspect(
+            "bundle.zip",
+            gf::git::bo::FileBlob{.bytes = oldZip, .totalSize = oldZip.size()},
+            gf::git::bo::FileBlob{.bytes = newZip, .totalSize = newZip.size()});
+
+        REQUIRE(insp.valid);
+        CHECK(insp.fileKind == "archive");
+        CHECK(insp.formatBadge == "ZIP");
+        CHECK(insp.archiveAddedCount == 1);
+        CHECK(insp.archiveRemovedCount == 1);
+        CHECK(insp.archiveModifiedCount == 1);
+        CHECK(insp.archiveUnchangedCount == 1);
+        CHECK(insp.archiveEntries.size() == 4);
+    }
+
+    SECTION("Generic binary, PDF, and Hex diff detect metadata and changed byte rows")
+    {
+        const std::string oldPdf = "%PDF-1.5\n1 0 obj << /Type /Page >> endobj\n<< /Title (Old Doc) >>";
+        const std::string newPdf = "%PDF-1.7\n1 0 obj << /Type /Page >> endobj\n2 0 obj << /Type /Page >> endobj\n<< /Title (New Doc) >>";
+
+        const auto insp = gf::desktop::DiffFileInspector::inspect(
+            "docs/spec.pdf",
+            gf::git::bo::FileBlob{.bytes = oldPdf, .totalSize = oldPdf.size()},
+            gf::git::bo::FileBlob{.bytes = newPdf, .totalSize = newPdf.size()});
+
+        REQUIRE(insp.valid);
+        CHECK(insp.fileKind == "pdf");
+        CHECK(insp.formatBadge == "PDF");
+        CHECK_FALSE(insp.oldSha256.isEmpty());
+        CHECK_FALSE(insp.newSha256.isEmpty());
+        CHECK(insp.oldSha256 != insp.newSha256);
+        CHECK(insp.hexChangedRows > 0);
+        CHECK_FALSE(insp.hexRows.isEmpty());
+        CHECK_FALSE(insp.metadataRows.isEmpty());
+    }
+}
+
+TEST_CASE("WorkspaceSessionViewModel clusters tabs by group and exposes multi-group badges", "[viewmodel][tabs][groups]")
+{
+    ensureQtApp();
+
+    gf::desktop::AppBootstrap bootstrap(":memory:");
+    bootstrap.initialize();
+
+    const auto baseDir = std::filesystem::temp_directory_path() / "gf-tab-groups-vm-test";
+    std::error_code ec;
+    std::filesystem::remove_all(baseDir, ec);
+    const auto repoApiDir = baseDir / "api";
+    const auto repoSharedDir = baseDir / "shared-core";
+    const auto repoPosDir = baseDir / "pos-ui";
+    const auto repoSoloDir = baseDir / "solo-tools";
+    for (const auto& dir : {repoApiDir, repoSharedDir, repoPosDir, repoSoloDir})
+    {
+        std::filesystem::create_directories(dir / ".git");
+    }
+
+    auto& repoService = bootstrap.repositoryService();
+    auto& groupService = bootstrap.groupService();
+    auto& wsService = bootstrap.workspaceService();
+    auto& homeVm = bootstrap.homeHubViewModel();
+    auto& sessionVm = bootstrap.workspaceSessionViewModel();
+
+    const auto rApi = repoService.registerRepository({.localPath = repoApiDir, .displayName = "api"}).value();
+    const auto rShared = repoService.registerRepository({.localPath = repoSharedDir, .displayName = "shared-core"}).value();
+    const auto rPos = repoService.registerRepository({.localPath = repoPosDir, .displayName = "pos-ui"}).value();
+    const auto rSolo = repoService.registerRepository({.localPath = repoSoloDir, .displayName = "solo-tools"}).value();
+
+    REQUIRE(homeVm.createGroup(QStringLiteral("Backend"),
+                               {QString::fromStdString(rApi.id.value()), QString::fromStdString(rShared.id.value())},
+                               QStringLiteral("#38BDF8")));
+    REQUIRE(homeVm.createGroup(QStringLiteral("POS"),
+                               {QString::fromStdString(rShared.id.value()), QString::fromStdString(rPos.id.value())},
+                               QStringLiteral("#34D399")));
+
+    const auto allGroups = groupService.getAllGroups().value();
+    REQUIRE(allGroups.size() == 2);
+    const auto grpBackend = allGroups[0].name == "Backend" ? allGroups[0] : allGroups[1];
+    const auto grpPos = allGroups[0].name == "POS" ? allGroups[0] : allGroups[1];
+
+    // GroupListModel exposes custom groupColor role
+    const auto* groupModel = homeVm.groupModel();
+    REQUIRE(groupModel->rowCount() == 2);
+    const auto backendItem = groupModel->findById(QString::fromStdString(grpBackend.id.value()));
+    REQUIRE(backendItem.has_value());
+    CHECK(backendItem->color == QStringLiteral("#38BDF8"));
+
+    // Create workspace with Backend, POS, and direct ungrouped repo solo-tools
+    const auto ws = wsService.createWorkspace("Workstation",
+                                              {grpBackend.id, grpPos.id},
+                                              {rSolo.id}).value();
+
+    // WorkspaceListModel exposes groupColors matching each group's resolved color
+    // and per-repository group colors/names for repos inside the workspace
+    homeVm.refreshAll();
+    const auto wsItem = homeVm.workspaceModel()->findById(QString::fromStdString(ws.id.value()));
+    REQUIRE(wsItem.has_value());
+    REQUIRE(wsItem->groupColors.size() == 2);
+    CHECK(wsItem->groupColors[0] == QStringLiteral("#38BDF8"));
+    CHECK(wsItem->groupColors[1] == QStringLiteral("#34D399"));
+    REQUIRE(wsItem->repositoryNames == QStringList({QStringLiteral("api"),
+                                                    QStringLiteral("shared-core"),
+                                                    QStringLiteral("pos-ui"),
+                                                    QStringLiteral("solo-tools")}));
+    REQUIRE(wsItem->repositoryGroupColors.size() == 4);
+    CHECK(wsItem->repositoryGroupColors[0].toStringList() == QStringList({QStringLiteral("#38BDF8")}));
+    CHECK(wsItem->repositoryGroupColors[1].toStringList() == QStringList({QStringLiteral("#38BDF8"), QStringLiteral("#34D399")}));
+    CHECK(wsItem->repositoryGroupColors[2].toStringList() == QStringList({QStringLiteral("#34D399")}));
+    CHECK(wsItem->repositoryGroupColors[3].toStringList().isEmpty());
+    REQUIRE(wsItem->repositoryGroupNames.size() == 4);
+    CHECK(wsItem->repositoryGroupNames[0].toStringList() == QStringList({QStringLiteral("Backend")}));
+    CHECK(wsItem->repositoryGroupNames[1].toStringList() == QStringList({QStringLiteral("Backend"), QStringLiteral("POS")}));
+    CHECK(wsItem->repositoryGroupNames[2].toStringList() == QStringList({QStringLiteral("POS")}));
+    CHECK(wsItem->repositoryGroupNames[3].toStringList().isEmpty());
+
+    const QModelIndex wsIdx = homeVm.workspaceModel()->index(0, 0);
+    CHECK(homeVm.workspaceModel()->data(wsIdx, WorkspaceListModel::RepositoryGroupColorsRole).toList().size() == 4);
+    CHECK(homeVm.workspaceModel()->data(wsIdx, WorkspaceListModel::RepositoryGroupNamesRole).toList().size() == 4);
+
+    sessionVm.openWorkspace(QString::fromStdString(ws.id.value()));
+    CHECK(sessionVm.sessionKind() == QStringLiteral("workspace"));
+    CHECK(sessionVm.tabs().size() == 4);
+
+    // Clusters: [Backend (api, shared-core)], [POS (pos-ui)], [Ungrouped (solo-tools)]
+    const auto clusters = sessionVm.tabClusters();
+    REQUIRE(clusters.size() == 3);
+
+    const auto c0 = clusters[0].toMap();
+    CHECK(c0.value("groupName").toString() == QStringLiteral("Backend"));
+    CHECK(c0.value("groupColor").toString() == QStringLiteral("#38BDF8"));
+    CHECK_FALSE(c0.value("isUngrouped").toBool());
+    const auto c0Tabs = c0.value("tabs").toList();
+    REQUIRE(c0Tabs.size() == 2);
+    CHECK(c0Tabs[0].toMap().value("name").toString() == QStringLiteral("api"));
+
+    // Shared repo sits in first opened group (Backend) and exposes BOTH groups for stacked dots + hover highlight
+    const auto sharedTab = c0Tabs[1].toMap();
+    CHECK(sharedTab.value("name").toString() == QStringLiteral("shared-core"));
+    CHECK(sharedTab.value("primaryGroupName").toString() == QStringLiteral("Backend"));
+    const auto sharedGroups = sharedTab.value("groups").toList();
+    REQUIRE(sharedGroups.size() == 2);
+    CHECK(sharedGroups[0].toMap().value("name").toString() == QStringLiteral("Backend"));
+    CHECK(sharedGroups[0].toMap().value("color").toString() == QStringLiteral("#38BDF8"));
+    CHECK(sharedGroups[1].toMap().value("name").toString() == QStringLiteral("POS"));
+    CHECK(sharedGroups[1].toMap().value("color").toString() == QStringLiteral("#34D399"));
+
+    const auto c1 = clusters[1].toMap();
+    CHECK(c1.value("groupName").toString() == QStringLiteral("POS"));
+    CHECK(c1.value("groupColor").toString() == QStringLiteral("#34D399"));
+    REQUIRE(c1.value("tabs").toList().size() == 1);
+    CHECK(c1.value("tabs").toList()[0].toMap().value("name").toString() == QStringLiteral("pos-ui"));
+
+    const auto c2 = clusters[2].toMap();
+    CHECK(c2.value("isUngrouped").toBool());
+    REQUIRE(c2.value("tabs").toList().size() == 1);
+    CHECK(c2.value("tabs").toList()[0].toMap().value("name").toString() == QStringLiteral("solo-tools"));
+
+    // Updating a group color via HomeHubViewModel refreshes open tabs and workspace repo colors automatically
+    REQUIRE(homeVm.updateGroupColor(QString::fromStdString(grpPos.id.value()), QStringLiteral("#FB7185")));
+    const auto updatedWsItem = homeVm.workspaceModel()->findById(QString::fromStdString(ws.id.value()));
+    REQUIRE(updatedWsItem.has_value());
+    REQUIRE(updatedWsItem->repositoryGroupColors.size() == 4);
+    CHECK(updatedWsItem->repositoryGroupColors[1].toStringList() == QStringList({QStringLiteral("#38BDF8"), QStringLiteral("#FB7185")}));
+    CHECK(updatedWsItem->repositoryGroupColors[2].toStringList() == QStringList({QStringLiteral("#FB7185")}));
+    const auto updatedClusters = sessionVm.tabClusters();
+    REQUIRE(updatedClusters.size() == 3);
+    CHECK(updatedClusters[1].toMap().value("groupColor").toString() == QStringLiteral("#FB7185"));
+    const auto updatedSharedGroups = updatedClusters[0].toMap().value("tabs").toList()[1].toMap().value("groups").toList();
+    REQUIRE(updatedSharedGroups.size() == 2);
+    CHECK(updatedSharedGroups[1].toMap().value("color").toString() == QStringLiteral("#FB7185"));
+
+    // Switching active tab inside workspace persists across close + reopen (and across other sessions)
+    CHECK(sessionVm.activeTabIndex() == 0);
+    sessionVm.setActiveTabIndex(2);
+    CHECK(sessionVm.activeRepoName() == QStringLiteral("pos-ui"));
+    sessionVm.closeAllTabs();
+
+    // Opening a single repository must not overwrite the workspace's last active repository
+    sessionVm.openRepository(QString::fromStdString(rApi.id.value()),
+                             QString::fromStdString(rApi.displayName),
+                             QString::fromStdString(rApi.localPath.string()));
+    CHECK(sessionVm.activeRepoName() == QStringLiteral("api"));
+
+    sessionVm.openWorkspace(QString::fromStdString(ws.id.value()));
+    CHECK(sessionVm.tabs().size() == 4);
+    CHECK(sessionVm.activeTabIndex() == 2);
+    CHECK(sessionVm.activeRepoName() == QStringLiteral("pos-ui"));
+
+    // Switching to the direct repo, closing an earlier tab, closing all, and reopening restores solo-tools
+    sessionVm.setActiveTabIndex(3);
+    CHECK(sessionVm.activeRepoName() == QStringLiteral("solo-tools"));
+    sessionVm.closeTab(0);
+    CHECK(sessionVm.tabs().size() == 3);
+    CHECK(sessionVm.activeTabIndex() == 2);
+    CHECK(sessionVm.activeRepoName() == QStringLiteral("solo-tools"));
+    sessionVm.closeAllTabs();
+
+    sessionVm.openWorkspace(QString::fromStdString(ws.id.value()));
+    CHECK(sessionVm.tabs().size() == 4);
+    CHECK(sessionVm.activeTabIndex() == 3);
+    CHECK(sessionVm.activeRepoName() == QStringLiteral("solo-tools"));
+
+    // Renaming and updating workspace color via HomeHubViewModel refreshes WorkspaceListModel and active session badge
+    REQUIRE(homeVm.renameWorkspace(QString::fromStdString(ws.id.value()), QStringLiteral("Main Workstation")));
+    REQUIRE(homeVm.updateWorkspaceColor(QString::fromStdString(ws.id.value()), QStringLiteral("#FBBF24")));
+    const auto renamedWsItem = homeVm.workspaceModel()->findById(QString::fromStdString(ws.id.value()));
+    REQUIRE(renamedWsItem.has_value());
+    CHECK(renamedWsItem->name == QStringLiteral("Main Workstation"));
+    CHECK(renamedWsItem->color == QStringLiteral("#FBBF24"));
+    const QModelIndex renamedWsIdx = homeVm.workspaceModel()->index(0, 0);
+    CHECK(homeVm.workspaceModel()->data(renamedWsIdx, WorkspaceListModel::ColorRole).toString() == QStringLiteral("#FBBF24"));
+    CHECK(sessionVm.currentGroupName() == QStringLiteral("Main Workstation"));
+    CHECK(sessionVm.currentGroupColor() == QStringLiteral("#FBBF24"));
+
+    sessionVm.closeAllTabs();
+    std::filesystem::remove_all(baseDir, ec);
+}

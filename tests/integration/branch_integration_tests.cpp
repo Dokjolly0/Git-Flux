@@ -2,46 +2,56 @@
 #include "infrastructure/git/git_discovery.hpp"
 #include "infrastructure/git/native/native_git_executor.hpp"
 #include "infrastructure/git/native/native_repository_git_ops.hpp"
+#include "core/shared/utf8_path.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 
-namespace {
+namespace
+{
+    struct BranchTestSandbox
+    {
+        std::filesystem::path root;
 
-struct BranchTestSandbox {
-    std::filesystem::path root;
+        BranchTestSandbox()
+        {
+            const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+            root = std::filesystem::temp_directory_path() / ("gf_branch_integ_" + std::to_string(nonce));
+            std::filesystem::create_directories(root);
+        }
 
-    BranchTestSandbox() {
-        const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-        root = std::filesystem::temp_directory_path() / ("gf_branch_integ_" + std::to_string(nonce));
-        std::filesystem::create_directories(root);
-    }
+        ~BranchTestSandbox()
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(root, ec);
+        }
 
-    ~BranchTestSandbox() {
-        std::error_code ec;
-        std::filesystem::remove_all(root, ec);
-    }
+        void writeFile(const std::string& relativePath, const std::string& content) const
+        {
+            const auto filePath = root / relativePath;
+            std::filesystem::create_directories(filePath.parent_path());
+            std::ofstream ofs(filePath, std::ios::trunc);
+            ofs << content;
+        }
 
-    void writeFile(const std::string& relativePath, const std::string& content) {
-        auto filePath = root / relativePath;
-        std::filesystem::create_directories(filePath.parent_path());
-        std::ofstream ofs(filePath, std::ios::trunc);
-        ofs << content;
-    }
-
-    std::string readFile(const std::string& relativePath) {
-        auto filePath = root / relativePath;
-        std::ifstream ifs(filePath);
-        return std::string((std::istreambuf_iterator<char>(ifs)),
-                            std::istreambuf_iterator<char>());
-    }
-};
-
+        [[nodiscard]] std::string readFile(const std::string& relativePath) const
+        {
+            const auto filePath = root / relativePath;
+            std::ifstream ifs(filePath);
+            return std::string(std::istreambuf_iterator(ifs),
+                               std::istreambuf_iterator<char>());
+        }
+    };
 } // namespace
 
-TEST_CASE("NativeRepositoryGitOps and GitBranchService real Git integration", "[git][branch][integration]") {
+TEST_CASE (
+"NativeRepositoryGitOps and GitBranchService real Git integration"
+,
+"[git][branch][integration]"
+)
+ {
     auto gitDiscovery = gf::infra::git::GitDiscovery::discover();
     REQUIRE(gitDiscovery.has_value());
     const auto gitExe = gitDiscovery->directBinaryPath.empty()
@@ -277,10 +287,286 @@ TEST_CASE("NativeRepositoryGitOps and GitBranchService real Git integration", "[
     SECTION("8. Filtraggio getLocalBranches vs getRemoteBranches") {
         auto locals = branchService.getLocalBranches(sandbox.root);
         REQUIRE(locals.has_value());
-        CHECK(locals->size() >= 1);
+        CHECK_FALSE(locals->empty());
 
         auto remotes = branchService.getRemoteBranches(sandbox.root);
         REQUIRE(remotes.has_value());
         CHECK(remotes->empty());
+    }
+}
+
+TEST_CASE (
+"GitBranchService rewordCommit rewrites HEAD and older commits replaying descendants"
+,
+"[git][branch][reword][integration]"
+)
+ {
+    auto gitDiscovery = gf::infra::git::GitDiscovery::discover();
+    REQUIRE(gitDiscovery.has_value());
+    const auto gitExe = gitDiscovery->directBinaryPath.empty()
+                            ? gitDiscovery->discoveredInPath
+                            : gitDiscovery->directBinaryPath;
+
+    gf::infra::git::NativeGitCommandExecutor executor(gitExe);
+    gf::infra::git::NativeRepositoryGitOps gitOps(executor);
+    gf::git::bl::GitBranchService branchService(gitOps);
+
+    BranchTestSandbox sandbox;
+
+    auto git = [&](std::vector<std::string> args) -> std::string
+    {
+        gf::git::bo::GitCommand cmd{
+            .args = std::move(args),
+            .workingDirectory = sandbox.root,
+            .lockPolicy = gf::git::bo::GitLockPolicy::Standard
+        };
+        auto res = executor.execute(cmd);
+        REQUIRE(res.has_value());
+        REQUIRE(res->exitCode == 0);
+        auto out = res->stdoutBytes;
+        while (!out.empty() && (out.back() == '\n' || out.back() == '\r')) out.pop_back();
+        return out;
+    };
+
+    git({"init", "-b", "main"});
+    git({"config", "user.name", "GitFlux TestBot"});
+    git({"config", "user.email", "testbot@gitflux.local"});
+
+    // Three commits: c1 <- c2 (with co-author trailer) <- c3
+    sandbox.writeFile("a.txt", "one\n");
+    git({"add", "."});
+    git({"commit", "-m", "first"});
+    sandbox.writeFile("a.txt", "two\n");
+    git({"add", "."});
+    git({"commit", "-m", "second", "-m", "Co-authored-by: Jane Doe <jane@example.com>"});
+    const std::string c2 = git({"rev-parse", "HEAD"});
+    const std::string c2Tree = git({"rev-parse", "HEAD^{tree}"});
+    sandbox.writeFile("a.txt", "three\n");
+    git({"add", "."});
+    git({"commit", "-m", "third"});
+    const std::string c3Tree = git({"rev-parse", "HEAD^{tree}"});
+    const std::string c3Author = git({"log", "-1", "--format=%an <%ae> %aI"});
+
+    // Uncommitted change must survive the rewrite untouched
+    sandbox.writeFile("dirty.txt", "local change\n");
+
+    SECTION("Reword an older commit replays descendants and keeps trees")
+    {
+        auto res = branchService.rewordCommit(sandbox.root, c2, "second (edited)\r\n\r\nNew body line\r\n");
+        REQUIRE(res.has_value());
+        CHECK(*res != c2);
+
+        CHECK(git({"log", "-1", "--format=%B", "HEAD~1"}) == "second (edited)\n\nNew body line");
+        CHECK(git({"rev-parse", "HEAD~1"}) == *res);
+        CHECK(git({"rev-parse", "HEAD~1^{tree}"}) == c2Tree);
+        CHECK(git({"rev-parse", "HEAD^{tree}"}) == c3Tree);
+        CHECK(git({"log", "-1", "--format=%s"}) == "third");
+        CHECK(git({"log", "-1", "--format=%an <%ae> %aI"}) == c3Author);
+        CHECK(git({"rev-list", "--count", "HEAD"}) == "3");
+        CHECK(git({"symbolic-ref", "--short", "HEAD"}) == "main");
+        CHECK(sandbox.readFile("dirty.txt") == "local change\n");
+        CHECK_FALSE(std::filesystem::exists(sandbox.root / ".git" / "GITFLUX_REWORD_OBJECT"));
+    }
+
+    SECTION("Reword HEAD behaves like an amend of the message only")
+    {
+        const std::string parentBefore = git({"rev-parse", "HEAD~1"});
+        auto res = branchService.rewordCommit(sandbox.root, "HEAD", "third (edited)");
+        REQUIRE(res.has_value());
+        CHECK(git({"log", "-1", "--format=%s"}) == "third (edited)");
+        CHECK(git({"rev-parse", "HEAD~1"}) == parentBefore);
+        CHECK(git({"rev-parse", "HEAD^{tree}"}) == c3Tree);
+    }
+
+    SECTION("Empty message and commits outside the current branch are rejected")
+    {
+        CHECK_FALSE(branchService.rewordCommit(sandbox.root, c2, "   \n").has_value());
+
+        git({"checkout", "-q", "-b", "side", c2});
+        sandbox.writeFile("b.txt", "side\n");
+        git({"add", "b.txt"});
+        git({"commit", "-m", "side commit"});
+        const std::string sideSha = git({"rev-parse", "HEAD"});
+        git({"checkout", "-q", "main"});
+
+        auto res = branchService.rewordCommit(sandbox.root, sideSha, "should fail");
+        REQUIRE_FALSE(res.has_value());
+        CHECK(res.error().kind == gf::git::ports::GitOpsError::Kind::InvalidOperation);
+    }
+}
+
+TEST_CASE (
+"GitBranchService fast-forwards a branch that is behind on the same history line"
+,
+"[git][branch][fastforward][integration]"
+)
+ {
+    auto gitDiscovery = gf::infra::git::GitDiscovery::discover();
+    REQUIRE(gitDiscovery.has_value());
+    const auto gitExe = gitDiscovery->directBinaryPath.empty()
+                            ? gitDiscovery->discoveredInPath
+                            : gitDiscovery->directBinaryPath;
+
+    gf::infra::git::NativeGitCommandExecutor executor(gitExe);
+    gf::infra::git::NativeRepositoryGitOps gitOps(executor);
+    gf::git::bl::GitBranchService branchService(gitOps);
+
+    BranchTestSandbox sandbox;
+
+    auto git = [&](std::vector<std::string> args) -> std::string
+    {
+        gf::git::bo::GitCommand cmd{
+            .args = std::move(args),
+            .workingDirectory = sandbox.root,
+            .lockPolicy = gf::git::bo::GitLockPolicy::Standard
+        };
+        auto res = executor.execute(cmd);
+        REQUIRE(res.has_value());
+        REQUIRE(res->exitCode == 0);
+        auto out = res->stdoutBytes;
+        while (!out.empty() && (out.back() == '\n' || out.back() == '\r')) out.pop_back();
+        return out;
+    };
+
+    git({"init", "-b", "main"});
+    git({"config", "user.name", "GitFlux TestBot"});
+    git({"config", "user.email", "testbot@gitflux.local"});
+
+    // main: c1 ; feature: c1 <- c2 <- c3 (main is behind feature, same line)
+    sandbox.writeFile("a.txt", "one\n");
+    git({"add", "."});
+    git({"commit", "-m", "c1"});
+    git({"checkout", "-q", "-b", "feature"});
+    sandbox.writeFile("a.txt", "two\n");
+    git({"commit", "-qam", "c2"});
+    sandbox.writeFile("a.txt", "three\n");
+    git({"commit", "-qam", "c3"});
+    const std::string featureSha = git({"rev-parse", "feature"});
+
+    SECTION("Non checked-out target: only the ref moves")
+    {
+        CHECK(branchService.canFastForwardBranch(sandbox.root, "main", "feature").value());
+        CHECK_FALSE(branchService.canFastForwardBranch(sandbox.root, "feature", "main").value());
+
+        REQUIRE(branchService.fastForwardBranch(sandbox.root, "main", "feature").has_value());
+        CHECK(git({"rev-parse", "main"}) == featureSha);
+        CHECK(git({"symbolic-ref", "--short", "HEAD"}) == "feature");
+
+        // Already aligned: nothing more to fast-forward
+        CHECK_FALSE(branchService.canFastForwardBranch(sandbox.root, "main", "feature").value());
+    }
+
+    SECTION("Checked-out target: working tree is updated too")
+    {
+        git({"checkout", "-q", "main"});
+        CHECK(sandbox.readFile("a.txt") == "one\n");
+
+        REQUIRE(branchService.fastForwardBranch(sandbox.root, "main", "feature").has_value());
+        CHECK(git({"rev-parse", "HEAD"}) == featureSha);
+        CHECK(git({"symbolic-ref", "--short", "HEAD"}) == "main");
+        CHECK(sandbox.readFile("a.txt") == "three\n");
+    }
+
+    SECTION("Diverged branches cannot be fast-forwarded")
+    {
+        git({"checkout", "-q", "main"});
+        sandbox.writeFile("b.txt", "main only\n");
+        git({"add", "b.txt"});
+        git({"commit", "-m", "main-only"});
+        const std::string mainSha = git({"rev-parse", "main"});
+
+        CHECK_FALSE(branchService.canFastForwardBranch(sandbox.root, "main", "feature").value());
+        auto res = branchService.fastForwardBranch(sandbox.root, "main", "feature");
+        REQUIRE_FALSE(res.has_value());
+        CHECK(res.error().kind == gf::git::ports::GitOpsError::Kind::InvalidOperation);
+        CHECK(git({"rev-parse", "main"}) == mainSha);
+    }
+}
+
+TEST_CASE (
+"GitBranchService checkout of a remote-tracking name never leaves HEAD detached"
+,
+"[git][branch][checkout][integration]"
+)
+ {
+    auto gitDiscovery = gf::infra::git::GitDiscovery::discover();
+    REQUIRE(gitDiscovery.has_value());
+    const auto gitExe = gitDiscovery->directBinaryPath.empty()
+                            ? gitDiscovery->discoveredInPath
+                            : gitDiscovery->directBinaryPath;
+
+    gf::infra::git::NativeGitCommandExecutor executor(gitExe);
+    gf::infra::git::NativeRepositoryGitOps gitOps(executor);
+    gf::git::bl::GitBranchService branchService(gitOps);
+
+    BranchTestSandbox remoteSandbox;
+    BranchTestSandbox sandbox;
+
+    auto gitIn = [&](const std::filesystem::path& dir, std::vector<std::string> args) -> std::string
+    {
+        gf::git::bo::GitCommand cmd{
+            .args = std::move(args),
+            .workingDirectory = dir,
+            .lockPolicy = gf::git::bo::GitLockPolicy::Standard
+        };
+        auto res = executor.execute(cmd);
+        REQUIRE(res.has_value());
+        REQUIRE(res->exitCode == 0);
+        auto out = res->stdoutBytes;
+        while (!out.empty() && (out.back() == '\n' || out.back() == '\r')) out.pop_back();
+        return out;
+    };
+    auto git = [&](std::vector<std::string> args) { return gitIn(sandbox.root, std::move(args)); };
+    auto checkout = [&](const std::string& name)
+    {
+        return branchService.checkoutBranch(sandbox.root, gf::git::bo::CheckoutOptions{.branchOrCommit = name});
+    };
+
+    gitIn(remoteSandbox.root, {"init", "--bare", "-b", "main"});
+
+    git({"init", "-b", "main"});
+    git({"config", "user.name", "GitFlux TestBot"});
+    git({"config", "user.email", "testbot@gitflux.local"});
+    sandbox.writeFile("a.txt", "one\n");
+    git({"add", "."});
+    git({"commit", "-m", "c1"});
+    git({"tag", "v1"});
+    git({"remote", "add", "origin", gf::core::pathToUtf8(remoteSandbox.root)});
+    git({"push", "-q", "-u", "origin", "main"});
+
+    // "feature" exists only on the remote
+    git({"checkout", "-q", "-b", "feature"});
+    sandbox.writeFile("a.txt", "two\n");
+    git({"commit", "-qam", "c2"});
+    git({"push", "-q", "origin", "feature"});
+    git({"checkout", "-q", "main"});
+    git({"branch", "-q", "-D", "feature"});
+    git({"fetch", "-q", "origin"});
+
+    SECTION("Remote-only branch is checked out as a new local tracking branch")
+    {
+        REQUIRE(checkout("origin/feature").has_value());
+        CHECK(git({"symbolic-ref", "--short", "HEAD"}) == "feature");
+        CHECK(git({"rev-parse", "--abbrev-ref", "feature@{upstream}"}) == "origin/feature");
+    }
+
+    SECTION("Remote name aligned with an existing local branch checks out the local branch")
+    {
+        git({"checkout", "-q", "-b", "other"});
+        REQUIRE(checkout("origin/main").has_value());
+        CHECK(git({"symbolic-ref", "--short", "HEAD"}) == "main");
+    }
+
+    SECTION("Tags and SHAs still detach HEAD on purpose")
+    {
+        REQUIRE(checkout("v1").has_value());
+        gf::git::bo::GitCommand cmd{
+            .args = {"symbolic-ref", "-q", "HEAD"},
+            .workingDirectory = sandbox.root,
+            .lockPolicy = gf::git::bo::GitLockPolicy::Standard
+        };
+        auto res = executor.execute(cmd);
+        REQUIRE(res.has_value());
+        CHECK(res->exitCode != 0); // detached
     }
 }

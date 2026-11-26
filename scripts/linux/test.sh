@@ -122,7 +122,7 @@ run_smoke_test() {
 
     if [[ ! -x "${bin_path}" ]]; then
         echo -e "${YELLOW}⚠️ Executable ${bin_path} not found. Starting build...${NC}"
-        cmake --build --preset linux-qt-release --target git_flux
+        "${SCRIPT_DIR}/build.sh" -t git_flux
     fi
 
     local start_time
@@ -153,7 +153,11 @@ run_preset_tests() {
 
     if [[ ! -d "${build_dir}" ]]; then
         echo -e "${YELLOW}⚠️ Build directory not found. Running preliminary build...${NC}"
-        cmake --build --preset "${target_preset}"
+        if [[ "${target_preset}" == "linux-core-release" ]]; then
+            "${SCRIPT_DIR}/build.sh" --core
+        else
+            "${SCRIPT_DIR}/build.sh" --qt
+        fi
     fi
 
     local ctest_cmd=("ctest" "--preset" "${target_preset}" "--output-on-failure")

@@ -15,7 +15,12 @@
 
 using namespace std::chrono_literals;
 
-TEST_CASE("StrongId garantisce type-safety, confronto e hashing", "[unit][core]") {
+TEST_CASE (
+"StrongId garantisce type-safety, confronto e hashing"
+,
+"[unit][core]"
+)
+ {
     using gf::repositories::bo::RepositoryId;
     RepositoryId a("repo-alpha");
     RepositoryId b("repo-alpha");
@@ -32,7 +37,12 @@ TEST_CASE("StrongId garantisce type-safety, confronto e hashing", "[unit][core]"
     REQUIRE(set.size() == 2);
 }
 
-TEST_CASE("Conversione UTF-8 <-> std::filesystem::path preserva caratteri Unicode", "[unit][core]") {
+TEST_CASE (
+"Conversione UTF-8 <-> std::filesystem::path preserva caratteri Unicode"
+,
+"[unit][core]"
+)
+ {
     const std::string original = "progetti/città/specifica_🚀_test.md";
     const auto path = gf::core::utf8ToPath(original);
     const std::string roundtrip = gf::core::pathToUtf8(path);
@@ -40,9 +50,14 @@ TEST_CASE("Conversione UTF-8 <-> std::filesystem::path preserva caratteri Unicod
     REQUIRE(roundtrip == original);
 }
 
-TEST_CASE("PorcelainStatusParser interpreta header branch e tutti i tipi di record NUL-terminati", "[unit][git]") {
+TEST_CASE (
+"PorcelainStatusParser interpreta header branch e tutti i tipi di record NUL-terminati"
+,
+"[unit][git]"
+)
+ {
     std::string payload;
-    auto addRec = [&](std::string_view s) {
+    auto addRec = [&](const std::string_view s) {
         payload.append(s);
         payload.push_back('\0');
     };
@@ -86,7 +101,12 @@ TEST_CASE("PorcelainStatusParser interpreta header branch e tutti i tipi di reco
     REQUIRE(parsed->entries[4].path == "scratch_note.txt");
 }
 
-TEST_CASE("OperationCoordinator serializza mutazioni sullo stesso repo ma parallelizza repo distinti", "[unit][coordinator]") {
+TEST_CASE (
+"OperationCoordinator serializza mutazioni sullo stesso repo ma parallelizza repo distinti"
+,
+"[unit][coordinator]"
+)
+ {
     using gf::git::bl::OperationCoordinator;
     using gf::git::bl::OperationKind;
     using gf::git::bl::TaskPriority;
@@ -94,8 +114,8 @@ TEST_CASE("OperationCoordinator serializza mutazioni sullo stesso repo ma parall
 
     OperationCoordinator coordinator(4);
 
-    std::atomic<int> activeOnRepoA{0};
-    std::atomic<int> maxConcurrentOnRepoA{0};
+    std::atomic activeOnRepoA{0};
+    std::atomic maxConcurrentOnRepoA{0};
 
     std::vector<std::future<void>> futures;
     // 8 concurrent mutations on the SAME RepositoryId("repo-A")
@@ -104,7 +124,7 @@ TEST_CASE("OperationCoordinator serializza mutazioni sullo stesso repo ma parall
             RepositoryId("repo-A"),
             OperationKind::Mutating,
             TaskPriority::NormalBackground,
-            [&]() {
+            [&] {
                 const int now = activeOnRepoA.fetch_add(1) + 1;
                 int prev = maxConcurrentOnRepoA.load();
                 while (now > prev && !maxConcurrentOnRepoA.compare_exchange_weak(prev, now)) {}
@@ -119,7 +139,7 @@ TEST_CASE("OperationCoordinator serializza mutazioni sullo stesso repo ma parall
             RepositoryId("other-" + std::to_string(i)),
             OperationKind::PassiveRead,
             TaskPriority::NormalBackground,
-            []() { std::this_thread::sleep_for(10ms); }));
+            [] { std::this_thread::sleep_for(10ms); }));
     }
 
     for (auto& f : futures) {
@@ -133,7 +153,12 @@ TEST_CASE("OperationCoordinator serializza mutazioni sullo stesso repo ma parall
     REQUIRE(coordinator.maxObservedActiveWorkers() >= 2);
 }
 
-TEST_CASE("OperationCoordinator serve HighActiveRepo prima della coda NormalBackground", "[unit][coordinator]") {
+TEST_CASE (
+"OperationCoordinator serve HighActiveRepo prima della coda NormalBackground"
+,
+"[unit][coordinator]"
+)
+ {
     using gf::git::bl::OperationCoordinator;
     using gf::git::bl::OperationKind;
     using gf::git::bl::TaskPriority;
@@ -151,7 +176,7 @@ TEST_CASE("OperationCoordinator serve HighActiveRepo prima della coda NormalBack
     // Task 0 occupies the only worker until the gate is opened
     auto blocker = coordinator.submit(
         RepositoryId("r0"), OperationKind::PassiveRead, TaskPriority::NormalBackground,
-        [gateFuture]() { gateFuture.wait(); });
+        [gateFuture] { gateFuture.wait(); });
 
     // Enqueue 5 NormalBackground tasks (id 1..5)
     std::vector<std::future<void>> bgFutures;
@@ -160,7 +185,7 @@ TEST_CASE("OperationCoordinator serve HighActiveRepo prima della coda NormalBack
             RepositoryId("bg-" + std::to_string(i)),
             OperationKind::PassiveRead,
             TaskPriority::NormalBackground,
-            [i, &executionOrder, &orderMutex]() {
+            [i, &executionOrder, &orderMutex] {
                 std::scoped_lock lk(orderMutex);
                 executionOrder.push_back(i);
             }));
@@ -171,7 +196,7 @@ TEST_CASE("OperationCoordinator serve HighActiveRepo prima della coda NormalBack
         RepositoryId("active-repo"),
         OperationKind::PassiveRead,
         TaskPriority::HighActiveRepo,
-        [&executionOrder, &orderMutex]() {
+        [&executionOrder, &orderMutex] {
             std::scoped_lock lk(orderMutex);
             executionOrder.push_back(99);
         });
@@ -188,7 +213,7 @@ TEST_CASE("OperationCoordinator serve HighActiveRepo prima della coda NormalBack
 }
 
 #ifdef _WIN32
-TEST_CASE("Quoting command-line Windows gestisce spazi, virgolette e backslash finali", "[unit][win32]") {
+TEST_CASE ("Quoting command-line Windows gestisce spazi, virgolette e backslash finali", "[unit][win32]") {
     const auto cmd = gf::infra::git::NativeGitCommandExecutor::buildWindowsCommandLine(
         R"(C:\Program Files\Git\mingw64\bin\git.exe)",
         {"commit", "-m", R"(Fix "quoted" path C:\dir with space\)"});

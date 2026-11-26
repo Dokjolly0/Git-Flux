@@ -5,10 +5,13 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QIcon>
+#include <QLibraryInfo>
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
+#include <QPalette>
 #include <QQmlApplicationEngine>
 #include <QQmlNetworkAccessManagerFactory>
+#include <QQuickStyle>
 #include <QQuickWindow>
 #include <iostream>
 
@@ -21,71 +24,84 @@
 #include <initializer_list>
 #include <string_view>
 
-namespace {
-
-void setupWindowsConsole(bool forceNewConsole = false) {
-    bool attached = false;
-    if (!forceNewConsole) {
-        attached = (AttachConsole(ATTACH_PARENT_PROCESS) != 0);
-    }
-    if (!attached) {
-        if (!AllocConsole()) {
-            return;
+namespace
+{
+    void setupWindowsConsole(bool forceNewConsole = false)
+    {
+        bool attached = false;
+        if (!forceNewConsole)
+        {
+            attached = (AttachConsole(ATTACH_PARENT_PROCESS) != 0);
         }
-    }
-
-    FILE* fp = nullptr;
-    freopen_s(&fp, "CONOUT$", "w", stdout);
-    freopen_s(&fp, "CONOUT$", "w", stderr);
-    freopen_s(&fp, "CONIN$", "r", stdin);
-
-    std::cout.clear();
-    std::cerr.clear();
-    std::cin.clear();
-
-    SetConsoleOutputCP(CP_UTF8);
-    SetConsoleCP(CP_UTF8);
-}
-
-bool hasCliFlag(int argc, char* argv[], std::initializer_list<std::string_view> flags) {
-    for (int i = 1; i < argc; ++i) {
-        std::string_view arg = argv[i];
-        for (auto flag : flags) {
-            if (arg == flag) {
-                return true;
+        if (!attached)
+        {
+            if (!AllocConsole())
+            {
+                return;
             }
         }
-    }
-    return false;
-}
 
+        FILE* fp = nullptr;
+        freopen_s(&fp, "CONOUT$", "w", stdout);
+        freopen_s(&fp, "CONOUT$", "w", stderr);
+        freopen_s(&fp, "CONIN$", "r", stdin);
+
+        std::cout.clear();
+        std::cerr.clear();
+        std::cin.clear();
+
+        SetConsoleOutputCP(CP_UTF8);
+        SetConsoleCP(CP_UTF8);
+    }
+
+    bool hasCliFlag(int argc, char* argv[], std::initializer_list<std::string_view> flags)
+    {
+        for (int i = 1; i < argc; ++i)
+        {
+            std::string_view arg = argv[i];
+            for (auto flag : flags)
+            {
+                if (arg == flag)
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
 } // namespace
 #endif
 
-namespace {
-
-class RedirectNetworkAccessManagerFactory final : public QQmlNetworkAccessManagerFactory {
-public:
-    QNetworkAccessManager* create(QObject* parent) override {
-        auto* manager = new QNetworkAccessManager(parent);
-        manager->setRedirectPolicy(QNetworkRequest::NoLessSafeRedirectPolicy);
-        return manager;
-    }
-};
-
+namespace
+{
+    class RedirectNetworkAccessManagerFactory final : public QQmlNetworkAccessManagerFactory
+    {
+    public:
+        QNetworkAccessManager* create(QObject* parent) override
+        {
+            auto* manager = new QNetworkAccessManager(parent);
+            manager->setRedirectPolicy(QNetworkRequest::NoLessSafeRedirectPolicy);
+            return manager;
+        }
+    };
 } // namespace
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[])
+{
 #ifdef _WIN32
     const bool wantsDebug = hasCliFlag(argc, argv, {"--debug", "-debug", "--console", "-console", "--verbose", "-v"});
     const bool wantsCliInfo = hasCliFlag(argc, argv, {"--help", "-h", "-?", "/?", "--version", "--test-startup"});
 
-    if (wantsDebug) {
+    if (wantsDebug)
+    {
         setupWindowsConsole(false);
         qputenv("QT_ASSUME_STDERR_HAS_CONSOLE", "1");
         std::cout << "[DEBUG] Git Flux console logging enabled." << std::endl;
-    } else if (wantsCliInfo) {
-        if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+    }
+    else if (wantsCliInfo)
+    {
+        if (AttachConsole(ATTACH_PARENT_PROCESS))
+        {
             FILE* fp = nullptr;
             freopen_s(&fp, "CONOUT$", "w", stdout);
             freopen_s(&fp, "CONOUT$", "w", stderr);
@@ -98,28 +114,91 @@ int main(int argc, char* argv[]) {
     QCoreApplication::setOrganizationName(QStringLiteral("GitFlux"));
     QCoreApplication::setApplicationName(QStringLiteral("GitFlux"));
     QCoreApplication::setApplicationVersion(QStringLiteral("0.1.0"));
+    QGuiApplication::setApplicationDisplayName(QStringLiteral("Git Flux"));
+    // Set desktopFileName before constructing QGuiApplication so xdg-desktop-portal
+    // registers the canonical "git-flux" app ID once instead of failing on a second registration.
+    QGuiApplication::setDesktopFileName(QStringLiteral("git-flux"));
 
     // Ensure smooth, fluid scrolling across all Flickables, ListViews, and ScrollViews (Qt 6.6+ physics)
-    if (qEnvironmentVariableIsEmpty("QT_QUICK_FLICKABLE_WHEEL_DECELERATION")) {
+    if (qEnvironmentVariableIsEmpty("QT_QUICK_FLICKABLE_WHEEL_DECELERATION"))
+    {
         qputenv("QT_QUICK_FLICKABLE_WHEEL_DECELERATION", "2500");
     }
 
+    // Use "Basic" Qt Quick Controls style so custom backgrounds and contentItems in QML components are fully supported
+    if (qEnvironmentVariableIsEmpty("QT_QUICK_CONTROLS_STYLE"))
+    {
+        qputenv("QT_QUICK_CONTROLS_STYLE", "Basic");
+    }
+    QQuickStyle::setStyle(QStringLiteral("Basic"));
+
+#ifdef _WIN32
+    // Ensure Qt bin directory is in DLL search path before system PATH
+    const QString qtBinPath = QLibraryInfo::path(QLibraryInfo::BinariesPath);
+    if (!qtBinPath.isEmpty() && std::filesystem::exists(qtBinPath.toStdWString()))
+    {
+        SetDllDirectoryW(reinterpret_cast<LPCWSTR>(qtBinPath.utf16()));
+    }
+#endif
+
+    // Ensure Qt plugins (e.g. platforms/qwindows.dll) and QML imports are found in dev environments
+    const QString qtPluginsPath = QLibraryInfo::path(QLibraryInfo::PluginsPath);
+    if (!qtPluginsPath.isEmpty())
+    {
+        QCoreApplication::addLibraryPath(qtPluginsPath);
+        if (qEnvironmentVariableIsEmpty("QT_PLUGIN_PATH"))
+        {
+            qputenv("QT_PLUGIN_PATH", qtPluginsPath.toLocal8Bit());
+        }
+    }
+
+    const QString qtQmlPath = QLibraryInfo::path(QLibraryInfo::QmlImportsPath);
+    if (!qtQmlPath.isEmpty() && qEnvironmentVariableIsEmpty("QML2_IMPORT_PATH"))
+    {
+        qputenv("QML2_IMPORT_PATH", qtQmlPath.toLocal8Bit());
+    }
+
     QGuiApplication app(argc, argv);
-    app.setApplicationDisplayName(QStringLiteral("Git Flux"));
-    app.setDesktopFileName(QStringLiteral("git-flux"));
+
+    // Configure dark application palette so Qt Quick Controls Basic fallbacks and tooltips match FluxTheme
+    {
+        QPalette darkPalette;
+        darkPalette.setColor(QPalette::Window, QColor(0x0F, 0x14, 0x1C));
+        darkPalette.setColor(QPalette::WindowText, QColor(0xF8, 0xFA, 0xFC));
+        darkPalette.setColor(QPalette::Base, QColor(0x0A, 0x0E, 0x15));
+        darkPalette.setColor(QPalette::AlternateBase, QColor(0x14, 0x1C, 0x28));
+        darkPalette.setColor(QPalette::ToolTipBase, QColor(0x11, 0x18, 0x24));
+        darkPalette.setColor(QPalette::ToolTipText, QColor(0xF8, 0xFA, 0xFC));
+        darkPalette.setColor(QPalette::Text, QColor(0xF8, 0xFA, 0xFC));
+        darkPalette.setColor(QPalette::Button, QColor(0x16, 0x1F, 0x2E));
+        darkPalette.setColor(QPalette::ButtonText, QColor(0xF8, 0xFA, 0xFC));
+        darkPalette.setColor(QPalette::BrightText, QColor(0x00, 0xE5, 0xFF));
+        darkPalette.setColor(QPalette::Highlight, QColor(0x02, 0x84, 0xC7));
+        darkPalette.setColor(QPalette::HighlightedText, QColor(0xFF, 0xFF, 0xFF));
+        darkPalette.setColor(QPalette::Dark, QColor(0x28, 0x37, 0x4E));
+        darkPalette.setColor(QPalette::Mid, QColor(0x1E, 0x29, 0x3B));
+        darkPalette.setColor(QPalette::Midlight, QColor(0x24, 0x36, 0x52));
+        darkPalette.setColor(QPalette::Light, QColor(0x1C, 0x2A, 0x40));
+        darkPalette.setColor(QPalette::Shadow, QColor(0x00, 0x00, 0x00));
+        QGuiApplication::setPalette(darkPalette);
+    }
 
     // Set application icon from assets
     QIcon appIcon(QStringLiteral(":/qt/qml/GitFlux/Desktop/assets/logo.png"));
-    if (appIcon.isNull()) {
+    if (appIcon.isNull())
+    {
         appIcon = QIcon(QStringLiteral("assets/logo.png"));
     }
-    if (appIcon.isNull()) {
+    if (appIcon.isNull())
+    {
         appIcon = QIcon(QStringLiteral("../assets/logo.png"));
     }
-    if (appIcon.isNull()) {
+    if (appIcon.isNull())
+    {
         appIcon = QIcon(QStringLiteral("/projects/GitFlux/assets/logo.png"));
     }
-    if (!appIcon.isNull()) {
+    if (!appIcon.isNull())
+    {
         app.setWindowIcon(appIcon);
     }
 
@@ -149,16 +228,29 @@ int main(int argc, char* argv[]) {
 
     parser.process(app);
 
+#ifndef _WIN32
+    if (parser.isSet(debugOption))
+    {
+        std::cout << "[DEBUG] Git Flux console logging enabled." << std::endl;
+    }
+#endif
+
     std::filesystem::path dbPath;
-    if (parser.isSet(dbOption)) {
+    if (parser.isSet(dbOption))
+    {
         dbPath = std::filesystem::path(parser.value(dbOption).toStdString());
-    } else if (parser.isSet(smokeTestOption)) {
+    }
+    else if (parser.isSet(smokeTestOption))
+    {
         dbPath = ":memory:";
-    } else {
+    }
+    else
+    {
         dbPath = gf::desktop::AppBootstrap::defaultDatabasePath();
     }
 
-    try {
+    try
+    {
         gf::desktop::AppBootstrap bootstrap(dbPath);
         bootstrap.initialize();
 
@@ -166,15 +258,22 @@ int main(int argc, char* argv[]) {
         engine.setNetworkAccessManagerFactory(new RedirectNetworkAccessManagerFactory());
         bootstrap.registerWithQml(engine);
 
+        if (!qtQmlPath.isEmpty())
+        {
+            engine.addImportPath(qtQmlPath);
+        }
+
         const QUrl url(QStringLiteral("qrc:/qt/qml/GitFlux/Desktop/src/desktop/ui/qml/main.qml"));
         QObject::connect(
             &engine,
             &QQmlApplicationEngine::objectCreated,
             &app,
-            [url](QObject* obj, const QUrl& objUrl) {
-                if (!obj && url == objUrl) {
+            [url](QObject* obj, const QUrl& objUrl)
+            {
+                if (!obj && url == objUrl)
+                {
                     std::cerr << "Critical error: unable to load main QML file: "
-                              << url.toString().toStdString() << std::endl;
+                        << url.toString().toStdString() << std::endl;
                     QCoreApplication::exit(-1);
                 }
             },
@@ -183,26 +282,33 @@ int main(int argc, char* argv[]) {
 
         engine.load(url);
 
-        if (engine.rootObjects().isEmpty()) {
+        if (engine.rootObjects().isEmpty())
+        {
             std::cerr << "Error: no QML root objects loaded." << std::endl;
             return 1;
         }
 
-        if (!appIcon.isNull()) {
-            for (auto* rootObj : engine.rootObjects()) {
-                if (auto* win = qobject_cast<QQuickWindow*>(rootObj)) {
+        if (!appIcon.isNull())
+        {
+            for (auto* rootObj : engine.rootObjects())
+            {
+                if (auto* win = qobject_cast<QQuickWindow*>(rootObj))
+                {
                     win->setIcon(appIcon);
                 }
             }
         }
 
-        if (parser.isSet(smokeTestOption)) {
+        if (parser.isSet(smokeTestOption))
+        {
             std::cout << "[SMOKE_TEST] Git Flux bootstrap & QML engine initialized successfully." << std::endl;
             return 0;
         }
 
         return app.exec();
-    } catch (const std::exception& ex) {
+    }
+    catch (const std::exception& ex)
+    {
         std::cerr << "Fatal error starting Git Flux: " << ex.what() << std::endl;
         return 1;
     }

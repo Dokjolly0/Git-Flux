@@ -1,5 +1,5 @@
-# ==============================================================================
-# Git Flux — Windows Packaging Script (PowerShell)
+﻿# ==============================================================================
+# Git Flux - Windows Packaging Script (PowerShell)
 # ==============================================================================
 param(
     [string]$BuildDir = "build/qt-msvc",
@@ -10,7 +10,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
-Write-Host "🚀 Git Flux — Building Windows x64 Package" -ForegroundColor Green
+Write-Host "🚀 Git Flux - Building Windows x64 Package" -ForegroundColor Green
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
 
 # 1. Build git_flux

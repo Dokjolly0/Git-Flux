@@ -26,19 +26,24 @@ using gf::workspaces::bo::Workspace;
 using gf::workspaces::bo::WorkspaceId;
 using gf::workspaces::bo::WorkspaceSession;
 
-namespace {
-
-SqliteConnection createMigratedInMemoryDb() {
-    auto connRes = SqliteConnection::openInMemory();
-    REQUIRE(connRes.has_value());
-    auto migRes = SchemaMigrator::migrateToLatest(*connRes);
-    REQUIRE(migRes.has_value());
-    return std::move(*connRes);
-}
-
+namespace
+{
+    SqliteConnection createMigratedInMemoryDb()
+    {
+        auto connRes = SqliteConnection::openInMemory();
+        REQUIRE(connRes.has_value());
+        const auto migRes = SchemaMigrator::migrateToLatest(*connRes);
+        REQUIRE(migRes.has_value());
+        return std::move(*connRes);
+    }
 } // namespace
 
-TEST_CASE("SqliteConnection & SchemaMigrator inizializzano correttamente il DB e sono idempotenti", "[integration][sqlite][migrator]") {
+TEST_CASE (
+"SqliteConnection & SchemaMigrator inizializzano correttamente il DB e sono idempotenti"
+,
+"[integration][sqlite][migrator]"
+)
+ {
     auto connRes = SqliteConnection::openInMemory();
     REQUIRE(connRes.has_value());
     auto& conn = *connRes;
@@ -47,12 +52,12 @@ TEST_CASE("SqliteConnection & SchemaMigrator inizializzano correttamente il DB e
     REQUIRE(v0.has_value());
     REQUIRE(*v0 == 0);
 
-    auto migRes = SchemaMigrator::migrateToLatest(conn);
+    const auto migRes = SchemaMigrator::migrateToLatest(conn);
     REQUIRE(migRes.has_value());
 
     auto v1 = SchemaMigrator::getCurrentVersion(conn);
     REQUIRE(v1.has_value());
-    REQUIRE(*v1 >= 2);
+    REQUIRE(*v1 >= 3);
 
     // Subsequent idempotent execution
     auto migAgain = SchemaMigrator::migrateToLatest(conn);
@@ -62,7 +67,12 @@ TEST_CASE("SqliteConnection & SchemaMigrator inizializzano correttamente il DB e
     REQUIRE(*vStill1 == *v1);
 }
 
-TEST_CASE("SqliteTransaction garantisce commit e rollback automatico in caso di errore", "[integration][sqlite][tx]") {
+TEST_CASE (
+"SqliteTransaction garantisce commit e rollback automatico in caso di errore"
+,
+"[integration][sqlite][tx]"
+)
+ {
     auto conn = createMigratedInMemoryDb();
 
     // 1. Explicit commit
@@ -100,7 +110,12 @@ TEST_CASE("SqliteTransaction garantisce commit e rollback automatico in caso di 
     }
 }
 
-TEST_CASE("SqliteRepositoryStore gestisce CRUD, percorsi Unicode e unicita' percorso", "[integration][sqlite][repo_store]") {
+TEST_CASE (
+"SqliteRepositoryStore gestisce CRUD, percorsi Unicode e unicita' percorso"
+,
+"[integration][sqlite][repo_store]"
+)
+ {
     auto conn = createMigratedInMemoryDb();
     SqliteRepositoryStore repoStore(conn);
 
@@ -157,7 +172,12 @@ TEST_CASE("SqliteRepositoryStore gestisce CRUD, percorsi Unicode e unicita' perc
     REQUIRE_FALSE(notFound->has_value());
 }
 
-TEST_CASE("SqliteGroupStore gestisce ordinamento, membership e cascade delete", "[integration][sqlite][group_store]") {
+TEST_CASE (
+"SqliteGroupStore gestisce ordinamento, membership e cascade delete"
+,
+"[integration][sqlite][group_store]"
+)
+ {
     auto conn = createMigratedInMemoryDb();
     SqliteRepositoryStore repoStore(conn);
     SqliteGroupStore groupStore(conn);
@@ -173,6 +193,7 @@ TEST_CASE("SqliteGroupStore gestisce ordinamento, membership e cascade delete", 
     Group group{
         .id = GroupId("grp-core"),
         .name = "Core Services",
+        .color = "#A78BFA",
         .repositoryIds = {RepositoryId("r3"), RepositoryId("r1")}, // Specific order: r3 then r1
         .createdAtUnixEpochMs = 100,
         .updatedAtUnixEpochMs = 100
@@ -180,19 +201,21 @@ TEST_CASE("SqliteGroupStore gestisce ordinamento, membership e cascade delete", 
 
     REQUIRE(groupStore.save(group).has_value());
 
-    // Verify ordering is preserved
+    // Verify ordering and custom color are preserved
     auto loaded = groupStore.getById(GroupId("grp-core"));
     REQUIRE(loaded.has_value());
     REQUIRE(loaded->has_value());
+    REQUIRE((*loaded)->color == "#A78BFA");
     REQUIRE((*loaded)->repositoryIds.size() == 2);
     REQUIRE((*loaded)->repositoryIds[0] == RepositoryId("r3"));
     REQUIRE((*loaded)->repositoryIds[1] == RepositoryId("r1"));
 
-    // Lookup groups containing r1
+    // Lookup groups containing r1 also preserves color
     auto containingR1 = groupStore.getGroupsContainingRepository(RepositoryId("r1"));
     REQUIRE(containingR1.has_value());
     REQUIRE(containingR1->size() == 1);
     REQUIRE((*containingR1)[0].id == GroupId("grp-core"));
+    REQUIRE((*containingR1)[0].color == "#A78BFA");
 
     // If r3 is deleted from catalog, ON DELETE CASCADE foreign key must remove it from group
     REQUIRE(repoStore.remove(RepositoryId("r3")).has_value());
@@ -204,7 +227,12 @@ TEST_CASE("SqliteGroupStore gestisce ordinamento, membership e cascade delete", 
     REQUIRE((*loadedAfterRepoDel)->repositoryIds[0] == RepositoryId("r1"));
 }
 
-TEST_CASE("SqliteWorkspaceStore gestisce gruppi, repo diretti, sessioni e cascade", "[integration][sqlite][ws_store]") {
+TEST_CASE (
+"SqliteWorkspaceStore gestisce gruppi, repo diretti, sessioni e cascade"
+,
+"[integration][sqlite][ws_store]"
+)
+ {
     auto conn = createMigratedInMemoryDb();
     SqliteRepositoryStore repoStore(conn);
     SqliteGroupStore groupStore(conn);

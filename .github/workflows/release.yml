@@ -230,7 +230,7 @@ jobs:
   # ==============================================================================
   publish-release:
     name: 🚀 Create GitHub Release & Upload Packages
-    needs: [quality-gate-test, build-linux, build-windows, build-macos]
+    needs: [ quality-gate-test, build-linux, build-windows, build-macos ]
     runs-on: ubuntu-latest
     outputs:
       tag_name: ${{ steps.release_info.outputs.tag_name }}

@@ -7,16 +7,27 @@ Dialog {
     title: "Gestione Stash"
     modal: true
     width: 680
-    height: 520
+    height: 540
+    padding: 18
+    topPadding: 14
+    bottomPadding: 14
     anchors.centerIn: Overlay.overlay
 
     property var stashManager: null
 
-    background: Rectangle {
-        color: "#0F172A"
-        radius: 8
-        border.color: "#334155"
-        border.width: 1
+    Connections {
+        target: root.stashManager
+
+        function onOperationSucceeded(operation) {
+            if (operation === "push") stashMsgInput.text = "";
+        }
+    }
+
+    background: FluxModalBackground {}
+
+    header: FluxModalHeader {
+        titleText: "📦 Gestione Stash"
+        onCloseRequested: root.close()
     }
 
     contentItem: ColumnLayout {
@@ -27,43 +38,61 @@ Dialog {
         // ==========================================
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 96
-            color: "#1E293B"
-            radius: 6
-            border.color: "#334155"
+            Layout.preferredHeight: 100
+            color: "#151E2C"
+            radius: 10
+            border.color: "#243247"
             border.width: 1
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 10
-                spacing: 8
+                anchors.margins: 12
+                spacing: 10
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 8
+                    spacing: 10
 
                     TextField {
                         id: stashMsgInput
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 32
+                        Layout.preferredHeight: 36
                         placeholderText: "Messaggio dello stash (opzionale)..."
                         color: "#F8FAFC"
                         placeholderTextColor: "#64748B"
                         font.pixelSize: 12
+                        selectByMouse: true
                         background: Rectangle {
-                            color: "#0F172A"
-                            radius: 4
-                            border.color: stashMsgInput.activeFocus ? "#3B82F6" : "#334155"
+                            color: "#0A0E15"
+                            radius: 8
+                            border.color: stashMsgInput.activeFocus ? "#38BDF8" : "#222F42"
                             border.width: 1
+
+                            Behavior on border.color {
+                                ColorAnimation {
+                                    duration: 120
+                                }
+                            }
                         }
                     }
 
                     Button {
                         text: "📦 Salva Stash"
-                        Layout.preferredHeight: 32
+                        Layout.preferredHeight: 36
+                        leftPadding: 14
+                        rightPadding: 14
+                        hoverEnabled: true
                         background: Rectangle {
-                            color: parent.hovered ? "#2563EB" : "#1D4ED8"
-                            radius: 4
+                            color: parent.hovered ? "#0EA5E9" : "#0284C7"
+                            radius: 8
+                            border.color: "#38BDF8"
+                            border.width: 1
+
+                            Behavior on color {
+                                ColorAnimation {
+                                    duration: 120
+                                }
+                            }
                         }
                         contentItem: Text {
                             text: parent.text
@@ -75,42 +104,26 @@ Dialog {
                         }
                         onClicked: {
                             if (root.stashManager) {
-                                var ok = root.stashManager.push(stashMsgInput.text, untrackedCheck.checked, keepIndexCheck.checked);
-                                if (ok) {
-                                    stashMsgInput.text = "";
-                                }
+                                // Asynchronous: the message is cleared on operationSucceeded("push").
+                                root.stashManager.push(stashMsgInput.text, untrackedCheck.checked, keepIndexCheck.checked);
                             }
                         }
                     }
                 }
 
                 RowLayout {
-                    spacing: 16
+                    spacing: 18
 
-                    CheckBox {
+                    FluxCheckBox {
                         id: untrackedCheck
                         text: "Includi non tracciati (-u)"
                         checked: true
-                        contentItem: Text {
-                            text: untrackedCheck.text
-                            color: "#CBD5E1"
-                            font.pixelSize: 11
-                            leftPadding: untrackedCheck.indicator.width + 6
-                            verticalAlignment: Text.AlignVCenter
-                        }
                     }
 
-                    CheckBox {
+                    FluxCheckBox {
                         id: keepIndexCheck
                         text: "Mantieni modifiche in stage (--keep-index)"
                         checked: false
-                        contentItem: Text {
-                            text: keepIndexCheck.text
-                            color: "#CBD5E1"
-                            font.pixelSize: 11
-                            leftPadding: keepIndexCheck.indicator.width + 6
-                            verticalAlignment: Text.AlignVCenter
-                        }
                     }
                 }
             }
@@ -122,9 +135,9 @@ Dialog {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            color: "#161B22"
-            radius: 6
-            border.color: "#334155"
+            color: "#0D131D"
+            radius: 10
+            border.color: "#222F42"
             border.width: 1
             clip: true
 
@@ -135,12 +148,19 @@ Dialog {
                 // List Header
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 32
-                    color: "#0F172A"
+                    Layout.preferredHeight: 36
+                    color: "#131B29"
+
+                    Rectangle {
+                        anchors.bottom: parent.bottom
+                        width: parent.width
+                        height: 1
+                        color: "#222F42"
+                    }
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.leftMargin: 12
+                        anchors.leftMargin: 14
                         anchors.rightMargin: 12
 
                         Text {
@@ -151,15 +171,27 @@ Dialog {
                             font.letterSpacing: 1
                         }
 
-                        Item { Layout.fillWidth: true }
+                        Item {
+                            Layout.fillWidth: true
+                        }
 
                         Button {
                             text: "Svuota Tutto (Clear)"
                             visible: root.stashManager && root.stashManager.stashesModel && root.stashManager.stashesModel.count > 0
-                            Layout.preferredHeight: 22
+                            Layout.preferredHeight: 24
+                            leftPadding: 10
+                            rightPadding: 10
+                            hoverEnabled: true
                             background: Rectangle {
-                                color: parent.hovered ? "#991B1B" : "#7F1D1D"
-                                radius: 3
+                                color: parent.hovered ? "#7F1D1D" : "#3B1219"
+                                radius: 6
+                                border.color: "#991B1B"
+                                border.width: 1
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
                             }
                             contentItem: Text {
                                 text: parent.text
@@ -180,21 +212,33 @@ Dialog {
 
                 ListView {
                     id: stashListView
+                    SmoothWheelScroller {}
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    anchors.margins: 6
+                    spacing: 4
                     clip: true
                     model: root.stashManager ? root.stashManager.stashesModel : null
                     boundsBehavior: Flickable.StopAtBounds
                     maximumFlickVelocity: 6000
                     flickDeceleration: 1000
-                    ScrollBar.vertical: FluxScrollBar {}
+                    ScrollBar.vertical: FluxScrollBar {
+                    }
 
                     delegate: Rectangle {
-                        width: stashListView.width
-                        height: 52
-                        color: itemMouseArea.containsMouse ? "#1E293B" : "transparent"
-                        border.color: "#1E293B"
+                        width: stashListView.width - 12
+                        x: 6
+                        height: 54
+                        radius: 8
+                        color: itemMouseArea.containsMouse ? "#172233" : "#101723"
+                        border.color: itemMouseArea.containsMouse ? "#283952" : "#1B2536"
                         border.width: 1
+
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 110
+                            }
+                        }
 
                         RowLayout {
                             anchors.fill: parent
@@ -205,9 +249,11 @@ Dialog {
                             // Selector Badge
                             Rectangle {
                                 Layout.preferredHeight: 24
-                                Layout.preferredWidth: selectorText.implicitWidth + 12
-                                radius: 4
-                                color: "#334155"
+                                Layout.preferredWidth: selectorText.implicitWidth + 14
+                                radius: 6
+                                color: "#182334"
+                                border.color: "#29384D"
+                                border.width: 1
 
                                 Text {
                                     id: selectorText
@@ -252,22 +298,20 @@ Dialog {
                             }
 
                             // Actions
-                            Button {
+                            FluxActionButton {
                                 text: "Apply"
-                                Layout.preferredHeight: 26
-                                background: Rectangle {
-                                    color: parent.hovered ? "#3B82F6" : "#1E293B"
-                                    radius: 4
-                                    border.color: "#334155"
-                                    border.width: 1
-                                }
-                                contentItem: Text {
-                                    text: parent.text
-                                    color: "#E2E8F0"
-                                    font.pixelSize: 11
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
+                                Layout.preferredHeight: 28
+                                leftPadding: 10
+                                rightPadding: 10
+                                cornerRadius: 7
+                                baseColor: "#182334"
+                                hoverColor: "#0284C7"
+                                baseBorderColor: "#29384D"
+                                hoverBorderColor: "#38BDF8"
+                                textColor: "#E2E8F0"
+                                hoverTextColor: "#FFFFFF"
+                                fontBold: true
+                                animDuration: 110
                                 onClicked: {
                                     if (root.stashManager) {
                                         root.stashManager.apply(model.stashIndex, false);
@@ -275,22 +319,20 @@ Dialog {
                                 }
                             }
 
-                            Button {
+                            FluxActionButton {
                                 text: "Pop"
-                                Layout.preferredHeight: 26
-                                background: Rectangle {
-                                    color: parent.hovered ? "#10B981" : "#1E293B"
-                                    radius: 4
-                                    border.color: "#334155"
-                                    border.width: 1
-                                }
-                                contentItem: Text {
-                                    text: parent.text
-                                    color: "#E2E8F0"
-                                    font.pixelSize: 11
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
+                                Layout.preferredHeight: 28
+                                leftPadding: 10
+                                rightPadding: 10
+                                cornerRadius: 7
+                                baseColor: "#182334"
+                                hoverColor: "#10B981"
+                                baseBorderColor: "#29384D"
+                                hoverBorderColor: "#34D399"
+                                textColor: "#E2E8F0"
+                                hoverTextColor: "#FFFFFF"
+                                fontBold: true
+                                animDuration: 110
                                 onClicked: {
                                     if (root.stashManager) {
                                         root.stashManager.pop(model.stashIndex, false);
@@ -300,13 +342,19 @@ Dialog {
 
                             Button {
                                 text: "🗑"
-                                Layout.preferredHeight: 26
-                                Layout.preferredWidth: 26
+                                Layout.preferredHeight: 28
+                                Layout.preferredWidth: 28
+                                hoverEnabled: true
                                 background: Rectangle {
-                                    color: parent.hovered ? "#EF4444" : "#1E293B"
-                                    radius: 4
-                                    border.color: "#334155"
+                                    color: parent.hovered ? "#3B1219" : "#182334"
+                                    radius: 7
+                                    border.color: parent.hovered ? "#EF4444" : "#29384D"
                                     border.width: 1
+                                    Behavior on color {
+                                        ColorAnimation {
+                                            duration: 110
+                                        }
+                                    }
                                 }
                                 contentItem: Text {
                                     text: parent.text
@@ -362,22 +410,13 @@ Dialog {
                 elide: Text.ElideRight
             }
 
-            Button {
+            FluxActionButton {
                 text: "Chiudi"
-                Layout.preferredHeight: 30
-                background: Rectangle {
-                    color: parent.hovered ? "#334155" : "#1E293B"
-                    radius: 4
-                    border.color: "#475569"
-                    border.width: 1
-                }
-                contentItem: Text {
-                    text: parent.text
-                    color: "#E2E8F0"
-                    font.pixelSize: 11
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
+                Layout.preferredHeight: 32
+                leftPadding: 16
+                rightPadding: 16
+                textColor: "#E2E8F0"
+                fontBold: true
                 onClicked: root.close()
             }
         }

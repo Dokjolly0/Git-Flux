@@ -4,41 +4,53 @@
 
 #include <sqlite3.h>
 
-namespace gf::infra::persistence::repositories {
+namespace gf::infra::persistence::repositories
+{
+    using gf::repositories::bo::Repository;
+    using gf::repositories::bo::RepositoryId;
+    using gf::repositories::bo::RepositoryPathStatus;
+    using gf::repositories::ports::RepositoryStoreError;
 
-using gf::repositories::bo::Repository;
-using gf::repositories::bo::RepositoryId;
-using gf::repositories::bo::RepositoryPathStatus;
-using gf::repositories::ports::RepositoryStoreError;
+    namespace
+    {
+        RepositoryStoreError makeStorageError(const sqlite::SqliteError& err)
+        {
+            return RepositoryStoreError{
+                .kind = RepositoryStoreError::Kind::StorageError,
+                .message = err.message
+            };
+        }
 
-namespace {
+        Repository rowToRepository(const sqlite::SqliteStatement& stmt)
+        {
+            Repository repo;
+            repo.id = RepositoryId(stmt.getText(0));
+            repo.displayName = stmt.getText(1);
+            repo.localPath = core::utf8ToPath(stmt.getText(2));
+            repo.pathStatus = static_cast<RepositoryPathStatus>(stmt.getInt(3));
+            repo.registeredAtUnixEpochMs = stmt.getInt64(4);
+            repo.lastAccessedAtUnixEpochMs = stmt.getInt64(5);
+            return repo;
+        }
+    } // namespace
 
-Repository rowToRepository(sqlite::SqliteStatement& stmt) {
-    Repository repo;
-    repo.id = RepositoryId(stmt.getText(0));
-    repo.displayName = stmt.getText(1);
-    repo.localPath = gf::core::utf8ToPath(stmt.getText(2));
-    repo.pathStatus = static_cast<RepositoryPathStatus>(stmt.getInt(3));
-    repo.registeredAtUnixEpochMs = stmt.getInt64(4);
-    repo.lastAccessedAtUnixEpochMs = stmt.getInt64(5);
-    return repo;
-}
-
-} // namespace
-
-SqliteRepositoryStore::SqliteRepositoryStore(sqlite::SqliteConnection& conn) noexcept
-    : conn_(conn) {}
-
-std::expected<void, RepositoryStoreError>
-SqliteRepositoryStore::save(const Repository& repo) {
-    if (!repo.isValid()) {
-        return std::unexpected(RepositoryStoreError{
-            .kind = RepositoryStoreError::Kind::StorageError,
-            .message = "Repository non valida (ID, nome o percorso vuoti)"
-        });
+    SqliteRepositoryStore::SqliteRepositoryStore(sqlite::SqliteConnection& conn) noexcept
+        : conn_(conn)
+    {
     }
 
-    constexpr std::string_view kSql = R"(
+    std::expected<void, RepositoryStoreError>
+    SqliteRepositoryStore::save(const Repository& repo)
+    {
+        if (!repo.isValid())
+        {
+            return std::unexpected(RepositoryStoreError{
+                .kind = RepositoryStoreError::Kind::StorageError,
+                .message = "Repository non valida (ID, nome o percorso vuoti)"
+            });
+        }
+
+        constexpr std::string_view kSql = R"(
 INSERT INTO repositories (id, display_name, local_path, path_status, registered_at_ms, last_accessed_at_ms)
 VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
@@ -48,200 +60,220 @@ ON CONFLICT(id) DO UPDATE SET
     last_accessed_at_ms = excluded.last_accessed_at_ms;
 )";
 
-    auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
-    if (!stmtRes) {
-        return std::unexpected(RepositoryStoreError{
-            .kind = RepositoryStoreError::Kind::StorageError,
-            .message = stmtRes.error().message
-        });
-    }
-
-    (void)stmtRes->bindText(1, repo.id.value());
-    (void)stmtRes->bindText(2, repo.displayName);
-    (void)stmtRes->bindText(3, gf::core::pathToUtf8(repo.localPath));
-    (void)stmtRes->bindInt(4, static_cast<int>(repo.pathStatus));
-    (void)stmtRes->bindInt64(5, repo.registeredAtUnixEpochMs);
-    (void)stmtRes->bindInt64(6, repo.lastAccessedAtUnixEpochMs);
-
-    auto stepRes = stmtRes->step();
-    if (!stepRes) {
-        if (stepRes.error().code == SQLITE_CONSTRAINT_UNIQUE || stepRes.error().code == SQLITE_CONSTRAINT) {
-            return std::unexpected(RepositoryStoreError{
-                .kind = RepositoryStoreError::Kind::DuplicatePath,
-                .message = "Percorso già associato a un altro repository"
-            });
+        auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
+        if (!stmtRes)
+        {
+            return std::unexpected(makeStorageError(stmtRes.error()));
         }
-        return std::unexpected(RepositoryStoreError{
-            .kind = RepositoryStoreError::Kind::StorageError,
-            .message = stepRes.error().message
-        });
+
+        if (const auto bindRes = stmtRes->bindText(1, repo.id.value()); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindText(2, repo.displayName); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindText(3, core::pathToUtf8(repo.localPath)); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindInt(4, static_cast<int>(repo.pathStatus)); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindInt64(5, repo.registeredAtUnixEpochMs); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindInt64(6, repo.lastAccessedAtUnixEpochMs); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+
+        if (const auto stepRes = stmtRes->step(); !stepRes)
+        {
+            if (stepRes.error().code == SQLITE_CONSTRAINT_UNIQUE || stepRes.error().code == SQLITE_CONSTRAINT)
+            {
+                return std::unexpected(RepositoryStoreError{
+                    .kind = RepositoryStoreError::Kind::DuplicatePath,
+                    .message = "Percorso già associato a un altro repository"
+                });
+            }
+            return std::unexpected(makeStorageError(stepRes.error()));
+        }
+
+        return {};
     }
 
-    return {};
-}
-
-std::expected<std::optional<Repository>, RepositoryStoreError>
-SqliteRepositoryStore::getById(const RepositoryId& id) {
-    constexpr std::string_view kSql = R"(
+    std::expected<std::optional<Repository>, RepositoryStoreError>
+    SqliteRepositoryStore::getById(const RepositoryId& id)
+    {
+        constexpr std::string_view kSql = R"(
 SELECT id, display_name, local_path, path_status, registered_at_ms, last_accessed_at_ms
 FROM repositories
 WHERE id = ?;
 )";
 
-    auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
-    if (!stmtRes) {
-        return std::unexpected(RepositoryStoreError{
-            .kind = RepositoryStoreError::Kind::StorageError,
-            .message = stmtRes.error().message
-        });
+        auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
+        if (!stmtRes)
+        {
+            return std::unexpected(makeStorageError(stmtRes.error()));
+        }
+
+        if (const auto bindRes = stmtRes->bindText(1, id.value()); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        auto stepRes = stmtRes->step();
+        if (!stepRes)
+        {
+            return std::unexpected(makeStorageError(stepRes.error()));
+        }
+
+        if (*stepRes)
+        {
+            return rowToRepository(*stmtRes);
+        }
+        return std::nullopt;
     }
 
-    (void)stmtRes->bindText(1, id.value());
-    auto stepRes = stmtRes->step();
-    if (!stepRes) {
-        return std::unexpected(RepositoryStoreError{
-            .kind = RepositoryStoreError::Kind::StorageError,
-            .message = stepRes.error().message
-        });
-    }
-
-    if (*stepRes) {
-        return rowToRepository(*stmtRes);
-    }
-    return std::nullopt;
-}
-
-std::expected<std::optional<Repository>, RepositoryStoreError>
-SqliteRepositoryStore::getByPath(const std::filesystem::path& path) {
-    constexpr std::string_view kSql = R"(
+    std::expected<std::optional<Repository>, RepositoryStoreError>
+    SqliteRepositoryStore::getByPath(const std::filesystem::path& path)
+    {
+        constexpr std::string_view kSql = R"(
 SELECT id, display_name, local_path, path_status, registered_at_ms, last_accessed_at_ms
 FROM repositories
 WHERE local_path = ?;
 )";
 
-    auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
-    if (!stmtRes) {
-        return std::unexpected(RepositoryStoreError{
-            .kind = RepositoryStoreError::Kind::StorageError,
-            .message = stmtRes.error().message
-        });
+        auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
+        if (!stmtRes)
+        {
+            return std::unexpected(makeStorageError(stmtRes.error()));
+        }
+
+        if (const auto bindRes = stmtRes->bindText(1, core::pathToUtf8(path)); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        auto stepRes = stmtRes->step();
+        if (!stepRes)
+        {
+            return std::unexpected(makeStorageError(stepRes.error()));
+        }
+
+        if (*stepRes)
+        {
+            return rowToRepository(*stmtRes);
+        }
+        return std::nullopt;
     }
 
-    (void)stmtRes->bindText(1, gf::core::pathToUtf8(path));
-    auto stepRes = stmtRes->step();
-    if (!stepRes) {
-        return std::unexpected(RepositoryStoreError{
-            .kind = RepositoryStoreError::Kind::StorageError,
-            .message = stepRes.error().message
-        });
-    }
-
-    if (*stepRes) {
-        return rowToRepository(*stmtRes);
-    }
-    return std::nullopt;
-}
-
-std::expected<std::vector<Repository>, RepositoryStoreError>
-SqliteRepositoryStore::getAll() {
-    constexpr std::string_view kSql = R"(
+    std::expected<std::vector<Repository>, RepositoryStoreError>
+    SqliteRepositoryStore::getAll()
+    {
+        constexpr std::string_view kSql = R"(
 SELECT id, display_name, local_path, path_status, registered_at_ms, last_accessed_at_ms
 FROM repositories
 ORDER BY display_name COLLATE NOCASE ASC;
 )";
 
-    auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
-    if (!stmtRes) {
-        return std::unexpected(RepositoryStoreError{
-            .kind = RepositoryStoreError::Kind::StorageError,
-            .message = stmtRes.error().message
-        });
-    }
-
-    std::vector<Repository> results;
-    while (true) {
-        auto stepRes = stmtRes->step();
-        if (!stepRes) {
-            return std::unexpected(RepositoryStoreError{
-                .kind = RepositoryStoreError::Kind::StorageError,
-                .message = stepRes.error().message
-            });
+        auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
+        if (!stmtRes)
+        {
+            return std::unexpected(makeStorageError(stmtRes.error()));
         }
-        if (!*stepRes) {
-            break;
+
+        std::vector<Repository> results;
+        while (true)
+        {
+            auto stepRes = stmtRes->step();
+            if (!stepRes)
+            {
+                return std::unexpected(makeStorageError(stepRes.error()));
+            }
+            if (!*stepRes)
+            {
+                break;
+            }
+            results.push_back(rowToRepository(*stmtRes));
         }
-        results.push_back(rowToRepository(*stmtRes));
+
+        return results;
     }
 
-    return results;
-}
+    std::expected<bool, RepositoryStoreError>
+    SqliteRepositoryStore::remove(const RepositoryId& id)
+    {
+        constexpr std::string_view kSql = "DELETE FROM repositories WHERE id = ?;";
 
-std::expected<bool, RepositoryStoreError>
-SqliteRepositoryStore::remove(const RepositoryId& id) {
-    constexpr std::string_view kSql = "DELETE FROM repositories WHERE id = ?;";
+        auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
+        if (!stmtRes)
+        {
+            return std::unexpected(makeStorageError(stmtRes.error()));
+        }
 
-    auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
-    if (!stmtRes) {
-        return std::unexpected(RepositoryStoreError{
-            .kind = RepositoryStoreError::Kind::StorageError,
-            .message = stmtRes.error().message
-        });
+        if (const auto bindRes = stmtRes->bindText(1, id.value()); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto stepRes = stmtRes->step(); !stepRes)
+        {
+            return std::unexpected(makeStorageError(stepRes.error()));
+        }
+
+        return conn_.changes() > 0;
     }
 
-    (void)stmtRes->bindText(1, id.value());
-    auto stepRes = stmtRes->step();
-    if (!stepRes) {
-        return std::unexpected(RepositoryStoreError{
-            .kind = RepositoryStoreError::Kind::StorageError,
-            .message = stepRes.error().message
-        });
-    }
-
-    return conn_.changes() > 0;
-}
-
-std::expected<void, RepositoryStoreError>
-SqliteRepositoryStore::updatePath(const RepositoryId& id, const std::filesystem::path& newPath) {
-    constexpr std::string_view kSql = R"(
+    std::expected<void, RepositoryStoreError>
+    SqliteRepositoryStore::updatePath(const RepositoryId& id, const std::filesystem::path& newPath)
+    {
+        constexpr std::string_view kSql = R"(
 UPDATE repositories
 SET local_path = ?, path_status = ?
 WHERE id = ?;
 )";
 
-    auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
-    if (!stmtRes) {
-        return std::unexpected(RepositoryStoreError{
-            .kind = RepositoryStoreError::Kind::StorageError,
-            .message = stmtRes.error().message
-        });
-    }
+        auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
+        if (!stmtRes)
+        {
+            return std::unexpected(makeStorageError(stmtRes.error()));
+        }
 
-    (void)stmtRes->bindText(1, gf::core::pathToUtf8(newPath));
-    (void)stmtRes->bindInt(2, static_cast<int>(RepositoryPathStatus::Valid));
-    (void)stmtRes->bindText(3, id.value());
+        if (const auto bindRes = stmtRes->bindText(1, core::pathToUtf8(newPath)); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindInt(2, static_cast<int>(RepositoryPathStatus::Valid)); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindText(3, id.value()); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
 
-    auto stepRes = stmtRes->step();
-    if (!stepRes) {
-        if (stepRes.error().code == SQLITE_CONSTRAINT_UNIQUE || stepRes.error().code == SQLITE_CONSTRAINT) {
+        if (const auto stepRes = stmtRes->step(); !stepRes)
+        {
+            if (stepRes.error().code == SQLITE_CONSTRAINT_UNIQUE || stepRes.error().code == SQLITE_CONSTRAINT)
+            {
+                return std::unexpected(RepositoryStoreError{
+                    .kind = RepositoryStoreError::Kind::DuplicatePath,
+                    .message = "Il nuovo percorso è già utilizzato da un altro repository"
+                });
+            }
+            return std::unexpected(makeStorageError(stepRes.error()));
+        }
+
+        if (conn_.changes() == 0)
+        {
             return std::unexpected(RepositoryStoreError{
-                .kind = RepositoryStoreError::Kind::DuplicatePath,
-                .message = "Il nuovo percorso è già utilizzato da un altro repository"
+                .kind = RepositoryStoreError::Kind::NotFound,
+                .message = "Repository non trovato per aggiornamento percorso"
             });
         }
-        return std::unexpected(RepositoryStoreError{
-            .kind = RepositoryStoreError::Kind::StorageError,
-            .message = stepRes.error().message
-        });
+
+        return {};
     }
-
-    if (conn_.changes() == 0) {
-        return std::unexpected(RepositoryStoreError{
-            .kind = RepositoryStoreError::Kind::NotFound,
-            .message = "Repository non trovato per aggiornamento percorso"
-        });
-    }
-
-    return {};
-}
-
 } // namespace gf::infra::persistence::repositories

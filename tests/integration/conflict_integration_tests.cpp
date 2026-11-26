@@ -9,39 +9,49 @@
 #include <filesystem>
 #include <fstream>
 
-namespace {
+namespace
+{
+    struct ConflictTestSandbox
+    {
+        std::filesystem::path root;
 
-struct ConflictTestSandbox {
-    std::filesystem::path root;
+        ConflictTestSandbox()
+        {
+            const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+            root = std::filesystem::temp_directory_path() / ("gf_conflict_integ_" + std::to_string(nonce));
+            std::filesystem::create_directories(root);
+        }
 
-    ConflictTestSandbox() {
-        const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-        root = std::filesystem::temp_directory_path() / ("gf_conflict_integ_" + std::to_string(nonce));
-        std::filesystem::create_directories(root);
-    }
+        ~ConflictTestSandbox()
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(root, ec);
+        }
 
-    ~ConflictTestSandbox() {
-        std::error_code ec;
-        std::filesystem::remove_all(root, ec);
-    }
+        void writeFile(const std::string& relativePath, const std::string& content) const
+        {
+            const auto filePath = root / relativePath;
+            std::filesystem::create_directories(filePath.parent_path());
+            // Binary mode: keep exact LF line endings on Windows too
+            std::ofstream ofs(filePath, std::ios::binary | std::ios::trunc);
+            ofs << content;
+        }
 
-    void writeFile(const std::string& relativePath, const std::string& content) {
-        auto filePath = root / relativePath;
-        std::filesystem::create_directories(filePath.parent_path());
-        std::ofstream ofs(filePath, std::ios::trunc);
-        ofs << content;
-    }
-
-    [[nodiscard]] std::string readFile(const std::string& relativePath) {
-        auto filePath = root / relativePath;
-        std::ifstream ifs(filePath);
-        return std::string((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
-    }
-};
-
+        [[nodiscard]] std::string readFile(const std::string& relativePath) const
+        {
+            const auto filePath = root / relativePath;
+            std::ifstream ifs(filePath, std::ios::binary);
+            return std::string(std::istreambuf_iterator(ifs), std::istreambuf_iterator<char>());
+        }
+    };
 } // namespace
 
-TEST_CASE("NativeRepositoryGitOps and GitConflictService 3-way conflict extraction and resolution", "[git][conflict][integration]") {
+TEST_CASE (
+"NativeRepositoryGitOps and GitConflictService 3-way conflict extraction and resolution"
+,
+"[git][conflict][integration]"
+)
+ {
     auto gitDiscovery = gf::infra::git::GitDiscovery::discover();
     REQUIRE(gitDiscovery.has_value());
     const auto gitExe = gitDiscovery->directBinaryPath.empty()
@@ -68,6 +78,12 @@ TEST_CASE("NativeRepositoryGitOps and GitConflictService 3-way conflict extracti
 
     REQUIRE(executor.execute(gf::git::bo::GitCommand{
         .args = {"config", "user.email", "conflict@gitflux.local"},
+        .workingDirectory = sandbox.root
+    })->exitCode == 0);
+
+    // Make line endings independent of the machine's global config (e.g. core.autocrlf=true on Windows)
+    REQUIRE(executor.execute(gf::git::bo::GitCommand{
+        .args = {"config", "core.autocrlf", "false"},
         .workingDirectory = sandbox.root
     })->exitCode == 0);
 
@@ -112,6 +128,21 @@ TEST_CASE("NativeRepositoryGitOps and GitConflictService 3-way conflict extracti
     CHECK(mergeRes->status == gf::git::bo::MergeStatus::Conflict);
     REQUIRE_FALSE(mergeRes->conflictedFiles.empty());
     CHECK(mergeRes->conflictedFiles[0] == "conflict.txt");
+
+    // The unmerged path is reported once, as conflicted (the WIP list opens the resolver on it)
+    auto statusRes = gitOps.getWorkingTreeStatus(sandbox.root);
+    REQUIRE(statusRes.has_value());
+    REQUIRE(statusRes->conflictedFiles.size() == 1);
+    CHECK(statusRes->conflictedFiles[0].path == "conflict.txt");
+    CHECK(statusRes->conflictedFiles[0].kind == gf::git::bo::FileChangeKind::Conflicted);
+    for (const auto& item : statusRes->unstagedFiles)
+    {
+        CHECK(item.path != "conflict.txt");
+    }
+    for (const auto& item : statusRes->stagedFiles)
+    {
+        CHECK(item.path != "conflict.txt");
+    }
 
     // 5. Inspect using GitConflictService
     auto cFileRes = conflictService.getConflictFile(sandbox.root, "conflict.txt");

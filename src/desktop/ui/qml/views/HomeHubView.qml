@@ -8,20 +8,73 @@ Item {
 
     readonly property var homeHubVmRef: (typeof homeHubVm !== "undefined") ? homeHubVm : null
 
+    component GroupColorSwatchPicker: RowLayout {
+        id: swatchPicker
+        property string selectedColor: ""
+        readonly property var paletteColors: root.homeHubVmRef && root.homeHubVmRef.groupColorPalette
+            ? root.homeHubVmRef.groupColorPalette
+            : ["#38BDF8", "#A78BFA", "#34D399", "#FBBF24", "#FB7185", "#818CF8", "#2DD4BF", "#FB923C"]
+        spacing: 8
+        Layout.preferredHeight: 28
+        implicitHeight: 28
+
+        Repeater {
+            model: swatchPicker.paletteColors
+            delegate: Rectangle {
+                id: swatchRect
+                required property string modelData
+                readonly property bool isSelected: swatchPicker.selectedColor.toLowerCase() === modelData.toLowerCase()
+                implicitWidth: 24
+                implicitHeight: 24
+                Layout.preferredWidth: 24
+                Layout.preferredHeight: 24
+                Layout.alignment: Qt.AlignVCenter
+                width: 24
+                height: 24
+                radius: 12
+                color: modelData
+                border.color: isSelected ? "#F8FAFC" : (swatchMa.containsMouse ? "#CBD5E1" : "transparent")
+                border.width: isSelected ? 2.5 : 1.5
+                scale: isSelected ? 1.12 : (swatchMa.containsMouse ? 1.06 : 1.0)
+
+                Behavior on scale { NumberAnimation { duration: 100 } }
+                Behavior on border.color { ColorAnimation { duration: 100 } }
+
+                Text {
+                    anchors.centerIn: parent
+                    visible: swatchRect.isSelected
+                    text: "✓"
+                    color: "#0A0E15"
+                    font.pixelSize: 12
+                    font.bold: true
+                }
+
+                MouseArea {
+                    id: swatchMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: swatchPicker.selectedColor = swatchRect.modelData
+                }
+            }
+        }
+    }
+
     property bool isDraggingRepo: false
     property string draggedRepoId: ""
     property string draggedRepoName: ""
     property bool isDraggingGroup: false
     property string draggedGroupId: ""
     property string draggedGroupName: ""
+    property color draggedGroupColor: "#7C4DFF"
     property string hoveredGroupId: ""
     property string hoveredGroupName: ""
     property string hoveredWorkspaceId: ""
     property string hoveredWorkspaceName: ""
 
     readonly property int visibleColumnCount: Math.max(1, (homeHubVmRef ? ((homeHubVmRef.showRepositories ? 1 : 0) +
-                                                                           (homeHubVmRef.showGroups ? 1 : 0) +
-                                                                           (homeHubVmRef.showWorkspaces ? 1 : 0)) : 3))
+        (homeHubVmRef.showGroups ? 1 : 0) +
+        (homeHubVmRef.showWorkspaces ? 1 : 0)) : 3))
 
     function startDraggingRepo(repoId, repoName) {
         isDraggingRepo = true;
@@ -29,10 +82,11 @@ Item {
         draggedRepoName = repoName;
     }
 
-    function startDraggingGroup(groupId, groupName) {
+    function startDraggingGroup(groupId, groupName, groupColor) {
         isDraggingGroup = true;
         draggedGroupId = groupId;
         draggedGroupName = groupName;
+        draggedGroupColor = (groupColor && groupColor.length > 0) ? groupColor : "#7C4DFF";
     }
 
     function clearDragState() {
@@ -42,6 +96,7 @@ Item {
         isDraggingGroup = false;
         draggedGroupId = "";
         draggedGroupName = "";
+        draggedGroupColor = "#7C4DFF";
         hoveredGroupId = "";
         hoveredGroupName = "";
         hoveredWorkspaceId = "";
@@ -50,21 +105,21 @@ Item {
 
     function findGroupAtRootPos(rootX, rootY) {
         if (!homeHubVmRef || !homeHubVmRef.showGroups || homeHubVmRef.groupsCount === 0) return null;
-        var listPt = root.mapToItem(groupListView, rootX, rootY);
+        const listPt = root.mapToItem(groupListView, rootX, rootY);
         if (listPt.x < -30 || listPt.x > groupListView.width + 30 || listPt.y < 0 || listPt.y > groupListView.height) return null;
-        var sampleX = Math.max(10, Math.min(groupListView.width - 10, listPt.x + groupListView.contentX));
-        var item = groupListView.itemAt(sampleX, listPt.y + groupListView.contentY);
-        if (item && item.grpCardId) return { id: item.grpCardId, name: item.grpCardName };
+        const sampleX = Math.max(10, Math.min(groupListView.width - 10, listPt.x + groupListView.contentX));
+        const item = groupListView.itemAt(sampleX, listPt.y + groupListView.contentY);
+        if (item && item.grpCardId) return {id: item.grpCardId, name: item.grpCardName};
         return null;
     }
 
     function findWorkspaceAtRootPos(rootX, rootY) {
         if (!homeHubVmRef || !homeHubVmRef.showWorkspaces || homeHubVmRef.workspacesCount === 0) return null;
-        var listPt = root.mapToItem(wsListView, rootX, rootY);
+        const listPt = root.mapToItem(wsListView, rootX, rootY);
         if (listPt.x < -30 || listPt.x > wsListView.width + 30 || listPt.y < 0 || listPt.y > wsListView.height) return null;
-        var sampleX = Math.max(10, Math.min(wsListView.width - 10, listPt.x + wsListView.contentX));
-        var item = wsListView.itemAt(sampleX, listPt.y + wsListView.contentY);
-        if (item && item.wsCardId) return { id: item.wsCardId, name: item.wsCardName };
+        const sampleX = Math.max(10, Math.min(wsListView.width - 10, listPt.x + wsListView.contentX));
+        const item = wsListView.itemAt(sampleX, listPt.y + wsListView.contentY);
+        if (item && item.wsCardId) return {id: item.wsCardId, name: item.wsCardName};
         return null;
     }
 
@@ -102,8 +157,11 @@ Item {
     }
 
     signal quickOpenRequested()
+
     signal repositoryOpened(string repoId, string name, string path)
+
     signal groupOpened(string groupId, string groupName, var repoIds)
+
     signal workspaceOpened(string workspaceId)
 
     function openAddRepoDialog() {
@@ -116,25 +174,33 @@ Item {
 
     Connections {
         target: (typeof homeHubVm !== "undefined") ? homeHubVm : null
+
         function onErrorOccurred(message) {
+            // The clone modal shows its own error banner with a guided fix and the git log.
+            if (cloneRepoModal.visible) return;
             errorFeedbackDialog.errorMessage = message;
             errorFeedbackDialog.open();
             feedbackBanner.showError(message);
         }
-        function onRepositoryAdded(repoName, path) {
+
+        function onRepositoryAdded(repoName) {
             feedbackBanner.showSuccess("Repository '" + repoName + "' aggiunto con successo!");
         }
+
         function onLastSuccessMessageChanged(message) {
             if (message && message.length > 0) {
                 feedbackBanner.showSuccess(message);
             }
         }
+
         function onRepositoryOpened(repoId, name, path) {
             root.repositoryOpened(repoId, name, path);
         }
+
         function onGroupOpened(groupId, groupName, repoIds) {
             root.groupOpened(groupId, groupName, repoIds);
         }
+
         function onWorkspaceOpened(workspaceId) {
             root.workspaceOpened(workspaceId);
         }
@@ -149,9 +215,9 @@ Item {
         // =====================================================================
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 56
-            color: "#161B22"
-            border.color: "#30363D"
+            Layout.preferredHeight: 58
+            color: "#0D131D"
+            border.color: "#1B2535"
             border.width: 1
 
             RowLayout {
@@ -177,39 +243,48 @@ Item {
 
                     Text {
                         text: "Git Flux"
-                        color: "#F0F6FC"
+                        color: "#F8FAFC"
                         font.pixelSize: 16
                         font.bold: true
                     }
                 }
 
-                Item { Layout.preferredWidth: 20 }
+                Item {
+                    Layout.preferredWidth: 20
+                }
 
-                // Reactive Quick Search Field
+                // Reactive Quick Search Field Capsule
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.maximumWidth: 420
-                    height: 34
-                    radius: 6
-                    color: "#0B0E14"
-                    border.color: searchInput.activeFocus ? "#58A6FF" : "#30363D"
+                    Layout.maximumWidth: 430
+                    height: 36
+                    radius: 10
+                    color: "#080B10"
+                    border.color: searchInput.activeFocus ? "#38BDF8" : "#222F42"
+                    border.width: 1
+
+                    Behavior on border.color {
+                        ColorAnimation {
+                            duration: 120
+                        }
+                    }
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.leftMargin: 10
+                        anchors.leftMargin: 12
                         anchors.rightMargin: 8
-                        spacing: 6
+                        spacing: 8
 
                         Text {
                             text: "🔍"
                             font.pixelSize: 12
-                            color: "#8B949E"
+                            color: searchInput.activeFocus ? "#38BDF8" : "#64748B"
                         }
 
                         TextInput {
                             id: searchInput
                             Layout.fillWidth: true
-                            color: "#F0F6FC"
+                            color: "#F8FAFC"
                             font.pixelSize: 13
                             selectByMouse: true
                             clip: true
@@ -217,7 +292,7 @@ Item {
 
                             Text {
                                 text: "Filtra repository, gruppi o workspace..."
-                                color: "#6E7681"
+                                color: "#64748B"
                                 font.pixelSize: 13
                                 visible: !searchInput.text && !searchInput.activeFocus
                             }
@@ -227,44 +302,61 @@ Item {
                             visible: searchInput.text.length > 0
                             text: "✕"
                             flat: true
+                            Layout.preferredWidth: 22
+                            Layout.preferredHeight: 22
+                            hoverEnabled: true
                             onClicked: searchInput.text = ""
                             contentItem: Text {
                                 text: "✕"
-                                color: "#8B949E"
+                                color: parent.hovered ? "#F8FAFC" : "#94A3B8"
                                 font.pixelSize: 11
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
                             }
-                            background: Rectangle { color: "transparent" }
+                            background: Rectangle {
+                                radius: 6
+                                color: parent.hovered ? "#1E293B" : "transparent"
+                            }
                         }
                     }
                 }
 
-                Item { Layout.fillWidth: true }
+                Item {
+                    Layout.fillWidth: true
+                }
 
                 // Section Visibility Controls & Quick Open / Clone Actions
                 RowLayout {
                     spacing: 10
 
-                    // Section View Switcher Pills
+                    // Section View Switcher Pills (Segmented Control)
                     Rectangle {
-                        height: 32
-                        implicitWidth: sectionPillsLayout.implicitWidth + 16
-                        radius: 6
-                        color: "#161B22"
-                        border.color: "#30363D"
+                        height: 36
+                        implicitWidth: sectionPillsLayout.implicitWidth + 10
+                        radius: 10
+                        color: "#080B10"
+                        border.color: "#222F42"
+                        border.width: 1
 
                         RowLayout {
                             id: sectionPillsLayout
                             anchors.centerIn: parent
-                            spacing: 6
+                            spacing: 4
 
                             // Toggle Repositories
                             Rectangle {
-                                height: 24
+                                height: 28
                                 implicitWidth: repoPillInnerRow.implicitWidth + 18
-                                radius: 4
-                                color: (homeHubVm && homeHubVm.showRepositories) ? "#0F2634" : "transparent"
+                                radius: 7
+                                color: (homeHubVm && homeHubVm.showRepositories) ? "#0F2942" : (repoPillMouse.containsMouse ? "#121A27" : "transparent")
                                 border.color: (homeHubVm && homeHubVm.showRepositories) ? "#0284C7" : "transparent"
                                 border.width: 1
+
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
 
                                 RowLayout {
                                     id: repoPillInnerRow
@@ -277,13 +369,14 @@ Item {
                                     Text {
                                         id: repoPillText
                                         text: "Repository"
-                                        color: (homeHubVm && homeHubVm.showRepositories) ? "#38BDF8" : "#8B949E"
+                                        color: (homeHubVm && homeHubVm.showRepositories) ? "#38BDF8" : "#94A3B8"
                                         font.pixelSize: 11
                                         font.bold: Boolean(homeHubVm && homeHubVm.showRepositories)
                                     }
                                 }
 
                                 MouseArea {
+                                    id: repoPillMouse
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
                                     hoverEnabled: true
@@ -295,12 +388,18 @@ Item {
 
                             // Toggle Gruppi
                             Rectangle {
-                                height: 24
+                                height: 28
                                 implicitWidth: grpPillInnerRow.implicitWidth + 18
-                                radius: 4
-                                color: (homeHubVm && homeHubVm.showGroups) ? "#2E1065" : "transparent"
+                                radius: 7
+                                color: (homeHubVm && homeHubVm.showGroups) ? "#23124A" : (grpPillMouse.containsMouse ? "#121A27" : "transparent")
                                 border.color: (homeHubVm && homeHubVm.showGroups) ? "#7C4DFF" : "transparent"
                                 border.width: 1
+
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
 
                                 RowLayout {
                                     id: grpPillInnerRow
@@ -313,13 +412,14 @@ Item {
                                     Text {
                                         id: grpPillText
                                         text: "Gruppi"
-                                        color: (homeHubVm && homeHubVm.showGroups) ? "#E9D5FF" : "#8B949E"
+                                        color: (homeHubVm && homeHubVm.showGroups) ? "#E9D5FF" : "#94A3B8"
                                         font.pixelSize: 11
                                         font.bold: Boolean(homeHubVm && homeHubVm.showGroups)
                                     }
                                 }
 
                                 MouseArea {
+                                    id: grpPillMouse
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
                                     hoverEnabled: true
@@ -331,12 +431,18 @@ Item {
 
                             // Toggle Workspace
                             Rectangle {
-                                height: 24
+                                height: 28
                                 implicitWidth: wsPillInnerRow.implicitWidth + 18
-                                radius: 4
-                                color: (homeHubVm && homeHubVm.showWorkspaces) ? "#1B2F23" : "transparent"
-                                border.color: (homeHubVm && homeHubVm.showWorkspaces) ? "#3FB950" : "transparent"
+                                radius: 7
+                                color: (homeHubVm && homeHubVm.showWorkspaces) ? "#063B2C" : (wsPillMouse.containsMouse ? "#121A27" : "transparent")
+                                border.color: (homeHubVm && homeHubVm.showWorkspaces) ? "#10B981" : "transparent"
                                 border.width: 1
+
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
 
                                 RowLayout {
                                     id: wsPillInnerRow
@@ -349,13 +455,14 @@ Item {
                                     Text {
                                         id: wsPillText
                                         text: "Workspace"
-                                        color: (homeHubVm && homeHubVm.showWorkspaces) ? "#3FB950" : "#8B949E"
+                                        color: (homeHubVm && homeHubVm.showWorkspaces) ? "#34D399" : "#94A3B8"
                                         font.pixelSize: 11
                                         font.bold: Boolean(homeHubVm && homeHubVm.showWorkspaces)
                                     }
                                 }
 
                                 MouseArea {
+                                    id: wsPillMouse
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
                                     hoverEnabled: true
@@ -370,10 +477,13 @@ Item {
                     // Clone Repository Action
                     Button {
                         text: "⬇ Clona"
-                        Layout.preferredHeight: 32
+                        Layout.preferredHeight: 36
+                        leftPadding: 14
+                        rightPadding: 14
+                        hoverEnabled: true
                         onClicked: cloneRepoModal.openWithDefaultFolder("")
                         contentItem: RowLayout {
-                            spacing: 5
+                            spacing: 6
                             Text {
                                 text: "⬇"
                                 color: "#38BDF8"
@@ -381,40 +491,63 @@ Item {
                             }
                             Text {
                                 text: "Clona"
-                                color: "#F0F6FC"
+                                color: "#F8FAFC"
                                 font.pixelSize: 12
                                 font.bold: true
                             }
                         }
                         background: Rectangle {
-                            color: parent.hovered ? "#30363D" : "#21262D"
-                            radius: 6
-                            border.color: parent.hovered ? "#38BDF8" : "#30363D"
+                            color: parent.hovered ? "#1E2B3E" : "#141D2B"
+                            radius: 9
+                            border.color: parent.hovered ? "#38BDF8" : "#26354A"
+                            border.width: 1
+
+                            Behavior on color {
+                                ColorAnimation {
+                                    duration: 120
+                                }
+                            }
+                            Behavior on border.color {
+                                ColorAnimation {
+                                    duration: 120
+                                }
+                            }
                         }
                     }
 
                     // Quick Open Action
                     Button {
                         text: "⚡ Quick Open"
-                        Layout.preferredHeight: 32
+                        Layout.preferredHeight: 36
+                        leftPadding: 14
+                        rightPadding: 14
+                        hoverEnabled: true
                         onClicked: root.quickOpenRequested()
                         contentItem: RowLayout {
-                            spacing: 5
+                            spacing: 6
                             Text {
                                 text: "⚡"
                                 font.pixelSize: 12
-                                color: "#0E1117"
+                                color: "#FFFFFF"
                             }
                             Text {
                                 text: "Quick Open"
-                                color: "#0E1117"
+                                color: "#FFFFFF"
                                 font.pixelSize: 12
                                 font.bold: true
                             }
                         }
                         background: Rectangle {
-                            color: parent.hovered ? "#33ECFF" : "#00E5FF"
-                            radius: 6
+                            color: parent.hovered ? "#0EA5E9" : "#0284C7"
+                            radius: 9
+                            border.color: "#38BDF8"
+                            border.width: 1
+
+                            Behavior on color {
+                                ColorAnimation {
+                                    duration: 120
+                                }
+                            }
                         }
                     }
                 }
@@ -444,7 +577,11 @@ Item {
             border.color: isError ? "#F85149" : "#3FB950"
             border.width: 1
 
-            Behavior on opacity { NumberAnimation { duration: 200 } }
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: 200
+                }
+            }
 
             function showError(msg) {
                 isError = true;
@@ -497,24 +634,41 @@ Item {
                     text: "✕"
                     flat: true
                     onClicked: feedbackBanner.dismiss()
-                    contentItem: Text { text: "✕"; color: "#8B949E"; font.pixelSize: 13 }
-                    background: Rectangle { color: "transparent" }
+                    contentItem: Text {
+                        text: "✕"; color: "#8B949E"; font.pixelSize: 13
+                    }
+                    background: Rectangle {
+                        color: "transparent"
+                    }
                 }
             }
         }
 
         // =====================================================================
-        // MAIN BODY: 3-Column Layout (Repositories, Groups, Workspaces)
+        // MAIN BODY: 3-Column Floating Island Layout (Repositories, Groups, Workspaces)
         // =====================================================================
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            color: "#0E1117"
+            color: "#080B10"
 
             SplitView {
                 anchors.fill: parent
-                anchors.margins: 16
+                anchors.margins: 14
                 orientation: Qt.Horizontal
+
+                handle: Rectangle {
+                    implicitWidth: 10
+                    color: "transparent"
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 2
+                        height: 44
+                        radius: 1
+                        color: SplitHandle.hovered || SplitHandle.pressed ? "#38BDF8" : "#1E293B"
+                    }
+                }
 
                 // -------------------------------------------------------------
                 // COLUMN 1: REPOSITORIES
@@ -523,15 +677,16 @@ Item {
                     id: repoCol
                     visible: Boolean(homeHubVm && homeHubVm.showRepositories)
                     SplitView.preferredWidth: parent.width / root.visibleColumnCount
-                    SplitView.minimumWidth: 260
+                    SplitView.minimumWidth: 340
                     SplitView.fillWidth: (root.visibleColumnCount === 1) || Boolean(homeHubVm && !homeHubVm.showGroups && !homeHubVm.showWorkspaces)
-                    color: "#161B22"
-                    radius: 8
-                    border.color: "#30363D"
+                    color: "#0F141C"
+                    radius: 14
+                    border.color: "#1E293B"
+                    border.width: 1
 
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: 14
+                        anchors.margins: 16
                         spacing: 12
 
                         // Col Header
@@ -539,38 +694,61 @@ Item {
                             Layout.fillWidth: true
                             Text {
                                 text: "Repositories"
-                                color: "#F0F6FC"
+                                color: "#F8FAFC"
                                 font.pixelSize: 15
                                 font.bold: true
                             }
                             Rectangle {
-                                height: 20
-                                width: repoCountText.implicitWidth + 12
-                                radius: 10
-                                color: "#21262D"
-                                border.color: "#30363D"
+                                height: 22
+                                width: repoCountText.implicitWidth + 14
+                                radius: 11
+                                color: "#0F2942"
+                                border.color: "#1E4066"
+                                border.width: 1
                                 Text {
                                     id: repoCountText
                                     anchors.centerIn: parent
                                     text: homeHubVm.repositoriesCount
-                                    color: "#00E5FF"
+                                    color: "#38BDF8"
                                     font.pixelSize: 11
                                     font.bold: true
                                 }
                             }
-                            Item { Layout.fillWidth: true }
+                            Item {
+                                Layout.fillWidth: true
+                            }
                             Button {
                                 text: "+"
-                                flat: true
+                                Layout.preferredWidth: 28
+                                Layout.preferredHeight: 28
+                                hoverEnabled: true
                                 onClicked: repoFolderDialog.open()
-                                contentItem: Text { text: "+"; color: "#8B949E"; font.pixelSize: 15 }
-                                background: Rectangle { color: "transparent" }
+                                contentItem: Text {
+                                    text: "+"
+                                    color: parent.hovered ? "#F8FAFC" : "#94A3B8"
+                                    font.pixelSize: 15
+                                    font.bold: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                background: Rectangle {
+                                    color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                                    radius: 8
+                                    border.color: parent.hovered ? "#38BDF8" : "#243247"
+                                    border.width: 1
+                                    Behavior on color {
+                                        ColorAnimation {
+                                            duration: 110
+                                        }
+                                    }
+                                }
                             }
                         }
 
                         // Repo List
                         ListView {
                             id: repoListView
+                            SmoothWheelScroller {}
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
@@ -578,7 +756,8 @@ Item {
                             boundsBehavior: Flickable.StopAtBounds
                             maximumFlickVelocity: 6000
                             flickDeceleration: 1000
-                            ScrollBar.vertical: FluxScrollBar {}
+                            ScrollBar.vertical: FluxScrollBar {
+                            }
                             model: homeHubVm.repositories
                             spacing: 8
 
@@ -593,16 +772,27 @@ Item {
                                 required property string branch
 
                                 width: repoListView.width
-                                implicitHeight: repoColLayout.implicitHeight + 16
-                                radius: 6
-                                color: repoCardRect.isMissing ? "#22161A" : (repoHover.containsMouse ? "#21262D" : "#191E27")
-                                border.color: repoCardRect.isMissing ? "#F85149" : (repoHover.containsMouse ? "#58A6FF" : "#30363D")
+                                implicitHeight: repoColLayout.implicitHeight + 18
+                                radius: 10
+                                color: repoCardRect.isMissing ? "#261318" : (repoHover.containsMouse ? "#182334" : "#121A27")
+                                border.color: repoCardRect.isMissing ? "#EF4444" : (repoHover.containsMouse ? "#38BDF8" : "#1F2C3F")
                                 border.width: 1
+
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
+                                Behavior on border.color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
 
                                 ColumnLayout {
                                     id: repoColLayout
                                     anchors.fill: parent
-                                    anchors.margins: 8
+                                    anchors.margins: 10
                                     spacing: 6
 
                                     // Top Row: Title, Branch, Open button
@@ -625,11 +815,21 @@ Item {
                                         }
 
                                         Text {
+                                            id: repoCardNameText
                                             text: repoCardRect.displayName
                                             color: "#F0F6FC"
                                             font.pixelSize: 13
                                             font.bold: true
                                             elide: Text.ElideRight
+                                            Layout.fillWidth: true
+                                            Layout.minimumWidth: 40
+                                            Layout.maximumWidth: Math.ceil(Math.max(repoNameMetrics.advanceWidth, repoNameMetrics.boundingRect.width)) + 4
+
+                                            TextMetrics {
+                                                id: repoNameMetrics
+                                                font: repoCardNameText.font
+                                                text: repoCardNameText.text
+                                            }
                                         }
 
                                         // Branch Badge
@@ -676,26 +876,39 @@ Item {
                                             }
                                         }
 
-                                        Item { Layout.fillWidth: true }
+                                        Item {
+                                            Layout.fillWidth: true
+                                        }
 
                                         // Reconnect button if missing
                                         Button {
                                             visible: repoCardRect.isMissing
                                             Layout.preferredHeight: 26
+                                            leftPadding: 10
+                                            rightPadding: 10
+                                            hoverEnabled: true
                                             onClicked: {
                                                 reconnectFolderDialog.targetRepoId = repoCardRect.id;
                                                 reconnectFolderDialog.open();
                                             }
                                             contentItem: Text {
                                                 text: "Ricollega"
-                                                color: "#00E5FF"
+                                                color: "#38BDF8"
                                                 font.pixelSize: 11
                                                 font.bold: true
+                                                horizontalAlignment: Text.AlignHCenter
+                                                verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#30363D" : "#21262D"
-                                                radius: 4
-                                                border.color: "#00E5FF"
+                                                color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                                                radius: 7
+                                                border.color: "#38BDF8"
+                                                border.width: 1
+                                                Behavior on color {
+                                                    ColorAnimation {
+                                                        duration: 110
+                                                    }
+                                                }
                                             }
                                         }
 
@@ -703,6 +916,9 @@ Item {
                                         Button {
                                             visible: !repoCardRect.isMissing
                                             Layout.preferredHeight: 26
+                                            leftPadding: 10
+                                            rightPadding: 10
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Apri progetto in una scheda della sessione"
                                             onClicked: homeHubVm.openRepository(repoCardRect.id)
@@ -711,18 +927,25 @@ Item {
                                                 Text {
                                                     text: "▶"
                                                     font.pixelSize: 9
-                                                    color: "#0E1117"
+                                                    color: "#FFFFFF"
                                                 }
                                                 Text {
                                                     text: "Apri"
-                                                    color: "#0E1117"
+                                                    color: "#FFFFFF"
                                                     font.pixelSize: 11
                                                     font.bold: true
                                                 }
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#33ECFF" : "#00E5FF"
-                                                radius: 4
+                                                color: parent.hovered ? "#0EA5E9" : "#0284C7"
+                                                radius: 7
+                                                border.color: "#38BDF8"
+                                                border.width: 1
+                                                Behavior on color {
+                                                    ColorAnimation {
+                                                        duration: 110
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -742,43 +965,59 @@ Item {
 
                                         // File Manager Button
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             visible: !repoCardRect.isMissing
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Apri nel gestore file"
                                             onClicked: homeHubVm.openInFileManager(repoCardRect.localPath)
-                                            contentItem: Text { text: "📂"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "📂"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                            }
                                         }
 
                                         // Terminal Button
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             visible: !repoCardRect.isMissing
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Apri nel terminale"
                                             onClicked: homeHubVm.openInTerminal(repoCardRect.localPath)
-                                            contentItem: Text { text: "💻"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "💻"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                            }
                                         }
 
                                         // Copy Path Button
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Copia percorso negli appunti"
                                             onClicked: homeHubVm.copyToClipboard(repoCardRect.localPath)
-                                            contentItem: Text { text: "📋"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "📋"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                            }
                                         }
 
                                         // Rename Button
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Rinomina nome visualizzato"
                                             onClicked: {
@@ -786,14 +1025,19 @@ Item {
                                                 renameRepoDialog.initialName = repoCardRect.displayName;
                                                 renameRepoDialog.open();
                                             }
-                                            contentItem: Text { text: "✏️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "✏️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                            }
                                         }
 
                                         // Add to Group Button
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             visible: !repoCardRect.isMissing
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Aggiungi a un gruppo"
@@ -803,19 +1047,28 @@ Item {
                                                 addToGroupDialog.selectedGroupId = "";
                                                 addToGroupDialog.open();
                                             }
-                                            contentItem: Text { text: "🗂️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "🗂️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                            }
                                         }
 
                                         // Remove Button
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Rimuovi dal catalogo"
                                             onClicked: homeHubVm.removeRepository(repoCardRect.id)
-                                            contentItem: Text { text: "✕"; color: parent.hovered ? "#EF4444" : "#8B949E"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "✕"; color: parent.hovered ? "#EF4444" : "#8B949E"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#3B1219" : "transparent"; radius: 7
+                                            }
                                         }
                                     }
                                 }
@@ -830,29 +1083,29 @@ Item {
                                     onDoubleClicked: homeHubVm.openRepository(repoCardRect.id)
 
                                     property point pressPoint: Qt.point(0, 0)
-                                    onPressed: function(mouse) {
+                                    onPressed: function (mouse) {
                                         pressPoint = Qt.point(mouse.x, mouse.y);
                                     }
-                                    onPositionChanged: function(mouse) {
+                                    onPositionChanged: function (mouse) {
                                         if (pressed && !repoCardRect.isMissing) {
-                                            var dx = mouse.x - pressPoint.x;
-                                            var dy = mouse.y - pressPoint.y;
+                                            const dx = mouse.x - pressPoint.x;
+                                            const dy = mouse.y - pressPoint.y;
                                             if (!root.isDraggingRepo && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
                                                 root.startDraggingRepo(repoCardRect.id, repoCardRect.displayName);
                                             }
                                             if (root.isDraggingRepo) {
-                                                var pt = mapToItem(root, mouse.x, mouse.y);
+                                                const pt = mapToItem(root, mouse.x, mouse.y);
                                                 dragGhostRepo.x = pt.x - dragGhostRepo.width / 2;
                                                 dragGhostRepo.y = pt.y - dragGhostRepo.height / 2;
 
-                                                var grp = root.findGroupAtRootPos(pt.x, pt.y);
+                                                const grp = root.findGroupAtRootPos(pt.x, pt.y);
                                                 if (grp) {
                                                     root.hoveredGroupId = grp.id;
                                                     root.hoveredGroupName = grp.name;
                                                     root.hoveredWorkspaceId = "";
                                                     root.hoveredWorkspaceName = "";
                                                 } else {
-                                                    var ws = root.findWorkspaceAtRootPos(pt.x, pt.y);
+                                                    const ws = root.findWorkspaceAtRootPos(pt.x, pt.y);
                                                     if (ws) {
                                                         root.hoveredWorkspaceId = ws.id;
                                                         root.hoveredWorkspaceName = ws.name;
@@ -868,14 +1121,14 @@ Item {
                                             }
                                         }
                                     }
-                                    onReleased: function(mouse) {
+                                    onReleased: function () {
                                         if (root.isDraggingRepo) {
-                                            var rId = root.draggedRepoId;
-                                            var rName = root.draggedRepoName;
-                                            var gId = root.hoveredGroupId;
-                                            var gName = root.hoveredGroupName;
-                                            var wId = root.hoveredWorkspaceId;
-                                            var wName = root.hoveredWorkspaceName;
+                                            const rId = root.draggedRepoId;
+                                            const rName = root.draggedRepoName;
+                                            const gId = root.hoveredGroupId;
+                                            const gName = root.hoveredGroupName;
+                                            const wId = root.hoveredWorkspaceId;
+                                            const wName = root.hoveredWorkspaceName;
 
                                             root.clearDragState();
 
@@ -886,7 +1139,7 @@ Item {
                                             }
                                         }
                                     }
-                                    onCanceled: function() {
+                                    onCanceled: function () {
                                         if (root.isDraggingRepo) {
                                             root.clearDragState();
                                         }
@@ -942,15 +1195,16 @@ Item {
                     id: groupCol
                     visible: Boolean(homeHubVm && homeHubVm.showGroups)
                     SplitView.preferredWidth: parent.width / root.visibleColumnCount
-                    SplitView.minimumWidth: 260
+                    SplitView.minimumWidth: 340
                     SplitView.fillWidth: (root.visibleColumnCount === 1) || Boolean(homeHubVm && !homeHubVm.showWorkspaces)
-                    color: "#161B22"
-                    radius: 8
-                    border.color: "#30363D"
+                    color: "#0F141C"
+                    radius: 14
+                    border.color: "#1E293B"
+                    border.width: 1
 
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: 14
+                        anchors.margins: 16
                         spacing: 12
 
                         // Col Header
@@ -958,38 +1212,61 @@ Item {
                             Layout.fillWidth: true
                             Text {
                                 text: "Gruppi"
-                                color: "#F0F6FC"
+                                color: "#F8FAFC"
                                 font.pixelSize: 15
                                 font.bold: true
                             }
                             Rectangle {
-                                height: 20
-                                width: groupCountText.implicitWidth + 12
-                                radius: 10
-                                color: "#21262D"
-                                border.color: "#30363D"
+                                height: 22
+                                width: groupCountText.implicitWidth + 14
+                                radius: 11
+                                color: "#23124A"
+                                border.color: "#5B21B6"
+                                border.width: 1
                                 Text {
                                     id: groupCountText
                                     anchors.centerIn: parent
                                     text: homeHubVm.groupsCount
-                                    color: "#7C4DFF"
+                                    color: "#C084FC"
                                     font.pixelSize: 11
                                     font.bold: true
                                 }
                             }
-                            Item { Layout.fillWidth: true }
+                            Item {
+                                Layout.fillWidth: true
+                            }
                             Button {
                                 text: "+"
-                                flat: true
+                                Layout.preferredWidth: 28
+                                Layout.preferredHeight: 28
+                                hoverEnabled: true
                                 onClicked: addGroupDialog.open()
-                                contentItem: Text { text: "+"; color: "#8B949E"; font.pixelSize: 15 }
-                                background: Rectangle { color: "transparent" }
+                                contentItem: Text {
+                                    text: "+"
+                                    color: parent.hovered ? "#F8FAFC" : "#94A3B8"
+                                    font.pixelSize: 15
+                                    font.bold: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                background: Rectangle {
+                                    color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                                    radius: 8
+                                    border.color: parent.hovered ? "#A855F7" : "#243247"
+                                    border.width: 1
+                                    Behavior on color {
+                                        ColorAnimation {
+                                            duration: 110
+                                        }
+                                    }
+                                }
                             }
                         }
 
                         // Group List
                         ListView {
                             id: groupListView
+                            SmoothWheelScroller {}
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
@@ -997,7 +1274,8 @@ Item {
                             boundsBehavior: Flickable.StopAtBounds
                             maximumFlickVelocity: 6000
                             flickDeceleration: 1000
-                            ScrollBar.vertical: FluxScrollBar {}
+                            ScrollBar.vertical: FluxScrollBar {
+                            }
                             model: homeHubVm.groups
                             spacing: 8
 
@@ -1005,53 +1283,114 @@ Item {
                                 id: grpCardRect
                                 required property string id
                                 required property string name
+                                required property string groupColor
                                 required property int repositoryCount
                                 required property var repositoryIds
                                 required property var repositoryNames
 
                                 property string grpCardId: grpCardRect.id
                                 property string grpCardName: grpCardRect.name
+                                readonly property color accentColor: grpCardRect.groupColor.length > 0 ? grpCardRect.groupColor : "#7C4DFF"
                                 readonly property bool isDropTarget: root.isDraggingRepo && (root.hoveredGroupId === grpCardRect.id)
 
                                 width: groupListView.width
-                                implicitHeight: grpColLayout.implicitHeight + 16
-                                radius: 6
-                                color: isDropTarget ? "#2E1065" : (grpHover.containsMouse ? "#21262D" : "#191E27")
-                                border.color: isDropTarget ? "#C084FC" : (grpHover.containsMouse ? "#7C4DFF" : "#30363D")
+                                implicitHeight: grpColLayout.implicitHeight + 18
+                                radius: 10
+                                color: isDropTarget ? Qt.alpha(accentColor, 0.22) : (grpHover.containsMouse ? "#182334" : "#121A27")
+                                border.color: isDropTarget ? accentColor : (grpHover.containsMouse ? Qt.alpha(accentColor, 0.72) : "#1F2C3F")
                                 border.width: isDropTarget ? 2 : 1
                                 scale: isDropTarget ? 1.02 : 1.0
-                                Behavior on scale { NumberAnimation { duration: 100 } }
+                                Behavior on scale {
+                                    NumberAnimation {
+                                        duration: 100
+                                    }
+                                }
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
+                                Behavior on border.color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
+
+                                // Left vertical color identity stripe
+                                Rectangle {
+                                    anchors.left: parent.left
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
+                                    anchors.topMargin: 7
+                                    anchors.bottomMargin: 7
+                                    anchors.leftMargin: 3
+                                    width: 3
+                                    radius: 1.5
+                                    color: grpCardRect.accentColor
+                                }
 
                                 ColumnLayout {
                                     id: grpColLayout
                                     anchors.fill: parent
-                                    anchors.margins: 8
+                                    anchors.margins: 10
+                                    anchors.leftMargin: 13
                                     spacing: 6
 
                                     // Top Row: Group name, count badge, Open Group button, action icons
                                     RowLayout {
                                         Layout.fillWidth: true
-                                        spacing: 8
+                                        spacing: 5
 
                                         Text {
                                             text: "⋮⋮"
-                                            color: grpHover.containsMouse ? "#C084FC" : "#475569"
+                                            color: grpHover.containsMouse ? grpCardRect.accentColor : "#475569"
                                             font.pixelSize: 13
                                             ToolTip.visible: grpHover.containsMouse && !root.isDraggingGroup
                                             ToolTip.text: "Trascina su un workspace per associarlo"
                                         }
 
-                                        Text {
-                                            text: "🗂️"
-                                            font.pixelSize: 15
+                                        // Color indicator dot (click to customize group color & name)
+                                        Rectangle {
+                                            width: 11
+                                            height: 11
+                                            radius: 5.5
+                                            color: grpCardRect.accentColor
+                                            border.color: colorDotMa.containsMouse ? "#F8FAFC" : Qt.alpha(grpCardRect.accentColor, 0.35)
+                                            border.width: colorDotMa.containsMouse ? 1.5 : 1
+
+                                            MouseArea {
+                                                id: colorDotMa
+                                                anchors.fill: parent
+                                                anchors.margins: -4
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                ToolTip.visible: containsMouse
+                                                ToolTip.text: "Cambia colore o rinomina gruppo"
+                                                onClicked: {
+                                                    renameGroupDialog.groupId = grpCardRect.id;
+                                                    renameGroupDialog.initialName = grpCardRect.name;
+                                                    renameGroupDialog.initialColor = grpCardRect.groupColor;
+                                                    renameGroupDialog.open();
+                                                }
+                                            }
                                         }
 
                                         Text {
+                                            id: grpCardNameText
                                             text: grpCardRect.name
                                             color: "#F0F6FC"
                                             font.pixelSize: 13
                                             font.bold: true
                                             elide: Text.ElideRight
+                                            Layout.fillWidth: true
+                                            Layout.minimumWidth: 40
+                                            Layout.maximumWidth: Math.ceil(Math.max(grpNameMetrics.advanceWidth, grpNameMetrics.boundingRect.width)) + 4
+
+                                            TextMetrics {
+                                                id: grpNameMetrics
+                                                font: grpCardNameText.font
+                                                text: grpCardNameText.text
+                                            }
                                         }
 
                                         // Count Badge
@@ -1059,83 +1398,112 @@ Item {
                                             height: 18
                                             implicitWidth: grpBadgeText.implicitWidth + 10
                                             radius: 9
-                                            color: "#2E1065"
-                                            border.color: "#7C4DFF"
+                                            color: Qt.alpha(grpCardRect.accentColor, 0.16)
+                                            border.color: Qt.alpha(grpCardRect.accentColor, 0.55)
                                             border.width: 1
                                             Text {
                                                 id: grpBadgeText
                                                 anchors.centerIn: parent
                                                 text: grpCardRect.repositoryCount + (grpCardRect.repositoryCount === 1 ? " progetto" : " progetti")
-                                                color: "#E9D5FF"
+                                                color: "#F0F6FC"
                                                 font.pixelSize: 10
                                                 font.bold: true
                                             }
                                         }
 
-                                        Item { Layout.fillWidth: true }
+                                        Item {
+                                            Layout.fillWidth: true
+                                        }
 
                                         // Open Group button (Batch opens all repos in group into tabs!)
                                         Button {
                                             Layout.preferredHeight: 26
+                                            leftPadding: 10
+                                            rightPadding: 10
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Apri tutti i progetti del gruppo (un progetto per scheda)"
                                             onClicked: homeHubVm.openGroup(grpCardRect.id)
                                             contentItem: RowLayout {
-                                                spacing: 4
+                                                spacing: 5
                                                 Text {
                                                     text: "▶"
                                                     font.pixelSize: 9
-                                                    color: "#FFFFFF"
+                                                    color: grpCardRect.accentColor
                                                 }
                                                 Text {
                                                     text: "Apri Gruppo"
-                                                    color: "#FFFFFF"
+                                                    color: "#F8FAFC"
                                                     font.pixelSize: 11
                                                     font.bold: true
                                                 }
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#9061F9" : "#7C4DFF"
-                                                radius: 4
+                                                color: Qt.alpha(grpCardRect.accentColor, parent.hovered ? 0.34 : 0.20)
+                                                radius: 7
+                                                border.color: Qt.alpha(grpCardRect.accentColor, parent.hovered ? 0.95 : 0.68)
+                                                border.width: 1
+                                                Behavior on color {
+                                                    ColorAnimation {
+                                                        duration: 110
+                                                    }
+                                                }
+                                                Behavior on border.color {
+                                                    ColorAnimation {
+                                                        duration: 110
+                                                    }
+                                                }
                                             }
                                         }
 
                                         // Add Repo to Group Button
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Associa un repository a questo gruppo"
                                             onClicked: {
                                                 addRepoToGroupDialog.targetGroupId = grpCardRect.id;
                                                 addRepoToGroupDialog.targetGroupName = grpCardRect.name;
                                                 addRepoToGroupDialog.selectedRepoId = "";
-                                                addRepoToGroupDialog.refreshAvailable();
+                                                addRepoToGroupDialog.refreshAvailableReposForGroup();
                                                 addRepoToGroupDialog.open();
                                             }
-                                            contentItem: Text { text: "➕"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "➕"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                            }
                                         }
 
-                                        // Rename Group Button
+                                        // Edit Group (Name & Color) Button
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
-                                            ToolTip.text: "Rinomina gruppo"
+                                            ToolTip.text: "Modifica nome e colore gruppo"
                                             onClicked: {
                                                 renameGroupDialog.groupId = grpCardRect.id;
                                                 renameGroupDialog.initialName = grpCardRect.name;
+                                                renameGroupDialog.initialColor = grpCardRect.groupColor;
                                                 renameGroupDialog.open();
                                             }
-                                            contentItem: Text { text: "✏️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "✏️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                            }
                                         }
 
                                         // Fetch Group Button
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             visible: grpCardRect.repositoryCount > 0
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Esegui Fetch per tutti i repository del gruppo"
@@ -1143,19 +1511,28 @@ Item {
                                                 batchOperationsVm.fetchGroup(grpCardRect.id);
                                                 batchProgressModal.open();
                                             }
-                                            contentItem: Text { text: "⬇"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; color: "#58A6FF" }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "⬇"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter; color: "#38BDF8"
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                            }
                                         }
 
                                         // Remove Group Button
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Elimina gruppo"
                                             onClicked: homeHubVm.removeGroup(grpCardRect.id)
-                                            contentItem: Text { text: "✕"; color: parent.hovered ? "#EF4444" : "#8B949E"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "✕"; color: parent.hovered ? "#EF4444" : "#8B949E"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#3B1219" : "transparent"; radius: 7
+                                            }
                                         }
                                     }
 
@@ -1164,22 +1541,22 @@ Item {
                                         Layout.fillWidth: true
                                         height: 24
                                         visible: grpCardRect.isDropTarget
-                                        radius: 4
-                                        color: "#3B0764"
-                                        border.color: "#A855F7"
+                                        radius: 6
+                                        color: Qt.alpha(grpCardRect.accentColor, 0.20)
+                                        border.color: grpCardRect.accentColor
                                         Text {
                                             anchors.centerIn: parent
                                             text: "📥 Rilascia per aggiungere al gruppo '" + grpCardRect.name + "'"
-                                            color: "#E9D5FF"
+                                            color: "#F8FAFC"
                                             font.pixelSize: 10
                                             font.bold: true
                                         }
                                     }
 
-                                    // Bottom Row: Chips of projects inside this group
+                                    // Bottom Row: Chips of projects inside this group (styled with the group's accent color)
                                     Flow {
                                         Layout.fillWidth: true
-                                        spacing: 4
+                                        spacing: 5
                                         visible: grpCardRect.repositoryCount > 0
 
                                         Repeater {
@@ -1187,28 +1564,33 @@ Item {
 
                                             delegate: Rectangle {
                                                 height: 22
-                                                implicitWidth: chipRow.implicitWidth + 10
-                                                radius: 4
-                                                color: "#21262D"
-                                                border.color: "#30363D"
+                                                implicitWidth: chipRow.implicitWidth + 12
+                                                radius: 6
+                                                color: Qt.alpha(grpCardRect.accentColor, 0.11)
+                                                border.color: Qt.alpha(grpCardRect.accentColor, 0.36)
+                                                border.width: 1
 
                                                 RowLayout {
                                                     id: chipRow
                                                     anchors.centerIn: parent
-                                                    spacing: 4
+                                                    spacing: 5
 
-                                                    Text {
-                                                        text: "📁"
-                                                        font.pixelSize: 9
+                                                    Rectangle {
+                                                        width: 6
+                                                        height: 6
+                                                        radius: 3
+                                                        color: grpCardRect.accentColor
                                                     }
 
                                                     Text {
                                                         text: modelData
-                                                        color: "#CBD5E1"
+                                                        color: "#E2E8F0"
                                                         font.pixelSize: 10
+                                                        font.bold: true
                                                     }
 
                                                     MouseArea {
+                                                        id: removeRepoFromGrpMa
                                                         width: 14
                                                         height: 14
                                                         hoverEnabled: true
@@ -1218,12 +1600,12 @@ Item {
                                                         Text {
                                                             anchors.centerIn: parent
                                                             text: "×"
-                                                            color: parent.containsMouse ? "#EF4444" : "#64748B"
+                                                            color: removeRepoFromGrpMa.containsMouse ? "#EF4444" : Qt.alpha(grpCardRect.accentColor, 0.85)
                                                             font.pixelSize: 11
                                                             font.bold: true
                                                         }
                                                         onClicked: {
-                                                            var repoId = grpCardRect.repositoryIds[index];
+                                                            const repoId = grpCardRect.repositoryIds[index];
                                                             homeHubVm.removeRepositoryFromGroup(grpCardRect.id, repoId);
                                                         }
                                                     }
@@ -1250,22 +1632,22 @@ Item {
                                     onDoubleClicked: homeHubVm.openGroup(grpCardRect.id)
 
                                     property point pressPoint: Qt.point(0, 0)
-                                    onPressed: function(mouse) {
+                                    onPressed: function (mouse) {
                                         pressPoint = Qt.point(mouse.x, mouse.y);
                                     }
-                                    onPositionChanged: function(mouse) {
+                                    onPositionChanged: function (mouse) {
                                         if (pressed) {
-                                            var dx = mouse.x - pressPoint.x;
-                                            var dy = mouse.y - pressPoint.y;
+                                            const dx = mouse.x - pressPoint.x;
+                                            const dy = mouse.y - pressPoint.y;
                                             if (!root.isDraggingGroup && !root.isDraggingRepo && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
-                                                root.startDraggingGroup(grpCardRect.id, grpCardRect.name);
+                                                root.startDraggingGroup(grpCardRect.id, grpCardRect.name, grpCardRect.groupColor);
                                             }
                                             if (root.isDraggingGroup) {
-                                                var pt = mapToItem(root, mouse.x, mouse.y);
+                                                const pt = mapToItem(root, mouse.x, mouse.y);
                                                 dragGhostGroup.x = pt.x - dragGhostGroup.width / 2;
                                                 dragGhostGroup.y = pt.y - dragGhostGroup.height / 2;
 
-                                                var ws = root.findWorkspaceAtRootPos(pt.x, pt.y);
+                                                const ws = root.findWorkspaceAtRootPos(pt.x, pt.y);
                                                 if (ws) {
                                                     root.hoveredWorkspaceId = ws.id;
                                                     root.hoveredWorkspaceName = ws.name;
@@ -1276,12 +1658,12 @@ Item {
                                             }
                                         }
                                     }
-                                    onReleased: function(mouse) {
+                                    onReleased: function () {
                                         if (root.isDraggingGroup) {
-                                            var gId = root.draggedGroupId;
-                                            var gName = root.draggedGroupName;
-                                            var wId = root.hoveredWorkspaceId;
-                                            var wName = root.hoveredWorkspaceName;
+                                            const gId = root.draggedGroupId;
+                                            const gName = root.draggedGroupName;
+                                            const wId = root.hoveredWorkspaceId;
+                                            const wName = root.hoveredWorkspaceName;
 
                                             root.clearDragState();
 
@@ -1290,7 +1672,7 @@ Item {
                                             }
                                         }
                                     }
-                                    onCanceled: function() {
+                                    onCanceled: function () {
                                         if (root.isDraggingGroup) {
                                             root.clearDragState();
                                         }
@@ -1318,15 +1700,16 @@ Item {
                     id: wsCol
                     visible: Boolean(homeHubVm && homeHubVm.showWorkspaces)
                     SplitView.preferredWidth: parent.width / root.visibleColumnCount
-                    SplitView.minimumWidth: 260
+                    SplitView.minimumWidth: 340
                     SplitView.fillWidth: true
-                    color: "#161B22"
-                    radius: 8
-                    border.color: "#30363D"
+                    color: "#0F141C"
+                    radius: 14
+                    border.color: "#1E293B"
+                    border.width: 1
 
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: 14
+                        anchors.margins: 16
                         spacing: 12
 
                         // Col Header
@@ -1334,38 +1717,61 @@ Item {
                             Layout.fillWidth: true
                             Text {
                                 text: "Workspace"
-                                color: "#F0F6FC"
+                                color: "#F8FAFC"
                                 font.pixelSize: 15
                                 font.bold: true
                             }
                             Rectangle {
-                                height: 20
-                                width: wsCountText.implicitWidth + 12
-                                radius: 10
-                                color: "#21262D"
-                                border.color: "#30363D"
+                                height: 22
+                                width: wsCountText.implicitWidth + 14
+                                radius: 11
+                                color: "#063B2C"
+                                border.color: "#059669"
+                                border.width: 1
                                 Text {
                                     id: wsCountText
                                     anchors.centerIn: parent
                                     text: homeHubVm.workspacesCount
-                                    color: "#3FB950"
+                                    color: "#34D399"
                                     font.pixelSize: 11
                                     font.bold: true
                                 }
                             }
-                            Item { Layout.fillWidth: true }
+                            Item {
+                                Layout.fillWidth: true
+                            }
                             Button {
                                 text: "+"
-                                flat: true
+                                Layout.preferredWidth: 28
+                                Layout.preferredHeight: 28
+                                hoverEnabled: true
                                 onClicked: addWorkspaceDialog.open()
-                                contentItem: Text { text: "+"; color: "#8B949E"; font.pixelSize: 15 }
-                                background: Rectangle { color: "transparent" }
+                                contentItem: Text {
+                                    text: "+"
+                                    color: parent.hovered ? "#F8FAFC" : "#94A3B8"
+                                    font.pixelSize: 15
+                                    font.bold: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                background: Rectangle {
+                                    color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                                    radius: 8
+                                    border.color: parent.hovered ? "#10B981" : "#243247"
+                                    border.width: 1
+                                    Behavior on color {
+                                        ColorAnimation {
+                                            duration: 110
+                                        }
+                                    }
+                                }
                             }
                         }
 
                         // Workspace List
                         ListView {
                             id: wsListView
+                            SmoothWheelScroller {}
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
@@ -1373,7 +1779,8 @@ Item {
                             boundsBehavior: Flickable.StopAtBounds
                             maximumFlickVelocity: 6000
                             flickDeceleration: 1000
-                            ScrollBar.vertical: FluxScrollBar {}
+                            ScrollBar.vertical: FluxScrollBar {
+                            }
                             model: homeHubVm.workspaces
                             spacing: 8
 
@@ -1381,150 +1788,283 @@ Item {
                                 id: wsCardRect
                                 required property string id
                                 required property string name
+                                required property string workspaceColor
                                 required property string summary
                                 required property string lastOpenedAt
                                 required property int totalRepoCount
                                 required property var repositoryIds
                                 required property var repositoryNames
+                                required property var repositoryGroupColors
+                                required property var repositoryGroupNames
                                 required property var groupIds
                                 required property var groupNames
+                                required property var groupColors
 
                                 property string wsCardId: wsCardRect.id
                                 property string wsCardName: wsCardRect.name
+                                readonly property color accentColor: wsCardRect.workspaceColor.length > 0 ? wsCardRect.workspaceColor : "#10B981"
                                 readonly property bool isDropTargetGroup: root.isDraggingGroup && (root.hoveredWorkspaceId === wsCardRect.id)
                                 readonly property bool isDropTargetRepo: root.isDraggingRepo && (root.hoveredWorkspaceId === wsCardRect.id)
                                 readonly property bool isDropTarget: isDropTargetRepo || isDropTargetGroup
 
                                 width: wsListView.width
-                                implicitHeight: wsColLayout.implicitHeight + 16
-                                radius: 6
-                                color: isDropTarget ? (root.isDraggingGroup ? "#2E1065" : "#143823") : (wsHover.containsMouse ? "#21262D" : "#191E27")
-                                border.color: isDropTarget ? (root.isDraggingGroup ? "#C084FC" : "#4ADE80") : (wsHover.containsMouse ? "#3FB950" : "#30363D")
+                                implicitHeight: wsColLayout.implicitHeight + 18
+                                radius: 10
+                                color: isDropTarget
+                                    ? Qt.alpha(root.isDraggingGroup ? root.draggedGroupColor : accentColor, 0.22)
+                                    : (wsHover.containsMouse ? "#182334" : "#121A27")
+                                border.color: isDropTarget
+                                    ? (root.isDraggingGroup ? root.draggedGroupColor : accentColor)
+                                    : (wsHover.containsMouse ? Qt.alpha(accentColor, 0.72) : "#1F2C3F")
                                 border.width: isDropTarget ? 2 : 1
                                 scale: isDropTarget ? 1.02 : 1.0
-                                Behavior on scale { NumberAnimation { duration: 100 } }
+                                Behavior on scale {
+                                    NumberAnimation {
+                                        duration: 100
+                                    }
+                                }
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
+                                Behavior on border.color {
+                                    ColorAnimation {
+                                        duration: 110
+                                    }
+                                }
+
+                                // Left vertical color identity stripe
+                                Rectangle {
+                                    anchors.left: parent.left
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
+                                    anchors.topMargin: 7
+                                    anchors.bottomMargin: 7
+                                    anchors.leftMargin: 3
+                                    width: 3
+                                    radius: 1.5
+                                    color: wsCardRect.accentColor
+                                }
 
                                 ColumnLayout {
                                     id: wsColLayout
                                     anchors.fill: parent
-                                    anchors.margins: 8
+                                    anchors.margins: 10
+                                    anchors.leftMargin: 13
                                     spacing: 6
 
                                     RowLayout {
                                         Layout.fillWidth: true
-                                        spacing: 8
+                                        spacing: 5
 
                                         Text {
                                             text: "💼"
-                                            font.pixelSize: 15
+                                            font.pixelSize: 14
+                                        }
+
+                                        // Color indicator dot (click to customize workspace color & name)
+                                        Rectangle {
+                                            width: 11
+                                            height: 11
+                                            radius: 5.5
+                                            color: wsCardRect.accentColor
+                                            border.color: wsColorDotMa.containsMouse ? "#F8FAFC" : Qt.alpha(wsCardRect.accentColor, 0.35)
+                                            border.width: wsColorDotMa.containsMouse ? 1.5 : 1
+
+                                            MouseArea {
+                                                id: wsColorDotMa
+                                                anchors.fill: parent
+                                                anchors.margins: -4
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                ToolTip.visible: containsMouse
+                                                ToolTip.text: "Cambia colore o rinomina workspace"
+                                                onClicked: {
+                                                    editWorkspaceDialog.workspaceId = wsCardRect.id;
+                                                    editWorkspaceDialog.initialName = wsCardRect.name;
+                                                    editWorkspaceDialog.initialColor = wsCardRect.workspaceColor;
+                                                    editWorkspaceDialog.open();
+                                                }
+                                            }
                                         }
 
                                         Text {
+                                            id: wsCardNameText
                                             text: wsCardRect.name
                                             color: "#F0F6FC"
                                             font.pixelSize: 13
                                             font.bold: true
                                             elide: Text.ElideRight
+                                            Layout.fillWidth: true
+                                            Layout.minimumWidth: 40
+                                            Layout.maximumWidth: Math.ceil(Math.max(wsNameMetrics.advanceWidth, wsNameMetrics.boundingRect.width)) + 4
+
+                                            TextMetrics {
+                                                id: wsNameMetrics
+                                                font: wsCardNameText.font
+                                                text: wsCardNameText.text
+                                            }
                                         }
 
                                         Rectangle {
                                             height: 18
                                             implicitWidth: wsSummaryPill.implicitWidth + 10
-                                            radius: 4
-                                            color: "#1B2F23"
-                                            border.color: "#3FB950"
+                                            radius: 9
+                                            color: Qt.alpha(wsCardRect.accentColor, 0.16)
+                                            border.color: Qt.alpha(wsCardRect.accentColor, 0.55)
+                                            border.width: 1
                                             Text {
                                                 id: wsSummaryPill
                                                 anchors.centerIn: parent
                                                 text: wsCardRect.summary
-                                                color: "#3FB950"
+                                                color: "#F0F6FC"
                                                 font.pixelSize: 10
+                                                font.bold: true
                                             }
                                         }
 
-                                        Item { Layout.fillWidth: true }
+                                        Item {
+                                            Layout.fillWidth: true
+                                        }
 
                                         // Open Workspace Button
                                         Button {
                                             Layout.preferredHeight: 26
+                                            leftPadding: 10
+                                            rightPadding: 10
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Apri tutti i progetti di questo workspace"
                                             onClicked: homeHubVm.openWorkspace(wsCardRect.id)
                                             contentItem: RowLayout {
-                                                spacing: 4
+                                                spacing: 5
                                                 Text {
                                                     text: "▶"
                                                     font.pixelSize: 9
-                                                    color: "#FFFFFF"
+                                                    color: wsCardRect.accentColor
                                                 }
                                                 Text {
                                                     text: "Apri"
-                                                    color: "#FFFFFF"
+                                                    color: "#F8FAFC"
                                                     font.pixelSize: 11
                                                     font.bold: true
                                                 }
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#2EA043" : "#238636"
-                                                radius: 4
+                                                color: Qt.alpha(wsCardRect.accentColor, parent.hovered ? 0.34 : 0.20)
+                                                radius: 7
+                                                border.color: Qt.alpha(wsCardRect.accentColor, parent.hovered ? 0.95 : 0.68)
+                                                border.width: 1
+                                                Behavior on color {
+                                                    ColorAnimation {
+                                                        duration: 110
+                                                    }
+                                                }
+                                                Behavior on border.color {
+                                                    ColorAnimation {
+                                                        duration: 110
+                                                    }
+                                                }
                                             }
                                         }
 
                                         // Add Repo to Workspace Button
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Associa un repository a questo workspace"
                                             onClicked: {
                                                 addRepoToWsDialog.targetWorkspaceId = wsCardRect.id;
                                                 addRepoToWsDialog.targetWorkspaceName = wsCardRect.name;
                                                 addRepoToWsDialog.selectedRepoId = "";
-                                                addRepoToWsDialog.refreshAvailable();
+                                                addRepoToWsDialog.refreshAvailableReposForWorkspace();
                                                 addRepoToWsDialog.open();
                                             }
-                                            contentItem: Text { text: "➕"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "➕"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                            }
                                         }
 
                                         // Add Group to Workspace Button
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Associa un gruppo a questo workspace"
                                             onClicked: {
                                                 addGrpToWsDialog.targetWorkspaceId = wsCardRect.id;
                                                 addGrpToWsDialog.targetWorkspaceName = wsCardRect.name;
                                                 addGrpToWsDialog.selectedGroupId = "";
-                                                addGrpToWsDialog.refreshAvailable();
+                                                addGrpToWsDialog.refreshAvailableGroupsForWorkspace();
                                                 addGrpToWsDialog.open();
                                             }
-                                            contentItem: Text { text: "🗂️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "🗂️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                            }
+                                        }
+
+                                        // Edit Workspace (Name & Color) Button
+                                        Button {
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
+                                            ToolTip.visible: hovered
+                                            ToolTip.text: "Modifica nome e colore workspace"
+                                            onClicked: {
+                                                editWorkspaceDialog.workspaceId = wsCardRect.id;
+                                                editWorkspaceDialog.initialName = wsCardRect.name;
+                                                editWorkspaceDialog.initialColor = wsCardRect.workspaceColor;
+                                                editWorkspaceDialog.open();
+                                            }
+                                            contentItem: Text {
+                                                text: "✏️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                            }
                                         }
 
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Esegui Fetch per tutti i repo del workspace"
                                             onClicked: {
                                                 batchOperationsVm.fetchWorkspace(wsCardRect.id);
                                                 batchProgressModal.open();
                                             }
-                                            contentItem: Text { text: "⬇"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; color: "#3FB950" }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "⬇"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter; color: "#34D399"
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                            }
                                         }
 
                                         Button {
-                                            Layout.preferredWidth: 24
-                                            Layout.preferredHeight: 24
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Elimina workspace"
                                             onClicked: homeHubVm.removeWorkspace(wsCardRect.id)
-                                            contentItem: Text { text: "✕"; color: parent.hovered ? "#EF4444" : "#8B949E"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter }
-                                            background: Rectangle { color: parent.hovered ? "#30363D" : "transparent"; radius: 4 }
+                                            contentItem: Text {
+                                                text: "✕"; color: parent.hovered ? "#EF4444" : "#8B949E"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#3B1219" : "transparent"; radius: 7
+                                            }
                                         }
                                     }
 
@@ -1533,54 +2073,62 @@ Item {
                                         Layout.fillWidth: true
                                         height: 24
                                         visible: wsCardRect.isDropTarget
-                                        radius: 4
-                                        color: root.isDraggingGroup ? "#3B0764" : "#052E16"
-                                        border.color: root.isDraggingGroup ? "#A855F7" : "#22C55E"
+                                        radius: 6
+                                        color: root.isDraggingGroup ? Qt.alpha(root.draggedGroupColor, 0.22) : "#052E16"
+                                        border.color: root.isDraggingGroup ? root.draggedGroupColor : "#22C55E"
                                         Text {
                                             anchors.centerIn: parent
                                             text: root.isDraggingGroup
-                                                  ? ("📥 Rilascia per aggiungere il gruppo '" + root.draggedGroupName + "' al workspace")
-                                                  : ("📥 Rilascia per aggiungere il repository '" + root.draggedRepoName + "' al workspace")
-                                            color: root.isDraggingGroup ? "#E9D5FF" : "#86EFAC"
+                                                ? ("📥 Rilascia per aggiungere il gruppo '" + root.draggedGroupName + "' al workspace")
+                                                : ("📥 Rilascia per aggiungere il repository '" + root.draggedRepoName + "' al workspace")
+                                            color: root.isDraggingGroup ? "#F8FAFC" : "#86EFAC"
                                             font.pixelSize: 10
                                             font.bold: true
                                         }
                                     }
 
-                                    // Groups inside this workspace
+                                    // Groups inside this workspace (each styled with its own group color)
                                     Flow {
                                         Layout.fillWidth: true
-                                        spacing: 4
+                                        spacing: 5
                                         visible: wsCardRect.groupIds && wsCardRect.groupIds.length > 0
 
                                         Repeater {
                                             model: wsCardRect.groupNames || []
 
                                             delegate: Rectangle {
+                                                id: wsGrpChip
+                                                readonly property color chipColor: (wsCardRect.groupColors && index < wsCardRect.groupColors.length && wsCardRect.groupColors[index].length > 0)
+                                                    ? wsCardRect.groupColors[index]
+                                                    : "#7C4DFF"
                                                 height: 22
-                                                implicitWidth: wsGrpChipRow.implicitWidth + 10
-                                                radius: 4
-                                                color: "#2E1065"
-                                                border.color: "#7C4DFF"
+                                                implicitWidth: wsGrpChipRow.implicitWidth + 12
+                                                radius: 6
+                                                color: Qt.alpha(chipColor, 0.16)
+                                                border.color: Qt.alpha(chipColor, 0.62)
+                                                border.width: 1
 
                                                 RowLayout {
                                                     id: wsGrpChipRow
                                                     anchors.centerIn: parent
-                                                    spacing: 4
+                                                    spacing: 5
 
-                                                    Text {
-                                                        text: "🗂️"
-                                                        font.pixelSize: 9
+                                                    Rectangle {
+                                                        width: 7
+                                                        height: 7
+                                                        radius: 3.5
+                                                        color: wsGrpChip.chipColor
                                                     }
 
                                                     Text {
                                                         text: modelData
-                                                        color: "#E9D5FF"
+                                                        color: "#F8FAFC"
                                                         font.pixelSize: 10
                                                         font.bold: true
                                                     }
 
                                                     MouseArea {
+                                                        id: removeGrpFromWsMa
                                                         width: 14
                                                         height: 14
                                                         hoverEnabled: true
@@ -1590,12 +2138,12 @@ Item {
                                                         Text {
                                                             anchors.centerIn: parent
                                                             text: "×"
-                                                            color: parent.containsMouse ? "#EF4444" : "#A855F7"
+                                                            color: removeGrpFromWsMa.containsMouse ? "#EF4444" : Qt.alpha(wsGrpChip.chipColor, 0.85)
                                                             font.pixelSize: 11
                                                             font.bold: true
                                                         }
                                                         onClicked: {
-                                                            var gId = wsCardRect.groupIds[index];
+                                                            const gId = wsCardRect.groupIds[index];
                                                             homeHubVm.removeGroupFromWorkspace(wsCardRect.id, gId);
                                                         }
                                                     }
@@ -1604,54 +2152,108 @@ Item {
                                         }
                                     }
 
-                                    // Bottom Row: Chips of projects inside this workspace
+                                    // Bottom Row: Chips of projects inside this workspace (styled with their group accent colors)
                                     Flow {
                                         Layout.fillWidth: true
-                                        spacing: 4
+                                        spacing: 5
                                         visible: wsCardRect.totalRepoCount > 0
 
                                         Repeater {
                                             model: wsCardRect.repositoryNames || []
 
                                             delegate: Rectangle {
+                                                id: wsRepoChip
+                                                required property string modelData
+                                                required property int index
+                                                readonly property var repoColors: (wsCardRect.repositoryGroupColors && wsRepoChip.index < wsCardRect.repositoryGroupColors.length && wsCardRect.repositoryGroupColors[wsRepoChip.index])
+                                                    ? wsCardRect.repositoryGroupColors[wsRepoChip.index]
+                                                    : []
+                                                readonly property var repoGroupNames: (wsCardRect.repositoryGroupNames && wsRepoChip.index < wsCardRect.repositoryGroupNames.length && wsCardRect.repositoryGroupNames[wsRepoChip.index])
+                                                    ? wsCardRect.repositoryGroupNames[wsRepoChip.index]
+                                                    : []
+                                                readonly property bool hasGroupColor: repoColors.length > 0
+                                                readonly property color primaryGroupColor: hasGroupColor ? repoColors[0] : "#64748B"
+
                                                 height: 22
-                                                implicitWidth: wsChipRow.implicitWidth + 10
-                                                radius: 4
-                                                color: "#21262D"
-                                                border.color: "#30363D"
+                                                implicitWidth: wsChipRow.implicitWidth + 12
+                                                radius: 6
+                                                color: hasGroupColor ? Qt.alpha(primaryGroupColor, 0.11) : "#21262D"
+                                                border.color: hasGroupColor ? Qt.alpha(primaryGroupColor, 0.36) : "#30363D"
+                                                border.width: 1
 
                                                 RowLayout {
                                                     id: wsChipRow
                                                     anchors.centerIn: parent
-                                                    spacing: 4
+                                                    spacing: 5
 
-                                                    Text {
-                                                        text: "📁"
-                                                        font.pixelSize: 9
+                                                    // Neutral dot for direct/ungrouped repositories inside the workspace
+                                                    Rectangle {
+                                                        visible: !wsRepoChip.hasGroupColor
+                                                        width: 6
+                                                        height: 6
+                                                        radius: 3
+                                                        color: "#64748B"
+                                                    }
+
+                                                    // Single dot or stacked multi-group dots for repositories belonging to workspace groups
+                                                    Row {
+                                                        visible: wsRepoChip.hasGroupColor
+                                                        spacing: -3
+                                                        Layout.alignment: Qt.AlignVCenter
+
+                                                        Repeater {
+                                                            model: wsRepoChip.repoColors.slice(0, 3)
+
+                                                            delegate: Rectangle {
+                                                                required property var modelData
+                                                                required property int index
+                                                                width: wsRepoChip.repoColors.length > 1 ? 8 : 6
+                                                                height: wsRepoChip.repoColors.length > 1 ? 8 : 6
+                                                                radius: wsRepoChip.repoColors.length > 1 ? 4 : 3
+                                                                z: 10 - index
+                                                                color: modelData
+                                                                border.color: "#121A27"
+                                                                border.width: wsRepoChip.repoColors.length > 1 ? 1 : 0
+                                                            }
+                                                        }
                                                     }
 
                                                     Text {
-                                                        text: modelData
-                                                        color: "#CBD5E1"
+                                                        visible: wsRepoChip.repoColors.length > 3
+                                                        text: "+" + (wsRepoChip.repoColors.length - 3)
+                                                        color: "#94A3B8"
+                                                        font.pixelSize: 9
+                                                        font.bold: true
+                                                    }
+
+                                                    Text {
+                                                        text: wsRepoChip.modelData
+                                                        color: wsRepoChip.hasGroupColor ? "#E2E8F0" : "#CBD5E1"
                                                         font.pixelSize: 10
+                                                        font.bold: wsRepoChip.hasGroupColor
                                                     }
 
                                                     MouseArea {
+                                                        id: removeRepoFromWsMa
                                                         width: 14
                                                         height: 14
                                                         hoverEnabled: true
                                                         cursorShape: Qt.PointingHandCursor
                                                         ToolTip.visible: containsMouse
-                                                        ToolTip.text: "Rimuovi dal workspace"
+                                                        ToolTip.text: wsRepoChip.hasGroupColor
+                                                            ? ("Gruppo: " + wsRepoChip.repoGroupNames.join(", ") + " • Rimuovi dal workspace")
+                                                            : "Rimuovi dal workspace"
                                                         Text {
                                                             anchors.centerIn: parent
                                                             text: "×"
-                                                            color: parent.containsMouse ? "#EF4444" : "#64748B"
+                                                            color: removeRepoFromWsMa.containsMouse
+                                                                ? "#EF4444"
+                                                                : (wsRepoChip.hasGroupColor ? Qt.alpha(wsRepoChip.primaryGroupColor, 0.85) : "#64748B")
                                                             font.pixelSize: 11
                                                             font.bold: true
                                                         }
                                                         onClicked: {
-                                                            var repoId = wsCardRect.repositoryIds[index];
+                                                            const repoId = wsCardRect.repositoryIds[wsRepoChip.index];
                                                             homeHubVm.removeRepositoryFromWorkspace(wsCardRect.id, repoId);
                                                         }
                                                     }
@@ -1697,8 +2299,8 @@ Item {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 30
-            color: "#161B22"
-            border.color: "#30363D"
+            color: "#0D131D"
+            border.color: "#1B2535"
 
             RowLayout {
                 anchors.fill: parent
@@ -1708,7 +2310,7 @@ Item {
 
                 Text {
                     text: homeHubVm.statusMessage.length > 0 ? homeHubVm.statusMessage : "Pronto"
-                    color: "#8B949E"
+                    color: "#94A3B8"
                     font.pixelSize: 11
                     Layout.fillWidth: true
                     elide: Text.ElideRight
@@ -1716,7 +2318,7 @@ Item {
 
                 Text {
                     text: "Git Flux v0.1.0 • Architettura C++23 Local-First"
-                    color: "#6E7681"
+                    color: "#64748B"
                     font.pixelSize: 11
                 }
             }
@@ -1749,78 +2351,142 @@ Item {
     // Dialog: Create Group (with project checklist selection)
     Dialog {
         id: addGroupDialog
-        anchors.centerIn: parent
-        width: 420
+        anchors.centerIn: Overlay.overlay
+        modal: true
+        width: 440
+        padding: 18
+        topPadding: 14
+        bottomPadding: 14
         title: "Crea Nuovo Gruppo"
-        standardButtons: Dialog.Ok | Dialog.Cancel
 
         property var selectedRepoIds: []
+        property string selectedColor: "#38BDF8"
 
         background: Rectangle {
-            color: "#161B22"
-            radius: 8
-            border.color: "#30363D"
+            color: "#111824"
+            radius: 14
+            border.color: "#28374E"
+            border.width: 1
+            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
+            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
         }
 
-        ColumnLayout {
-            anchors.fill: parent
+        header: Rectangle {
+            color: "#161F2E"
+            implicitHeight: 46
+            height: 46
+            radius: 14
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 14
+                Text {
+                    text: "🗂️ Crea Nuovo Gruppo"
+                    color: "#F8FAFC"
+                    font.bold: true
+                    font.pixelSize: 13
+                }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "✕"
+                    Layout.preferredWidth: 26
+                    Layout.preferredHeight: 26
+                    hoverEnabled: true
+                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
+                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addGroupDialog.reject()
+                }
+            }
+        }
+
+        contentItem: ColumnLayout {
             spacing: 12
 
             Text {
                 text: "Nome del gruppo:"
-                color: "#F0F6FC"
+                color: "#CBD5E1"
+                font.bold: true
                 font.pixelSize: 12
             }
 
             Rectangle {
                 Layout.fillWidth: true
-                height: 34
-                color: "#0B0E14"
-                radius: 4
-                border.color: "#30363D"
+                Layout.preferredHeight: 36
+                implicitHeight: 36
+                height: 36
+                color: "#0A0E15"
+                radius: 8
+                border.color: groupNameInput.activeFocus ? (addGroupDialog.selectedColor.length > 0 ? addGroupDialog.selectedColor : "#7C4DFF") : "#222F42"
+                border.width: 1
+                Behavior on border.color { ColorAnimation { duration: 120 } }
                 TextInput {
                     id: groupNameInput
                     anchors.fill: parent
-                    anchors.margins: 6
-                    color: "#F0F6FC"
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    verticalAlignment: TextInput.AlignVCenter
+                    color: "#F8FAFC"
                     font.pixelSize: 13
+                    selectByMouse: true
+                    onAccepted: addGroupDialog.accept()
                 }
             }
 
             Text {
+                text: "Colore del gruppo:"
+                color: "#CBD5E1"
+                font.bold: true
+                font.pixelSize: 12
+            }
+
+            GroupColorSwatchPicker {
+                id: addGroupColorPicker
+                selectedColor: addGroupDialog.selectedColor
+                onSelectedColorChanged: addGroupDialog.selectedColor = selectedColor
+            }
+
+            Text {
                 text: "Seleziona i progetti da includere nel gruppo:"
-                color: "#8B949E"
+                color: "#94A3B8"
                 font.pixelSize: 11
                 visible: homeHubVm.repositoriesCount > 0
             }
 
             ListView {
                 id: newGrpRepoList
+                SmoothWheelScroller {}
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(150, count * 36)
+                Layout.preferredHeight: Math.min(165, count * 38)
                 clip: true
+                spacing: 4
                 visible: homeHubVm.repositoriesCount > 0
                 model: homeHubVm.repositories
+                ScrollBar.vertical: FluxScrollBar {}
 
                 delegate: Rectangle {
                     width: newGrpRepoList.width
-                    height: 32
-                    radius: 4
-                    color: isChecked ? "#1E293B" : "transparent"
+                    height: 34
+                    radius: 8
+                    readonly property color grpSelCol: addGroupDialog.selectedColor.length > 0 ? addGroupDialog.selectedColor : "#7C4DFF"
+                    color: isChecked ? Qt.alpha(grpSelCol, 0.16) : "#0D131D"
+                    border.color: isChecked ? grpSelCol : "#1F2C3F"
+                    border.width: 1
 
                     property bool isChecked: addGroupDialog.selectedRepoIds.indexOf(model.id) !== -1
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.leftMargin: 4
-                        anchors.rightMargin: 8
+                        anchors.leftMargin: 8
+                        anchors.rightMargin: 10
                         spacing: 8
 
-                        CheckBox {
+                        FluxCheckBox {
                             checked: isChecked
                             onToggled: {
-                                var copy = addGroupDialog.selectedRepoIds.slice();
-                                var idx = copy.indexOf(model.id);
+                                const copy = addGroupDialog.selectedRepoIds.slice();
+                                const idx = copy.indexOf(model.id);
                                 if (checked && idx === -1) {
                                     copy.push(model.id);
                                 } else if (!checked && idx !== -1) {
@@ -1832,8 +2498,9 @@ Item {
 
                         Text {
                             text: model.displayName
-                            color: "#F0F6FC"
+                            color: "#F8FAFC"
                             font.pixelSize: 12
+                            font.bold: isChecked
                             Layout.fillWidth: true
                             elide: Text.ElideRight
                         }
@@ -1842,9 +2509,46 @@ Item {
                             text: model.branch ? (" " + model.branch) : ""
                             color: "#38BDF8"
                             font.pixelSize: 10
-                            visible: model.branch && model.branch.length > 0
+                            visible: Boolean(model.branch && model.branch.length > 0)
                         }
                     }
+                }
+            }
+        }
+
+        footer: Rectangle {
+            color: "#161F2E"
+            implicitHeight: 52
+            height: 52
+            radius: 14
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 10
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Annulla"
+                    Layout.preferredHeight: 32
+                    leftPadding: 14
+                    rightPadding: 14
+                    hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
+                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addGroupDialog.reject()
+                }
+                Button {
+                    text: "✓ Crea Gruppo"
+                    Layout.preferredHeight: 32
+                    leftPadding: 16
+                    rightPadding: 16
+                    hoverEnabled: true
+                    readonly property color btnAccent: addGroupDialog.selectedColor.length > 0 ? addGroupDialog.selectedColor : "#7C4DFF"
+                    background: Rectangle { color: Qt.alpha(parent.btnAccent, parent.hovered ? 0.36 : 0.24); radius: 8; border.color: parent.btnAccent; border.width: 1 }
+                    contentItem: Text { text: parent.text; color: "#F8FAFC"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addGroupDialog.accept()
                 }
             }
         }
@@ -1852,10 +2556,15 @@ Item {
         onAboutToShow: {
             groupNameInput.text = "";
             selectedRepoIds = [];
+            const pal = addGroupColorPicker.paletteColors;
+            const idx = (root.homeHubVmRef ? root.homeHubVmRef.groupsCount : 0) % pal.length;
+            selectedColor = pal[idx];
+            addGroupColorPicker.selectedColor = selectedColor;
+            groupNameInput.forceActiveFocus();
         }
 
         onAccepted: {
-            if (homeHubVm.createGroup(groupNameInput.text, selectedRepoIds)) {
+            if (homeHubVm.createGroup(groupNameInput.text, selectedRepoIds, selectedColor)) {
                 groupNameInput.text = "";
                 selectedRepoIds = [];
             }
@@ -1865,42 +2574,106 @@ Item {
     // Dialog: Rename Repository
     Dialog {
         id: renameRepoDialog
-        anchors.centerIn: parent
-        width: 380
+        anchors.centerIn: Overlay.overlay
+        modal: true
+        width: 400
+        padding: 18
+        topPadding: 14
+        bottomPadding: 14
         title: "Rinomina Repository"
-        standardButtons: Dialog.Ok | Dialog.Cancel
 
         property string repoId: ""
         property string initialName: ""
 
         background: Rectangle {
-            color: "#161B22"
-            radius: 8
-            border.color: "#30363D"
+            color: "#111824"
+            radius: 14
+            border.color: "#28374E"
+            border.width: 1
+            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
+            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
         }
 
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: 12
+        header: Rectangle {
+            color: "#161F2E"
+            implicitHeight: 46
+            height: 46
+            radius: 14
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 14
+                Text { text: "✏️ Rinomina Repository"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
+                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
+                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: renameRepoDialog.reject()
+                }
+            }
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 10
 
             Text {
                 text: "Nuovo nome visualizzato:"
-                color: "#F0F6FC"
+                color: "#CBD5E1"
+                font.bold: true
                 font.pixelSize: 12
             }
 
             Rectangle {
                 Layout.fillWidth: true
-                height: 34
-                color: "#0B0E14"
-                radius: 4
-                border.color: "#30363D"
+                Layout.preferredHeight: 36
+                implicitHeight: 36
+                height: 36
+                color: "#0A0E15"
+                radius: 8
+                border.color: renameRepoInput.activeFocus ? "#38BDF8" : "#222F42"
+                border.width: 1
+                Behavior on border.color { ColorAnimation { duration: 120 } }
                 TextInput {
                     id: renameRepoInput
                     anchors.fill: parent
-                    anchors.margins: 6
-                    color: "#F0F6FC"
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    verticalAlignment: TextInput.AlignVCenter
+                    color: "#F8FAFC"
                     font.pixelSize: 13
+                    selectByMouse: true
+                    onAccepted: renameRepoDialog.accept()
+                }
+            }
+        }
+
+        footer: Rectangle {
+            color: "#161F2E"
+            implicitHeight: 52
+            height: 52
+            radius: 14
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 10
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Annulla"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
+                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: renameRepoDialog.reject()
+                }
+                Button {
+                    text: "✓ Salva"; Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#0EA5E9" : "#0284C7"; radius: 8; border.color: "#38BDF8"; border.width: 1 }
+                    contentItem: Text { text: parent.text; color: "#FFFFFF"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: renameRepoDialog.accept()
                 }
             }
         }
@@ -1917,57 +2690,143 @@ Item {
         }
     }
 
-    // Dialog: Rename Group
+    // Dialog: Edit Group (Name & Color)
     Dialog {
         id: renameGroupDialog
-        anchors.centerIn: parent
-        width: 380
-        title: "Rinomina Gruppo"
-        standardButtons: Dialog.Ok | Dialog.Cancel
+        anchors.centerIn: Overlay.overlay
+        modal: true
+        width: 410
+        padding: 18
+        topPadding: 14
+        bottomPadding: 14
+        title: "Modifica Gruppo"
 
         property string groupId: ""
         property string initialName: ""
+        property string initialColor: ""
+        property string selectedColor: ""
 
         background: Rectangle {
-            color: "#161B22"
-            radius: 8
-            border.color: "#30363D"
+            color: "#111824"
+            radius: 14
+            border.color: "#28374E"
+            border.width: 1
+            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
+            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
         }
 
-        ColumnLayout {
-            anchors.fill: parent
+        header: Rectangle {
+            color: "#161F2E"
+            implicitHeight: 46
+            height: 46
+            radius: 14
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 14
+                Text { text: "✏️ Modifica Gruppo"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
+                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
+                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: renameGroupDialog.reject()
+                }
+            }
+        }
+
+        contentItem: ColumnLayout {
             spacing: 12
 
             Text {
-                text: "Nuovo nome gruppo:"
-                color: "#F0F6FC"
+                text: "Nome gruppo:"
+                color: "#CBD5E1"
+                font.bold: true
                 font.pixelSize: 12
             }
 
             Rectangle {
                 Layout.fillWidth: true
-                height: 34
-                color: "#0B0E14"
-                radius: 4
-                border.color: "#30363D"
+                Layout.preferredHeight: 36
+                implicitHeight: 36
+                height: 36
+                color: "#0A0E15"
+                radius: 8
+                border.color: renameGroupInput.activeFocus ? (renameGroupDialog.selectedColor.length > 0 ? renameGroupDialog.selectedColor : "#7C4DFF") : "#222F42"
+                border.width: 1
+                Behavior on border.color { ColorAnimation { duration: 120 } }
                 TextInput {
                     id: renameGroupInput
                     anchors.fill: parent
-                    anchors.margins: 6
-                    color: "#F0F6FC"
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    verticalAlignment: TextInput.AlignVCenter
+                    color: "#F8FAFC"
                     font.pixelSize: 13
+                    selectByMouse: true
+                    onAccepted: renameGroupDialog.accept()
+                }
+            }
+
+            Text {
+                text: "Colore del gruppo:"
+                color: "#CBD5E1"
+                font.bold: true
+                font.pixelSize: 12
+            }
+
+            GroupColorSwatchPicker {
+                id: editGroupColorPicker
+                selectedColor: renameGroupDialog.selectedColor
+                onSelectedColorChanged: renameGroupDialog.selectedColor = selectedColor
+            }
+        }
+
+        footer: Rectangle {
+            color: "#161F2E"
+            implicitHeight: 52
+            height: 52
+            radius: 14
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 10
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Annulla"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
+                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: renameGroupDialog.reject()
+                }
+                Button {
+                    text: "✓ Salva"; Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
+                    readonly property color btnAccent: renameGroupDialog.selectedColor.length > 0 ? renameGroupDialog.selectedColor : "#7C4DFF"
+                    background: Rectangle { color: Qt.alpha(parent.btnAccent, parent.hovered ? 0.36 : 0.24); radius: 8; border.color: parent.btnAccent; border.width: 1 }
+                    contentItem: Text { text: parent.text; color: "#F8FAFC"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: renameGroupDialog.accept()
                 }
             }
         }
 
         onAboutToShow: {
             renameGroupInput.text = initialName;
+            selectedColor = initialColor;
+            editGroupColorPicker.selectedColor = initialColor;
             renameGroupInput.forceActiveFocus();
         }
 
         onAccepted: {
-            if (groupId.length > 0 && renameGroupInput.text.trim().length > 0) {
-                homeHubVm.renameGroup(groupId, renameGroupInput.text.trim());
+            const trimmedName = renameGroupInput.text.trim();
+            if (groupId.length > 0 && trimmedName.length > 0 && trimmedName !== initialName) {
+                homeHubVm.renameGroup(groupId, trimmedName);
+            }
+            if (groupId.length > 0 && selectedColor.length > 0 && selectedColor !== initialColor) {
+                homeHubVm.updateGroupColor(groupId, selectedColor);
             }
         }
     }
@@ -1975,17 +2834,20 @@ Item {
     // Dialog: Add Repository to Group
     Dialog {
         id: addToGroupDialog
-        anchors.centerIn: parent
-        width: 400
+        anchors.centerIn: Overlay.overlay
+        modal: true
+        width: 420
+        padding: 18
+        topPadding: 14
+        bottomPadding: 14
         title: "Aggiungi a Gruppo"
-        standardButtons: Dialog.Ok | Dialog.Cancel
 
         property string targetRepoId: ""
         property string targetRepoName: ""
         property string selectedGroupId: ""
         property var availableGroups: []
 
-        function refreshAvailable() {
+        function refreshAvailableGroupsForRepo() {
             if (homeHubVm && targetRepoId.length > 0) {
                 availableGroups = homeHubVm.getAvailableGroupsForRepository(targetRepoId);
             } else {
@@ -1995,22 +2857,46 @@ Item {
 
         onAboutToShow: {
             selectedGroupId = "";
-            refreshAvailable();
+            refreshAvailableGroupsForRepo();
         }
 
         background: Rectangle {
-            color: "#161B22"
-            radius: 8
-            border.color: "#30363D"
+            color: "#111824"
+            radius: 14
+            border.color: "#28374E"
+            border.width: 1
+            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
+            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
         }
 
-        ColumnLayout {
-            anchors.fill: parent
+        header: Rectangle {
+            color: "#161F2E"
+            implicitHeight: 46
+            height: 46
+            radius: 14
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 14
+                Text { text: "🗂️ Aggiungi a Gruppo"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
+                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
+                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addToGroupDialog.reject()
+                }
+            }
+        }
+
+        contentItem: ColumnLayout {
             spacing: 12
 
             Text {
                 text: "Seleziona il gruppo a cui aggiungere '" + addToGroupDialog.targetRepoName + "':"
-                color: "#F0F6FC"
+                color: "#CBD5E1"
                 font.pixelSize: 12
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
@@ -2018,22 +2904,32 @@ Item {
 
             ListView {
                 id: groupPickList
+                SmoothWheelScroller {}
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(180, count * 36)
+                Layout.preferredHeight: Math.min(190, count * 40)
                 clip: true
+                spacing: 4
                 model: addToGroupDialog.availableGroups
+                ScrollBar.vertical: FluxScrollBar {}
 
                 delegate: Rectangle {
+                    id: addToGrpRow
                     width: groupPickList.width
-                    height: 32
-                    radius: 4
-                    color: (addToGroupDialog.selectedGroupId === modelData.id) ? "#2E1065" : (grpPickHover.containsMouse ? "#21262D" : "#0B0E14")
-                    border.color: (addToGroupDialog.selectedGroupId === modelData.id) ? "#7C4DFF" : "#30363D"
+                    height: 36
+                    radius: 8
+                    readonly property color grpAccent: (modelData.groupColor && modelData.groupColor.length > 0) ? modelData.groupColor : "#7C4DFF"
+                    readonly property bool isChosen: addToGroupDialog.selectedGroupId === modelData.id
+                    color: isChosen ? Qt.alpha(grpAccent, 0.20) : (grpPickHover.containsMouse ? "#172233" : "#0D131D")
+                    border.color: isChosen ? grpAccent : "#222F42"
+                    border.width: 1
+
+                    Behavior on color { ColorAnimation { duration: 110 } }
 
                     MouseArea {
                         id: grpPickHover
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             addToGroupDialog.selectedGroupId = modelData.id;
                         }
@@ -2041,25 +2937,28 @@ Item {
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.leftMargin: 8
-                        anchors.rightMargin: 8
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
                         spacing: 8
 
-                        Text {
-                            text: "🗂️"
-                            font.pixelSize: 12
+                        Rectangle {
+                            width: 9
+                            height: 9
+                            radius: 4.5
+                            color: addToGrpRow.grpAccent
                         }
 
                         Text {
                             text: modelData.name
-                            color: "#F0F6FC"
+                            color: "#F8FAFC"
                             font.pixelSize: 12
+                            font.bold: addToGrpRow.isChosen
                             Layout.fillWidth: true
                         }
 
                         Text {
-                            text: modelData.repositoryCount + (modelData.repositoryCount === 1 ? " repo" : " repo")
-                            color: "#8B949E"
+                            text: modelData.repositoryCount + " repo"
+                            color: "#94A3B8"
                             font.pixelSize: 11
                         }
                     }
@@ -2069,10 +2968,40 @@ Item {
             Text {
                 visible: addToGroupDialog.availableGroups.length === 0
                 text: (homeHubVm && homeHubVm.groupsCount === 0)
-                      ? "Nessun gruppo disponibile. Crea prima un gruppo."
-                      : "Questo repository fa già parte di tutti i gruppi esistenti."
-                color: "#8B949E"
+                    ? "Nessun gruppo disponibile. Crea prima un gruppo."
+                    : "Questo repository fa già parte di tutti i gruppi esistenti."
+                color: "#94A3B8"
                 font.pixelSize: 12
+            }
+        }
+
+        footer: Rectangle {
+            color: "#161F2E"
+            implicitHeight: 52
+            height: 52
+            radius: 14
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 10
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Annulla"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
+                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addToGroupDialog.reject()
+                }
+                Button {
+                    text: "✓ Aggiungi"
+                    enabled: addToGroupDialog.selectedGroupId.length > 0
+                    Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
+                    background: Rectangle { color: parent.enabled ? (parent.hovered ? "#9061F9" : "#7C4DFF") : "#161F2E"; radius: 8; border.color: parent.enabled ? "#A855F7" : "#222F42"; border.width: 1 }
+                    contentItem: Text { text: parent.text; color: parent.enabled ? "#FFFFFF" : "#475569"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addToGroupDialog.accept()
+                }
             }
         }
 
@@ -2086,17 +3015,20 @@ Item {
     // Dialog: Add Repository into Group (from Group card)
     Dialog {
         id: addRepoToGroupDialog
-        anchors.centerIn: parent
-        width: 420
+        anchors.centerIn: Overlay.overlay
+        modal: true
+        width: 440
+        padding: 18
+        topPadding: 14
+        bottomPadding: 14
         title: "Aggiungi Progetto al Gruppo"
-        standardButtons: Dialog.Ok | Dialog.Cancel
 
         property string targetGroupId: ""
         property string targetGroupName: ""
         property string selectedRepoId: ""
         property var availableRepos: []
 
-        function refreshAvailable() {
+        function refreshAvailableReposForGroup() {
             if (homeHubVm && targetGroupId.length > 0) {
                 availableRepos = homeHubVm.getAvailableRepositoriesForGroup(targetGroupId);
             } else {
@@ -2106,22 +3038,46 @@ Item {
 
         onAboutToShow: {
             selectedRepoId = "";
-            refreshAvailable();
+            refreshAvailableReposForGroup();
         }
 
         background: Rectangle {
-            color: "#161B22"
-            radius: 8
-            border.color: "#30363D"
+            color: "#111824"
+            radius: 14
+            border.color: "#28374E"
+            border.width: 1
+            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
+            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
         }
 
-        ColumnLayout {
-            anchors.fill: parent
+        header: Rectangle {
+            color: "#161F2E"
+            implicitHeight: 46
+            height: 46
+            radius: 14
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 14
+                Text { text: "📁 Aggiungi Progetto al Gruppo"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
+                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
+                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addRepoToGroupDialog.reject()
+                }
+            }
+        }
+
+        contentItem: ColumnLayout {
             spacing: 12
 
             Text {
                 text: "Aggiungi un repository a '" + addRepoToGroupDialog.targetGroupName + "':"
-                color: "#F0F6FC"
+                color: "#CBD5E1"
                 font.pixelSize: 12
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
@@ -2129,22 +3085,30 @@ Item {
 
             ListView {
                 id: repoPickList
+                SmoothWheelScroller {}
+                visible: count > 0
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(200, count * 40)
+                Layout.preferredHeight: Math.min(200, count * 42)
                 clip: true
+                spacing: 4
                 model: addRepoToGroupDialog.availableRepos
+                ScrollBar.vertical: FluxScrollBar {}
 
                 delegate: Rectangle {
                     width: repoPickList.width
-                    height: 36
-                    radius: 4
-                    color: (addRepoToGroupDialog.selectedRepoId === modelData.id) ? "#1E293B" : (repoPickHover.containsMouse ? "#21262D" : "#0B0E14")
-                    border.color: (addRepoToGroupDialog.selectedRepoId === modelData.id) ? "#3B82F6" : "#30363D"
+                    height: 38
+                    radius: 8
+                    color: (addRepoToGroupDialog.selectedRepoId === modelData.id) ? "#152336" : (repoPickHover.containsMouse ? "#172233" : "#0D131D")
+                    border.color: (addRepoToGroupDialog.selectedRepoId === modelData.id) ? "#38BDF8" : "#222F42"
+                    border.width: 1
+
+                    Behavior on color { ColorAnimation { duration: 110 } }
 
                     MouseArea {
                         id: repoPickHover
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             addRepoToGroupDialog.selectedRepoId = modelData.id;
                         }
@@ -2152,18 +3116,15 @@ Item {
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.leftMargin: 8
-                        anchors.rightMargin: 8
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
                         spacing: 8
 
-                        Text {
-                            text: "📁"
-                            font.pixelSize: 12
-                        }
+                        Text { text: "📁"; font.pixelSize: 12 }
 
                         Text {
                             text: modelData.displayName
-                            color: "#F0F6FC"
+                            color: "#F8FAFC"
                             font.pixelSize: 12
                             font.bold: true
                             Layout.fillWidth: true
@@ -2182,11 +3143,43 @@ Item {
 
             Text {
                 visible: addRepoToGroupDialog.availableRepos.length === 0
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
                 text: (homeHubVm && homeHubVm.repositoriesCount === 0)
-                      ? "Nessun repository registrato."
-                      : "Tutti i repository registrati fanno già parte di questo gruppo."
-                color: "#8B949E"
+                    ? "Nessun repository registrato."
+                    : "Tutti i repository registrati fanno già parte di questo gruppo."
+                color: "#94A3B8"
                 font.pixelSize: 12
+            }
+        }
+
+        footer: Rectangle {
+            color: "#161F2E"
+            implicitHeight: 52
+            height: 52
+            radius: 14
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 10
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Annulla"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
+                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addRepoToGroupDialog.reject()
+                }
+                Button {
+                    text: "✓ Aggiungi"
+                    enabled: addRepoToGroupDialog.selectedRepoId.length > 0
+                    Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
+                    background: Rectangle { color: parent.enabled ? (parent.hovered ? "#0EA5E9" : "#0284C7") : "#161F2E"; radius: 8; border.color: parent.enabled ? "#38BDF8" : "#222F42"; border.width: 1 }
+                    contentItem: Text { text: parent.text; color: parent.enabled ? "#FFFFFF" : "#475569"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addRepoToGroupDialog.accept()
+                }
             }
         }
 
@@ -2200,17 +3193,20 @@ Item {
     // Dialog: Add Repository into Workspace (from Workspace card)
     Dialog {
         id: addRepoToWsDialog
-        anchors.centerIn: parent
-        width: 420
+        anchors.centerIn: Overlay.overlay
+        modal: true
+        width: 440
+        padding: 18
+        topPadding: 14
+        bottomPadding: 14
         title: "Aggiungi Progetto al Workspace"
-        standardButtons: Dialog.Ok | Dialog.Cancel
 
         property string targetWorkspaceId: ""
         property string targetWorkspaceName: ""
         property string selectedRepoId: ""
         property var availableRepos: []
 
-        function refreshAvailable() {
+        function refreshAvailableReposForWorkspace() {
             if (homeHubVm && targetWorkspaceId.length > 0) {
                 availableRepos = homeHubVm.getAvailableRepositoriesForWorkspace(targetWorkspaceId);
             } else {
@@ -2220,22 +3216,46 @@ Item {
 
         onAboutToShow: {
             selectedRepoId = "";
-            refreshAvailable();
+            refreshAvailableReposForWorkspace();
         }
 
         background: Rectangle {
-            color: "#161B22"
-            radius: 8
-            border.color: "#30363D"
+            color: "#111824"
+            radius: 14
+            border.color: "#28374E"
+            border.width: 1
+            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
+            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
         }
 
-        ColumnLayout {
-            anchors.fill: parent
+        header: Rectangle {
+            color: "#161F2E"
+            implicitHeight: 46
+            height: 46
+            radius: 14
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 14
+                Text { text: "💼 Aggiungi Progetto al Workspace"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
+                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
+                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addRepoToWsDialog.reject()
+                }
+            }
+        }
+
+        contentItem: ColumnLayout {
             spacing: 12
 
             Text {
                 text: "Aggiungi un repository a '" + addRepoToWsDialog.targetWorkspaceName + "':"
-                color: "#F0F6FC"
+                color: "#CBD5E1"
                 font.pixelSize: 12
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
@@ -2243,22 +3263,30 @@ Item {
 
             ListView {
                 id: wsRepoPickList
+                SmoothWheelScroller {}
+                visible: count > 0
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(200, count * 40)
+                Layout.preferredHeight: Math.min(200, count * 42)
                 clip: true
+                spacing: 4
                 model: addRepoToWsDialog.availableRepos
+                ScrollBar.vertical: FluxScrollBar {}
 
                 delegate: Rectangle {
                     width: wsRepoPickList.width
-                    height: 36
-                    radius: 4
-                    color: (addRepoToWsDialog.selectedRepoId === modelData.id) ? "#143823" : (wsRepoPickHover.containsMouse ? "#21262D" : "#0B0E14")
-                    border.color: (addRepoToWsDialog.selectedRepoId === modelData.id) ? "#22C55E" : "#30363D"
+                    height: 38
+                    radius: 8
+                    color: (addRepoToWsDialog.selectedRepoId === modelData.id) ? "#063B2C" : (wsRepoPickHover.containsMouse ? "#172233" : "#0D131D")
+                    border.color: (addRepoToWsDialog.selectedRepoId === modelData.id) ? "#10B981" : "#222F42"
+                    border.width: 1
+
+                    Behavior on color { ColorAnimation { duration: 110 } }
 
                     MouseArea {
                         id: wsRepoPickHover
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             addRepoToWsDialog.selectedRepoId = modelData.id;
                         }
@@ -2266,18 +3294,15 @@ Item {
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.leftMargin: 8
-                        anchors.rightMargin: 8
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
                         spacing: 8
 
-                        Text {
-                            text: "📁"
-                            font.pixelSize: 12
-                        }
+                        Text { text: "📁"; font.pixelSize: 12 }
 
                         Text {
                             text: modelData.displayName
-                            color: "#F0F6FC"
+                            color: "#F8FAFC"
                             font.pixelSize: 12
                             font.bold: true
                             Layout.fillWidth: true
@@ -2296,11 +3321,43 @@ Item {
 
             Text {
                 visible: addRepoToWsDialog.availableRepos.length === 0
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
                 text: (homeHubVm && homeHubVm.repositoriesCount === 0)
-                      ? "Nessun repository registrato."
-                      : "Tutti i repository registrati fanno già parte di questo workspace."
-                color: "#8B949E"
+                    ? "Nessun repository registrato."
+                    : "Tutti i repository registrati fanno già parte di questo workspace."
+                color: "#94A3B8"
                 font.pixelSize: 12
+            }
+        }
+
+        footer: Rectangle {
+            color: "#161F2E"
+            implicitHeight: 52
+            height: 52
+            radius: 14
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 10
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Annulla"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
+                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addRepoToWsDialog.reject()
+                }
+                Button {
+                    text: "✓ Aggiungi"
+                    enabled: addRepoToWsDialog.selectedRepoId.length > 0
+                    Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
+                    background: Rectangle { color: parent.enabled ? (parent.hovered ? "#10B981" : "#059669") : "#161F2E"; radius: 8; border.color: parent.enabled ? "#34D399" : "#222F42"; border.width: 1 }
+                    contentItem: Text { text: parent.text; color: parent.enabled ? "#FFFFFF" : "#475569"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addRepoToWsDialog.accept()
+                }
             }
         }
 
@@ -2314,17 +3371,20 @@ Item {
     // Dialog: Add Group into Workspace (from Workspace card)
     Dialog {
         id: addGrpToWsDialog
-        anchors.centerIn: parent
-        width: 420
+        anchors.centerIn: Overlay.overlay
+        modal: true
+        width: 440
+        padding: 18
+        topPadding: 14
+        bottomPadding: 14
         title: "Aggiungi Gruppo al Workspace"
-        standardButtons: Dialog.Ok | Dialog.Cancel
 
         property string targetWorkspaceId: ""
         property string targetWorkspaceName: ""
         property string selectedGroupId: ""
         property var availableGroups: []
 
-        function refreshAvailable() {
+        function refreshAvailableGroupsForWorkspace() {
             if (homeHubVm && targetWorkspaceId.length > 0) {
                 availableGroups = homeHubVm.getAvailableGroupsForWorkspace(targetWorkspaceId);
             } else {
@@ -2334,22 +3394,46 @@ Item {
 
         onAboutToShow: {
             selectedGroupId = "";
-            refreshAvailable();
+            refreshAvailableGroupsForWorkspace();
         }
 
         background: Rectangle {
-            color: "#161B22"
-            radius: 8
-            border.color: "#30363D"
+            color: "#111824"
+            radius: 14
+            border.color: "#28374E"
+            border.width: 1
+            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
+            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
         }
 
-        ColumnLayout {
-            anchors.fill: parent
+        header: Rectangle {
+            color: "#161F2E"
+            implicitHeight: 46
+            height: 46
+            radius: 14
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 14
+                Text { text: "🗂️ Aggiungi Gruppo al Workspace"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
+                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
+                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addGrpToWsDialog.reject()
+                }
+            }
+        }
+
+        contentItem: ColumnLayout {
             spacing: 12
 
             Text {
                 text: "Aggiungi un gruppo a '" + addGrpToWsDialog.targetWorkspaceName + "':"
-                color: "#F0F6FC"
+                color: "#CBD5E1"
                 font.pixelSize: 12
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
@@ -2357,22 +3441,32 @@ Item {
 
             ListView {
                 id: wsGrpPickList
+                SmoothWheelScroller {}
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(200, count * 40)
+                Layout.preferredHeight: Math.min(200, count * 42)
                 clip: true
+                spacing: 4
                 model: addGrpToWsDialog.availableGroups
+                ScrollBar.vertical: FluxScrollBar {}
 
                 delegate: Rectangle {
+                    id: addGrpToWsRow
                     width: wsGrpPickList.width
-                    height: 36
-                    radius: 4
-                    color: (addGrpToWsDialog.selectedGroupId === modelData.id) ? "#2E1065" : (wsGrpPickHover.containsMouse ? "#21262D" : "#0B0E14")
-                    border.color: (addGrpToWsDialog.selectedGroupId === modelData.id) ? "#7C4DFF" : "#30363D"
+                    height: 38
+                    radius: 8
+                    readonly property color grpAccent: (modelData.groupColor && modelData.groupColor.length > 0) ? modelData.groupColor : "#7C4DFF"
+                    readonly property bool isChosen: addGrpToWsDialog.selectedGroupId === modelData.id
+                    color: isChosen ? Qt.alpha(grpAccent, 0.20) : (wsGrpPickHover.containsMouse ? "#172233" : "#0D131D")
+                    border.color: isChosen ? grpAccent : "#222F42"
+                    border.width: 1
+
+                    Behavior on color { ColorAnimation { duration: 110 } }
 
                     MouseArea {
                         id: wsGrpPickHover
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             addGrpToWsDialog.selectedGroupId = modelData.id;
                         }
@@ -2380,18 +3474,20 @@ Item {
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.leftMargin: 8
-                        anchors.rightMargin: 8
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
                         spacing: 8
 
-                        Text {
-                            text: "🗂️"
-                            font.pixelSize: 12
+                        Rectangle {
+                            width: 9
+                            height: 9
+                            radius: 4.5
+                            color: addGrpToWsRow.grpAccent
                         }
 
                         Text {
                             text: modelData.name
-                            color: "#F0F6FC"
+                            color: "#F8FAFC"
                             font.pixelSize: 12
                             font.bold: true
                             Layout.fillWidth: true
@@ -2411,10 +3507,40 @@ Item {
             Text {
                 visible: addGrpToWsDialog.availableGroups.length === 0
                 text: (homeHubVm && homeHubVm.groupsCount === 0)
-                      ? "Nessun gruppo disponibile. Crea prima un gruppo."
-                      : "Tutti i gruppi esistenti fanno già parte di questo workspace."
-                color: "#8B949E"
+                    ? "Nessun gruppo disponibile. Crea prima un gruppo."
+                    : "Tutti i gruppi esistenti fanno già parte di questo workspace."
+                color: "#94A3B8"
                 font.pixelSize: 12
+            }
+        }
+
+        footer: Rectangle {
+            color: "#161F2E"
+            implicitHeight: 52
+            height: 52
+            radius: 14
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 10
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Annulla"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
+                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addGrpToWsDialog.reject()
+                }
+                Button {
+                    text: "✓ Aggiungi"
+                    enabled: addGrpToWsDialog.selectedGroupId.length > 0
+                    Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
+                    background: Rectangle { color: parent.enabled ? (parent.hovered ? "#9061F9" : "#7C4DFF") : "#161F2E"; radius: 8; border.color: parent.enabled ? "#A855F7" : "#222F42"; border.width: 1 }
+                    contentItem: Text { text: parent.text; color: parent.enabled ? "#FFFFFF" : "#475569"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addGrpToWsDialog.accept()
+                }
             }
         }
 
@@ -2428,46 +3554,276 @@ Item {
     // Dialog: Create Workspace
     Dialog {
         id: addWorkspaceDialog
-        anchors.centerIn: parent
-        width: 380
+        anchors.centerIn: Overlay.overlay
+        modal: true
+        width: 410
+        padding: 18
+        topPadding: 14
+        bottomPadding: 14
         title: "Crea Nuovo Workspace"
-        standardButtons: Dialog.Ok | Dialog.Cancel
+
+        property string selectedColor: "#34D399"
 
         background: Rectangle {
-            color: "#161B22"
-            radius: 8
-            border.color: "#30363D"
+            color: "#111824"
+            radius: 14
+            border.color: "#28374E"
+            border.width: 1
+            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
+            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
         }
 
-        ColumnLayout {
-            anchors.fill: parent
+        header: Rectangle {
+            color: "#161F2E"
+            implicitHeight: 46
+            height: 46
+            radius: 14
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 14
+                Text { text: "💼 Crea Nuovo Workspace"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
+                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
+                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addWorkspaceDialog.reject()
+                }
+            }
+        }
+
+        contentItem: ColumnLayout {
             spacing: 12
 
             Text {
                 text: "Nome del workspace:"
-                color: "#F0F6FC"
+                color: "#CBD5E1"
+                font.bold: true
                 font.pixelSize: 12
             }
 
             Rectangle {
                 Layout.fillWidth: true
-                height: 34
-                color: "#0B0E14"
-                radius: 4
-                border.color: "#30363D"
+                Layout.preferredHeight: 36
+                implicitHeight: 36
+                height: 36
+                color: "#0A0E15"
+                radius: 8
+                border.color: wsNameInput.activeFocus ? (addWorkspaceDialog.selectedColor.length > 0 ? addWorkspaceDialog.selectedColor : "#10B981") : "#222F42"
+                border.width: 1
+                Behavior on border.color { ColorAnimation { duration: 120 } }
                 TextInput {
                     id: wsNameInput
                     anchors.fill: parent
-                    anchors.margins: 6
-                    color: "#F0F6FC"
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    verticalAlignment: TextInput.AlignVCenter
+                    color: "#F8FAFC"
                     font.pixelSize: 13
+                    selectByMouse: true
+                    onAccepted: addWorkspaceDialog.accept()
+                }
+            }
+
+            Text {
+                text: "Colore del workspace:"
+                color: "#CBD5E1"
+                font.bold: true
+                font.pixelSize: 12
+            }
+
+            GroupColorSwatchPicker {
+                id: addWorkspaceColorPicker
+                selectedColor: addWorkspaceDialog.selectedColor
+                onSelectedColorChanged: addWorkspaceDialog.selectedColor = selectedColor
+            }
+        }
+
+        footer: Rectangle {
+            color: "#161F2E"
+            implicitHeight: 52
+            height: 52
+            radius: 14
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 10
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Annulla"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
+                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addWorkspaceDialog.reject()
+                }
+                Button {
+                    text: "✓ Crea Workspace"; Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
+                    readonly property color btnAccent: addWorkspaceDialog.selectedColor.length > 0 ? addWorkspaceDialog.selectedColor : "#10B981"
+                    background: Rectangle { color: Qt.alpha(parent.btnAccent, parent.hovered ? 0.36 : 0.24); radius: 8; border.color: parent.btnAccent; border.width: 1 }
+                    contentItem: Text { text: parent.text; color: "#F8FAFC"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: addWorkspaceDialog.accept()
                 }
             }
         }
 
+        onAboutToShow: {
+            wsNameInput.text = "";
+            const pal = addWorkspaceColorPicker.paletteColors;
+            const idx = ((root.homeHubVmRef ? root.homeHubVmRef.workspacesCount : 0) + 2) % pal.length;
+            selectedColor = pal[idx];
+            addWorkspaceColorPicker.selectedColor = selectedColor;
+            wsNameInput.forceActiveFocus();
+        }
+
         onAccepted: {
-            if (homeHubVm.createWorkspace(wsNameInput.text)) {
+            if (homeHubVm.createWorkspace(wsNameInput.text, [], [], selectedColor)) {
                 wsNameInput.text = "";
+            }
+        }
+    }
+
+    // Dialog: Edit Workspace (Name & Color)
+    Dialog {
+        id: editWorkspaceDialog
+        anchors.centerIn: Overlay.overlay
+        modal: true
+        width: 410
+        padding: 18
+        topPadding: 14
+        bottomPadding: 14
+        title: "Modifica Workspace"
+
+        property string workspaceId: ""
+        property string initialName: ""
+        property string initialColor: ""
+        property string selectedColor: ""
+
+        background: Rectangle {
+            color: "#111824"
+            radius: 14
+            border.color: "#28374E"
+            border.width: 1
+            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
+            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
+        }
+
+        header: Rectangle {
+            color: "#161F2E"
+            implicitHeight: 46
+            height: 46
+            radius: 14
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 14
+                Text { text: "✏️ Modifica Workspace"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
+                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
+                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: editWorkspaceDialog.reject()
+                }
+            }
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 12
+
+            Text {
+                text: "Nome workspace:"
+                color: "#CBD5E1"
+                font.bold: true
+                font.pixelSize: 12
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 36
+                implicitHeight: 36
+                height: 36
+                color: "#0A0E15"
+                radius: 8
+                border.color: editWorkspaceInput.activeFocus ? (editWorkspaceDialog.selectedColor.length > 0 ? editWorkspaceDialog.selectedColor : "#10B981") : "#222F42"
+                border.width: 1
+                Behavior on border.color { ColorAnimation { duration: 120 } }
+                TextInput {
+                    id: editWorkspaceInput
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    verticalAlignment: TextInput.AlignVCenter
+                    color: "#F8FAFC"
+                    font.pixelSize: 13
+                    selectByMouse: true
+                    onAccepted: editWorkspaceDialog.accept()
+                }
+            }
+
+            Text {
+                text: "Colore del workspace:"
+                color: "#CBD5E1"
+                font.bold: true
+                font.pixelSize: 12
+            }
+
+            GroupColorSwatchPicker {
+                id: editWorkspaceColorPicker
+                selectedColor: editWorkspaceDialog.selectedColor
+                onSelectedColorChanged: editWorkspaceDialog.selectedColor = selectedColor
+            }
+        }
+
+        footer: Rectangle {
+            color: "#161F2E"
+            implicitHeight: 52
+            height: 52
+            radius: 14
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 10
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Annulla"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
+                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: editWorkspaceDialog.reject()
+                }
+                Button {
+                    text: "✓ Salva"; Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
+                    readonly property color btnAccent: editWorkspaceDialog.selectedColor.length > 0 ? editWorkspaceDialog.selectedColor : "#10B981"
+                    background: Rectangle { color: Qt.alpha(parent.btnAccent, parent.hovered ? 0.36 : 0.24); radius: 8; border.color: parent.btnAccent; border.width: 1 }
+                    contentItem: Text { text: parent.text; color: "#F8FAFC"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: editWorkspaceDialog.accept()
+                }
+            }
+        }
+
+        onAboutToShow: {
+            editWorkspaceInput.text = initialName;
+            selectedColor = initialColor;
+            editWorkspaceColorPicker.selectedColor = initialColor;
+            editWorkspaceInput.forceActiveFocus();
+        }
+
+        onAccepted: {
+            const trimmedName = editWorkspaceInput.text.trim();
+            if (workspaceId.length > 0 && trimmedName.length > 0 && trimmedName !== initialName) {
+                homeHubVm.renameWorkspace(workspaceId, trimmedName);
+            }
+            if (workspaceId.length > 0 && selectedColor.length > 0 && selectedColor !== initialColor) {
+                homeHubVm.updateWorkspaceColor(workspaceId, selectedColor);
             }
         }
     }
@@ -2488,51 +3844,120 @@ Item {
     // Modal Error Feedback Dialog
     Dialog {
         id: errorFeedbackDialog
-        anchors.centerIn: parent
+        anchors.centerIn: Overlay.overlay
+        modal: true
         width: 480
+        padding: 18
+        topPadding: 14
+        bottomPadding: 14
         title: "Attenzione — Errore Operazione"
-        standardButtons: Dialog.Ok
         property string errorMessage: ""
 
         background: Rectangle {
-            color: "#161B22"
-            radius: 8
-            border.color: "#F85149"
+            color: "#111824"
+            radius: 14
+            border.color: "#EF4444"
             border.width: 1
+            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
+            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
         }
 
-        ColumnLayout {
-            anchors.fill: parent
+        header: Rectangle {
+            color: "#2A1217"
+            implicitHeight: 46
+            height: 46
+            radius: 14
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#2A1217" }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#7F1D1D" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 14
+                Text { text: "⚠️ Impossibile completare l'operazione"; color: "#FCA5A5"; font.bold: true; font.pixelSize: 13 }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
+                    background: Rectangle { radius: 7; color: parent.hovered ? "#4C151E" : "transparent" }
+                    contentItem: Text { text: "✕"; color: parent.hovered ? "#FFFFFF" : "#FCA5A5"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: errorFeedbackDialog.close()
+                }
+            }
+        }
+
+        contentItem: ColumnLayout {
             spacing: 12
 
-            RowLayout {
-                spacing: 10
-                Text {
-                    text: "⚠️"
-                    font.pixelSize: 22
-                }
-                Text {
-                    text: "Impossibile completare l'operazione"
-                    color: "#F85149"
-                    font.pixelSize: 14
-                    font.bold: true
-                }
-            }
-
-            Text {
-                text: errorFeedbackDialog.errorMessage
-                color: "#F0F6FC"
-                font.pixelSize: 13
-                wrapMode: Text.Wrap
+            // Selectable so the error can be copied (also via the "Copia" button below).
+            Flickable {
+                id: errorMessageFlick
                 Layout.fillWidth: true
+                Layout.preferredHeight: Math.min(errorMessageEdit.implicitHeight, 260)
+                clip: true
+                contentWidth: width
+                contentHeight: errorMessageEdit.implicitHeight
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                TextEdit {
+                    id: errorMessageEdit
+                    width: errorMessageFlick.width
+                    text: errorFeedbackDialog.errorMessage
+                    color: "#F8FAFC"
+                    font.pixelSize: 13
+                    wrapMode: TextEdit.Wrap
+                    textFormat: TextEdit.PlainText
+                    readOnly: true
+                    selectByMouse: true
+                    selectByKeyboard: true
+                    selectionColor: "#2563EB"
+                    selectedTextColor: "#FFFFFF"
+                }
             }
 
             Text {
+                // Only relevant when adding/opening a local folder that isn't a Git repository.
+                visible: /cartell|repository git|\.git|not a git repository/i.test(errorFeedbackDialog.errorMessage)
                 text: "Suggerimento: Seleziona la cartella radice del progetto Git oppure la cartella '.git' al suo interno tramite il selettore cartelle."
-                color: "#8B949E"
+                color: "#94A3B8"
                 font.pixelSize: 11
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
+            }
+        }
+
+        footer: Rectangle {
+            color: "#161F2E"
+            implicitHeight: 52
+            height: 52
+            radius: 14
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                Button {
+                    id: copyErrorBtn
+                    property bool copied: false
+                    text: copied ? "✔ Copiato" : "Copia errore"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#334155" : "#1E293B"; radius: 8; border.color: "#475569"; border.width: 1 }
+                    contentItem: Text { text: copyErrorBtn.text; color: "#E2E8F0"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: {
+                        // gitProfilesVm copies silently (homeHubVm would echo the whole text in a banner)
+                        const vm = (typeof gitProfilesVm !== "undefined" && gitProfilesVm) ? gitProfilesVm : homeHubVm;
+                        vm.copyToClipboard(errorFeedbackDialog.errorMessage);
+                        copied = true;
+                        copiedResetTimer.restart();
+                    }
+                    Timer { id: copiedResetTimer; interval: 2000; onTriggered: copyErrorBtn.copied = false }
+                }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Chiudi"; Layout.preferredHeight: 32; leftPadding: 18; rightPadding: 18; hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#DC2626" : "#B91C1C"; radius: 8; border.color: "#EF4444"; border.width: 1 }
+                    contentItem: Text { text: "Chiudi"; color: "#FFFFFF"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: errorFeedbackDialog.close()
+                }
             }
         }
     }
@@ -2545,8 +3970,8 @@ Item {
         visible: root.isDraggingRepo
         width: 220
         height: 38
-        radius: 6
-        color: "#1E293B"
+        radius: 9
+        color: "#152336"
         border.color: "#38BDF8"
         border.width: 1.5
         z: 99999
@@ -2557,10 +3982,12 @@ Item {
             anchors.fill: parent
             anchors.margins: 8
             spacing: 8
-            Text { text: "📁"; font.pixelSize: 15 }
+            Text {
+                text: "📁"; font.pixelSize: 15
+            }
             Text {
                 text: root.draggedRepoName
-                color: "#F0F6FC"
+                color: "#F8FAFC"
                 font.pixelSize: 12
                 font.bold: true
                 elide: Text.ElideRight
@@ -2574,9 +4001,9 @@ Item {
         visible: root.isDraggingGroup
         width: 220
         height: 38
-        radius: 6
-        color: "#2E1065"
-        border.color: "#A855F7"
+        radius: 9
+        color: Qt.alpha(root.draggedGroupColor, 0.24)
+        border.color: root.draggedGroupColor
         border.width: 1.5
         z: 99999
         opacity: 0.95
@@ -2586,10 +4013,15 @@ Item {
             anchors.fill: parent
             anchors.margins: 8
             spacing: 8
-            Text { text: "🗂️"; font.pixelSize: 15 }
+            Rectangle {
+                width: 10
+                height: 10
+                radius: 5
+                color: root.draggedGroupColor
+            }
             Text {
                 text: root.draggedGroupName
-                color: "#F0F6FC"
+                color: "#F8FAFC"
                 font.pixelSize: 12
                 font.bold: true
                 elide: Text.ElideRight

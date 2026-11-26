@@ -14,6 +14,12 @@
 #include <filesystem>
 #include <fstream>
 #include <thread>
+// std::system() runs through cmd.exe on Windows, where /dev/null does not exist.
+#ifdef _WIN32
+static constexpr auto kQuietRedirect = " > NUL 2>&1";
+#else
+static constexpr auto kQuietRedirect = " > /dev/null 2>&1";
+#endif
 
 using namespace gf::git::bl;
 using namespace gf::git::bo;
@@ -22,61 +28,69 @@ using namespace gf::tasks::bo;
 using namespace gf::tasks::ports;
 using namespace gf::infra::git;
 
-namespace {
+namespace
+{
+    struct AsyncGitTestFixture
+    {
+        std::filesystem::path originPath;
+        std::filesystem::path localPath;
 
-struct AsyncGitTestFixture {
-    std::filesystem::path originPath;
-    std::filesystem::path localPath;
+        AsyncGitTestFixture()
+        {
+            auto now = std::chrono::system_clock::now().time_since_epoch().count();
+            auto tmpBase = std::filesystem::temp_directory_path() / ("gf_async_git_" + std::to_string(now));
 
-    AsyncGitTestFixture() {
-        auto now = std::chrono::system_clock::now().time_since_epoch().count();
-        auto tmpBase = std::filesystem::temp_directory_path() / ("gf_async_git_" + std::to_string(now));
+            originPath = tmpBase / "origin.git";
+            localPath = tmpBase / "local";
 
-        originPath = tmpBase / "origin.git";
-        localPath = tmpBase / "local";
+            std::filesystem::create_directories(originPath);
+            std::filesystem::create_directories(localPath);
 
-        std::filesystem::create_directories(originPath);
-        std::filesystem::create_directories(localPath);
+            // Init bare origin
+            std::string initBare = "git init --bare -b main \"" + originPath.string() + "\"" + kQuietRedirect;
+            [[maybe_unused]] int r1 = std::system(initBare.c_str());
 
-        // Init bare origin
-        std::string initBare = "git init --bare -b main \"" + originPath.string() + "\" > /dev/null 2>&1";
-        [[maybe_unused]] int r1 = std::system(initBare.c_str());
+            // Init local and push to origin
+            std::string initLocal = "git -C \"" + localPath.string() + "\" init -b main" + kQuietRedirect;
+            [[maybe_unused]] int r2 = std::system(initLocal.c_str());
 
-        // Init local and push to origin
-        std::string initLocal = "git -C \"" + localPath.string() + "\" init -b main > /dev/null 2>&1";
-        [[maybe_unused]] int r2 = std::system(initLocal.c_str());
+            std::string cfgUser = "git -C \"" + localPath.string() + R"(" config user.name "Async Tester")";
+            [[maybe_unused]] int r3 = std::system(cfgUser.c_str());
+            std::string cfgEmail = "git -C \"" + localPath.string() + R"(" config user.email "async@test.com")";
+            [[maybe_unused]] int r4 = std::system(cfgEmail.c_str());
 
-        std::string cfgUser = "git -C \"" + localPath.string() + "\" config user.name \"Async Tester\"";
-        [[maybe_unused]] int r3 = std::system(cfgUser.c_str());
-        std::string cfgEmail = "git -C \"" + localPath.string() + "\" config user.email \"async@test.com\"";
-        [[maybe_unused]] int r4 = std::system(cfgEmail.c_str());
+            // File 1
+            std::ofstream ofs(localPath / "file.txt");
+            ofs << "Initial async content\n";
+            ofs.close();
 
-        // File 1
-        std::ofstream ofs(localPath / "file.txt");
-        ofs << "Initial async content\n";
-        ofs.close();
+            std::string addCmd = "git -C \"" + localPath.string() + "\" add file.txt" + kQuietRedirect;
+            [[maybe_unused]] int r5 = std::system(addCmd.c_str());
+            std::string commitCmd = "git -C \"" + localPath.string() + R"(" commit -m "Init")" + kQuietRedirect;
+            [[maybe_unused]] int r6 = std::system(commitCmd.c_str());
 
-        std::string addCmd = "git -C \"" + localPath.string() + "\" add file.txt > /dev/null 2>&1";
-        [[maybe_unused]] int r5 = std::system(addCmd.c_str());
-        std::string commitCmd = "git -C \"" + localPath.string() + "\" commit -m \"Init\" > /dev/null 2>&1";
-        [[maybe_unused]] int r6 = std::system(commitCmd.c_str());
+            std::string remoteAdd = "git -C \"" + localPath.string() + "\" remote add origin \"" + originPath.string() +
+                "\"" + kQuietRedirect;
+            [[maybe_unused]] int r7 = std::system(remoteAdd.c_str());
 
-        std::string remoteAdd = "git -C \"" + localPath.string() + "\" remote add origin \"" + originPath.string() + "\" > /dev/null 2>&1";
-        [[maybe_unused]] int r7 = std::system(remoteAdd.c_str());
+            std::string pushCmd = "git -C \"" + localPath.string() + "\" push -u origin main" + kQuietRedirect;
+            [[maybe_unused]] int r8 = std::system(pushCmd.c_str());
+        }
 
-        std::string pushCmd = "git -C \"" + localPath.string() + "\" push -u origin main > /dev/null 2>&1";
-        [[maybe_unused]] int r8 = std::system(pushCmd.c_str());
-    }
-
-    ~AsyncGitTestFixture() {
-        std::error_code ec;
-        if (!originPath.empty()) std::filesystem::remove_all(originPath.parent_path(), ec);
-    }
-};
-
+        ~AsyncGitTestFixture()
+        {
+            std::error_code ec;
+            if (!originPath.empty()) std::filesystem::remove_all(originPath.parent_path(), ec);
+        }
+    };
 } // namespace
 
-TEST_CASE("AsyncGitService asynchronous Git operations and progress reporting", "[git][async][integration]") {
+TEST_CASE (
+"AsyncGitService asynchronous Git operations and progress reporting"
+,
+"[git][async][integration]"
+)
+ {
     using namespace std::chrono_literals;
 
     AsyncGitTestFixture fixture;
@@ -94,8 +108,8 @@ TEST_CASE("AsyncGitService asynchronous Git operations and progress reporting", 
     AsyncGitService asyncGit(taskRunner, remoteMergeService, workingTreeService);
 
     SECTION("Asynchronously scans working tree and streams progress") {
-        std::atomic<bool> done{false};
-        std::atomic<int> progressCount{0};
+        std::atomic done{false};
+        std::atomic progressCount{0};
         std::expected<RepoWorkingTreeStatus, gf::git::ports::GitOpsError> capturedStatus =
             std::unexpected(gf::git::ports::GitOpsError{.kind = gf::git::ports::GitOpsError::Kind::InvalidOperation, .exitCode = -1, .message = "", .command = ""});
 
@@ -121,7 +135,7 @@ TEST_CASE("AsyncGitService asynchronous Git operations and progress reporting", 
     }
 
     SECTION("Asynchronously fetches from remote origin") {
-        std::atomic<bool> done{false};
+        std::atomic done{false};
         std::expected<RemoteOperationResult, gf::git::ports::GitOpsError> capturedResult =
             std::unexpected(gf::git::ports::GitOpsError{.kind = gf::git::ports::GitOpsError::Kind::InvalidOperation, .exitCode = -1, .message = "", .command = ""});
 
@@ -148,7 +162,7 @@ TEST_CASE("AsyncGitService asynchronous Git operations and progress reporting", 
 
     SECTION("Cancels long-running async operation") {
         // Block the runner with 2 tasks to allow cancelling the 3rd while queued
-        std::atomic<bool> holdWorkers{true};
+        std::atomic holdWorkers{true};
         taskRunner.postTask("Hold 1", [&](ITaskProgressSink&) -> std::expected<void, std::string> {
             while (holdWorkers.load()) std::this_thread::sleep_for(5ms);
             return {};
@@ -158,11 +172,11 @@ TEST_CASE("AsyncGitService asynchronous Git operations and progress reporting", 
             return {};
         });
 
-        std::atomic<bool> cancelCbInvoked{false};
+        std::atomic cancelCbInvoked{false};
         std::string fetchTaskId = asyncGit.fetchRemoteAsync(
             fixture.localPath,
             RemoteOperationOptions{.remoteName = "origin"},
-            [&](std::expected<RemoteOperationResult, gf::git::ports::GitOpsError> res) {
+            [&](const std::expected<RemoteOperationResult, gf::git::ports::GitOpsError>& res) {
                 if (!res.has_value()) {
                     cancelCbInvoked.store(true);
                 }
