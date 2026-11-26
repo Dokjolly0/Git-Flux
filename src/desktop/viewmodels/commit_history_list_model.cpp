@@ -634,6 +634,15 @@ namespace gf::desktop
             return (idx < m_graphItems.size()) ? m_graphItems[idx].stashSelector : extractStashSelector(c.refDecorations);
         case BranchCommitCountRole:
             return branchCommitCountForCommit(c);
+        case InferredBranchRole:
+            if (const auto* info = inferredBranchForCommit(c)) return info->name;
+            return QString{};
+        case InferredBranchColorRole:
+            if (const auto* info = inferredBranchForCommit(c)) return info->borderColor;
+            return QString{};
+        case InferredBranchBgColorRole:
+            if (const auto* info = inferredBranchForCommit(c)) return info->bgColor;
+            return QString{};
         default:
             return {};
         }
@@ -669,7 +678,10 @@ namespace gf::desktop
             {IsOrphanRole, "isOrphan"},
             {IsStashRole, "isStash"},
             {StashSelectorRole, "stashSelector"},
-            {BranchCommitCountRole, "branchCommitCount"}
+            {BranchCommitCountRole, "branchCommitCount"},
+            {InferredBranchRole, "inferredBranch"},
+            {InferredBranchColorRole, "inferredBranchColor"},
+            {InferredBranchBgColorRole, "inferredBranchBgColor"}
         };
     }
 
@@ -733,6 +745,18 @@ namespace gf::desktop
         map[QStringLiteral("isMerge")] = (!isStash && c.parents.size() > 1);
         map[QStringLiteral("isWip")] = (c.sha == "WIP");
         map[QStringLiteral("branchCommitCount")] = branchCommitCountForCommit(c);
+        if (const auto* info = inferredBranchForCommit(c))
+        {
+            map[QStringLiteral("inferredBranch")] = info->name;
+            map[QStringLiteral("inferredBranchColor")] = info->borderColor;
+            map[QStringLiteral("inferredBranchBgColor")] = info->bgColor;
+        }
+        else
+        {
+            map[QStringLiteral("inferredBranch")] = QString{};
+            map[QStringLiteral("inferredBranchColor")] = QString{};
+            map[QStringLiteral("inferredBranchBgColor")] = QString{};
+        }
         if (c.sha == "WIP")
         {
             QVariantMap wipDec;
@@ -1582,40 +1606,44 @@ namespace gf::desktop
     void CommitHistoryListModel::computeBranchCommitCounts()
     {
         m_branchCommitCounts.clear();
+        m_rawShaToIdx.clear();
+        m_rawParentsIdx.clear();
+        m_reachableCountCache.clear();
+        m_reachableVisitStamp.clear();
+        m_reachableCurrentStamp = 0;
+
         if (!m_isFullDag || m_rawCommits.empty())
         {
             return;
         }
 
         const std::size_t n = m_rawCommits.size();
-        std::unordered_map<std::string_view, int> shaToIdx;
-        shaToIdx.reserve(n);
+        m_rawShaToIdx.reserve(n);
         for (std::size_t i = 0; i < n; ++i)
         {
             const auto& c = m_rawCommits[i];
             if (!c.sha.empty() && c.sha != "WIP")
             {
-                shaToIdx.try_emplace(c.sha, static_cast<int>(i));
+                m_rawShaToIdx.try_emplace(c.sha, static_cast<int>(i));
             }
         }
 
-        std::vector<std::vector<int>> parentsIdx(n);
+        m_rawParentsIdx.resize(n);
         for (std::size_t i = 0; i < n; ++i)
         {
             const auto& parents = m_rawCommits[i].parents;
-            parentsIdx[i].reserve(parents.size());
+            m_rawParentsIdx[i].reserve(parents.size());
             for (const auto& p : parents)
             {
-                if (auto it = shaToIdx.find(p); it != shaToIdx.end())
+                if (auto it = m_rawShaToIdx.find(p); it != m_rawShaToIdx.end())
                 {
-                    parentsIdx[i].push_back(it->second);
+                    m_rawParentsIdx[i].push_back(it->second);
                 }
             }
         }
 
-        // Reuse a single stamp array + DFS stack across all branch tips to avoid per-branch allocations.
-        std::vector<std::uint32_t> visitStamp(n, 0);
-        std::uint32_t currentStamp = 0;
+        // Reuse a single stamp array + DFS stack across all tips and lazy hover lookups.
+        m_reachableVisitStamp.assign(n, 0);
         std::vector<int> stack;
         stack.reserve(std::min<std::size_t>(n, 256));
 
@@ -1631,15 +1659,15 @@ namespace gf::desktop
                 continue;
             }
 
-            ++currentStamp;
-            if (currentStamp == 0)
+            ++m_reachableCurrentStamp;
+            if (m_reachableCurrentStamp == 0)
             {
-                std::fill(visitStamp.begin(), visitStamp.end(), 0);
-                currentStamp = 1;
+                std::fill(m_reachableVisitStamp.begin(), m_reachableVisitStamp.end(), 0);
+                m_reachableCurrentStamp = 1;
             }
 
             const int rootIdx = static_cast<int>(i);
-            visitStamp[rootIdx] = currentStamp;
+            m_reachableVisitStamp[rootIdx] = m_reachableCurrentStamp;
             stack.clear();
             stack.push_back(rootIdx);
             int count = 1;
@@ -1648,11 +1676,11 @@ namespace gf::desktop
             {
                 const int u = stack.back();
                 stack.pop_back();
-                for (const int pIdx : parentsIdx[u])
+                for (const int pIdx : m_rawParentsIdx[u])
                 {
-                    if (visitStamp[pIdx] != currentStamp)
+                    if (m_reachableVisitStamp[pIdx] != m_reachableCurrentStamp)
                     {
-                        visitStamp[pIdx] = currentStamp;
+                        m_reachableVisitStamp[pIdx] = m_reachableCurrentStamp;
                         ++count;
                         stack.push_back(pIdx);
                     }
@@ -1661,6 +1689,68 @@ namespace gf::desktop
 
             m_branchCommitCounts.emplace(c.sha, count);
         }
+    }
+
+    int CommitHistoryListModel::reachableCommitCount(const QString& sha) const
+    {
+        if (!m_isFullDag || sha.isEmpty() || sha == QLatin1String("WIP") || m_rawParentsIdx.empty())
+        {
+            return 0;
+        }
+
+        const std::string key = sha.toStdString();
+        if (auto it = m_branchCommitCounts.find(key); it != m_branchCommitCounts.end())
+        {
+            return it->second;
+        }
+        if (auto it = m_reachableCountCache.find(key); it != m_reachableCountCache.end())
+        {
+            return it->second;
+        }
+
+        const auto idxIt = m_rawShaToIdx.find(key);
+        if (idxIt == m_rawShaToIdx.end())
+        {
+            return 0;
+        }
+
+        const int rootIdx = idxIt->second;
+        if (rootIdx < 0 || static_cast<std::size_t>(rootIdx) >= m_rawCommits.size() ||
+            isStashCommit(m_rawCommits[static_cast<std::size_t>(rootIdx)]))
+        {
+            return 0;
+        }
+
+        ++m_reachableCurrentStamp;
+        if (m_reachableCurrentStamp == 0)
+        {
+            std::fill(m_reachableVisitStamp.begin(), m_reachableVisitStamp.end(), 0);
+            m_reachableCurrentStamp = 1;
+        }
+
+        m_reachableVisitStamp[static_cast<std::size_t>(rootIdx)] = m_reachableCurrentStamp;
+        std::vector<int> stack;
+        stack.reserve(std::min<std::size_t>(m_rawCommits.size(), 256));
+        stack.push_back(rootIdx);
+        int count = 1;
+
+        while (!stack.empty())
+        {
+            const int u = stack.back();
+            stack.pop_back();
+            for (const int pIdx : m_rawParentsIdx[static_cast<std::size_t>(u)])
+            {
+                if (m_reachableVisitStamp[static_cast<std::size_t>(pIdx)] != m_reachableCurrentStamp)
+                {
+                    m_reachableVisitStamp[static_cast<std::size_t>(pIdx)] = m_reachableCurrentStamp;
+                    ++count;
+                    stack.push_back(pIdx);
+                }
+            }
+        }
+
+        m_reachableCountCache.emplace(key, count);
+        return count;
     }
 
     int CommitHistoryListModel::branchCommitCountForCommit(const git::bo::GitCommitLogItem& commit) const noexcept
@@ -1676,6 +1766,290 @@ namespace gf::desktop
         return 0;
     }
 
+    void CommitHistoryListModel::computeInferredBranches()
+    {
+        m_inferredBranches.clear();
+        if (m_rawCommits.empty())
+        {
+            return;
+        }
+
+        const std::size_t n = m_rawCommits.size();
+        std::unordered_map<std::string_view, int> shaToIdx;
+        shaToIdx.reserve(n);
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            const auto& c = m_rawCommits[i];
+            if (!c.sha.empty() && c.sha != "WIP" && !isStashCommit(c))
+            {
+                shaToIdx.try_emplace(c.sha, static_cast<int>(i));
+            }
+        }
+
+        std::vector<std::vector<int>> parentsIdx(n);
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            const auto& c = m_rawCommits[i];
+            if (c.sha.empty() || c.sha == "WIP" || isStashCommit(c))
+            {
+                continue;
+            }
+            parentsIdx[i].reserve(c.parents.size());
+            for (const auto& p : c.parents)
+            {
+                if (auto it = shaToIdx.find(p); it != shaToIdx.end())
+                {
+                    parentsIdx[i].push_back(it->second);
+                }
+            }
+        }
+
+        struct BranchSeed
+        {
+            int commitIdx = -1;
+            int tier = 4;
+            bool isRemote = false;
+            bool isHead = false;
+            bool isPages = false;
+            InferredBranchInfo info;
+        };
+
+        std::vector<BranchSeed> seeds;
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            const auto& c = m_rawCommits[i];
+            if (c.sha.empty() || c.sha == "WIP" || isStashCommit(c) || c.refDecorations.empty())
+            {
+                continue;
+            }
+
+            struct ParsedRef
+            {
+                QString name;
+                bool isRemote = false;
+                bool isHead = false;
+            };
+
+            QList<ParsedRef> locals;
+            QList<ParsedRef> remotes;
+
+            for (const auto& decStd : c.refDecorations)
+            {
+                QString dec = QString::fromStdString(decStd).trimmed();
+                if (dec.isEmpty() ||
+                    dec == QLatin1String("HEAD") ||
+                    dec == QLatin1String("origin/HEAD") ||
+                    dec.endsWith(QLatin1String("/HEAD")) ||
+                    dec.startsWith(QLatin1String("tag: ")) ||
+                    dec == QLatin1String("refs/stash") ||
+                    dec.startsWith(QLatin1String("stash@{")))
+                {
+                    continue;
+                }
+
+                bool isHead = false;
+                if (dec.startsWith(QLatin1String("HEAD -> ")))
+                {
+                    isHead = true;
+                    dec = dec.mid(8).trimmed();
+                }
+
+                const bool isRemote = !isHead && (dec.startsWith(QLatin1String("origin/")) ||
+                    dec.startsWith(QLatin1String("upstream/")) ||
+                    dec.startsWith(QLatin1String("nas/")));
+                if (isRemote)
+                {
+                    remotes.append(ParsedRef{.name = dec, .isRemote = true, .isHead = false});
+                }
+                else
+                {
+                    locals.append(ParsedRef{.name = dec, .isRemote = false, .isHead = isHead});
+                }
+            }
+
+            auto addSeed = [&](const QString& displayName, bool isRemote, bool isHead)
+            {
+                const QString clean = displayName.startsWith(QLatin1String("origin/"))
+                    ? displayName.mid(7)
+                    : displayName;
+                const bool isPages = (clean == QLatin1String("gh-pages") ||
+                    displayName.contains(QLatin1String("gh-pages")));
+
+                int tier = isRemote ? 4 : 3;
+                if (clean == QLatin1String("main") || clean == QLatin1String("master"))
+                {
+                    tier = 0;
+                }
+                else if (clean == QLatin1String("develop") || clean == QLatin1String("dev"))
+                {
+                    tier = 1;
+                }
+                else if (isHead)
+                {
+                    tier = 2;
+                }
+
+                InferredBranchInfo info;
+                info.name = displayName;
+                if (isPages)
+                {
+                    info.borderColor = QStringLiteral("#A855F7");
+                    info.bgColor = QStringLiteral("#2E1065CC");
+                }
+                else if (isRemote)
+                {
+                    info.borderColor = QStringLiteral("#3B82F6");
+                    info.bgColor = QStringLiteral("#1E293BCC");
+                }
+                else if (isHead)
+                {
+                    info.borderColor = QStringLiteral("#06B6D4");
+                    info.bgColor = QStringLiteral("#0E7490CC");
+                }
+                else
+                {
+                    info.borderColor = QStringLiteral("#10B981");
+                    info.bgColor = QStringLiteral("#064E3BCC");
+                }
+
+                seeds.push_back(BranchSeed{
+                    .commitIdx = static_cast<int>(i),
+                    .tier = tier,
+                    .isRemote = isRemote,
+                    .isHead = isHead,
+                    .isPages = isPages,
+                    .info = std::move(info)
+                });
+            };
+
+            for (const auto& lb : locals)
+            {
+                addSeed(lb.name, false, lb.isHead);
+            }
+
+            for (const auto& rb : remotes)
+            {
+                bool matchedLocal = false;
+                for (const auto& lb : locals)
+                {
+                    if (rb.name == (QLatin1String("origin/") + lb.name) ||
+                        rb.name.endsWith(QLatin1String("/") + lb.name))
+                    {
+                        matchedLocal = true;
+                        break;
+                    }
+                }
+                if (!matchedLocal)
+                {
+                    addSeed(rb.name, true, false);
+                }
+            }
+        }
+
+        if (seeds.empty())
+        {
+            return;
+        }
+
+        std::stable_sort(seeds.begin(), seeds.end(), [](const BranchSeed& a, const BranchSeed& b)
+        {
+            if (a.tier != b.tier) return a.tier < b.tier;
+            if (a.isRemote != b.isRemote) return !a.isRemote;
+            if (a.isHead != b.isHead) return a.isHead;
+            if (a.isPages != b.isPages) return !a.isPages;
+            return a.commitIdx < b.commitIdx;
+        });
+
+        std::vector<int> ownerSeed(n, -1);
+
+        // Pass 1: First-parent chains so each branch owns its direct lineage before merges claim side branches.
+        for (int s = 0; s < static_cast<int>(seeds.size()); ++s)
+        {
+            int u = seeds[static_cast<std::size_t>(s)].commitIdx;
+            while (u >= 0 && ownerSeed[static_cast<std::size_t>(u)] == -1)
+            {
+                ownerSeed[static_cast<std::size_t>(u)] = s;
+                const auto& ps = parentsIdx[static_cast<std::size_t>(u)];
+                u = ps.empty() ? -1 : ps[0];
+            }
+        }
+
+        // Pass 2: Expand through merged/secondary parents for commits whose original branch tip no longer exists.
+        std::vector<std::uint32_t> visitStamp(n, 0);
+        std::uint32_t currentStamp = 0;
+        std::vector<int> stack;
+        stack.reserve(std::min<std::size_t>(n, 256));
+
+        for (int s = 0; s < static_cast<int>(seeds.size()); ++s)
+        {
+            const int rootIdx = seeds[static_cast<std::size_t>(s)].commitIdx;
+            if (ownerSeed[static_cast<std::size_t>(rootIdx)] != s)
+            {
+                continue;
+            }
+
+            ++currentStamp;
+            if (currentStamp == 0)
+            {
+                std::fill(visitStamp.begin(), visitStamp.end(), 0);
+                currentStamp = 1;
+            }
+
+            visitStamp[static_cast<std::size_t>(rootIdx)] = currentStamp;
+            stack.clear();
+            stack.push_back(rootIdx);
+
+            while (!stack.empty())
+            {
+                const int u = stack.back();
+                stack.pop_back();
+                for (const int pIdx : parentsIdx[static_cast<std::size_t>(u)])
+                {
+                    if (visitStamp[static_cast<std::size_t>(pIdx)] == currentStamp)
+                    {
+                        continue;
+                    }
+                    const int existingOwner = ownerSeed[static_cast<std::size_t>(pIdx)];
+                    if (existingOwner == -1)
+                    {
+                        ownerSeed[static_cast<std::size_t>(pIdx)] = s;
+                        visitStamp[static_cast<std::size_t>(pIdx)] = currentStamp;
+                        stack.push_back(pIdx);
+                    }
+                    else if (existingOwner == s)
+                    {
+                        visitStamp[static_cast<std::size_t>(pIdx)] = currentStamp;
+                        stack.push_back(pIdx);
+                    }
+                }
+            }
+        }
+
+        m_inferredBranches.reserve(n);
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            const int s = ownerSeed[i];
+            if (s >= 0 && !m_rawCommits[i].sha.empty())
+            {
+                m_inferredBranches.emplace(m_rawCommits[i].sha, seeds[static_cast<std::size_t>(s)].info);
+            }
+        }
+    }
+
+    const CommitHistoryListModel::InferredBranchInfo* CommitHistoryListModel::inferredBranchForCommit(
+        const git::bo::GitCommitLogItem& commit) const noexcept
+    {
+        if (commit.sha.empty() || commit.sha == "WIP" || isStashCommit(commit))
+        {
+            return nullptr;
+        }
+        if (auto it = m_inferredBranches.find(commit.sha); it != m_inferredBranches.end())
+        {
+            return &it->second;
+        }
+        return nullptr;
+    }
+
     void CommitHistoryListModel::setCommits(std::vector<gf::git::bo::GitCommitLogItem> commits, bool isFullDag)
     {
         beginResetModel();
@@ -1683,6 +2057,7 @@ namespace gf::desktop
         m_rawCommits = std::move(commits);
         m_headSha = findHeadSha(m_rawCommits);
         computeBranchCommitCounts();
+        computeInferredBranches();
         applyWipAndRebuild();
         endResetModel();
         indexAvatarsFromCommits();

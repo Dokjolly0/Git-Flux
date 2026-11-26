@@ -2377,6 +2377,9 @@ Rectangle {
                         required property bool isStash
                         required property string stashSelector
                         required property int branchCommitCount
+                        required property string inferredBranch
+                        required property string inferredBranchColor
+                        required property string inferredBranchBgColor
                         required property int index
 
                         width: commitTableListView.width
@@ -2384,6 +2387,21 @@ Rectangle {
 
                         property bool isSelected: (root.selectedCommit && root.selectedCommit.sha === commitRow.sha)
                         property bool isHoveredTargetRow: (root.draggingBranchName !== "" && root.hoveredTargetBranch !== "" && commitRow.structuredDecorations && commitRow.structuredDecorations.length > 0 && root.hasBranchDecoration(commitRow.structuredDecorations, root.hoveredTargetBranch))
+                        readonly property bool showHoverBranchBadge: rowHover.hovered
+                            && root.draggingBranchName === ""
+                            && commitRow.sha !== "WIP"
+                            && !commitRow.isStash
+                            && commitRow.inferredBranch !== ""
+                            && !branchTagCol.hasBranchBadge
+                        readonly property int hoverCommitCount: (commitRow.showHoverBranchBadge
+                            && root.branchManager && root.branchManager.commitHistory
+                            && root.branchManager.commitHistory.reachableCommitCount)
+                            ? root.branchManager.commitHistory.reachableCommitCount(commitRow.sha)
+                            : 0
+
+                        HoverHandler {
+                            id: rowHover
+                        }
 
                         function findBadgeAtViewportPos(viewportItem, vx, vy) {
                             for (let i = 0; i < badgeRepeater.count; ++i) {
@@ -2411,7 +2429,7 @@ Rectangle {
                             ? "#1E3A8A55"
                             : (isSelected
                                 ? "#1A2E4C" // GitKraken blue row selection
-                                : (rowMouse.containsMouse ? "#161B2288" : "transparent"))
+                                : (rowHover.hovered ? "#161B2288" : "transparent"))
                         border.color: commitRow.isHoveredTargetRow ? "#38BDF8" : "transparent"
                         border.width: commitRow.isHoveredTargetRow ? 1.5 : 0
 
@@ -2481,6 +2499,13 @@ Rectangle {
                                 // the first local/remote/tag). The others collapse into a "+N" chip
                                 // that opens a popup with the full list, so the column never overflows.
                                 readonly property var allDecs: commitRow.structuredDecorations || []
+                                readonly property bool hasBranchBadge: {
+                                    for (let i = 0; i < allDecs.length; ++i) {
+                                        const d = allDecs[i];
+                                        if (d && (d.type === "local" || d.type === "remote")) return true;
+                                    }
+                                    return false;
+                                }
                                 readonly property int primaryIndex: {
                                     for (let i = 0; i < allDecs.length; ++i) {
                                         if (allDecs[i] && allDecs[i].isHead) return i;
@@ -2728,6 +2753,40 @@ Rectangle {
                                             }
                                         }
                                     }
+
+                                    // Hover-only branch indicator for commits without a branch tip stopped here
+                                    Rectangle {
+                                        id: hoverBranchBadge
+                                        readonly property int usedWidth:
+                                            (badgeRepeater.count > 0 && badgeRepeater.itemAt(0) ? badgeRepeater.itemAt(0).width + badgeRow.spacing : 0)
+                                            + (moreChip.visible ? moreChip.width + badgeRow.spacing : 0)
+                                            + (commitCountBadge.visible ? commitCountBadge.width + countRightConnector.width + 6 : 0)
+                                        readonly property int desiredWidth: Math.min(
+                                            Math.max(0, branchTagCol.width - 6 - branchTagCol.minConnectorWidth - usedWidth),
+                                            hoverBranchText.implicitWidth + 14)
+
+                                        visible: commitRow.showHoverBranchBadge && desiredWidth >= 28
+                                        height: 22
+                                        width: visible ? desiredWidth : 0
+                                        radius: 4
+                                        color: commitRow.inferredBranchBgColor || "#0F172ACC"
+                                        border.color: commitRow.inferredBranchColor || commitRow.graphColor || "#06B6D4"
+                                        border.width: 1
+                                        opacity: 0.88
+                                        clip: true
+
+                                        Text {
+                                            id: hoverBranchText
+                                            anchors.centerIn: parent
+                                            width: Math.max(0, parent.width - 8)
+                                            text: "🌿 " + commitRow.inferredBranch
+                                            color: "#E2E8F0"
+                                            font.pixelSize: 11
+                                            font.weight: Font.DemiBold
+                                            elide: Text.ElideMiddle
+                                            horizontalAlignment: Text.AlignHCenter
+                                        }
+                                    }
                                 }
 
                                 // Horizontal connecting line from the badges to the commit count pill (or graph column):
@@ -2739,14 +2798,25 @@ Rectangle {
                                     anchors.rightMargin: commitCountBadge.visible ? 2 : 0
                                     anchors.verticalCenter: parent.verticalCenter
                                     height: 2
-                                    color: commitRow.isStash ? "#F59E0B" : (commitRow.graphColor || "#06B6D4")
-                                    visible: branchTagCol.allDecs.length > 0
+                                    color: commitRow.isStash
+                                        ? "#F59E0B"
+                                        : (branchTagCol.allDecs.length > 0
+                                            ? (commitRow.graphColor || "#06B6D4")
+                                            : (commitRow.inferredBranchColor || commitRow.graphColor || "#06B6D4"))
+                                    opacity: (branchTagCol.allDecs.length > 0) ? 1.0 : 0.45
+                                    visible: branchTagCol.allDecs.length > 0 || hoverBranchBadge.visible
                                 }
 
                                 // Commit count pill ("x commit") inline along the connector before the graph
                                 Rectangle {
                                     id: commitCountBadge
-                                    visible: commitRow.branchCommitCount > 0 && branchTagCol.allDecs.length > 0 && branchTagCol.width >= 165
+                                    readonly property bool isHoverCount: commitRow.branchCommitCount === 0 && commitRow.hoverCommitCount > 0
+                                    readonly property int displayCount: commitRow.branchCommitCount > 0
+                                        ? commitRow.branchCommitCount
+                                        : commitRow.hoverCommitCount
+                                    visible: displayCount > 0
+                                        && (branchTagCol.allDecs.length > 0 || commitRow.showHoverBranchBadge)
+                                        && branchTagCol.width >= 165
                                     anchors.right: countRightConnector.left
                                     anchors.rightMargin: 2
                                     anchors.verticalCenter: parent.verticalCenter
@@ -2754,14 +2824,17 @@ Rectangle {
                                     width: visible ? (commitCountText.implicitWidth + 12) : 0
                                     radius: 9
                                     color: "#161B22"
-                                    border.color: commitRow.graphColor || "#06B6D4"
+                                    border.color: isHoverCount
+                                        ? (commitRow.inferredBranchColor || commitRow.graphColor || "#06B6D4")
+                                        : (commitRow.graphColor || "#06B6D4")
                                     border.width: 1
+                                    opacity: isHoverCount ? 0.85 : 1.0
                                     z: 5
 
                                     Text {
                                         id: commitCountText
                                         anchors.centerIn: parent
-                                        text: commitRow.branchCommitCount + " commit"
+                                        text: commitCountBadge.displayCount + " commit"
                                         color: "#CBD5E1"
                                         font.pixelSize: 10
                                         font.weight: Font.Medium
@@ -2773,9 +2846,13 @@ Rectangle {
 
                                     ToolTip.visible: commitCountHover.hovered
                                     ToolTip.delay: 400
-                                    ToolTip.text: commitRow.branchCommitCount === 1
-                                        ? "1 commit totale su questo branch (rev-list --count)"
-                                        : (commitRow.branchCommitCount + " commit totali su questo branch (rev-list --count)")
+                                    ToolTip.text: commitCountBadge.isHoverCount
+                                        ? (commitCountBadge.displayCount === 1
+                                            ? "1 commit fino a questo punto (rev-list --count)"
+                                            : (commitCountBadge.displayCount + " commit fino a questo punto (rev-list --count)"))
+                                        : (commitCountBadge.displayCount === 1
+                                            ? "1 commit totale su questo branch (rev-list --count)"
+                                            : (commitCountBadge.displayCount + " commit totali su questo branch (rev-list --count)"))
                                 }
 
                                 // Short connecting segment between the commit count pill and the graph column
@@ -2785,7 +2862,12 @@ Rectangle {
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: 10
                                     height: 2
-                                    color: commitRow.isStash ? "#F59E0B" : (commitRow.graphColor || "#06B6D4")
+                                    color: commitRow.isStash
+                                        ? "#F59E0B"
+                                        : (commitCountBadge.isHoverCount
+                                            ? (commitRow.inferredBranchColor || commitRow.graphColor || "#06B6D4")
+                                            : (commitRow.graphColor || "#06B6D4"))
+                                    opacity: commitCountBadge.isHoverCount ? 0.45 : 1.0
                                     visible: commitCountBadge.visible
                                 }
                             }
@@ -2867,6 +2949,17 @@ Rectangle {
                                         }
                                         ctx.setLineDash([]);
                                     }
+                                }
+
+                                // Lightweight horizontal connector into the node when showing the hover-only branch pill
+                                Rectangle {
+                                    visible: hoverBranchBadge.visible && branchTagCol.allDecs.length === 0
+                                    x: 0
+                                    width: Math.max(0, 14 + (commitRow.graphLane !== undefined ? commitRow.graphLane : 0) * 22)
+                                    height: 2
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    color: commitRow.inferredBranchColor || commitRow.graphColor || "#06B6D4"
+                                    opacity: 0.45
                                 }
 
                                 // 0. WIP Node: Dashed Amber Ring (20x20)

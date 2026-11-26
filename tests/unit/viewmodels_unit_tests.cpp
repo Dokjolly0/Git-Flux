@@ -2039,6 +2039,96 @@ TEST_CASE (
         CHECK(model.findTargetBranchAt(4, "develop").isEmpty()); // Stash commit
         CHECK(model.findTargetBranchAt(5, "develop").isEmpty()); // Plain commit
     }
+
+    SECTION("CommitHistoryListModel infers owning branch for commits without a branch tip") {
+        CommitHistoryListModel model;
+
+        // DAG:
+        // D2 [HEAD -> develop, origin/develop] -> parents: [D1, X2]
+        // X2 (deleted merged branch) -> parents: [X1]
+        // X1 -> parents: [D1]
+        // F2 [feature/old] -> parents: [F1]
+        // F1 -> parents: [M2]
+        // D1 (merge of F2) -> parents: [M2, F2]
+        // M2 [main, origin/main] -> parents: [M1]
+        // M1 -> parents: []
+        // G2 [origin/gh-pages] -> parents: [G1]
+        // G1 -> parents: []
+        // S0 [refs/stash] -> parents: [D2]
+        auto makeCommit = [](std::string sha, std::string subj, std::vector<std::string> parents, std::vector<std::string> decs = {}) {
+            gf::git::bo::GitCommitLogItem c;
+            c.sha = std::move(sha);
+            c.shortSha = c.sha;
+            c.subject = std::move(subj);
+            c.parents = std::move(parents);
+            c.refDecorations = std::move(decs);
+            return c;
+        };
+
+        std::vector<gf::git::bo::GitCommitLogItem> commits = {
+            makeCommit("S0", "On develop: stash", {"D2"}, {"refs/stash"}),
+            makeCommit("D2", "Merge deleted branch into develop", {"D1", "X2"}, {"HEAD -> develop", "origin/develop"}),
+            makeCommit("X2", "Deleted feature tip", {"X1"}),
+            makeCommit("X1", "Deleted feature base", {"D1"}),
+            makeCommit("F2", "Old feature tip", {"F1"}, {"feature/old"}),
+            makeCommit("F1", "Old feature work", {"M2"}),
+            makeCommit("D1", "Develop commit", {"M2", "F2"}),
+            makeCommit("M2", "Main tip", {"M1"}, {"main", "origin/main"}),
+            makeCommit("M1", "Initial main commit", {}),
+            makeCommit("G2", "Pages tip", {"G1"}, {"origin/gh-pages"}),
+            makeCommit("G1", "Pages older commit", {})
+        };
+
+        model.setCommits(commits, true);
+        model.setWip(true, 1);
+
+        auto inferred = [&](const QString& sha) {
+            const int row = model.indexOfSha(sha);
+            REQUIRE(row >= 0);
+            return model.data(model.index(row), CommitHistoryListModel::InferredBranchRole).toString();
+        };
+
+        CHECK(model.data(model.index(0), CommitHistoryListModel::InferredBranchRole).toString().isEmpty()); // WIP
+        CHECK(inferred("S0").isEmpty()); // Stash
+        CHECK(inferred("D2") == "develop");
+        CHECK(inferred("D1") == "develop");
+        CHECK(inferred("X2") == "develop"); // Deleted merged branch falls back to develop
+        CHECK(inferred("X1") == "develop");
+        CHECK(inferred("F2") == "feature/old");
+        CHECK(inferred("F1") == "feature/old"); // Existing feature branch keeps its first-parent commits
+        CHECK(inferred("M2") == "main");
+        CHECK(inferred("M1") == "main");
+        CHECK(inferred("G2") == "origin/gh-pages");
+        CHECK(inferred("G1") == "origin/gh-pages");
+        CHECK(model.data(model.index(model.indexOfSha("G1")), CommitHistoryListModel::InferredBranchColorRole).toString() == "#A855F7");
+
+        // Filtering preserves the full-DAG inferred branch
+        model.setSearchFilter("Old feature work");
+        REQUIRE(model.rowCount() == 1);
+        CHECK(model.data(model.index(0), CommitHistoryListModel::InferredBranchRole).toString() == "feature/old");
+        // Progressive reachable commit counts work even on intermediate commits and while filtered
+        CHECK(model.reachableCommitCount("F1") == 3); // F1 -> M2 -> M1
+        model.setSearchFilter("");
+
+        // Verify progressive reachableCommitCount along the DAG (no double-counting on merges)
+        CHECK(model.reachableCommitCount("WIP") == 0);
+        CHECK(model.reachableCommitCount("S0") == 0);
+        CHECK(model.reachableCommitCount("M1") == 1);
+        CHECK(model.reachableCommitCount("M2") == 2);
+        CHECK(model.reachableCommitCount("F1") == 3);
+        CHECK(model.reachableCommitCount("F2") == 4);
+        CHECK(model.reachableCommitCount("D1") == 5); // D1 + M2 + M1 + F2 + F1
+        CHECK(model.reachableCommitCount("X1") == 6); // X1 + D1 subtree (5)
+        CHECK(model.reachableCommitCount("X2") == 7);
+        CHECK(model.reachableCommitCount("D2") == 8); // D2 + D1(5) + X2 + X1 (no double-count)
+        CHECK(model.reachableCommitCount("G1") == 1);
+        CHECK(model.reachableCommitCount("G2") == 2);
+
+        // Partial DAG suppresses reachableCommitCount
+        model.setCommits(commits, false);
+        CHECK(model.reachableCommitCount("D1") == 0);
+        CHECK(model.reachableCommitCount("M1") == 0);
+    }
 }
 
 TEST_CASE (
