@@ -51,7 +51,6 @@ Rectangle {
     property string hoveredTargetBranch: ""
 
     // Commit message editing (reword)
-    property bool isEditingMessage: false
     property string pendingSelectSha: ""   // new SHA to select once the history reloads after a reword
     // Selection reads are asynchronous (latest wins): apply only what matches the current selection.
     Connections {
@@ -69,19 +68,15 @@ Rectangle {
         }
     }
 
-    // Ids of the asynchronous operations started by the message editor / rename dialog.
-    property int pendingRewordOperationId: 0
+    // Id of the asynchronous operation started by the rename dialog.
     property int pendingRenameOperationId: 0
 
     Connections {
         target: root.branchManager
-        enabled: root.pendingRewordOperationId !== 0 || root.pendingRenameOperationId !== 0
+        enabled: root.pendingRenameOperationId !== 0
 
         function onOperationFinished(operationId, success, message) {
-            if (operationId === root.pendingRewordOperationId) {
-                root.pendingRewordOperationId = 0;
-                if (success) root.isEditingMessage = false;
-            } else if (operationId === root.pendingRenameOperationId) {
+            if (operationId === root.pendingRenameOperationId) {
                 root.pendingRenameOperationId = 0;
                 if (success) renameBranchModal.close();
                 else renameErrorText.text = message;
@@ -94,33 +89,7 @@ Rectangle {
 
     function startMessageEdit() {
         if (!root.selectedCommit || root.isWipSelected || root.isStashSelected || !root.branchManager) return;
-        editSubjectField.text = root.selectedCommit.subject || "";
-        editBodyArea.text = root.selectedCommit.body || "";
-        root.isEditingMessage = true;
-        editSubjectField.forceActiveFocus();
-        editSubjectField.selectAll();
-    }
-
-    function cancelMessageEdit() {
-        root.isEditingMessage = false;
-    }
-
-    function saveMessageEdit() {
-        if (!root.selectedCommit || !root.branchManager) return;
-        const subject = editSubjectField.text.trim();
-        if (subject.length === 0) return;
-        const body = editBodyArea.text.replace(/\s+$/, "");
-        const message = body.length > 0 ? (subject + "\n\n" + body) : subject;
-        const original = (root.selectedCommit.subject || "") + ((root.selectedCommit.body || "").replace(/\s+$/, "").length > 0
-            ? "\n\n" + root.selectedCommit.body.replace(/\s+$/, "") : "");
-        if (message === original) {
-            root.isEditingMessage = false;
-            return;
-        }
-        // Asynchronous: leave edit mode once the reword succeeded (keep the text on failure).
-        if (root.pendingRewordOperationId === 0 && root.branchManager.rewordCommit(root.selectedCommit.sha, message)) {
-            root.pendingRewordOperationId = root.branchManager.lastOperationId;
-        }
+        editCommitMessageModal.openForCommit(root.selectedCommit, root.selectedIsHead);
     }
 
     function selectCommitBySha(sha) {
@@ -667,9 +636,6 @@ Rectangle {
     }
 
     function selectCommit(commit) {
-        if (!root.selectedCommit || !commit || root.selectedCommit.sha !== commit.sha) {
-            root.isEditingMessage = false;
-        }
         root.selectedCommit = commit;
         root.selectedFile = null;
         root.isDiffOpen = false;
@@ -2534,7 +2500,7 @@ Rectangle {
 
                         // Quick action: Edit commit message (reword)
                         Rectangle {
-                            visible: !root.isEditingMessage && !root.isStashSelected
+                            visible: !root.isStashSelected
                             Layout.preferredHeight: 24
                             implicitWidth: editMsgText.implicitWidth + 18
                             radius: 4
@@ -2606,7 +2572,6 @@ Rectangle {
 
                     // Commit Message (large bold title) — double-click to edit
                     Text {
-                        visible: !root.isEditingMessage
                         text: root.selectedCommit ? root.selectedCommit.subject : ""
                         color: "#FFFFFF"
                         font.pixelSize: 14
@@ -2620,161 +2585,13 @@ Rectangle {
                         }
                     }
 
-                    // Inline message editor (reword)
-                    ColumnLayout {
-                        visible: root.isEditingMessage
-                        Layout.fillWidth: true
-                        spacing: 6
-
-                        TextField {
-                            id: editSubjectField
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 32
-                            placeholderText: "Titolo del commit"
-                            color: "#FFFFFF"
-                            font.pixelSize: 13
-                            font.bold: true
-                            selectByMouse: true
-                            background: Rectangle {
-                                color: "#0D1117"
-                                radius: 4
-                                border.color: editSubjectField.activeFocus ? "#A855F7" : "#30363D"
-                                border.width: 1
-                            }
-                            Keys.onEscapePressed: root.cancelMessageEdit()
-                            Keys.onReturnPressed: editBodyArea.forceActiveFocus()
-                            Keys.onEnterPressed: editBodyArea.forceActiveFocus()
-                        }
-
-                        Text {
-                            visible: editSubjectField.text.length > 72
-                            text: "Titolo lungo (" + editSubjectField.text.length + " caratteri): consigliati al massimo 72"
-                            color: "#F59E0B"
-                            font.pixelSize: 10
-                        }
-
-                        ScrollView {
-                            SmoothWheelScroller {}
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 110
-                            clip: true
-                            ScrollBar.vertical: FluxScrollBar {
-                            }
-
-                            TextArea {
-                                id: editBodyArea
-                                placeholderText: "Descrizione (opzionale)"
-                                color: "#CBD5E1"
-                                font.pixelSize: 11
-                                wrapMode: TextEdit.Wrap
-                                selectByMouse: true
-                                background: Rectangle {
-                                    color: "#0D1117"
-                                    radius: 4
-                                    border.color: editBodyArea.activeFocus ? "#A855F7" : "#30363D"
-                                    border.width: 1
-                                }
-                                Keys.onEscapePressed: root.cancelMessageEdit()
-                                Keys.onPressed: function (event) {
-                                    if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
-                                            && (event.modifiers & Qt.ControlModifier) !== 0) {
-                                        root.saveMessageEdit();
-                                        event.accepted = true;
-                                    }
-                                }
-                            }
-                        }
-
-                        // Warning: rewriting history
-                        Rectangle {
-                            Layout.fillWidth: true
-                            implicitHeight: rewordWarnText.implicitHeight + 12
-                            radius: 4
-                            color: "#2A1F0A"
-                            border.color: "#92400E"
-                            border.width: 1
-
-                            Text {
-                                id: rewordWarnText
-                                anchors.fill: parent
-                                anchors.margins: 6
-                                wrapMode: Text.Wrap
-                                color: "#FCD34D"
-                                font.pixelSize: 10
-                                text: root.selectedIsHead
-                                    ? "Il commit verrà riscritto (amend) con un nuovo SHA. Se è già stato pushato servirà un force push."
-                                    : "Il commit non è l'ultimo del branch: verrà eseguito un rebase che riscrive anche tutti i commit successivi (nuovi SHA). Il contenuto dei file non cambia. Se sono già stati pushati servirà un force push."
-                            }
-                        }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-
-                            Text {
-                                text: "Ctrl+Invio per salvare · Esc per annullare"
-                                color: "#6E7681"
-                                font.pixelSize: 10
-                                Layout.fillWidth: true
-                                elide: Text.ElideRight
-                            }
-
-                            Button {
-                                text: "Annulla"
-                                Layout.preferredHeight: 28
-                                leftPadding: 12
-                                rightPadding: 12
-                                hoverEnabled: true
-                                background: Rectangle {
-                                    color: parent.hovered ? "#1E2B3E" : "#151E2C"
-                                    radius: 7
-                                    border.color: "#28374E"
-                                    border.width: 1
-                                }
-                                contentItem: Text {
-                                    text: parent.text
-                                    color: "#CBD5E1"
-                                    font.pixelSize: 11
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                                onClicked: root.cancelMessageEdit()
-                            }
-
-                            Button {
-                                text: root.selectedIsHead ? "Salva" : "Salva e riscrivi"
-                                Layout.preferredHeight: 28
-                                leftPadding: 12
-                                rightPadding: 12
-                                hoverEnabled: true
-                                enabled: editSubjectField.text.trim().length > 0
-                                         && !(root.branchManager && root.branchManager.isBusy)
-                                background: Rectangle {
-                                    color: parent.enabled ? (parent.hovered ? "#9333EA" : "#7E22CE") : "#161F2E"
-                                    radius: 7
-                                    border.color: parent.enabled ? "#A855F7" : "#222F42"
-                                    border.width: 1
-                                }
-                                contentItem: Text {
-                                    text: parent.text
-                                    color: parent.enabled ? "#FFFFFF" : "#475569"
-                                    font.bold: true
-                                    font.pixelSize: 11
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                                onClicked: root.saveMessageEdit()
-                            }
-                        }
-                    }
-
                     // Extended body (if present)
                     // Shown in full: grows with the text up to a cap, then scrolls,
                     // so a long description never squeezes the changed-files list.
                     ScrollView {
                         id: bodyScroll
                         SmoothWheelScroller {}
-                        visible: !root.isEditingMessage && root.selectedCommit && root.selectedCommit.body && root.selectedCommit.body.length > 0
+                        visible: root.selectedCommit && root.selectedCommit.body && root.selectedCommit.body.length > 0
                         Layout.fillWidth: true
                         Layout.preferredHeight: Math.min(bodyText.implicitHeight, 200)
                         clip: true
@@ -4998,6 +4815,14 @@ Rectangle {
                 }
             }
         }
+    }
+
+    // ==========================================
+    // EDIT COMMIT MESSAGE MODAL (Reword)
+    // ==========================================
+    EditCommitMessageModal {
+        id: editCommitMessageModal
+        branchManager: root.branchManager
     }
 
     // ==========================================

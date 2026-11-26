@@ -11,6 +11,7 @@ Rectangle {
     signal closeRequested()
 
     color: "#161F2E"
+    implicitHeight: 46
     height: 46
     radius: 14
 

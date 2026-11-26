@@ -343,6 +343,7 @@ if (GF_BUILD_DESKTOP)
             src/desktop/ui/qml/views/PullRequestModal.qml
             src/desktop/ui/qml/views/CreateTagModal.qml
             src/desktop/ui/qml/views/CreateWorktreeModal.qml
+            src/desktop/ui/qml/views/EditCommitMessageModal.qml
             src/desktop/ui/qml/views/ForcePushConfirmModal.qml
             RESOURCES
             assets/logo.png
