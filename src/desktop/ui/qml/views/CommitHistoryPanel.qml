@@ -30,6 +30,10 @@ Rectangle {
     property string fileCategoryFilter: "all" // "all" | "M" | "A" | "D" | "R"
     property string fileSortOrder: "name_asc" // "name_asc" | "name_desc" | "git"
     property var treeItems: []
+    property var wipUnstagedTreeItems: []
+    property var wipStagedTreeItems: []
+    property bool wipUnstagedExpanded: true
+    property bool wipStagedExpanded: true
     property var collapsedFolders: ({})
     property string fileSearchQuery: ""
 
@@ -270,6 +274,48 @@ Rectangle {
         return list;
     }
 
+    readonly property var wipUnstagedPathFiles: {
+        if (!root.isWipSelected || !root.sortedPathFiles) return [];
+        const list = [];
+        for (let i = 0; i < root.sortedPathFiles.length; ++i) {
+            const f = root.sortedPathFiles[i];
+            if (f && f.isStaged !== true) {
+                list.push(f);
+            }
+        }
+        return list;
+    }
+
+    readonly property var wipStagedPathFiles: {
+        if (!root.isWipSelected || !root.sortedPathFiles) return [];
+        const list = [];
+        for (let i = 0; i < root.sortedPathFiles.length; ++i) {
+            const f = root.sortedPathFiles[i];
+            if (f && f.isStaged === true) {
+                list.push(f);
+            }
+        }
+        return list;
+    }
+
+    readonly property int wipUnstagedTotalCount: {
+        if (!root.isWipSelected || !root.commitFiles) return 0;
+        let count = 0;
+        for (let i = 0; i < root.commitFiles.length; ++i) {
+            if (root.commitFiles[i] && root.commitFiles[i].isStaged !== true) count++;
+        }
+        return count;
+    }
+
+    readonly property int wipStagedTotalCount: {
+        if (!root.isWipSelected || !root.commitFiles) return 0;
+        let count = 0;
+        for (let i = 0; i < root.commitFiles.length; ++i) {
+            if (root.commitFiles[i] && root.commitFiles[i].isStaged === true) count++;
+        }
+        return count;
+    }
+
     onFileCategoryFilterChanged: {
         root.updateTreeItems();
     }
@@ -466,6 +512,701 @@ Rectangle {
             color: (resizerHandle.containsMouse || resizerHandle.pressed) ? "#38BDF8" : "#2B3647"
 
             Behavior on color { ColorAnimation { duration: 100 } }
+        }
+    }
+
+    component CommitFilesListBody: Item {
+        id: listBody
+        property var pathFiles: []
+        property var treeModel: []
+        property string treeScope: ""
+        property string emptyText: "Nessun file"
+        readonly property bool isEmpty: root.fileViewMode === "path"
+            ? (!pathFiles || pathFiles.length === 0)
+            : (!treeModel || treeModel.length === 0)
+
+        // 1. PATH VIEW (Flat list)
+        ScrollView {
+            anchors.fill: parent
+            clip: true
+            visible: root.fileViewMode === "path" && !listBody.isEmpty
+            ScrollBar.vertical: FluxScrollBar {}
+
+            ListView {
+                id: sectionPathList
+                SmoothWheelScroller {}
+                anchors.fill: parent
+                model: listBody.pathFiles
+                spacing: 2
+                boundsBehavior: Flickable.StopAtBounds
+                maximumFlickVelocity: 6000
+                flickDeceleration: 1000
+
+                delegate: Rectangle {
+                    id: fDelegate
+                    required property var modelData
+                    width: sectionPathList.width
+                    height: 28
+                    radius: 4
+
+                    readonly property bool isUntracked: modelData.kind === "untracked" || modelData.kind === "Untracked"
+                    readonly property bool isSelected: Boolean(root.selectedFile
+                        && root.selectedFile.path === modelData.path
+                        && (!root.isWipSelected || Boolean(root.selectedFile.isStaged) === Boolean(modelData.isStaged)))
+
+                    color: isSelected
+                        ? "#1E3A8A55"
+                        : (fileRowMouse.containsMouse ? "#1F242C" : "transparent")
+
+                    border.color: isSelected ? "#38BDF8" : "transparent"
+                    border.width: 1
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 8
+                        anchors.rightMargin: 8
+                        spacing: 6
+
+                        // Status icon
+                        Text {
+                            text: {
+                                if (modelData.isConflicted === true) return "⚔";
+                                if (modelData.status === "A") return "➕";
+                                if (modelData.status === "D") return "🗑️";
+                                if (modelData.status === "R" || modelData.status === "C") return "⇄";
+                                return "✏️";
+                            }
+                            color: "#F87171"
+                            font.pixelSize: 11
+                            ToolTip.visible: modelData.isConflicted === true && fileRowMouse.containsMouse
+                            ToolTip.text: "In conflitto: clic per risolvere"
+                        }
+
+                        // Directory dimmed
+                        Text {
+                            text: root.getDirectory(modelData.path)
+                            color: "#64748B"
+                            font.pixelSize: 11
+                            elide: Text.ElideMiddle
+                            Layout.maximumWidth: Math.max(60, Math.floor(fDelegate.width * 0.45))
+                            visible: text !== ""
+                        }
+
+                        // Filename highlighted
+                        Text {
+                            text: root.getFilename(modelData.path)
+                            color: fDelegate.isSelected ? "#38BDF8" : "#F1F5F9"
+                            font.bold: true
+                            font.pixelSize: 11
+                            elide: Text.ElideRight
+                            Layout.fillWidth: true
+                        }
+
+                        // Untracked pill badge
+                        Rectangle {
+                            visible: root.isWipSelected && fDelegate.isUntracked
+                            height: 16
+                            implicitWidth: untrackedPillText.implicitWidth + 10
+                            radius: 8
+                            color: Qt.alpha("#10B981", 0.14)
+                            border.color: Qt.alpha("#10B981", 0.45)
+                            border.width: 1
+
+                            Text {
+                                id: untrackedPillText
+                                anchors.centerIn: parent
+                                text: "Untracked"
+                                color: "#34D399"
+                                font.pixelSize: 9
+                                font.bold: true
+                            }
+                        }
+
+                        // Additions & Deletions
+                        RowLayout {
+                            spacing: 4
+                            Text {
+                                text: "+" + (modelData.additions || 0)
+                                color: "#34D399"
+                                font.pixelSize: 10
+                                font.bold: true
+                                visible: (modelData.additions || 0) > 0
+                            }
+                            Text {
+                                text: "-" + (modelData.deletions || 0)
+                                color: "#F87171"
+                                font.pixelSize: 10
+                                font.bold: true
+                                visible: (modelData.deletions || 0) > 0
+                            }
+                        }
+
+                        // WIP Staging controls per file
+                        RowLayout {
+                            z: 10
+                            visible: root.isWipSelected
+                            spacing: 4
+
+                            // Unstage button (-)
+                            Rectangle {
+                                visible: modelData.isStaged === true
+                                width: 20
+                                height: 20
+                                radius: 3
+                                color: unstageBtnMouse.containsMouse ? "#EF4444" : "#374151"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "-"
+                                    color: "#FFFFFF"
+                                    font.bold: true
+                                    font.pixelSize: 13
+                                }
+                                MouseArea {
+                                    id: unstageBtnMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    preventStealing: true
+                                    onClicked: function (mouse) {
+                                        mouse.accepted = true;
+                                        if (root.sessionVm && root.sessionVm.workingTree) {
+                                            root.sessionVm.workingTree.unstageFile(root.sessionVm.activeRepoPath, fDelegate.modelData.path);
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Stage button (+)
+                            Rectangle {
+                                visible: modelData.isStaged !== true
+                                width: 20
+                                height: 20
+                                radius: 3
+                                color: stageBtnMouse.containsMouse ? "#059669" : "#065F46"
+                                border.color: "#10B981"
+                                border.width: 1
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "+"
+                                    color: "#FFFFFF"
+                                    font.bold: true
+                                    font.pixelSize: 13
+                                }
+                                MouseArea {
+                                    id: stageBtnMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    preventStealing: true
+                                    onClicked: function (mouse) {
+                                        mouse.accepted = true;
+                                        if (root.sessionVm && root.sessionVm.workingTree) {
+                                            root.sessionVm.workingTree.stageFile(root.sessionVm.activeRepoPath, fDelegate.modelData.path);
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Discard button (trash)
+                            Rectangle {
+                                visible: modelData.isStaged !== true
+                                width: 20
+                                height: 20
+                                radius: 3
+                                color: discardBtnMouse.containsMouse ? "#7F1D1D" : "transparent"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "🗑️"
+                                    font.pixelSize: 10
+                                }
+                                MouseArea {
+                                    id: discardBtnMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    preventStealing: true
+                                    ToolTip.visible: containsMouse
+                                    ToolTip.text: "Scarta modifiche (ripristina file)"
+                                    onClicked: function (mouse) {
+                                        mouse.accepted = true;
+                                        if (root.sessionVm && root.sessionVm.workingTree) {
+                                            root.sessionVm.workingTree.discardFile(root.sessionVm.activeRepoPath, fDelegate.modelData.path);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    MouseArea {
+                        id: fileRowMouse
+                        z: 0
+                        anchors.fill: parent
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: function (mouse) {
+                            if (mouse.button === Qt.RightButton) {
+                                changedFileContextMenu.targetPath = fDelegate.modelData.path;
+                                changedFileContextMenu.popup();
+                            } else {
+                                root.openFileDiff(fDelegate.modelData);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. TREE VIEW (Hierarchical folder tree)
+        ScrollView {
+            anchors.fill: parent
+            clip: true
+            visible: root.fileViewMode === "tree" && !listBody.isEmpty
+            ScrollBar.vertical: FluxScrollBar {}
+
+            ListView {
+                id: sectionTreeList
+                SmoothWheelScroller {}
+                anchors.fill: parent
+                model: listBody.treeModel
+                spacing: 2
+                boundsBehavior: Flickable.StopAtBounds
+                maximumFlickVelocity: 6000
+                flickDeceleration: 1000
+
+                delegate: Rectangle {
+                    id: treeDelegate
+                    required property var modelData
+                    width: sectionTreeList.width
+                    height: 26
+                    radius: 4
+
+                    readonly property bool isFolder: modelData.isFolder
+                    readonly property bool isUntracked: !isFolder && modelData.file
+                        && (modelData.file.kind === "untracked" || modelData.file.kind === "Untracked")
+                    readonly property bool isSelected: (!isFolder && root.selectedFile
+                        && root.selectedFile.path === modelData.path
+                        && (!root.isWipSelected || Boolean(root.selectedFile.isStaged) === Boolean(modelData.isStaged)))
+
+                    color: isSelected
+                        ? "#1E3A8A55"
+                        : (treeRowMouse.containsMouse ? "#1F242C" : "transparent")
+
+                    border.color: isSelected ? "#38BDF8" : "transparent"
+                    border.width: 1
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 6 + (treeDelegate.isFolder ? (modelData.depth * 14) : ((modelData.depth + 1) * 14))
+                        anchors.rightMargin: 8
+                        spacing: 6
+
+                        // FOLDER ROW CONTENT
+                        Text {
+                            visible: treeDelegate.isFolder
+                            text: modelData.isCollapsed ? "▸" : "▾"
+                            color: "#94A3B8"
+                            font.pixelSize: 11
+                            Layout.preferredWidth: 12
+                        }
+
+                        Text {
+                            visible: treeDelegate.isFolder
+                            text: "📁"
+                            font.pixelSize: 11
+                        }
+
+                        Text {
+                            visible: treeDelegate.isFolder
+                            text: modelData.name || ""
+                            color: "#E2E8F0"
+                            font.bold: true
+                            font.pixelSize: 11
+                            elide: Text.ElideRight
+                            Layout.fillWidth: true
+                        }
+
+                        Rectangle {
+                            visible: treeDelegate.isFolder
+                            height: 16
+                            implicitWidth: folderCountText.implicitWidth + 8
+                            radius: 8
+                            color: "#21262D"
+
+                            Text {
+                                id: folderCountText
+                                anchors.centerIn: parent
+                                text: "" + (modelData.fileCount || 0)
+                                color: "#94A3B8"
+                                font.pixelSize: 9
+                                font.bold: true
+                            }
+                        }
+
+                        // FILE ROW CONTENT
+                        Text {
+                            visible: !treeDelegate.isFolder
+                            readonly property bool conflicted: !!modelData.file && modelData.file.isConflicted === true
+                            text: {
+                                if (conflicted) return "⚔";
+                                if (modelData.status === "A") return "➕";
+                                if (modelData.status === "D") return "🗑️";
+                                if (modelData.status === "R" || modelData.status === "C") return "⇄";
+                                return "✏️";
+                            }
+                            color: "#F87171"
+                            font.pixelSize: 11
+                            ToolTip.visible: conflicted && treeRowMouse.containsMouse
+                            ToolTip.text: "In conflitto: clic per risolvere"
+                        }
+
+                        Text {
+                            visible: !treeDelegate.isFolder
+                            text: modelData.name || ""
+                            color: treeDelegate.isSelected ? "#38BDF8" : "#F1F5F9"
+                            font.bold: true
+                            font.pixelSize: 11
+                            elide: Text.ElideRight
+                            Layout.fillWidth: true
+                        }
+
+                        Rectangle {
+                            visible: !treeDelegate.isFolder && root.isWipSelected && treeDelegate.isUntracked
+                            height: 16
+                            implicitWidth: treeUntrackedText.implicitWidth + 10
+                            radius: 8
+                            color: Qt.alpha("#10B981", 0.14)
+                            border.color: Qt.alpha("#10B981", 0.45)
+                            border.width: 1
+
+                            Text {
+                                id: treeUntrackedText
+                                anchors.centerIn: parent
+                                text: "Untracked"
+                                color: "#34D399"
+                                font.pixelSize: 9
+                                font.bold: true
+                            }
+                        }
+
+                        // Additions & Deletions
+                        RowLayout {
+                            visible: !treeDelegate.isFolder
+                            spacing: 4
+                            Text {
+                                text: "+" + (modelData.additions || 0)
+                                color: "#34D399"
+                                font.pixelSize: 10
+                                font.bold: true
+                                visible: (modelData.additions || 0) > 0
+                            }
+                            Text {
+                                text: "-" + (modelData.deletions || 0)
+                                color: "#F87171"
+                                font.pixelSize: 10
+                                font.bold: true
+                                visible: (modelData.deletions || 0) > 0
+                            }
+                        }
+
+                        // WIP Staging controls per file in Tree View
+                        RowLayout {
+                            z: 10
+                            visible: !treeDelegate.isFolder && root.isWipSelected
+                            spacing: 4
+
+                            Rectangle {
+                                visible: modelData.isStaged === true
+                                width: 20
+                                height: 20
+                                radius: 3
+                                color: treeUnstageBtnMouse.containsMouse ? "#EF4444" : "#374151"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "-"
+                                    color: "#FFFFFF"
+                                    font.bold: true
+                                    font.pixelSize: 13
+                                }
+                                MouseArea {
+                                    id: treeUnstageBtnMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    preventStealing: true
+                                    onClicked: function (mouse) {
+                                        mouse.accepted = true;
+                                        if (root.sessionVm && root.sessionVm.workingTree) {
+                                            root.sessionVm.workingTree.unstageFile(root.sessionVm.activeRepoPath, treeDelegate.modelData.path);
+                                        }
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                visible: modelData.isStaged !== true
+                                width: 20
+                                height: 20
+                                radius: 3
+                                color: treeStageBtnMouse.containsMouse ? "#059669" : "#065F46"
+                                border.color: "#10B981"
+                                border.width: 1
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "+"
+                                    color: "#FFFFFF"
+                                    font.bold: true
+                                    font.pixelSize: 13
+                                }
+                                MouseArea {
+                                    id: treeStageBtnMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    preventStealing: true
+                                    onClicked: function (mouse) {
+                                        mouse.accepted = true;
+                                        if (root.sessionVm && root.sessionVm.workingTree) {
+                                            root.sessionVm.workingTree.stageFile(root.sessionVm.activeRepoPath, treeDelegate.modelData.path);
+                                        }
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                visible: modelData.isStaged !== true
+                                width: 20
+                                height: 20
+                                radius: 3
+                                color: treeDiscardBtnMouse.containsMouse ? "#7F1D1D" : "transparent"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "🗑️"
+                                    font.pixelSize: 10
+                                }
+                                MouseArea {
+                                    id: treeDiscardBtnMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    preventStealing: true
+                                    ToolTip.visible: containsMouse
+                                    ToolTip.text: "Scarta modifiche (ripristina file)"
+                                    onClicked: function (mouse) {
+                                        mouse.accepted = true;
+                                        if (root.sessionVm && root.sessionVm.workingTree) {
+                                            root.sessionVm.workingTree.discardFile(root.sessionVm.activeRepoPath, treeDelegate.modelData.path);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    MouseArea {
+                        id: treeRowMouse
+                        z: 0
+                        anchors.fill: parent
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: function (mouse) {
+                            if (mouse.button === Qt.RightButton && !treeDelegate.isFolder && treeDelegate.modelData.file) {
+                                changedFileContextMenu.targetPath = treeDelegate.modelData.file.path;
+                                changedFileContextMenu.popup();
+                            } else if (treeDelegate.isFolder) {
+                                root.toggleFolder(listBody.treeScope + treeDelegate.modelData.fullPath);
+                            } else {
+                                root.openFileDiff(treeDelegate.modelData.file);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Empty state
+        Text {
+            anchors.centerIn: parent
+            width: Math.max(120, parent.width - 24)
+            visible: listBody.isEmpty
+            text: listBody.emptyText
+            color: "#64748B"
+            font.pixelSize: 11
+            wrapMode: Text.WordWrap
+            horizontalAlignment: Text.AlignHCenter
+        }
+    }
+
+    component WipSectionCard: Rectangle {
+        id: wipCard
+        property string titleText: ""
+        property color accentColor: "#F59E0B"
+        property int fileCount: 0
+        property string extraBadgeText: ""
+        property bool isExpanded: true
+        property bool showActionButton: false
+        property string actionText: ""
+        property color actionBgColor: "#065F46"
+        property color actionHoverColor: "#047857"
+        property color actionBorderColor: "#10B981"
+        property color actionTextColor: "#FFFFFF"
+        property var pathFiles: []
+        property var treeModel: []
+        property string treeScope: ""
+        property string emptyText: ""
+
+        signal toggleExpanded()
+        signal actionClicked()
+
+        radius: 8
+        color: "#0B1019"
+        border.color: fileCount > 0 ? Qt.alpha(accentColor, 0.38) : "#222F42"
+        border.width: 1
+        clip: true
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 0
+
+            // Section Header
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 34
+                implicitHeight: 34
+                color: sectionHeaderMouse.containsMouse
+                    ? Qt.alpha(wipCard.accentColor, 0.14)
+                    : Qt.alpha(wipCard.accentColor, 0.08)
+
+                MouseArea {
+                    id: sectionHeaderMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: wipCard.toggleExpanded()
+                }
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 8
+                    spacing: 7
+
+                    Text {
+                        text: wipCard.isExpanded ? "▾" : "▸"
+                        color: "#94A3B8"
+                        font.pixelSize: 11
+                        font.bold: true
+                    }
+
+                    Rectangle {
+                        width: 8
+                        height: 8
+                        radius: 4
+                        color: wipCard.accentColor
+                    }
+
+                    Text {
+                        text: wipCard.titleText
+                        color: "#F1F5F9"
+                        font.pixelSize: 11
+                        font.bold: true
+                        elide: Text.ElideRight
+                    }
+
+                    Rectangle {
+                        height: 18
+                        implicitWidth: secCountText.implicitWidth + 10
+                        radius: 9
+                        color: Qt.alpha(wipCard.accentColor, 0.18)
+                        border.color: Qt.alpha(wipCard.accentColor, 0.50)
+                        border.width: 1
+
+                        Text {
+                            id: secCountText
+                            anchors.centerIn: parent
+                            text: String(wipCard.fileCount)
+                            color: "#F8FAFC"
+                            font.pixelSize: 10
+                            font.bold: true
+                        }
+                    }
+
+                    Rectangle {
+                        visible: wipCard.extraBadgeText.length > 0
+                        height: 18
+                        implicitWidth: extraBadgeLabel.implicitWidth + 10
+                        radius: 9
+                        color: Qt.alpha("#10B981", 0.14)
+                        border.color: Qt.alpha("#10B981", 0.40)
+                        border.width: 1
+
+                        Text {
+                            id: extraBadgeLabel
+                            anchors.centerIn: parent
+                            text: wipCard.extraBadgeText
+                            color: "#34D399"
+                            font.pixelSize: 9
+                            font.bold: true
+                        }
+                    }
+
+                    Item {
+                        Layout.fillWidth: true
+                    }
+
+                    Rectangle {
+                        z: 2
+                        visible: wipCard.showActionButton
+                        Layout.preferredHeight: 22
+                        implicitWidth: secActionText.implicitWidth + 12
+                        radius: 4
+                        color: secActionMouse.containsMouse ? wipCard.actionHoverColor : wipCard.actionBgColor
+                        border.color: wipCard.actionBorderColor
+                        border.width: 1
+
+                        Text {
+                            id: secActionText
+                            anchors.centerIn: parent
+                            text: wipCard.actionText
+                            color: wipCard.actionTextColor
+                            font.pixelSize: 10
+                            font.bold: true
+                        }
+
+                        MouseArea {
+                            id: secActionMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            preventStealing: true
+                            onClicked: function (mouse) {
+                                mouse.accepted = true;
+                                wipCard.actionClicked();
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                visible: wipCard.isExpanded
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: "#1E293B"
+            }
+
+            CommitFilesListBody {
+                visible: wipCard.isExpanded
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.margins: 4
+                pathFiles: wipCard.pathFiles
+                treeModel: wipCard.treeModel
+                treeScope: wipCard.treeScope
+                emptyText: wipCard.emptyText
+            }
         }
     }
 
@@ -676,11 +1417,22 @@ Rectangle {
 
         if (root.isDiffOpen && root.selectedFile) {
             let found = false;
+            const targetIsStaged = (root.selectedFile.isStaged === true);
             for (let i = 0; i < root.commitFiles.length; ++i) {
-                if (root.commitFiles[i].path === root.selectedFile.path) {
+                if (root.commitFiles[i].path === root.selectedFile.path
+                        && (root.commitFiles[i].isStaged === true) === targetIsStaged) {
                     root.selectedFile = root.commitFiles[i];
                     found = true;
                     break;
+                }
+            }
+            if (!found) {
+                for (let i = 0; i < root.commitFiles.length; ++i) {
+                    if (root.commitFiles[i].path === root.selectedFile.path) {
+                        root.selectedFile = root.commitFiles[i];
+                        found = true;
+                        break;
+                    }
                 }
             }
             if (found && root.sessionVm.commitDiffViewer) {
@@ -693,13 +1445,12 @@ Rectangle {
         }
     }
 
-    function updateTreeItems() {
-        const files = root.filteredCommitFiles;
+    function buildTreeItemsForFiles(files, scopePrefix) {
         if (!files || files.length === 0) {
-            root.treeItems = [];
-            return;
+            return [];
         }
 
+        const prefix = scopePrefix || "";
         const rootNode = {name: "", fullPath: "", children: {}, files: [], fileCount: 0};
         for (let i = 0; i < files.length; ++i) {
             const f = files[i];
@@ -747,7 +1498,7 @@ Rectangle {
             for (let k = 0; k < childKeys.length; ++k) {
                 const key = childKeys[k];
                 const child = node.children[key];
-                const isCollapsed = (root.fileSearchQuery.trim() === "") && !!root.collapsedFolders[child.fullPath];
+                const isCollapsed = (root.fileSearchQuery.trim() === "") && !!root.collapsedFolders[prefix + child.fullPath];
                 items.push({
                     isFolder: true,
                     name: child.name,
@@ -794,7 +1545,19 @@ Rectangle {
         }
 
         traverse(rootNode, 0);
-        root.treeItems = items;
+        return items;
+    }
+
+    function updateTreeItems() {
+        if (root.isWipSelected) {
+            root.treeItems = [];
+            root.wipUnstagedTreeItems = root.buildTreeItemsForFiles(root.wipUnstagedPathFiles, "wip-unstaged:");
+            root.wipStagedTreeItems = root.buildTreeItemsForFiles(root.wipStagedPathFiles, "wip-staged:");
+        } else {
+            root.treeItems = root.buildTreeItemsForFiles(root.filteredCommitFiles, "commit:");
+            root.wipUnstagedTreeItems = [];
+            root.wipStagedTreeItems = [];
+        }
     }
 
     function toggleFolder(fullPath) {
@@ -810,19 +1573,27 @@ Rectangle {
     }
 
     function collapseAllFolders() {
-        const files = root.filteredCommitFiles;
         const c = {};
-        for (let i = 0; i < files.length; ++i) {
-            const cleanPath = files[i].path.replace(/\\/g, '/');
-            const parts = cleanPath.split('/').filter(function (p) {
-                return p.length > 0;
-            });
-            parts.pop();
-            let pStr = "";
-            for (let p = 0; p < parts.length; ++p) {
-                pStr = pStr ? (pStr + "/" + parts[p]) : parts[p];
-                c[pStr] = true;
+        function markFolders(files, prefix) {
+            if (!files) return;
+            for (let i = 0; i < files.length; ++i) {
+                const cleanPath = files[i].path.replace(/\\/g, '/');
+                const parts = cleanPath.split('/').filter(function (p) {
+                    return p.length > 0;
+                });
+                parts.pop();
+                let pStr = "";
+                for (let p = 0; p < parts.length; ++p) {
+                    pStr = pStr ? (pStr + "/" + parts[p]) : parts[p];
+                    c[prefix + pStr] = true;
+                }
             }
+        }
+        if (root.isWipSelected) {
+            markFolders(root.wipUnstagedPathFiles, "wip-unstaged:");
+            markFolders(root.wipStagedPathFiles, "wip-staged:");
+        } else {
+            markFolders(root.filteredCommitFiles, "commit:");
         }
         root.collapsedFolders = c;
         root.updateTreeItems();
@@ -3120,70 +3891,6 @@ Rectangle {
                         Layout.fillWidth: true
                     }
 
-                    // WIP Action: Stage All
-                    Rectangle {
-                        visible: root.isWipSelected && (root.sessionVm && root.sessionVm.workingTree && (root.sessionVm.workingTree.unstagedCount > 0 || root.sessionVm.workingTree.untrackedCount > 0))
-                        Layout.preferredHeight: 24
-                        implicitWidth: stageAllText.implicitWidth + 14
-                        radius: 4
-                        color: stageAllMouse.containsMouse ? "#047857" : "#065F46"
-                        border.color: "#10B981"
-                        border.width: 1
-
-                        Text {
-                            id: stageAllText
-                            anchors.centerIn: parent
-                            text: "+ Stage All"
-                            color: "#FFFFFF"
-                            font.pixelSize: 10
-                            font.bold: true
-                        }
-
-                        MouseArea {
-                            id: stageAllMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (root.sessionVm && root.sessionVm.workingTree) {
-                                    root.sessionVm.workingTree.stageAll(root.sessionVm.activeRepoPath);
-                                }
-                            }
-                        }
-                    }
-
-                    // WIP Action: Unstage All
-                    Rectangle {
-                        visible: root.isWipSelected && (root.sessionVm && root.sessionVm.workingTree && root.sessionVm.workingTree.stagedCount > 0)
-                        Layout.preferredHeight: 24
-                        implicitWidth: unstageAllText.implicitWidth + 14
-                        radius: 4
-                        color: unstageAllMouse.containsMouse ? "#374151" : "#1F2937"
-                        border.color: "#4B5563"
-                        border.width: 1
-
-                        Text {
-                            id: unstageAllText
-                            anchors.centerIn: parent
-                            text: "- Unstage All"
-                            color: "#94A3B8"
-                            font.pixelSize: 10
-                            font.bold: true
-                        }
-
-                        MouseArea {
-                            id: unstageAllMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (root.sessionVm && root.sessionVm.workingTree) {
-                                    root.sessionVm.workingTree.unstageAll(root.sessionVm.activeRepoPath);
-                                }
-                            }
-                        }
-                    }
-
                     // WIP Action: Discard All Changes
                     Rectangle {
                         visible: root.isWipSelected && (root.sessionVm && root.sessionVm.workingTree && !root.sessionVm.workingTree.isClean)
@@ -3220,7 +3927,9 @@ Rectangle {
 
                     // Tree mode only: Expand/Collapse All toggle
                     Rectangle {
-                        visible: root.fileViewMode === "tree" && root.treeItems.length > 0
+                        visible: root.fileViewMode === "tree" && (root.isWipSelected
+                            ? (root.wipUnstagedTreeItems.length > 0 || root.wipStagedTreeItems.length > 0)
+                            : root.treeItems.length > 0)
                         Layout.preferredHeight: 24
                         implicitWidth: expText.implicitWidth + 14
                         radius: 4
@@ -3362,483 +4071,102 @@ Rectangle {
                 }
 
                 // ==========================================
-                // 1. PATH VIEW (Flat list)
+                // COMMIT / STASH FILES LIST (when not WIP)
                 // ==========================================
-                ScrollView {
+                CommitFilesListBody {
+                    visible: !root.isWipSelected
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    clip: true
-                    visible: root.fileViewMode === "path"
-                    ScrollBar.vertical: FluxScrollBar {
-                    }
-
-                    ListView {
-                        id: gitKrakenFilesList
-                        SmoothWheelScroller {}
-                        anchors.fill: parent
-                        model: root.sortedPathFiles
-                        spacing: 2
-                        boundsBehavior: Flickable.StopAtBounds
-                        maximumFlickVelocity: 6000
-                        flickDeceleration: 1000
-
-                        delegate: Rectangle {
-                            id: fDelegate
-                            width: gitKrakenFilesList.width
-                            height: 28
-                            radius: 4
-
-                            property bool isSelected: (root.selectedFile && root.selectedFile.path === modelData.path)
-
-                            color: isSelected
-                                ? "#1E3A8A55"
-                                : (fileRowMouse.containsMouse ? "#1F242C" : "transparent")
-
-                            border.color: isSelected ? "#38BDF8" : "transparent"
-                            border.width: 1
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 8
-                                anchors.rightMargin: 8
-                                spacing: 6
-
-                                // Status icon (pencil for modified, plus for added, trash for deleted)
-                                Text {
-                                    text: {
-                                        if (modelData.isConflicted === true) return "⚔";
-                                        if (modelData.status === "A") return "➕";
-                                        if (modelData.status === "D") return "🗑️";
-                                        if (modelData.status === "R" || modelData.status === "C") return "⇄";
-                                        return "✏️";
-                                    }
-                                    color: "#F87171"
-                                    font.pixelSize: 11
-                                    ToolTip.visible: modelData.isConflicted === true && fileRowMouse.containsMouse
-                                    ToolTip.text: "In conflitto: clic per risolvere"
-                                }
-
-                                // Directory dimmed
-                                Text {
-                                    text: root.getDirectory(modelData.path)
-                                    color: "#64748B"
-                                    font.pixelSize: 11
-                                    elide: Text.ElideMiddle
-                                    Layout.maximumWidth: Math.max(60, Math.floor(fDelegate.width * 0.45))
-                                    visible: text !== ""
-                                }
-
-                                // Filename highlighted
-                                Text {
-                                    text: root.getFilename(modelData.path)
-                                    color: fDelegate.isSelected ? "#38BDF8" : "#F1F5F9"
-                                    font.bold: true
-                                    font.pixelSize: 11
-                                    elide: Text.ElideRight
-                                    Layout.fillWidth: true
-                                }
-
-                                // Additions & Deletions
-                                RowLayout {
-                                    spacing: 4
-                                    Text {
-                                        text: "+" + (modelData.additions || 0)
-                                        color: "#34D399"
-                                        font.pixelSize: 10
-                                        font.bold: true
-                                        visible: (modelData.additions || 0) > 0
-                                    }
-                                    Text {
-                                        text: "-" + (modelData.deletions || 0)
-                                        color: "#F87171"
-                                        font.pixelSize: 10
-                                        font.bold: true
-                                        visible: (modelData.deletions || 0) > 0
-                                    }
-                                }
-
-                                // WIP Staging controls per file
-                                RowLayout {
-                                    z: 10
-                                    visible: root.isWipSelected
-                                    spacing: 4
-
-                                    // Unstage button (-)
-                                    Rectangle {
-                                        visible: modelData.isStaged === true
-                                        width: 20
-                                        height: 20
-                                        radius: 3
-                                        color: unstageBtnMouse.containsMouse ? "#EF4444" : "#374151"
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: "-"
-                                            color: "#FFFFFF"
-                                            font.bold: true
-                                            font.pixelSize: 13
-                                        }
-                                        MouseArea {
-                                            id: unstageBtnMouse
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            preventStealing: true
-                                            onClicked: function (mouse) {
-                                                mouse.accepted = true;
-                                                if (root.sessionVm && root.sessionVm.workingTree) {
-                                                    root.sessionVm.workingTree.unstageFile(root.sessionVm.activeRepoPath, modelData.path);
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    // Stage button (+)
-                                    Rectangle {
-                                        visible: modelData.isStaged !== true
-                                        width: 20
-                                        height: 20
-                                        radius: 3
-                                        color: stageBtnMouse.containsMouse ? "#059669" : "#065F46"
-                                        border.color: "#10B981"
-                                        border.width: 1
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: "+"
-                                            color: "#FFFFFF"
-                                            font.bold: true
-                                            font.pixelSize: 13
-                                        }
-                                        MouseArea {
-                                            id: stageBtnMouse
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            preventStealing: true
-                                            onClicked: function (mouse) {
-                                                mouse.accepted = true;
-                                                if (root.sessionVm && root.sessionVm.workingTree) {
-                                                    root.sessionVm.workingTree.stageFile(root.sessionVm.activeRepoPath, modelData.path);
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    // Discard button (trash)
-                                    Rectangle {
-                                        visible: modelData.isStaged !== true
-                                        width: 20
-                                        height: 20
-                                        radius: 3
-                                        color: discardBtnMouse.containsMouse ? "#7F1D1D" : "transparent"
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: "🗑️"
-                                            font.pixelSize: 10
-                                        }
-                                        MouseArea {
-                                            id: discardBtnMouse
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            preventStealing: true
-                                            ToolTip.visible: containsMouse
-                                            ToolTip.text: "Scarta modifiche (ripristina file)"
-                                            onClicked: function (mouse) {
-                                                mouse.accepted = true;
-                                                if (root.sessionVm && root.sessionVm.workingTree) {
-                                                    root.sessionVm.workingTree.discardFile(root.sessionVm.activeRepoPath, modelData.path);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            MouseArea {
-                                id: fileRowMouse
-                                z: 0
-                                anchors.fill: parent
-                                acceptedButtons: Qt.LeftButton | Qt.RightButton
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: function (mouse) {
-                                    if (mouse.button === Qt.RightButton) {
-                                        changedFileContextMenu.targetPath = modelData.path;
-                                        changedFileContextMenu.popup();
-                                    } else {
-                                        root.openFileDiff(modelData);
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    pathFiles: root.sortedPathFiles
+                    treeModel: root.treeItems
+                    treeScope: "commit:"
+                    emptyText: root.totalFilesCount === 0
+                        ? "Nessun file modificato in questo commit"
+                        : "Nessun file corrisponde al filtro selezionato"
                 }
 
                 // ==========================================
-                // 2. TREE VIEW (Hierarchical folder tree)
+                // WIP FILES SPLIT INTO TWO SECTIONS:
+                // 1) Unstaged & Untracked
+                // 2) Staged
                 // ==========================================
-                ScrollView {
+                ColumnLayout {
+                    visible: root.isWipSelected
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    clip: true
-                    visible: root.fileViewMode === "tree"
-                    ScrollBar.vertical: FluxScrollBar {
-                    }
+                    spacing: 8
 
-                    ListView {
-                        id: gitKrakenTreeList
-                        SmoothWheelScroller {}
-                        anchors.fill: parent
-                        model: root.treeItems
-                        spacing: 2
-                        boundsBehavior: Flickable.StopAtBounds
-                        maximumFlickVelocity: 6000
-                        flickDeceleration: 1000
+                    WipSectionCard {
+                        id: wipUnstagedSection
+                        readonly property int untrackedInTree: (root.sessionVm && root.sessionVm.workingTree)
+                            ? root.sessionVm.workingTree.untrackedCount
+                            : 0
+                        Layout.fillWidth: true
+                        Layout.fillHeight: root.wipUnstagedExpanded && (root.wipUnstagedPathFiles.length > 0 || !root.wipStagedExpanded || root.wipStagedPathFiles.length === 0)
+                        Layout.preferredHeight: root.wipUnstagedExpanded
+                            ? (root.wipUnstagedPathFiles.length > 0 ? 180 : 76)
+                            : 34
+                        Layout.minimumHeight: root.wipUnstagedExpanded ? 76 : 34
 
-                        delegate: Rectangle {
-                            id: treeDelegate
-                            width: gitKrakenTreeList.width
-                            height: 26
-                            radius: 4
+                        titleText: "Modifiche Unstaged / Untracked"
+                        accentColor: "#F59E0B"
+                        fileCount: root.wipUnstagedPathFiles.length
+                        extraBadgeText: untrackedInTree > 0 ? (untrackedInTree + " untracked") : ""
+                        isExpanded: root.wipUnstagedExpanded
+                        showActionButton: root.wipUnstagedTotalCount > 0
+                        actionText: "+ Stage All"
+                        actionBgColor: "#065F46"
+                        actionHoverColor: "#047857"
+                        actionBorderColor: "#10B981"
+                        actionTextColor: "#FFFFFF"
+                        pathFiles: root.wipUnstagedPathFiles
+                        treeModel: root.wipUnstagedTreeItems
+                        treeScope: "wip-unstaged:"
+                        emptyText: root.wipUnstagedTotalCount === 0
+                            ? "Nessuna modifica unstaged o untracked"
+                            : "Nessun file corrisponde al filtro selezionato"
 
-                            property bool isFolder: modelData.isFolder
-                            property bool isSelected: (!isFolder && root.selectedFile && root.selectedFile.path === modelData.path)
-
-                            color: isSelected
-                                ? "#1E3A8A55"
-                                : (treeRowMouse.containsMouse ? "#1F242C" : "transparent")
-
-                            border.color: isSelected ? "#38BDF8" : "transparent"
-                            border.width: 1
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 6 + (isFolder ? (modelData.depth * 14) : ((modelData.depth + 1) * 14))
-                                anchors.rightMargin: 8
-                                spacing: 6
-
-                                // ==========================
-                                // FOLDER ROW CONTENT
-                                // ==========================
-                                Text {
-                                    visible: isFolder
-                                    text: modelData.isCollapsed ? "▸" : "▾"
-                                    color: "#94A3B8"
-                                    font.pixelSize: 11
-                                    Layout.preferredWidth: 12
-                                }
-
-                                Text {
-                                    visible: isFolder
-                                    text: "📁"
-                                    font.pixelSize: 11
-                                }
-
-                                Text {
-                                    visible: isFolder
-                                    text: modelData.name || ""
-                                    color: "#E2E8F0"
-                                    font.bold: true
-                                    font.pixelSize: 11
-                                    elide: Text.ElideRight
-                                    Layout.fillWidth: true
-                                }
-
-                                // File count badge for folder
-                                Rectangle {
-                                    visible: isFolder
-                                    height: 16
-                                    implicitWidth: folderCountText.implicitWidth + 8
-                                    radius: 8
-                                    color: "#21262D"
-
-                                    Text {
-                                        id: folderCountText
-                                        anchors.centerIn: parent
-                                        text: "" + (modelData.fileCount || 0)
-                                        color: "#94A3B8"
-                                        font.pixelSize: 9
-                                        font.bold: true
-                                    }
-                                }
-
-                                // ==========================
-                                // FILE ROW CONTENT
-                                // ==========================
-                                Text {
-                                    visible: !isFolder
-                                    readonly property bool conflicted: !!modelData.file && modelData.file.isConflicted === true
-                                    text: {
-                                        if (conflicted) return "⚔";
-                                        if (modelData.status === "A") return "➕";
-                                        if (modelData.status === "D") return "🗑️";
-                                        if (modelData.status === "R" || modelData.status === "C") return "⇄";
-                                        return "✏️";
-                                    }
-                                    color: "#F87171"
-                                    font.pixelSize: 11
-                                    ToolTip.visible: conflicted && treeRowMouse.containsMouse
-                                    ToolTip.text: "In conflitto: clic per risolvere"
-                                }
-
-                                Text {
-                                    visible: !isFolder
-                                    text: modelData.name || ""
-                                    color: treeDelegate.isSelected ? "#38BDF8" : "#F1F5F9"
-                                    font.bold: true
-                                    font.pixelSize: 11
-                                    elide: Text.ElideRight
-                                    Layout.fillWidth: true
-                                }
-
-                                // Additions & Deletions
-                                RowLayout {
-                                    visible: !isFolder
-                                    spacing: 4
-                                    Text {
-                                        text: "+" + (modelData.additions || 0)
-                                        color: "#34D399"
-                                        font.pixelSize: 10
-                                        font.bold: true
-                                        visible: (modelData.additions || 0) > 0
-                                    }
-                                    Text {
-                                        text: "-" + (modelData.deletions || 0)
-                                        color: "#F87171"
-                                        font.pixelSize: 10
-                                        font.bold: true
-                                        visible: (modelData.deletions || 0) > 0
-                                    }
-                                }
-
-                                // WIP Staging controls per file in Tree View
-                                RowLayout {
-                                    z: 10
-                                    visible: !isFolder && root.isWipSelected
-                                    spacing: 4
-
-                                    // Unstage button (-)
-                                    Rectangle {
-                                        visible: modelData.isStaged === true
-                                        width: 20
-                                        height: 20
-                                        radius: 3
-                                        color: treeUnstageBtnMouse.containsMouse ? "#EF4444" : "#374151"
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: "-"
-                                            color: "#FFFFFF"
-                                            font.bold: true
-                                            font.pixelSize: 13
-                                        }
-                                        MouseArea {
-                                            id: treeUnstageBtnMouse
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            preventStealing: true
-                                            onClicked: function (mouse) {
-                                                mouse.accepted = true;
-                                                if (root.sessionVm && root.sessionVm.workingTree) {
-                                                    root.sessionVm.workingTree.unstageFile(root.sessionVm.activeRepoPath, modelData.path);
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    // Stage button (+)
-                                    Rectangle {
-                                        visible: modelData.isStaged !== true
-                                        width: 20
-                                        height: 20
-                                        radius: 3
-                                        color: treeStageBtnMouse.containsMouse ? "#059669" : "#065F46"
-                                        border.color: "#10B981"
-                                        border.width: 1
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: "+"
-                                            color: "#FFFFFF"
-                                            font.bold: true
-                                            font.pixelSize: 13
-                                        }
-                                        MouseArea {
-                                            id: treeStageBtnMouse
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            preventStealing: true
-                                            onClicked: function (mouse) {
-                                                mouse.accepted = true;
-                                                if (root.sessionVm && root.sessionVm.workingTree) {
-                                                    root.sessionVm.workingTree.stageFile(root.sessionVm.activeRepoPath, modelData.path);
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    // Discard button (trash)
-                                    Rectangle {
-                                        visible: modelData.isStaged !== true
-                                        width: 20
-                                        height: 20
-                                        radius: 3
-                                        color: treeDiscardBtnMouse.containsMouse ? "#7F1D1D" : "transparent"
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: "🗑️"
-                                            font.pixelSize: 10
-                                        }
-                                        MouseArea {
-                                            id: treeDiscardBtnMouse
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            preventStealing: true
-                                            ToolTip.visible: containsMouse
-                                            ToolTip.text: "Scarta modifiche (ripristina file)"
-                                            onClicked: function (mouse) {
-                                                mouse.accepted = true;
-                                                if (root.sessionVm && root.sessionVm.workingTree) {
-                                                    root.sessionVm.workingTree.discardFile(root.sessionVm.activeRepoPath, modelData.path);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            MouseArea {
-                                id: treeRowMouse
-                                z: 0
-                                anchors.fill: parent
-                                acceptedButtons: Qt.LeftButton | Qt.RightButton
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: function (mouse) {
-                                    if (mouse.button === Qt.RightButton && !treeDelegate.isFolder && modelData.file) {
-                                        changedFileContextMenu.targetPath = modelData.file.path;
-                                        changedFileContextMenu.popup();
-                                    } else if (treeDelegate.isFolder) {
-                                        root.toggleFolder(modelData.fullPath);
-                                    } else {
-                                        root.openFileDiff(modelData.file);
-                                    }
-                                }
+                        onToggleExpanded: root.wipUnstagedExpanded = !root.wipUnstagedExpanded
+                        onActionClicked: {
+                            if (root.sessionVm && root.sessionVm.workingTree) {
+                                root.sessionVm.workingTree.stageAll(root.sessionVm.activeRepoPath);
                             }
                         }
                     }
-                }
 
-                // Empty state if filtered or no files
-                Text {
-                    visible: (root.fileViewMode === "path" ? gitKrakenFilesList.count === 0 : gitKrakenTreeList.count === 0)
-                    text: root.totalFilesCount === 0 ? "Nessun file modificato in questo commit" : "Nessun file corrisponde al filtro selezionato"
-                    color: "#64748B"
-                    font.pixelSize: 11
-                    horizontalAlignment: Text.AlignHCenter
-                    Layout.alignment: Qt.AlignHCenter
-                    Layout.topMargin: 20
+                    WipSectionCard {
+                        id: wipStagedSection
+                        Layout.fillWidth: true
+                        Layout.fillHeight: root.wipStagedExpanded && (root.wipStagedPathFiles.length > 0 || !root.wipUnstagedExpanded || root.wipUnstagedPathFiles.length === 0)
+                        Layout.preferredHeight: root.wipStagedExpanded
+                            ? (root.wipStagedPathFiles.length > 0 ? 180 : 76)
+                            : 34
+                        Layout.minimumHeight: root.wipStagedExpanded ? 76 : 34
+
+                        titleText: "Modifiche in Staging"
+                        accentColor: "#10B981"
+                        fileCount: root.wipStagedPathFiles.length
+                        isExpanded: root.wipStagedExpanded
+                        showActionButton: root.wipStagedTotalCount > 0
+                        actionText: "- Unstage All"
+                        actionBgColor: "#1F2937"
+                        actionHoverColor: "#374151"
+                        actionBorderColor: "#4B5563"
+                        actionTextColor: "#E2E8F0"
+                        pathFiles: root.wipStagedPathFiles
+                        treeModel: root.wipStagedTreeItems
+                        treeScope: "wip-staged:"
+                        emptyText: root.wipStagedTotalCount === 0
+                            ? "Nessun file in staging (usa + sui file sopra per prepararli al commit)"
+                            : "Nessun file corrisponde al filtro selezionato"
+
+                        onToggleExpanded: root.wipStagedExpanded = !root.wipStagedExpanded
+                        onActionClicked: {
+                            if (root.sessionVm && root.sessionVm.workingTree) {
+                                root.sessionVm.workingTree.unstageAll(root.sessionVm.activeRepoPath);
+                            }
+                        }
+                    }
                 }
 
                 // ==========================================
