@@ -80,6 +80,7 @@ namespace gf::desktop
         void setSearchFilter(const QString& filter);
         [[nodiscard]] int totalCommitsCount() const noexcept { return static_cast<int>(m_rawCommits.size()); }
         Q_INVOKABLE [[nodiscard]] QVariantMap getCommit(int index) const;
+        Q_INVOKABLE [[nodiscard]] QString findTargetBranchAt(int index, const QString& excludeBranch) const;
         // Row of the commit with this SHA in the (filtered) list, or -1.
         Q_INVOKABLE [[nodiscard]] int indexOfSha(const QString& sha) const;
         // SHA of the commit HEAD points to (attached or detached), empty when it isn't in the list.

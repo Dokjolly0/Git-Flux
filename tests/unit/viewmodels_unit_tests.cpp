@@ -1991,6 +1991,54 @@ TEST_CASE (
         CHECK(model.data(model.index(model.indexOfSha("c4")), CommitHistoryListModel::BranchCommitCountRole).toInt() == 0);
         CHECK(model.data(model.index(model.indexOfSha("c2")), CommitHistoryListModel::BranchCommitCountRole).toInt() == 0);
     }
+
+    SECTION("CommitHistoryListModel::findTargetBranchAt resolves local/remote target branches and ignores tags, stashes, or same ref") {
+        CommitHistoryListModel model;
+
+        gf::git::bo::GitCommitLogItem c0;
+        c0.sha = "aaaa000";
+        c0.shortSha = "aaaa000";
+        c0.subject = "Main aligned with origin";
+        c0.refDecorations = {"HEAD -> main", "origin/main", "tag: v1.0.0"};
+
+        gf::git::bo::GitCommitLogItem c1;
+        c1.sha = "bbbb111";
+        c1.shortSha = "bbbb111";
+        c1.subject = "Feature and remote";
+        c1.refDecorations = {"feature/ui", "origin/release"};
+
+        gf::git::bo::GitCommitLogItem c2;
+        c2.sha = "cccc222";
+        c2.shortSha = "cccc222";
+        c2.subject = "Tag only commit";
+        c2.refDecorations = {"tag: v0.9.0"};
+
+        gf::git::bo::GitCommitLogItem c3;
+        c3.sha = "dddd333";
+        c3.shortSha = "dddd333";
+        c3.subject = "Stash commit";
+        c3.refDecorations = {"refs/stash"};
+
+        gf::git::bo::GitCommitLogItem c4;
+        c4.sha = "eeee444";
+        c4.shortSha = "eeee444";
+        c4.subject = "Plain commit";
+
+        model.setCommits({c0, c1, c2, c3, c4});
+        model.setWip(true, 2); // Index 0 is WIP, commits shift to 1..5
+
+        CHECK(model.findTargetBranchAt(-1, "develop").isEmpty());
+        CHECK(model.findTargetBranchAt(99, "develop").isEmpty());
+        CHECK(model.findTargetBranchAt(0, "develop").isEmpty()); // WIP row
+        CHECK(model.findTargetBranchAt(1, "develop") == "origin/main"); // Aligned main+origin/main shows origin/main
+        CHECK(model.findTargetBranchAt(1, "main").isEmpty()); // Same branch ref excluded
+        CHECK(model.findTargetBranchAt(1, "origin/main").isEmpty());
+        CHECK(model.findTargetBranchAt(2, "develop") == "feature/ui"); // Local preferred over remote
+        CHECK(model.findTargetBranchAt(2, "feature/ui") == "origin/release"); // Fallback to remote when local is excluded
+        CHECK(model.findTargetBranchAt(3, "develop").isEmpty()); // Tag-only commit
+        CHECK(model.findTargetBranchAt(4, "develop").isEmpty()); // Stash commit
+        CHECK(model.findTargetBranchAt(5, "develop").isEmpty()); // Plain commit
+    }
 }
 
 TEST_CASE (

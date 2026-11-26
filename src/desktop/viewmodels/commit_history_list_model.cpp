@@ -489,6 +489,15 @@ namespace gf::desktop
             return result;
         }
 
+        bool isSameBranchRef(const QString& a, const QString& b)
+        {
+            if (a.isEmpty() || b.isEmpty()) return false;
+            if (a == b) return true;
+            const QString cleanA = a.startsWith(QLatin1String("origin/")) ? a.mid(7) : a;
+            const QString cleanB = b.startsWith(QLatin1String("origin/")) ? b.mid(7) : b;
+            return cleanA == cleanB;
+        }
+
         /// Extracts `Co-authored-by: Name <email>` trailers from a commit body, skipping the
         /// main author and duplicates (matched by e-mail, case-insensitive).
         QVariantList computeCoAuthors(const git::bo::GitCommitLogItem& c)
@@ -735,6 +744,41 @@ namespace gf::desktop
             map[QStringLiteral("structuredDecorations")] = QVariantList{wipDec};
         }
         return map;
+    }
+
+    QString CommitHistoryListModel::findTargetBranchAt(int index, const QString& excludeBranch) const
+    {
+        if (index < 0 || static_cast<std::size_t>(index) >= m_commits.size())
+        {
+            return {};
+        }
+        const auto& c = m_commits[static_cast<std::size_t>(index)];
+        if (c.sha == "WIP" || c.refDecorations.empty())
+        {
+            return {};
+        }
+
+        const QVariantList decs = computeStructuredDecorations(c.refDecorations);
+        QString remoteCandidate;
+        for (const QVariant& v : decs)
+        {
+            const QVariantMap d = v.toMap();
+            const QString name = d.value(QStringLiteral("name")).toString();
+            const QString type = d.value(QStringLiteral("type")).toString();
+            if (name.isEmpty() || isSameBranchRef(name, excludeBranch))
+            {
+                continue;
+            }
+            if (type == QLatin1String("local"))
+            {
+                return name;
+            }
+            if (type == QLatin1String("remote") && remoteCandidate.isEmpty())
+            {
+                remoteCandidate = name;
+            }
+        }
+        return remoteCandidate;
     }
 
     void CommitHistoryListModel::rebuildGraph()

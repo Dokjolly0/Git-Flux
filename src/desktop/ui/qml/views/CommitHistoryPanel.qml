@@ -53,6 +53,45 @@ Rectangle {
     property string draggingBranchName: ""
     property string draggingBranchType: ""
     property string hoveredTargetBranch: ""
+    property real dragCursorRootX: 0
+    property real dragCursorRootY: 0
+
+    function clearBranchDrag() {
+        if (typeof branchDragOverlay !== "undefined" && branchDragOverlay) {
+            branchDragOverlay.resetPendingState();
+        }
+        root.draggingBranchName = "";
+        root.draggingBranchType = "";
+        root.hoveredTargetBranch = "";
+        dragGhostBadge.visible = false;
+    }
+
+    function updateDragGhostAndTarget(rootX, rootY) {
+        root.dragCursorRootX = rootX;
+        root.dragCursorRootY = rootY;
+
+        const maxX = Math.max(0, root.width - dragGhostBadge.width - 8);
+        const maxY = Math.max(0, root.height - dragGhostBadge.height - 8);
+        dragGhostBadge.x = Math.max(4, Math.min(maxX, rootX + 14));
+        dragGhostBadge.y = Math.max(4, Math.min(maxY, rootY + 14));
+        dragGhostBadge.visible = true;
+
+        root.refreshHoveredTarget();
+    }
+
+    function refreshHoveredTarget() {
+        if (root.draggingBranchName === "") {
+            if (root.hoveredTargetBranch !== "") {
+                root.hoveredTargetBranch = "";
+            }
+            return;
+        }
+        const tgt = root.findBranchAtRootPos(root.dragCursorRootX, root.dragCursorRootY);
+        const nextTarget = (tgt && !root.isSameBranchRef(tgt, root.draggingBranchName)) ? tgt : "";
+        if (root.hoveredTargetBranch !== nextTarget) {
+            root.hoveredTargetBranch = nextTarget;
+        }
+    }
 
     // Commit message editing (reword)
     property string pendingSelectSha: ""   // new SHA to select once the history reloads after a reword
@@ -160,19 +199,36 @@ Rectangle {
     function findBranchAtRootPos(rootX, rootY) {
         if (!root.branchManager || !root.branchManager.commitHistory) return "";
         const listPt = root.mapToItem(commitTableListView, rootX, rootY);
-        if (listPt.y < 0 || listPt.y > commitTableListView.height) {
+        if (listPt.x < 0 || listPt.x > commitTableListView.width ||
+            listPt.y < 0 || listPt.y > commitTableListView.height) {
             return "";
         }
         const visualY = listPt.y + commitTableListView.contentY;
         let rowIndex = commitTableListView.indexAt(listPt.x + commitTableListView.contentX, visualY);
         if (rowIndex === -1) {
-            rowIndex = Math.floor(visualY / 36);
+            rowIndex = Math.floor((visualY - commitTableListView.originY) / 36);
         }
         if (rowIndex < 0 || rowIndex >= commitTableListView.count) {
             return "";
         }
 
+        // If hovering directly over a specific branch badge in Col 1, prefer that exact badge
+        if (listPt.x <= root.effBranchTagWidth) {
+            const rowItem = commitTableListView.itemAtIndex(rowIndex);
+            if (rowItem && rowItem.findBadgeAtViewportPos) {
+                const hitBadge = rowItem.findBadgeAtViewportPos(commitTableListView, listPt.x, listPt.y);
+                if (hitBadge && (hitBadge.type === "local" || hitBadge.type === "remote") &&
+                    hitBadge.name && !root.isSameBranchRef(hitBadge.name, root.draggingBranchName)) {
+                    return hitBadge.name;
+                }
+            }
+        }
+
         const model = root.branchManager.commitHistory;
+        if (model.findTargetBranchAt) {
+            return model.findTargetBranchAt(rowIndex, root.draggingBranchName);
+        }
+
         const commit = model.getCommit(rowIndex);
         if (!commit || !commit.structuredDecorations) return "";
 
@@ -346,6 +402,7 @@ Rectangle {
         target: (root.branchManager && root.branchManager.commitHistory) ? root.branchManager.commitHistory : null
 
         function onModelReset() {
+            root.clearBranchDrag();
             root.preserveOrAutoSelect();
         }
 
@@ -402,8 +459,16 @@ Rectangle {
     }
 
     onVisibleChanged: {
-        if (visible && !root.selectedCommit) {
+        if (!visible) {
+            root.clearBranchDrag();
+        } else if (!root.selectedCommit) {
             root.autoSelectFirstCommit();
+        }
+    }
+
+    onIsDiffOpenChanged: {
+        if (isDiffOpen) {
+            root.clearBranchDrag();
         }
     }
 
@@ -1241,7 +1306,10 @@ Rectangle {
     // Keyboard navigation and shortcuts
     focus: true
     Keys.onEscapePressed: function (event) {
-        if (fileHistoryModal.visible) {
+        if (root.draggingBranchName !== "") {
+            root.clearBranchDrag();
+            event.accepted = true;
+        } else if (fileHistoryModal.visible) {
             fileHistoryModal.close();
             event.accepted = true;
         } else if (root.isDiffOpen) {
@@ -2234,12 +2302,16 @@ Rectangle {
                     }
                 }
 
-                // Commit Table List
+                // Commit Table List + Persistent Branch Drag Controller
+                Item {
+                    id: commitListContainer
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+
                 ListView {
                     id: commitTableListView
                     SmoothWheelScroller {}
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
+                    anchors.fill: parent
                     clip: true
                     model: root.branchManager ? root.branchManager.commitHistory : null
                     boundsBehavior: Flickable.StopAtBounds
@@ -2249,6 +2321,11 @@ Rectangle {
                     }
                     focus: true
                     keyNavigationWraps: false
+                    onContentYChanged: {
+                        if (root.draggingBranchName !== "") {
+                            root.refreshHoveredTarget();
+                        }
+                    }
                     Keys.onUpPressed: function (event) {
                         if (commitTableListView.currentIndex > 0) {
                             root.selectCommitByIndex(commitTableListView.currentIndex - 1);
@@ -2306,7 +2383,29 @@ Rectangle {
                         height: 36
 
                         property bool isSelected: (root.selectedCommit && root.selectedCommit.sha === commitRow.sha)
-                        property bool isHoveredTargetRow: (root.draggingBranchName !== "" && root.hoveredTargetBranch !== "" && commitRow.structuredDecorations && root.hasBranchDecoration(commitRow.structuredDecorations, root.hoveredTargetBranch))
+                        property bool isHoveredTargetRow: (root.draggingBranchName !== "" && root.hoveredTargetBranch !== "" && commitRow.structuredDecorations && commitRow.structuredDecorations.length > 0 && root.hasBranchDecoration(commitRow.structuredDecorations, root.hoveredTargetBranch))
+
+                        function findBadgeAtViewportPos(viewportItem, vx, vy) {
+                            for (let i = 0; i < badgeRepeater.count; ++i) {
+                                const badge = badgeRepeater.itemAt(i);
+                                if (!badge || !badge.visible) continue;
+                                const pt = viewportItem.mapToItem(badge, vx, vy);
+                                if (pt.x >= 0 && pt.x <= badge.width && pt.y >= 0 && pt.y <= badge.height) {
+                                    return {
+                                        name: badge.badgeBranchName,
+                                        type: badge.badgeType,
+                                        isHead: badge.badgeIsHead
+                                    };
+                                }
+                            }
+                            return null;
+                        }
+
+                        function closeExtraRefsPopup() {
+                            if (extraRefsPopup && extraRefsPopup.opened) {
+                                extraRefsPopup.close();
+                            }
+                        }
 
                         color: commitRow.isHoveredTargetRow
                             ? "#1E3A8A55"
@@ -2406,6 +2505,7 @@ Rectangle {
                                     spacing: 4
 
                                     Repeater {
+                                        id: badgeRepeater
                                         model: branchTagCol.primaryDecs
 
                                         delegate: Rectangle {
@@ -2417,11 +2517,12 @@ Rectangle {
                                                     - (commitCountBadge.visible ? commitCountBadge.width + countRightConnector.width + 6 : 0),
                                                 decText.implicitWidth + 14))
 
-                                            ToolTip.visible: badgeMouse.containsMouse && decText.truncated && !badgeMouse.isDraggingBadge
+                                            ToolTip.visible: badgeMouse.containsMouse && decText.truncated && root.draggingBranchName === ""
                                             ToolTip.delay: 400
                                             ToolTip.text: modelData.name || ""
                                             radius: 4
                                             property bool isHoveredTarget: (root.hoveredTargetBranch !== "" && root.draggingBranchName !== "" && root.isSameBranchRef(root.hoveredTargetBranch, modelData.name))
+                                            property bool isBeingDragged: (root.draggingBranchName !== "" && root.draggingBranchName === modelData.name)
                                             color: branchBadge.isHoveredTarget
                                                 ? "#2563EB"
                                                 : (modelData.bgColor || "#0E7490")
@@ -2429,6 +2530,7 @@ Rectangle {
                                                 ? "#93C5FD"
                                                 : (modelData.borderColor || "#06B6D4")
                                             border.width: branchBadge.isHoveredTarget ? 2 : 1
+                                            opacity: branchBadge.isBeingDragged ? 0.45 : 1.0
                                             scale: branchBadge.isHoveredTarget ? 1.08 : 1.0
                                             Behavior on scale {
                                                 NumberAnimation {
@@ -2439,6 +2541,7 @@ Rectangle {
 
                                             property string badgeBranchName: modelData.name || ""
                                             property string badgeType: modelData.type || "local"
+                                            property bool badgeIsHead: modelData.isHead || false
 
                                             Text {
                                                 id: decText
@@ -2452,92 +2555,15 @@ Rectangle {
                                                 horizontalAlignment: Text.AlignHCenter
                                             }
 
-                                            DropArea {
-                                                id: badgeDropArea
-                                                anchors.fill: parent
-                                                enabled: (modelData.type === "local" || modelData.type === "remote")
-                                                onEntered: {
-                                                    if (root.draggingBranchName !== "" && root.draggingBranchName !== modelData.name) {
-                                                        root.hoveredTargetBranch = modelData.name;
-                                                    }
-                                                }
-                                                onExited: {
-                                                    if (root.hoveredTargetBranch === modelData.name) {
-                                                        root.hoveredTargetBranch = "";
-                                                    }
-                                                }
-                                                onDropped: function () {
-                                                    const src = root.draggingBranchName;
-                                                    const tgt = modelData.name;
-                                                    root.hoveredTargetBranch = "";
-                                                    root.draggingBranchName = "";
-                                                    dragGhostBadge.visible = false;
-                                                    if (src && tgt && src !== tgt) {
-                                                        branchDropMenu.sourceBranch = src;
-                                                        branchDropMenu.targetBranch = tgt;
-                                                        branchDropMenu.popup();
-                                                    }
-                                                }
-                                            }
-
                                             MouseArea {
                                                 id: badgeMouse
                                                 anchors.fill: parent
-                                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                                acceptedButtons: Qt.RightButton
                                                 hoverEnabled: true
-                                                cursorShape: (modelData.type === "local" || modelData.type === "remote") ? Qt.PointingHandCursor : Qt.ArrowCursor
-                                                preventStealing: true
+                                                cursorShape: (modelData.type === "local" || modelData.type === "remote") ? Qt.OpenHandCursor : Qt.ArrowCursor
 
-                                                property point startPos: Qt.point(0, 0)
-                                                property bool isDraggingBadge: false
-
-                                                onPressed: function (mouse) {
-                                                    if (mouse.button === Qt.LeftButton && (modelData.type === "local" || modelData.type === "remote")) {
-                                                        startPos = Qt.point(mouse.x, mouse.y);
-                                                        isDraggingBadge = false;
-                                                    }
-                                                }
-
-                                                onPositionChanged: function (mouse) {
-                                                    if (pressed && (mouse.buttons & Qt.LeftButton) !== 0 && (modelData.type === "local" || modelData.type === "remote")) {
-                                                        const dx = mouse.x - startPos.x;
-                                                        const dy = mouse.y - startPos.y;
-                                                        if (!isDraggingBadge && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
-                                                            isDraggingBadge = true;
-                                                            root.draggingBranchName = modelData.name;
-                                                            root.draggingBranchType = modelData.type;
-                                                        }
-                                                        if (isDraggingBadge) {
-                                                            const pt = mapToItem(root, mouse.x, mouse.y);
-                                                            dragGhostBadge.x = pt.x + 12;
-                                                            dragGhostBadge.y = pt.y + 12;
-                                                            dragGhostBadge.visible = true;
-
-                                                            const tgt = root.findBranchAtRootPos(pt.x, pt.y);
-                                                            if (tgt && !root.isSameBranchRef(tgt, root.draggingBranchName)) {
-                                                                root.hoveredTargetBranch = tgt;
-                                                            } else {
-                                                                root.hoveredTargetBranch = "";
-                                                            }
-                                                        }
-                                                    }
-                                                }
-
-                                                onReleased: function (mouse) {
-                                                    if (isDraggingBadge) {
-                                                        isDraggingBadge = false;
-                                                        dragGhostBadge.visible = false;
-                                                        const src = root.draggingBranchName;
-                                                        const tgt = root.hoveredTargetBranch;
-                                                        root.draggingBranchName = "";
-                                                        root.hoveredTargetBranch = "";
-                                                        if (src && tgt && !root.isSameBranchRef(src, tgt)) {
-                                                            branchDropMenu.sourceBranch = src;
-                                                            branchDropMenu.targetBranch = tgt;
-                                                            const rpt = mapToItem(root, mouse.x, mouse.y);
-                                                            branchDropMenu.popup(rpt.x, rpt.y);
-                                                        }
-                                                    } else if (mouse.button === Qt.RightButton) {
+                                                onClicked: function (mouse) {
+                                                    if (mouse.button === Qt.RightButton) {
                                                         if (modelData.type === "stash") {
                                                             stashContextMenu.targetSha = commitRow.sha;
                                                             stashContextMenu.targetSubject = commitRow.subject;
@@ -2551,20 +2577,7 @@ Rectangle {
                                                             badgeContextMenu.targetCommitSha = commitRow.sha;
                                                             badgeContextMenu.popup();
                                                         }
-                                                    } else if (mouse.button === Qt.LeftButton) {
-                                                        commitTableListView.forceActiveFocus();
-                                                        root.selectCommitByIndex(commitRow.index);
                                                     }
-                                                }
-
-                                                // Double-click on a branch badge checks it out directly (no menu).
-                                                // Remote badges resolve to their local branch in the git layer.
-                                                onDoubleClicked: function (mouse) {
-                                                    if (mouse.button !== Qt.LeftButton || isDraggingBadge || !root.branchManager) return;
-                                                    if (modelData.type !== "local" && modelData.type !== "remote") return;
-                                                    if (modelData.isHead) return; // already the checked-out branch
-                                                    extraRefsPopup.close();
-                                                    root.branchManager.checkoutBranch(modelData.name);
                                                 }
                                             }
                                         }
@@ -3108,6 +3121,181 @@ Rectangle {
                             }
                         }
                     }
+                }
+
+                // Persistent drag controller outside ListView delegates so scrolling and delegate recycling
+                // never destroy the mouse grabber or interfere with Flickable/SmoothWheelScroller momentum.
+                MouseArea {
+                    id: branchDragOverlay
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: root.effBranchTagWidth
+                    z: 50
+                    acceptedButtons: Qt.LeftButton
+                    hoverEnabled: false
+                    preventStealing: true
+                    cursorShape: isDragging ? Qt.ClosedHandCursor : Qt.PointingHandCursor
+
+                    property string pendingBranchName: ""
+                    property string pendingBranchType: ""
+                    property int pendingRowIndex: -1
+                    property point pressPos: Qt.point(0, 0)
+                    property bool isDragging: false
+                    property bool handledDoubleClick: false
+                    property real lastViewportX: 0
+                    property real lastViewportY: 0
+
+                    function resetPendingState() {
+                        pendingBranchName = "";
+                        pendingBranchType = "";
+                        pendingRowIndex = -1;
+                        isDragging = false;
+                        handledDoubleClick = false;
+                    }
+
+                    function hitTestBadge(vx, vy) {
+                        const contentYPos = vy + commitTableListView.contentY;
+                        let rowIdx = commitTableListView.indexAt(vx, contentYPos);
+                        if (rowIdx === -1) {
+                            rowIdx = Math.floor((contentYPos - commitTableListView.originY) / 36);
+                        }
+                        if (rowIdx < 0 || rowIdx >= commitTableListView.count) {
+                            return null;
+                        }
+                        const rowItem = commitTableListView.itemAtIndex(rowIdx);
+                        const hitBadge = (rowItem && rowItem.findBadgeAtViewportPos)
+                            ? rowItem.findBadgeAtViewportPos(branchDragOverlay, vx, vy)
+                            : null;
+                        if (!hitBadge) return null;
+                        return { badge: hitBadge, rowIdx: rowIdx, rowItem: rowItem };
+                    }
+
+                    onPressed: function (mouse) {
+                        const hit = hitTestBadge(mouse.x, mouse.y);
+                        if (!hit || (hit.badge.type !== "local" && hit.badge.type !== "remote")) {
+                            mouse.accepted = false;
+                            return;
+                        }
+
+                        pendingBranchName = hit.badge.name;
+                        pendingBranchType = hit.badge.type;
+                        pendingRowIndex = hit.rowIdx;
+                        pressPos = Qt.point(mouse.x, mouse.y);
+                        lastViewportX = mouse.x;
+                        lastViewportY = mouse.y;
+                        isDragging = false;
+                        handledDoubleClick = false;
+                        mouse.accepted = true;
+                    }
+
+                    onPositionChanged: function (mouse) {
+                        if (!pressed || (mouse.buttons & Qt.LeftButton) === 0 || pendingBranchName === "") {
+                            return;
+                        }
+                        lastViewportX = mouse.x;
+                        lastViewportY = mouse.y;
+
+                        if (!isDragging) {
+                            const dx = mouse.x - pressPos.x;
+                            const dy = mouse.y - pressPos.y;
+                            if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+                                isDragging = true;
+                                root.draggingBranchName = pendingBranchName;
+                                root.draggingBranchType = pendingBranchType;
+                            }
+                        }
+
+                        if (isDragging) {
+                            const pt = branchDragOverlay.mapToItem(root, mouse.x, mouse.y);
+                            root.updateDragGhostAndTarget(pt.x, pt.y);
+                        }
+                    }
+
+                    // Double-click on a branch badge checks it out directly (no menu).
+                    // Remote badges resolve to their local branch in the git layer.
+                    onDoubleClicked: function (mouse) {
+                        if (mouse.button !== Qt.LeftButton || isDragging || !root.branchManager) return;
+                        const hit = hitTestBadge(mouse.x, mouse.y);
+                        if (!hit || (hit.badge.type !== "local" && hit.badge.type !== "remote")) return;
+                        if (hit.badge.isHead) return;
+                        if (hit.rowItem && hit.rowItem.closeExtraRefsPopup) {
+                            hit.rowItem.closeExtraRefsPopup();
+                        }
+                        root.clearBranchDrag();
+                        handledDoubleClick = true;
+                        root.branchManager.checkoutBranch(hit.badge.name);
+                    }
+
+                    onReleased: function (mouse) {
+                        if (isDragging) {
+                            const pt = branchDragOverlay.mapToItem(root, mouse.x, mouse.y);
+                            root.updateDragGhostAndTarget(pt.x, pt.y);
+                            const src = root.draggingBranchName;
+                            const tgt = root.hoveredTargetBranch;
+                            root.clearBranchDrag();
+                            if (src && tgt && !root.isSameBranchRef(src, tgt)) {
+                                branchDropMenu.sourceBranch = src;
+                                branchDropMenu.targetBranch = tgt;
+                                branchDropMenu.popup(pt.x, pt.y);
+                            }
+                        } else if (!handledDoubleClick && pendingRowIndex >= 0) {
+                            const clickedIdx = pendingRowIndex;
+                            root.clearBranchDrag();
+                            commitTableListView.forceActiveFocus();
+                            root.selectCommitByIndex(clickedIdx);
+                        } else {
+                            root.clearBranchDrag();
+                        }
+                    }
+
+                    onCanceled: {
+                        root.clearBranchDrag();
+                    }
+                }
+
+                // VSync-locked smooth edge auto-scroll while dragging a branch card near top/bottom edges
+                FrameAnimation {
+                    id: dragAutoScrollAnim
+                    running: branchDragOverlay.isDragging && commitTableListView.contentHeight > commitTableListView.height
+
+                    onTriggered: {
+                        const h = commitTableListView.height;
+                        const w = commitTableListView.width;
+                        if (h <= 0 || w <= 0) return;
+
+                        const x = branchDragOverlay.lastViewportX;
+                        const y = branchDragOverlay.lastViewportY;
+                        if (x < -24 || x > w + 24) return;
+
+                        const edgeZone = 48;
+                        let speed = 0;
+
+                        if (y < edgeZone) {
+                            const topFactor = Math.min(1.0, Math.max(0.0, (edgeZone - y) / edgeZone));
+                            speed = -(90 + 760 * topFactor * topFactor);
+                        } else if (y > h - edgeZone) {
+                            const bottomFactor = Math.min(1.0, Math.max(0.0, (y - (h - edgeZone)) / edgeZone));
+                            speed = (90 + 760 * bottomFactor * bottomFactor);
+                        }
+
+                        if (speed === 0) return;
+
+                        const minY = commitTableListView.originY;
+                        const maxY = Math.max(minY, minY + commitTableListView.contentHeight - h);
+                        const curY = commitTableListView.contentY;
+                        if ((speed < 0 && curY <= minY) || (speed > 0 && curY >= maxY)) return;
+
+                        if (commitTableListView.flicking) {
+                            commitTableListView.cancelFlick();
+                        }
+                        const dt = Math.min(frameTime, 0.05);
+                        const nextY = Math.max(minY, Math.min(maxY, curY + speed * dt));
+                        if (nextY !== curY) {
+                            commitTableListView.contentY = nextY;
+                        }
+                    }
+                }
                 }
             }
 
