@@ -296,7 +296,7 @@ Dialog {
                             fontBold: true
                             animDuration: 110
                             onClicked: {
-                                if (root.branchManager) root.branchManager.mergeBranch(model.name, false);
+                                if (root.branchManager) root.branchManager.mergeBranch(model.name, true);
                             }
                         }
 

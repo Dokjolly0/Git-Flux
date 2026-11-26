@@ -114,8 +114,8 @@ namespace gf::desktop
     Q_INVOKABLE bool deleteTag(const QString& tagName);
     Q_INVOKABLE bool createWorktree(const QString& targetPath, const QString& commitOrBranch = QString());
 
-    Q_INVOKABLE bool mergeBranch(const QString& sourceBranch, bool noFf = false);
-    Q_INVOKABLE bool mergeBranchInto(const QString& sourceBranch, const QString& targetBranch);
+    Q_INVOKABLE bool mergeBranch(const QString& sourceBranch, bool noFf = true);
+    Q_INVOKABLE bool mergeBranchInto(const QString& sourceBranch, const QString& targetBranch, bool noFf = true);
     /// Asynchronous: the answer arrives with fastForwardCheckReady(target, source, possible).
     /// A newer check supersedes a pending one.
     Q_INVOKABLE void requestFastForwardCheck(const QString& targetBranch, const QString& sourceBranch);

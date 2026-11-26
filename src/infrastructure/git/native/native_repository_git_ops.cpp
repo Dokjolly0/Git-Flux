@@ -2548,6 +2548,10 @@ namespace gf::infra::git
             args.emplace_back("-m");
             args.push_back(*options.message);
         }
+        else if (!options.squash)
+        {
+            args.emplace_back("--no-edit");
+        }
         args.push_back(options.sourceBranchOrCommit);
 
         const gf::git::bo::GitCommand cmd{

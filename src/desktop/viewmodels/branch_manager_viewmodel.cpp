@@ -1400,7 +1400,7 @@ namespace gf::desktop
         return true;
     }
 
-    bool BranchManagerViewModel::mergeBranchInto(const QString& sourceBranch, const QString& targetBranch)
+    bool BranchManagerViewModel::mergeBranchInto(const QString& sourceBranch, const QString& targetBranch, bool noFf)
     {
         if (m_repoPath.empty() || sourceBranch.isEmpty() || targetBranch.isEmpty())
         {
@@ -1415,7 +1415,7 @@ namespace gf::desktop
 
         if (m_currentBranch == effectiveTarget)
         {
-            return mergeBranch(sourceBranch);
+            return mergeBranch(sourceBranch, noFf);
         }
 
         // Checkout of the target, then merge: one task, so nothing can run in between.
@@ -1424,7 +1424,10 @@ namespace gf::desktop
         auto& mergeService = m_remoteMergeService;
         const auto repoPath = m_repoPath;
         const git::bo::CheckoutOptions checkout{.branchOrCommit = effectiveTarget.toStdString()};
-        const git::bo::MergeOptions opts{.sourceBranchOrCommit = sourceBranch.toStdString()};
+        const git::bo::MergeOptions opts{
+            .sourceBranchOrCommit = sourceBranch.toStdString(),
+            .noFastForward = noFf
+        };
         runOperation(
             QStringLiteral("Checkout di %1 e merge di %2 in corso...").arg(effectiveTarget, sourceBranch),
             [&branchService, &mergeService, repoPath, checkout, opts]() -> MergeOutcome

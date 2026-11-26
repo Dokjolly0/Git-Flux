@@ -4953,7 +4953,7 @@ Rectangle {
             visible: badgeContextMenu.badgeType !== "tag" && !badgeContextMenu.isCurrentHead
             font.pixelSize: 11
             onClicked: {
-                if (root.branchManager) root.branchManager.mergeBranch(badgeContextMenu.targetName);
+                if (root.branchManager) root.branchManager.mergeBranch(badgeContextMenu.targetName, true);
             }
         }
 
@@ -5101,7 +5101,7 @@ Rectangle {
             font.bold: true
             onClicked: {
                 if (root.branchManager) {
-                    root.branchManager.mergeBranchInto(branchDropMenu.sourceBranch, branchDropMenu.targetBranch);
+                    root.branchManager.mergeBranchInto(branchDropMenu.sourceBranch, branchDropMenu.targetBranch, true);
                 }
             }
         }

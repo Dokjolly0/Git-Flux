@@ -602,6 +602,7 @@ public:
     std::atomic<int> commitOrder{0};
     std::atomic<int> stageAllDelayMs{0};
     std::atomic<bool> mergeConflicts{false};
+    std::atomic<bool> lastMergeNoFastForward{false};
     // Selection reads: call counters and an optional delay (to make requests overlap)
     std::atomic<int> commitFileDiffCalls{0};
     std::atomic<int> commitFilesCalls{0};
@@ -909,8 +910,9 @@ public:
     }
 
     std::expected<gf::git::bo::MergeResult, gf::git::ports::GitOpsError>
-    mergeBranch(const std::filesystem::path&, const gf::git::bo::MergeOptions&) override
+    mergeBranch(const std::filesystem::path&, const gf::git::bo::MergeOptions& options) override
     {
+        lastMergeNoFastForward = options.noFastForward;
         if (mergeDelayMs > 0)
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(mergeDelayMs.load()));
@@ -2722,10 +2724,12 @@ TEST_CASE (
     REQUIRE(branchVm.waitForIdle());
     CHECK(completedSpy.count() == 4);
 
-    // Merge branch
-    bool merged = branchVm.mergeBranch("feature/test", false);
+    // Merge branch (defaults to --no-ff so an explicit Merge always creates a merge commit)
+    mockOps.lastMergeNoFastForward = false;
+    bool merged = branchVm.mergeBranch("feature/test");
     CHECK(merged);
     REQUIRE(branchVm.waitForIdle());
+    CHECK(mockOps.lastMergeNoFastForward.load() == true);
     CHECK(completedSpy.count() == 5);
 
     // Remote operations with options
@@ -2802,8 +2806,15 @@ TEST_CASE (
     REQUIRE(branchVmWithRebase.waitForIdle());
     CHECK(branchVmWithRebase.rebaseBranch("feature/test", "main"));
     REQUIRE(branchVmWithRebase.waitForIdle());
+    mockOps.lastMergeNoFastForward = false;
     CHECK(branchVmWithRebase.mergeBranchInto("feature/test", "main"));
     REQUIRE(branchVmWithRebase.waitForIdle());
+    CHECK(mockOps.lastMergeNoFastForward.load() == true);
+
+    mockOps.lastMergeNoFastForward = false;
+    CHECK(branchVmWithRebase.mergeBranchInto("feature/test", "develop"));
+    REQUIRE(branchVmWithRebase.waitForIdle());
+    CHECK(mockOps.lastMergeNoFastForward.load() == true);
 
     branchVmWithRebase.copyToClipboard("sample commit sha");
 
