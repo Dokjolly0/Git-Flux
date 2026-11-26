@@ -372,3 +372,63 @@ TEST_CASE (
     REQUIRE((*reloaded)->color == "#FB7185");
     REQUIRE((*reloaded)->resolvedColor() == "#FB7185");
 }
+
+TEST_CASE(
+    "WorkspaceService validates, renames, and persists custom and fallback workspace colors",
+    "[unit][services][workspaces][color]"
+)
+{
+    auto conn = createMemoryDb();
+    SqliteRepositoryStore repoStore(conn);
+    SqliteGroupStore groupStore(conn);
+    SqliteWorkspaceStore wsStore(conn);
+    WorkspaceService wsService(wsStore, groupStore, repoStore);
+
+    // Custom valid hex color on creation
+    auto wsColored = wsService.createWorkspace("Platform", {}, {}, "#34D399");
+    REQUIRE(wsColored.has_value());
+    REQUIRE(wsColored->color == "#34D399");
+    REQUIRE(wsColored->resolvedColor() == "#34D399");
+
+    // Empty color uses deterministic palette fallback
+    auto wsAuto = wsService.createWorkspace("Mobile");
+    REQUIRE(wsAuto.has_value());
+    REQUIRE(wsAuto->color.empty());
+    const auto fallbackColor = wsAuto->resolvedColor();
+    REQUIRE(fallbackColor.size() == 7);
+    REQUIRE(fallbackColor[0] == '#');
+
+    // Invalid hex color rejected on create and update
+    auto badCreate = wsService.createWorkspace("Bad", {}, {}, "not-a-color");
+    REQUIRE_FALSE(badCreate.has_value());
+    REQUIRE(badCreate.error().kind == WorkspaceServiceError::Kind::InvalidColor);
+
+    auto badUpdate = wsService.updateWorkspaceColor(wsAuto->id, "#12345");
+    REQUIRE_FALSE(badUpdate.has_value());
+    REQUIRE(badUpdate.error().kind == WorkspaceServiceError::Kind::InvalidColor);
+
+    // Valid color update persists across reload
+    auto updatedColor = wsService.updateWorkspaceColor(wsAuto->id, "#A78BFA");
+    REQUIRE(updatedColor.has_value());
+    REQUIRE(updatedColor->color == "#A78BFA");
+
+    // Rename succeeds, rejects empty or duplicate names, and persists
+    auto badEmptyRename = wsService.renameWorkspace(wsAuto->id, "");
+    REQUIRE_FALSE(badEmptyRename.has_value());
+    REQUIRE(badEmptyRename.error().kind == WorkspaceServiceError::Kind::InvalidName);
+
+    auto badDupRename = wsService.renameWorkspace(wsAuto->id, "Platform");
+    REQUIRE_FALSE(badDupRename.has_value());
+    REQUIRE(badDupRename.error().kind == WorkspaceServiceError::Kind::DuplicateName);
+
+    auto renamed = wsService.renameWorkspace(wsAuto->id, "Mobile Suite");
+    REQUIRE(renamed.has_value());
+    REQUIRE(renamed->name == "Mobile Suite");
+
+    auto reloaded = wsService.getWorkspace(wsAuto->id);
+    REQUIRE(reloaded.has_value());
+    REQUIRE(reloaded->has_value());
+    REQUIRE((*reloaded)->name == "Mobile Suite");
+    REQUIRE((*reloaded)->color == "#A78BFA");
+    REQUIRE((*reloaded)->resolvedColor() == "#A78BFA");
+}

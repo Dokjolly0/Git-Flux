@@ -37,13 +37,22 @@ namespace gf::workspaces::bl
     std::expected<Workspace, WorkspaceServiceError>
     WorkspaceService::createWorkspace(std::string name,
                                       std::vector<GroupId> groupIds,
-                                      std::vector<RepositoryId> directRepoIds) const
+                                      std::vector<RepositoryId> directRepoIds,
+                                      std::string color) const
     {
         if (name.empty())
         {
             return std::unexpected(WorkspaceServiceError{
                 .kind = WorkspaceServiceError::Kind::InvalidName,
                 .message = "Il nome del workspace non può essere vuoto"
+            });
+        }
+
+        if (!groups::bo::isValidGroupColor(color))
+        {
+            return std::unexpected(WorkspaceServiceError{
+                .kind = WorkspaceServiceError::Kind::InvalidColor,
+                .message = "Colore workspace non valido (atteso formato #RRGGBB)"
             });
         }
 
@@ -75,6 +84,7 @@ namespace gf::workspaces::bl
         Workspace ws{
             .id = WorkspaceId(core::generateUniqueId("ws")),
             .name = std::move(name),
+            .color = std::move(color),
             .groupIds = std::move(groupIds),
             .directRepositoryIds = std::move(directRepoIds),
             .createdAtUnixEpochMs = now,
@@ -119,6 +129,83 @@ namespace gf::workspaces::bl
             return std::unexpected(WorkspaceServiceError{
                 .kind = WorkspaceServiceError::Kind::StorageError,
                 .message = sessionSaveRes.error().message
+            });
+        }
+
+        return ws;
+    }
+
+    std::expected<Workspace, WorkspaceServiceError>
+    WorkspaceService::renameWorkspace(const WorkspaceId& id, std::string newName) const
+    {
+        if (newName.empty())
+        {
+            return std::unexpected(WorkspaceServiceError{
+                .kind = WorkspaceServiceError::Kind::InvalidName,
+                .message = "Il nuovo nome del workspace non può essere vuoto"
+            });
+        }
+
+        auto existing = wsStore_.getById(id);
+        if (!existing || !existing->has_value())
+        {
+            return std::unexpected(WorkspaceServiceError{
+                .kind = WorkspaceServiceError::Kind::NotFound,
+                .message = "Workspace non trovato: " + id.value()
+            });
+        }
+
+        auto ws = std::move(**existing);
+        ws.name = std::move(newName);
+        ws.updatedAtUnixEpochMs = currentUnixMs();
+
+        if (const auto saveRes = wsStore_.save(ws); !saveRes)
+        {
+            if (saveRes.error().kind == ports::WorkspaceStoreError::Kind::DuplicateName)
+            {
+                return std::unexpected(WorkspaceServiceError{
+                    .kind = WorkspaceServiceError::Kind::DuplicateName,
+                    .message = "Esiste già un workspace con questo nome"
+                });
+            }
+            return std::unexpected(WorkspaceServiceError{
+                .kind = WorkspaceServiceError::Kind::StorageError,
+                .message = saveRes.error().message
+            });
+        }
+
+        return ws;
+    }
+
+    std::expected<Workspace, WorkspaceServiceError>
+    WorkspaceService::updateWorkspaceColor(const WorkspaceId& id, std::string color) const
+    {
+        if (!groups::bo::isValidGroupColor(color))
+        {
+            return std::unexpected(WorkspaceServiceError{
+                .kind = WorkspaceServiceError::Kind::InvalidColor,
+                .message = "Colore workspace non valido (atteso formato #RRGGBB)"
+            });
+        }
+
+        auto existing = wsStore_.getById(id);
+        if (!existing || !existing->has_value())
+        {
+            return std::unexpected(WorkspaceServiceError{
+                .kind = WorkspaceServiceError::Kind::NotFound,
+                .message = "Workspace non trovato: " + id.value()
+            });
+        }
+
+        auto ws = std::move(**existing);
+        ws.color = std::move(color);
+        ws.updatedAtUnixEpochMs = currentUnixMs();
+
+        if (const auto saveRes = wsStore_.save(ws); !saveRes)
+        {
+            return std::unexpected(WorkspaceServiceError{
+                .kind = WorkspaceServiceError::Kind::StorageError,
+                .message = saveRes.error().message
             });
         }
 

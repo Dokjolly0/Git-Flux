@@ -146,7 +146,10 @@ namespace gf::desktop
 
     Q_INVOKABLE bool createWorkspace(const QString& name,
                                      const QStringList& groupIds = {},
-                                     const QStringList& repoIds = {});
+                                     const QStringList& repoIds = {},
+                                     const QString& color = QString());
+    Q_INVOKABLE bool renameWorkspace(const QString& workspaceId, const QString& newName);
+    Q_INVOKABLE bool updateWorkspaceColor(const QString& workspaceId, const QString& color);
     Q_INVOKABLE bool removeWorkspace(const QString& workspaceId);
     Q_INVOKABLE bool addRepositoryToWorkspace(const QString& workspaceId, const QString& repoId);
     Q_INVOKABLE bool removeRepositoryFromWorkspace(const QString& workspaceId, const QString& repoId);

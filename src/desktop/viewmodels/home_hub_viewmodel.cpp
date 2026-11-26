@@ -799,7 +799,8 @@ namespace gf::desktop
 
     bool HomeHubViewModel::createWorkspace(const QString& name,
                                            const QStringList& groupIds,
-                                           const QStringList& repoIds)
+                                           const QStringList& repoIds,
+                                           const QString& color)
     {
         if (name.trimmed().isEmpty())
         {
@@ -821,7 +822,10 @@ namespace gf::desktop
             repoVector.push_back(gf::repositories::bo::RepositoryId{rid.toStdString()});
         }
 
-        auto result = m_workspaceService.createWorkspace(name.trimmed().toStdString(), grpVector, repoVector);
+        auto result = m_workspaceService.createWorkspace(name.trimmed().toStdString(),
+                                                         grpVector,
+                                                         repoVector,
+                                                         color.trimmed().toStdString());
         if (!result)
         {
             if (result.error().kind == gf::workspaces::bl::WorkspaceServiceError::Kind::DuplicateName)
@@ -837,6 +841,68 @@ namespace gf::desktop
         }
 
         setStatus(QStringLiteral("Workspace '%1' creato").arg(name));
+        refreshAll();
+        return true;
+    }
+
+    bool HomeHubViewModel::renameWorkspace(const QString& workspaceId, const QString& newName)
+    {
+        if (workspaceId.trimmed().isEmpty() || newName.trimmed().isEmpty())
+        {
+            const QString err = QStringLiteral("Il nome del workspace non può essere vuoto");
+            setLastError(err);
+            emit errorOccurred(err);
+            return false;
+        }
+
+        auto res = m_workspaceService.renameWorkspace(
+            gf::workspaces::bo::WorkspaceId{workspaceId.trimmed().toStdString()},
+            newName.trimmed().toStdString()
+        );
+        if (!res)
+        {
+            QString err;
+            if (res.error().kind == gf::workspaces::bl::WorkspaceServiceError::Kind::DuplicateName)
+            {
+                err = QStringLiteral("Esiste già un workspace con questo nome");
+            }
+            else
+            {
+                err = QStringLiteral("Errore rinomina workspace: ") + QString::fromStdString(res.error().message);
+            }
+            setLastError(err);
+            emit errorOccurred(err);
+            return false;
+        }
+
+        const QString successMsg = QStringLiteral("Workspace rinominato in: %1").arg(QString::fromStdString(res->name));
+        setLastSuccessMessage(successMsg);
+        setStatus(successMsg);
+        refreshAll();
+        return true;
+    }
+
+    bool HomeHubViewModel::updateWorkspaceColor(const QString& workspaceId, const QString& color)
+    {
+        if (workspaceId.trimmed().isEmpty())
+        {
+            return false;
+        }
+
+        auto res = m_workspaceService.updateWorkspaceColor(
+            gf::workspaces::bo::WorkspaceId{workspaceId.trimmed().toStdString()},
+            color.trimmed().toStdString()
+        );
+        if (!res)
+        {
+            const QString err = QStringLiteral("Errore aggiornamento colore workspace: ") +
+                QString::fromStdString(res.error().message);
+            setLastError(err);
+            emit errorOccurred(err);
+            return false;
+        }
+
+        setStatus(QStringLiteral("Colore del workspace '%1' aggiornato").arg(QString::fromStdString(res->name)));
         refreshAll();
         return true;
     }

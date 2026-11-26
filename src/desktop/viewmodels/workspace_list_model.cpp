@@ -88,6 +88,8 @@ namespace gf::desktop
             return item.id;
         case NameRole:
             return item.name;
+        case ColorRole:
+            return item.color;
         case GroupCountRole:
             return item.groupCount;
         case DirectRepoCountRole:
@@ -124,6 +126,7 @@ namespace gf::desktop
         return {
             {IdRole, "id"},
             {NameRole, "name"},
+            {ColorRole, "workspaceColor"},
             {GroupCountRole, "groupCount"},
             {DirectRepoCountRole, "directRepoCount"},
             {TotalRepoCountRole, "totalRepoCount"},
@@ -159,6 +162,8 @@ namespace gf::desktop
             WorkspaceItem item;
             item.id = QString::fromStdString(ws.id.value());
             item.name = QString::fromStdString(ws.name);
+            const auto wsCol = ws.resolvedColor();
+            item.color = QString::fromUtf8(wsCol.data(), static_cast<qsizetype>(wsCol.size()));
             item.groupCount = static_cast<int>(ws.groupIds.size());
             item.directRepoCount = static_cast<int>(ws.directRepositoryIds.size());
 

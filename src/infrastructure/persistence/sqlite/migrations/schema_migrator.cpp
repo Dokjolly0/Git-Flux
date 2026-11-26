@@ -116,6 +116,56 @@ CREATE INDEX IF NOT EXISTS idx_git_provider_host ON git_provider_profiles(host);
 -- 9. Optional custom accent color on repository groups
 ALTER TABLE groups ADD COLUMN color TEXT NOT NULL DEFAULT '';
 )";
+
+        constexpr std::string_view kMigrationV4Sql = R"(
+-- 10. Optional custom accent color on workspaces
+ALTER TABLE workspaces ADD COLUMN color TEXT NOT NULL DEFAULT '';
+)";
+
+        std::expected<void, SqliteError> applyMigrationStep(SqliteConnection& conn,
+                                                            const int version,
+                                                            const std::string_view sql)
+        {
+            auto tx = SqliteTransaction::begin(conn);
+            if (!tx)
+            {
+                return std::unexpected(tx.error());
+            }
+
+            if (const auto execRes = conn.execute(sql); !execRes)
+            {
+                return std::unexpected(execRes.error());
+            }
+
+            const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch())
+                .count();
+
+            auto recordStmt = SqliteStatement::prepare(
+                conn, "INSERT INTO schema_migrations (version, applied_at_ms) VALUES (?, ?);");
+            if (!recordStmt)
+            {
+                return std::unexpected(recordStmt.error());
+            }
+            if (const auto bindVer = recordStmt->bindInt(1, version); !bindVer)
+            {
+                return std::unexpected(bindVer.error());
+            }
+            if (const auto bindTs = recordStmt->bindInt64(2, nowMs); !bindTs)
+            {
+                return std::unexpected(bindTs.error());
+            }
+            if (const auto stepRes = recordStmt->step(); !stepRes)
+            {
+                return std::unexpected(stepRes.error());
+            }
+
+            if (const auto commitRes = tx->commit(); !commitRes)
+            {
+                return std::unexpected(commitRes.error());
+            }
+            return {};
+        }
     } // namespace
 
     std::expected<int, SqliteError>
@@ -156,115 +206,33 @@ ALTER TABLE groups ADD COLUMN color TEXT NOT NULL DEFAULT '';
 
         if (*curVer < 1)
         {
-            auto tx = SqliteTransaction::begin(conn);
-            if (!tx)
+            if (const auto res = applyMigrationStep(conn, 1, kMigrationV1Sql); !res)
             {
-                return std::unexpected(tx.error());
-            }
-
-            if (const auto execRes = conn.execute(kMigrationV1Sql); !execRes)
-            {
-                return std::unexpected(execRes.error());
-            }
-
-            const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::system_clock::now().time_since_epoch())
-                .count();
-
-            auto recordStmt = SqliteStatement::prepare(
-                conn, "INSERT INTO schema_migrations (version, applied_at_ms) VALUES (1, ?);");
-            if (!recordStmt)
-            {
-                return std::unexpected(recordStmt.error());
-            }
-            if (const auto bindRes = recordStmt->bindInt64(1, nowMs); !bindRes)
-            {
-                return std::unexpected(bindRes.error());
-            }
-            if (const auto stepRes = recordStmt->step(); !stepRes)
-            {
-                return std::unexpected(stepRes.error());
-            }
-
-            if (const auto commitRes = tx->commit(); !commitRes)
-            {
-                return std::unexpected(commitRes.error());
+                return std::unexpected(res.error());
             }
         }
 
         if (*curVer < 2)
         {
-            auto tx = SqliteTransaction::begin(conn);
-            if (!tx)
+            if (const auto res = applyMigrationStep(conn, 2, kMigrationV2Sql); !res)
             {
-                return std::unexpected(tx.error());
-            }
-
-            if (const auto execRes = conn.execute(kMigrationV2Sql); !execRes)
-            {
-                return std::unexpected(execRes.error());
-            }
-
-            const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::system_clock::now().time_since_epoch())
-                .count();
-
-            auto recordStmt = SqliteStatement::prepare(
-                conn, "INSERT INTO schema_migrations (version, applied_at_ms) VALUES (2, ?);");
-            if (!recordStmt)
-            {
-                return std::unexpected(recordStmt.error());
-            }
-            if (const auto bindRes = recordStmt->bindInt64(1, nowMs); !bindRes)
-            {
-                return std::unexpected(bindRes.error());
-            }
-            if (const auto stepRes = recordStmt->step(); !stepRes)
-            {
-                return std::unexpected(stepRes.error());
-            }
-
-            if (const auto commitRes = tx->commit(); !commitRes)
-            {
-                return std::unexpected(commitRes.error());
+                return std::unexpected(res.error());
             }
         }
 
         if (*curVer < 3)
         {
-            auto tx = SqliteTransaction::begin(conn);
-            if (!tx)
+            if (const auto res = applyMigrationStep(conn, 3, kMigrationV3Sql); !res)
             {
-                return std::unexpected(tx.error());
+                return std::unexpected(res.error());
             }
+        }
 
-            if (const auto execRes = conn.execute(kMigrationV3Sql); !execRes)
+        if (*curVer < 4)
+        {
+            if (const auto res = applyMigrationStep(conn, 4, kMigrationV4Sql); !res)
             {
-                return std::unexpected(execRes.error());
-            }
-
-            const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::system_clock::now().time_since_epoch())
-                .count();
-
-            auto recordStmt = SqliteStatement::prepare(
-                conn, "INSERT INTO schema_migrations (version, applied_at_ms) VALUES (3, ?);");
-            if (!recordStmt)
-            {
-                return std::unexpected(recordStmt.error());
-            }
-            if (const auto bindRes = recordStmt->bindInt64(1, nowMs); !bindRes)
-            {
-                return std::unexpected(bindRes.error());
-            }
-            if (const auto stepRes = recordStmt->step(); !stepRes)
-            {
-                return std::unexpected(stepRes.error());
-            }
-
-            if (const auto commitRes = tx->commit(); !commitRes)
-            {
-                return std::unexpected(commitRes.error());
+                return std::unexpected(res.error());
             }
         }
 

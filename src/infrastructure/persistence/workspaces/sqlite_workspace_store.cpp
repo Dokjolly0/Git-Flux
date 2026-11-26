@@ -158,10 +158,11 @@ ORDER BY sort_order ASC;
         }
 
         constexpr std::string_view kUpsertWsSql = R"(
-INSERT INTO workspaces (id, name, created_at_ms, updated_at_ms)
-VALUES (?, ?, ?, ?)
+INSERT INTO workspaces (id, name, color, created_at_ms, updated_at_ms)
+VALUES (?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
     name = excluded.name,
+    color = excluded.color,
     updated_at_ms = excluded.updated_at_ms;
 )";
 
@@ -179,11 +180,15 @@ ON CONFLICT(id) DO UPDATE SET
         {
             return std::unexpected(makeStorageError(bindRes.error()));
         }
-        if (const auto bindRes = stmtRes->bindInt64(3, workspace.createdAtUnixEpochMs); !bindRes)
+        if (const auto bindRes = stmtRes->bindText(3, workspace.color); !bindRes)
         {
             return std::unexpected(makeStorageError(bindRes.error()));
         }
-        if (const auto bindRes = stmtRes->bindInt64(4, workspace.updatedAtUnixEpochMs); !bindRes)
+        if (const auto bindRes = stmtRes->bindInt64(4, workspace.createdAtUnixEpochMs); !bindRes)
+        {
+            return std::unexpected(makeStorageError(bindRes.error()));
+        }
+        if (const auto bindRes = stmtRes->bindInt64(5, workspace.updatedAtUnixEpochMs); !bindRes)
         {
             return std::unexpected(makeStorageError(bindRes.error()));
         }
@@ -315,7 +320,7 @@ ON CONFLICT(id) DO UPDATE SET
     SqliteWorkspaceStore::getById(const WorkspaceId& id)
     {
         constexpr std::string_view kSql = R"(
-SELECT id, name, created_at_ms, updated_at_ms
+SELECT id, name, color, created_at_ms, updated_at_ms
 FROM workspaces
 WHERE id = ?;
 )";
@@ -344,8 +349,9 @@ WHERE id = ?;
         Workspace ws;
         ws.id = WorkspaceId(stmtRes->getText(0));
         ws.name = stmtRes->getText(1);
-        ws.createdAtUnixEpochMs = stmtRes->getInt64(2);
-        ws.updatedAtUnixEpochMs = stmtRes->getInt64(3);
+        ws.color = stmtRes->getText(2);
+        ws.createdAtUnixEpochMs = stmtRes->getInt64(3);
+        ws.updatedAtUnixEpochMs = stmtRes->getInt64(4);
 
         auto groupsRes = loadWorkspaceGroupIds(ws.id);
         if (!groupsRes)
@@ -368,7 +374,7 @@ WHERE id = ?;
     SqliteWorkspaceStore::getAll()
     {
         constexpr std::string_view kSql = R"(
-SELECT id, name, created_at_ms, updated_at_ms
+SELECT id, name, color, created_at_ms, updated_at_ms
 FROM workspaces
 ORDER BY name COLLATE NOCASE ASC;
 )";
@@ -395,8 +401,9 @@ ORDER BY name COLLATE NOCASE ASC;
             Workspace ws;
             ws.id = WorkspaceId(stmtRes->getText(0));
             ws.name = stmtRes->getText(1);
-            ws.createdAtUnixEpochMs = stmtRes->getInt64(2);
-            ws.updatedAtUnixEpochMs = stmtRes->getInt64(3);
+            ws.color = stmtRes->getText(2);
+            ws.createdAtUnixEpochMs = stmtRes->getInt64(3);
+            ws.updatedAtUnixEpochMs = stmtRes->getInt64(4);
             list.push_back(std::move(ws));
         }
 

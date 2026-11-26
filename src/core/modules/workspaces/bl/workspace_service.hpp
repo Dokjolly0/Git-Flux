@@ -23,6 +23,7 @@ namespace gf::workspaces::bl
             GroupNotFound,
             RepositoryNotFound,
             InvalidName,
+            InvalidColor,
             StorageError
         };
 
@@ -40,7 +41,14 @@ namespace gf::workspaces::bl
         [[nodiscard]] std::expected<bo::Workspace, WorkspaceServiceError>
         createWorkspace(std::string name,
                         std::vector<groups::bo::GroupId> groupIds = {},
-                        std::vector<repositories::bo::RepositoryId> directRepoIds = {}) const;
+                        std::vector<repositories::bo::RepositoryId> directRepoIds = {},
+                        std::string color = {}) const;
+
+        [[nodiscard]] std::expected<bo::Workspace, WorkspaceServiceError>
+        renameWorkspace(const bo::WorkspaceId& id, std::string newName) const;
+
+        [[nodiscard]] std::expected<bo::Workspace, WorkspaceServiceError>
+        updateWorkspaceColor(const bo::WorkspaceId& id, std::string color) const;
 
         [[nodiscard]] std::expected<bo::Workspace, WorkspaceServiceError>
         updateWorkspaceComposition(const bo::WorkspaceId& id,

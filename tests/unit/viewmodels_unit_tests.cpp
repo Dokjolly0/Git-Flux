@@ -5392,6 +5392,18 @@ TEST_CASE("WorkspaceSessionViewModel clusters tabs by group and exposes multi-gr
     CHECK(sessionVm.activeTabIndex() == 3);
     CHECK(sessionVm.activeRepoName() == QStringLiteral("solo-tools"));
 
+    // Renaming and updating workspace color via HomeHubViewModel refreshes WorkspaceListModel and active session badge
+    REQUIRE(homeVm.renameWorkspace(QString::fromStdString(ws.id.value()), QStringLiteral("Main Workstation")));
+    REQUIRE(homeVm.updateWorkspaceColor(QString::fromStdString(ws.id.value()), QStringLiteral("#FBBF24")));
+    const auto renamedWsItem = homeVm.workspaceModel()->findById(QString::fromStdString(ws.id.value()));
+    REQUIRE(renamedWsItem.has_value());
+    CHECK(renamedWsItem->name == QStringLiteral("Main Workstation"));
+    CHECK(renamedWsItem->color == QStringLiteral("#FBBF24"));
+    const QModelIndex renamedWsIdx = homeVm.workspaceModel()->index(0, 0);
+    CHECK(homeVm.workspaceModel()->data(renamedWsIdx, WorkspaceListModel::ColorRole).toString() == QStringLiteral("#FBBF24"));
+    CHECK(sessionVm.currentGroupName() == QStringLiteral("Main Workstation"));
+    CHECK(sessionVm.currentGroupColor() == QStringLiteral("#FBBF24"));
+
     sessionVm.closeAllTabs();
     std::filesystem::remove_all(baseDir, ec);
 }

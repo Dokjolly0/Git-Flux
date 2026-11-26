@@ -204,6 +204,18 @@ namespace gf::desktop
                 emit currentGroupNameChanged();
             }
         }
+        else if (m_sessionKind == QStringLiteral("workspace") && !m_currentWorkspaceId.isEmpty())
+        {
+            const auto wsRes = m_workspaceService.getWorkspace(
+                workspaces::bo::WorkspaceId{m_currentWorkspaceId.toStdString()});
+            if (wsRes && wsRes->has_value())
+            {
+                const auto col = (**wsRes).resolvedColor();
+                m_currentGroupName = QString::fromStdString((**wsRes).name);
+                m_currentGroupColor = QString::fromUtf8(col.data(), static_cast<qsizetype>(col.size()));
+                emit currentGroupNameChanged();
+            }
+        }
 
         emit tabsChanged();
     }
@@ -576,7 +588,8 @@ namespace gf::desktop
         m_sessionKind = QStringLiteral("workspace");
         m_currentWorkspaceId = workspaceId;
         m_currentGroupName = QString::fromStdString((*wsOpt)->name);
-        m_currentGroupColor = QStringLiteral("#38BDF8");
+        const auto wsCol = (*wsOpt)->resolvedColor();
+        m_currentGroupColor = QString::fromUtf8(wsCol.data(), static_cast<qsizetype>(wsCol.size()));
         m_preferredGroupOrder.clear();
         m_preferredGroupOrder.reserve((*wsOpt)->groupIds.size());
         for (const auto& gId : (*wsOpt)->groupIds)

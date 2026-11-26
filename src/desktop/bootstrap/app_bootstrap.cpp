@@ -141,6 +141,8 @@ namespace gf::desktop
         m_workspaceSessionVm->setGroupService(m_groupService.get());
         QObject::connect(m_homeHubVm.get(), &HomeHubViewModel::groupsChanged,
                          m_workspaceSessionVm.get(), &WorkspaceSessionViewModel::refreshTabGroups);
+        QObject::connect(m_homeHubVm.get(), &HomeHubViewModel::workspacesChanged,
+                         m_workspaceSessionVm.get(), &WorkspaceSessionViewModel::refreshTabGroups);
         m_batchOperationsVm = std::make_unique<BatchOperationsViewModel>(*m_batchCoordinator);
 
         m_profileStore = std::make_unique<infra::persistence::profiles::SqliteProfileStore>(*m_connection);
