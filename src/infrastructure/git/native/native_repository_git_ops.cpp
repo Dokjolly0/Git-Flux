@@ -4638,7 +4638,7 @@ namespace gf::infra::git
 
             gf::git::bo::FileBlob blob;
             blob.totalSize = fileSize;
-            const std::size_t toRead = std::min(fileSize, maxBytes);
+            const std::size_t toRead = static_cast<std::size_t>(std::min<std::uint64_t>(fileSize, maxBytes));
             blob.truncated = fileSize > maxBytes;
             if (toRead > 0)
             {
@@ -4743,7 +4743,7 @@ namespace gf::infra::git
 
         gf::git::bo::FileBlob blob;
         blob.bytes = std::move(execResult->stdoutBytes);
-        blob.totalSize = std::max(objectSize, blob.bytes.size());
+        blob.totalSize = std::max<std::uint64_t>(objectSize, blob.bytes.size());
         blob.truncated = false;
         return blob;
     }
