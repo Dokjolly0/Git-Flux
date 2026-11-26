@@ -677,7 +677,7 @@ Item {
                     id: repoCol
                     visible: Boolean(homeHubVm && homeHubVm.showRepositories)
                     SplitView.preferredWidth: parent.width / root.visibleColumnCount
-                    SplitView.minimumWidth: 260
+                    SplitView.minimumWidth: 340
                     SplitView.fillWidth: (root.visibleColumnCount === 1) || Boolean(homeHubVm && !homeHubVm.showGroups && !homeHubVm.showWorkspaces)
                     color: "#0F141C"
                     radius: 14
@@ -815,11 +815,21 @@ Item {
                                         }
 
                                         Text {
+                                            id: repoCardNameText
                                             text: repoCardRect.displayName
                                             color: "#F0F6FC"
                                             font.pixelSize: 13
                                             font.bold: true
                                             elide: Text.ElideRight
+                                            Layout.fillWidth: true
+                                            Layout.minimumWidth: 40
+                                            Layout.maximumWidth: Math.ceil(Math.max(repoNameMetrics.advanceWidth, repoNameMetrics.boundingRect.width)) + 4
+
+                                            TextMetrics {
+                                                id: repoNameMetrics
+                                                font: repoCardNameText.font
+                                                text: repoCardNameText.text
+                                            }
                                         }
 
                                         // Branch Badge
@@ -1185,7 +1195,7 @@ Item {
                     id: groupCol
                     visible: Boolean(homeHubVm && homeHubVm.showGroups)
                     SplitView.preferredWidth: parent.width / root.visibleColumnCount
-                    SplitView.minimumWidth: 260
+                    SplitView.minimumWidth: 340
                     SplitView.fillWidth: (root.visibleColumnCount === 1) || Boolean(homeHubVm && !homeHubVm.showWorkspaces)
                     color: "#0F141C"
                     radius: 14
@@ -1329,7 +1339,7 @@ Item {
                                     // Top Row: Group name, count badge, Open Group button, action icons
                                     RowLayout {
                                         Layout.fillWidth: true
-                                        spacing: 8
+                                        spacing: 5
 
                                         Text {
                                             text: "⋮⋮"
@@ -1366,11 +1376,21 @@ Item {
                                         }
 
                                         Text {
+                                            id: grpCardNameText
                                             text: grpCardRect.name
                                             color: "#F0F6FC"
                                             font.pixelSize: 13
                                             font.bold: true
                                             elide: Text.ElideRight
+                                            Layout.fillWidth: true
+                                            Layout.minimumWidth: 40
+                                            Layout.maximumWidth: Math.ceil(Math.max(grpNameMetrics.advanceWidth, grpNameMetrics.boundingRect.width)) + 4
+
+                                            TextMetrics {
+                                                id: grpNameMetrics
+                                                font: grpCardNameText.font
+                                                text: grpCardNameText.text
+                                            }
                                         }
 
                                         // Count Badge
@@ -1680,7 +1700,7 @@ Item {
                     id: wsCol
                     visible: Boolean(homeHubVm && homeHubVm.showWorkspaces)
                     SplitView.preferredWidth: parent.width / root.visibleColumnCount
-                    SplitView.minimumWidth: 260
+                    SplitView.minimumWidth: 340
                     SplitView.fillWidth: true
                     color: "#0F141C"
                     radius: 14
@@ -1836,7 +1856,7 @@ Item {
 
                                     RowLayout {
                                         Layout.fillWidth: true
-                                        spacing: 8
+                                        spacing: 5
 
                                         Text {
                                             text: "💼"
@@ -1870,11 +1890,21 @@ Item {
                                         }
 
                                         Text {
+                                            id: wsCardNameText
                                             text: wsCardRect.name
                                             color: "#F0F6FC"
                                             font.pixelSize: 13
                                             font.bold: true
                                             elide: Text.ElideRight
+                                            Layout.fillWidth: true
+                                            Layout.minimumWidth: 40
+                                            Layout.maximumWidth: Math.ceil(Math.max(wsNameMetrics.advanceWidth, wsNameMetrics.boundingRect.width)) + 4
+
+                                            TextMetrics {
+                                                id: wsNameMetrics
+                                                font: wsCardNameText.font
+                                                text: wsCardNameText.text
+                                            }
                                         }
 
                                         Rectangle {

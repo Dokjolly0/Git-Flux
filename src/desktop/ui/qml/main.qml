@@ -8,10 +8,10 @@ import "views"
 ApplicationWindow {
     id: appWindow
     visible: true
-    width: 1280
-    height: 800
-    minimumWidth: 900
-    minimumHeight: 600
+    width: 1560
+    height: 900
+    minimumWidth: 1120
+    minimumHeight: 640
     title: "Git Flux"
     color: fluxTheme.canvas
 
