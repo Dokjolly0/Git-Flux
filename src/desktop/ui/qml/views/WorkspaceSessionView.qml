@@ -224,14 +224,18 @@ Rectangle {
                 // Active Workspace Indicator Badge (shown when a Workspace session is open;
                 // individual groups are represented directly by their colored Chrome/Arc cluster chips)
                 Rectangle {
+                    id: workspaceBadge
+                    readonly property color wsAccent: (root.sessionVm && root.sessionVm.currentGroupColor && root.sessionVm.currentGroupColor.length > 0)
+                        ? root.sessionVm.currentGroupColor
+                        : "#38BDF8"
                     visible: Boolean(root.sessionVm && root.sessionVm.sessionKind === "workspace"
                         && root.sessionVm.currentGroupName && root.sessionVm.currentGroupName.length > 0)
                     Layout.preferredHeight: 28
                     Layout.alignment: Qt.AlignVCenter
                     implicitWidth: workspaceBadgeRow.implicitWidth + 16
                     radius: 14
-                    color: "#0E2238"
-                    border.color: "#1E4B7A"
+                    color: Qt.alpha(wsAccent, 0.16)
+                    border.color: Qt.alpha(wsAccent, 0.55)
                     border.width: 1
 
                     RowLayout {
@@ -243,12 +247,12 @@ Rectangle {
                             width: 7
                             height: 7
                             radius: 2
-                            color: "#38BDF8"
+                            color: workspaceBadge.wsAccent
                         }
 
                         Text {
                             text: root.sessionVm ? root.sessionVm.currentGroupName : ""
-                            color: "#BAE6FD"
+                            color: "#F8FAFC"
                             font.bold: true
                             font.pixelSize: 11
                         }
@@ -267,7 +271,7 @@ Rectangle {
                             Text {
                                 anchors.centerIn: parent
                                 text: "×"
-                                color: closeWsBtn.containsMouse ? "#EF4444" : "#7DD3FC"
+                                color: closeWsBtn.containsMouse ? "#EF4444" : Qt.alpha(workspaceBadge.wsAccent, 0.90)
                                 font.pixelSize: 12
                                 font.bold: true
                             }

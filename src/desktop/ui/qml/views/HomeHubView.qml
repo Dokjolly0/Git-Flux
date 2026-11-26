@@ -15,6 +15,8 @@ Item {
             ? root.homeHubVmRef.groupColorPalette
             : ["#38BDF8", "#A78BFA", "#34D399", "#FBBF24", "#FB7185", "#818CF8", "#2DD4BF", "#FB923C"]
         spacing: 8
+        Layout.preferredHeight: 28
+        implicitHeight: 28
 
         Repeater {
             model: swatchPicker.paletteColors
@@ -22,6 +24,11 @@ Item {
                 id: swatchRect
                 required property string modelData
                 readonly property bool isSelected: swatchPicker.selectedColor.toLowerCase() === modelData.toLowerCase()
+                implicitWidth: 24
+                implicitHeight: 24
+                Layout.preferredWidth: 24
+                Layout.preferredHeight: 24
+                Layout.alignment: Qt.AlignVCenter
                 width: 24
                 height: 24
                 radius: 12
@@ -1761,6 +1768,7 @@ Item {
                                 id: wsCardRect
                                 required property string id
                                 required property string name
+                                required property string workspaceColor
                                 required property string summary
                                 required property string lastOpenedAt
                                 required property int totalRepoCount
@@ -1774,6 +1782,7 @@ Item {
 
                                 property string wsCardId: wsCardRect.id
                                 property string wsCardName: wsCardRect.name
+                                readonly property color accentColor: wsCardRect.workspaceColor.length > 0 ? wsCardRect.workspaceColor : "#10B981"
                                 readonly property bool isDropTargetGroup: root.isDraggingGroup && (root.hoveredWorkspaceId === wsCardRect.id)
                                 readonly property bool isDropTargetRepo: root.isDraggingRepo && (root.hoveredWorkspaceId === wsCardRect.id)
                                 readonly property bool isDropTarget: isDropTargetRepo || isDropTargetGroup
@@ -1781,8 +1790,12 @@ Item {
                                 width: wsListView.width
                                 implicitHeight: wsColLayout.implicitHeight + 18
                                 radius: 10
-                                color: isDropTarget ? (root.isDraggingGroup ? Qt.alpha(root.draggedGroupColor, 0.22) : "#063B2C") : (wsHover.containsMouse ? "#182334" : "#121A27")
-                                border.color: isDropTarget ? (root.isDraggingGroup ? root.draggedGroupColor : "#34D399") : (wsHover.containsMouse ? "#10B981" : "#1F2C3F")
+                                color: isDropTarget
+                                    ? Qt.alpha(root.isDraggingGroup ? root.draggedGroupColor : accentColor, 0.22)
+                                    : (wsHover.containsMouse ? "#182334" : "#121A27")
+                                border.color: isDropTarget
+                                    ? (root.isDraggingGroup ? root.draggedGroupColor : accentColor)
+                                    : (wsHover.containsMouse ? Qt.alpha(accentColor, 0.72) : "#1F2C3F")
                                 border.width: isDropTarget ? 2 : 1
                                 scale: isDropTarget ? 1.02 : 1.0
                                 Behavior on scale {
@@ -1801,10 +1814,24 @@ Item {
                                     }
                                 }
 
+                                // Left vertical color identity stripe
+                                Rectangle {
+                                    anchors.left: parent.left
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
+                                    anchors.topMargin: 7
+                                    anchors.bottomMargin: 7
+                                    anchors.leftMargin: 3
+                                    width: 3
+                                    radius: 1.5
+                                    color: wsCardRect.accentColor
+                                }
+
                                 ColumnLayout {
                                     id: wsColLayout
                                     anchors.fill: parent
                                     anchors.margins: 10
+                                    anchors.leftMargin: 13
                                     spacing: 6
 
                                     RowLayout {
@@ -1813,7 +1840,33 @@ Item {
 
                                         Text {
                                             text: "💼"
-                                            font.pixelSize: 15
+                                            font.pixelSize: 14
+                                        }
+
+                                        // Color indicator dot (click to customize workspace color & name)
+                                        Rectangle {
+                                            width: 11
+                                            height: 11
+                                            radius: 5.5
+                                            color: wsCardRect.accentColor
+                                            border.color: wsColorDotMa.containsMouse ? "#F8FAFC" : Qt.alpha(wsCardRect.accentColor, 0.35)
+                                            border.width: wsColorDotMa.containsMouse ? 1.5 : 1
+
+                                            MouseArea {
+                                                id: wsColorDotMa
+                                                anchors.fill: parent
+                                                anchors.margins: -4
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                ToolTip.visible: containsMouse
+                                                ToolTip.text: "Cambia colore o rinomina workspace"
+                                                onClicked: {
+                                                    editWorkspaceDialog.workspaceId = wsCardRect.id;
+                                                    editWorkspaceDialog.initialName = wsCardRect.name;
+                                                    editWorkspaceDialog.initialColor = wsCardRect.workspaceColor;
+                                                    editWorkspaceDialog.open();
+                                                }
+                                            }
                                         }
 
                                         Text {
@@ -1827,15 +1880,17 @@ Item {
                                         Rectangle {
                                             height: 18
                                             implicitWidth: wsSummaryPill.implicitWidth + 10
-                                            radius: 4
-                                            color: "#1B2F23"
-                                            border.color: "#3FB950"
+                                            radius: 9
+                                            color: Qt.alpha(wsCardRect.accentColor, 0.16)
+                                            border.color: Qt.alpha(wsCardRect.accentColor, 0.55)
+                                            border.width: 1
                                             Text {
                                                 id: wsSummaryPill
                                                 anchors.centerIn: parent
                                                 text: wsCardRect.summary
-                                                color: "#3FB950"
+                                                color: "#F0F6FC"
                                                 font.pixelSize: 10
+                                                font.bold: true
                                             }
                                         }
 
@@ -1853,25 +1908,30 @@ Item {
                                             ToolTip.text: "Apri tutti i progetti di questo workspace"
                                             onClicked: homeHubVm.openWorkspace(wsCardRect.id)
                                             contentItem: RowLayout {
-                                                spacing: 4
+                                                spacing: 5
                                                 Text {
                                                     text: "▶"
                                                     font.pixelSize: 9
-                                                    color: "#FFFFFF"
+                                                    color: wsCardRect.accentColor
                                                 }
                                                 Text {
                                                     text: "Apri"
-                                                    color: "#FFFFFF"
+                                                    color: "#F8FAFC"
                                                     font.pixelSize: 11
                                                     font.bold: true
                                                 }
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#10B981" : "#059669"
+                                                color: Qt.alpha(wsCardRect.accentColor, parent.hovered ? 0.34 : 0.20)
                                                 radius: 7
-                                                border.color: "#34D399"
+                                                border.color: Qt.alpha(wsCardRect.accentColor, parent.hovered ? 0.95 : 0.68)
                                                 border.width: 1
                                                 Behavior on color {
+                                                    ColorAnimation {
+                                                        duration: 110
+                                                    }
+                                                }
+                                                Behavior on border.color {
                                                     ColorAnimation {
                                                         duration: 110
                                                     }
@@ -1917,6 +1977,27 @@ Item {
                                             }
                                             contentItem: Text {
                                                 text: "🗂️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                                            }
+                                            background: Rectangle {
+                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                            }
+                                        }
+
+                                        // Edit Workspace (Name & Color) Button
+                                        Button {
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 26
+                                            hoverEnabled: true
+                                            ToolTip.visible: hovered
+                                            ToolTip.text: "Modifica nome e colore workspace"
+                                            onClicked: {
+                                                editWorkspaceDialog.workspaceId = wsCardRect.id;
+                                                editWorkspaceDialog.initialName = wsCardRect.name;
+                                                editWorkspaceDialog.initialColor = wsCardRect.workspaceColor;
+                                                editWorkspaceDialog.open();
+                                            }
+                                            contentItem: Text {
+                                                text: "✏️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
                                                 color: parent.hovered ? "#243247" : "transparent"; radius: 7
@@ -2262,6 +2343,7 @@ Item {
 
         header: Rectangle {
             color: "#161F2E"
+            implicitHeight: 46
             height: 46
             radius: 14
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
@@ -2301,6 +2383,8 @@ Item {
 
             Rectangle {
                 Layout.fillWidth: true
+                Layout.preferredHeight: 36
+                implicitHeight: 36
                 height: 36
                 color: "#0A0E15"
                 radius: 8
@@ -2404,6 +2488,7 @@ Item {
 
         footer: Rectangle {
             color: "#161F2E"
+            implicitHeight: 52
             height: 52
             radius: 14
             Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
@@ -2481,6 +2566,7 @@ Item {
 
         header: Rectangle {
             color: "#161F2E"
+            implicitHeight: 46
             height: 46
             radius: 14
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
@@ -2512,6 +2598,8 @@ Item {
 
             Rectangle {
                 Layout.fillWidth: true
+                Layout.preferredHeight: 36
+                implicitHeight: 36
                 height: 36
                 color: "#0A0E15"
                 radius: 8
@@ -2534,6 +2622,7 @@ Item {
 
         footer: Rectangle {
             color: "#161F2E"
+            implicitHeight: 52
             height: 52
             radius: 14
             Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
@@ -2598,6 +2687,7 @@ Item {
 
         header: Rectangle {
             color: "#161F2E"
+            implicitHeight: 46
             height: 46
             radius: 14
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
@@ -2629,6 +2719,8 @@ Item {
 
             Rectangle {
                 Layout.fillWidth: true
+                Layout.preferredHeight: 36
+                implicitHeight: 36
                 height: 36
                 color: "#0A0E15"
                 radius: 8
@@ -2664,6 +2756,7 @@ Item {
 
         footer: Rectangle {
             color: "#161F2E"
+            implicitHeight: 52
             height: 52
             radius: 14
             Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
@@ -2748,6 +2841,7 @@ Item {
 
         header: Rectangle {
             color: "#161F2E"
+            implicitHeight: 46
             height: 46
             radius: 14
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
@@ -2853,6 +2947,7 @@ Item {
 
         footer: Rectangle {
             color: "#161F2E"
+            implicitHeight: 52
             height: 52
             radius: 14
             Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
@@ -2927,6 +3022,7 @@ Item {
 
         header: Rectangle {
             color: "#161F2E"
+            implicitHeight: 46
             height: 46
             radius: 14
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
@@ -3026,6 +3122,7 @@ Item {
 
         footer: Rectangle {
             color: "#161F2E"
+            implicitHeight: 52
             height: 52
             radius: 14
             Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
@@ -3100,6 +3197,7 @@ Item {
 
         header: Rectangle {
             color: "#161F2E"
+            implicitHeight: 46
             height: 46
             radius: 14
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
@@ -3199,6 +3297,7 @@ Item {
 
         footer: Rectangle {
             color: "#161F2E"
+            implicitHeight: 52
             height: 52
             radius: 14
             Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
@@ -3273,6 +3372,7 @@ Item {
 
         header: Rectangle {
             color: "#161F2E"
+            implicitHeight: 46
             height: 46
             radius: 14
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
@@ -3380,6 +3480,7 @@ Item {
 
         footer: Rectangle {
             color: "#161F2E"
+            implicitHeight: 52
             height: 52
             radius: 14
             Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
@@ -3419,11 +3520,13 @@ Item {
         id: addWorkspaceDialog
         anchors.centerIn: Overlay.overlay
         modal: true
-        width: 400
+        width: 410
         padding: 18
         topPadding: 14
         bottomPadding: 14
         title: "Crea Nuovo Workspace"
+
+        property string selectedColor: "#34D399"
 
         background: Rectangle {
             color: "#111824"
@@ -3436,6 +3539,7 @@ Item {
 
         header: Rectangle {
             color: "#161F2E"
+            implicitHeight: 46
             height: 46
             radius: 14
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
@@ -3456,7 +3560,7 @@ Item {
         }
 
         contentItem: ColumnLayout {
-            spacing: 10
+            spacing: 12
 
             Text {
                 text: "Nome del workspace:"
@@ -3467,10 +3571,12 @@ Item {
 
             Rectangle {
                 Layout.fillWidth: true
+                Layout.preferredHeight: 36
+                implicitHeight: 36
                 height: 36
                 color: "#0A0E15"
                 radius: 8
-                border.color: wsNameInput.activeFocus ? "#10B981" : "#222F42"
+                border.color: wsNameInput.activeFocus ? (addWorkspaceDialog.selectedColor.length > 0 ? addWorkspaceDialog.selectedColor : "#10B981") : "#222F42"
                 border.width: 1
                 Behavior on border.color { ColorAnimation { duration: 120 } }
                 TextInput {
@@ -3485,10 +3591,24 @@ Item {
                     onAccepted: addWorkspaceDialog.accept()
                 }
             }
+
+            Text {
+                text: "Colore del workspace:"
+                color: "#CBD5E1"
+                font.bold: true
+                font.pixelSize: 12
+            }
+
+            GroupColorSwatchPicker {
+                id: addWorkspaceColorPicker
+                selectedColor: addWorkspaceDialog.selectedColor
+                onSelectedColorChanged: addWorkspaceDialog.selectedColor = selectedColor
+            }
         }
 
         footer: Rectangle {
             color: "#161F2E"
+            implicitHeight: 52
             height: 52
             radius: 14
             Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
@@ -3507,8 +3627,9 @@ Item {
                 }
                 Button {
                     text: "✓ Crea Workspace"; Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
-                    background: Rectangle { color: parent.hovered ? "#10B981" : "#059669"; radius: 8; border.color: "#34D399"; border.width: 1 }
-                    contentItem: Text { text: parent.text; color: "#FFFFFF"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    readonly property color btnAccent: addWorkspaceDialog.selectedColor.length > 0 ? addWorkspaceDialog.selectedColor : "#10B981"
+                    background: Rectangle { color: Qt.alpha(parent.btnAccent, parent.hovered ? 0.36 : 0.24); radius: 8; border.color: parent.btnAccent; border.width: 1 }
+                    contentItem: Text { text: parent.text; color: "#F8FAFC"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                     onClicked: addWorkspaceDialog.accept()
                 }
             }
@@ -3516,12 +3637,157 @@ Item {
 
         onAboutToShow: {
             wsNameInput.text = "";
+            const pal = addWorkspaceColorPicker.paletteColors;
+            const idx = ((root.homeHubVmRef ? root.homeHubVmRef.workspacesCount : 0) + 2) % pal.length;
+            selectedColor = pal[idx];
+            addWorkspaceColorPicker.selectedColor = selectedColor;
             wsNameInput.forceActiveFocus();
         }
 
         onAccepted: {
-            if (homeHubVm.createWorkspace(wsNameInput.text)) {
+            if (homeHubVm.createWorkspace(wsNameInput.text, [], [], selectedColor)) {
                 wsNameInput.text = "";
+            }
+        }
+    }
+
+    // Dialog: Edit Workspace (Name & Color)
+    Dialog {
+        id: editWorkspaceDialog
+        anchors.centerIn: Overlay.overlay
+        modal: true
+        width: 410
+        padding: 18
+        topPadding: 14
+        bottomPadding: 14
+        title: "Modifica Workspace"
+
+        property string workspaceId: ""
+        property string initialName: ""
+        property string initialColor: ""
+        property string selectedColor: ""
+
+        background: Rectangle {
+            color: "#111824"
+            radius: 14
+            border.color: "#28374E"
+            border.width: 1
+            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
+            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
+        }
+
+        header: Rectangle {
+            color: "#161F2E"
+            implicitHeight: 46
+            height: 46
+            radius: 14
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 14
+                Text { text: "✏️ Modifica Workspace"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
+                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
+                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: editWorkspaceDialog.reject()
+                }
+            }
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 12
+
+            Text {
+                text: "Nome workspace:"
+                color: "#CBD5E1"
+                font.bold: true
+                font.pixelSize: 12
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 36
+                implicitHeight: 36
+                height: 36
+                color: "#0A0E15"
+                radius: 8
+                border.color: editWorkspaceInput.activeFocus ? (editWorkspaceDialog.selectedColor.length > 0 ? editWorkspaceDialog.selectedColor : "#10B981") : "#222F42"
+                border.width: 1
+                Behavior on border.color { ColorAnimation { duration: 120 } }
+                TextInput {
+                    id: editWorkspaceInput
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    verticalAlignment: TextInput.AlignVCenter
+                    color: "#F8FAFC"
+                    font.pixelSize: 13
+                    selectByMouse: true
+                    onAccepted: editWorkspaceDialog.accept()
+                }
+            }
+
+            Text {
+                text: "Colore del workspace:"
+                color: "#CBD5E1"
+                font.bold: true
+                font.pixelSize: 12
+            }
+
+            GroupColorSwatchPicker {
+                id: editWorkspaceColorPicker
+                selectedColor: editWorkspaceDialog.selectedColor
+                onSelectedColorChanged: editWorkspaceDialog.selectedColor = selectedColor
+            }
+        }
+
+        footer: Rectangle {
+            color: "#161F2E"
+            implicitHeight: 52
+            height: 52
+            radius: 14
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
+            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 10
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Annulla"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
+                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
+                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: editWorkspaceDialog.reject()
+                }
+                Button {
+                    text: "✓ Salva"; Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
+                    readonly property color btnAccent: editWorkspaceDialog.selectedColor.length > 0 ? editWorkspaceDialog.selectedColor : "#10B981"
+                    background: Rectangle { color: Qt.alpha(parent.btnAccent, parent.hovered ? 0.36 : 0.24); radius: 8; border.color: parent.btnAccent; border.width: 1 }
+                    contentItem: Text { text: parent.text; color: "#F8FAFC"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                    onClicked: editWorkspaceDialog.accept()
+                }
+            }
+        }
+
+        onAboutToShow: {
+            editWorkspaceInput.text = initialName;
+            selectedColor = initialColor;
+            editWorkspaceColorPicker.selectedColor = initialColor;
+            editWorkspaceInput.forceActiveFocus();
+        }
+
+        onAccepted: {
+            const trimmedName = editWorkspaceInput.text.trim();
+            if (workspaceId.length > 0 && trimmedName.length > 0 && trimmedName !== initialName) {
+                homeHubVm.renameWorkspace(workspaceId, trimmedName);
+            }
+            if (workspaceId.length > 0 && selectedColor.length > 0 && selectedColor !== initialColor) {
+                homeHubVm.updateWorkspaceColor(workspaceId, selectedColor);
             }
         }
     }
@@ -3562,6 +3828,7 @@ Item {
 
         header: Rectangle {
             color: "#2A1217"
+            implicitHeight: 46
             height: 46
             radius: 14
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#2A1217" }
@@ -3624,6 +3891,7 @@ Item {
 
         footer: Rectangle {
             color: "#161F2E"
+            implicitHeight: 52
             height: 52
             radius: 14
             Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
