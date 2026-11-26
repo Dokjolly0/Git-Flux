@@ -4114,27 +4114,70 @@ Rectangle {
                 }
 
                 // ==========================================
-                // WIP FILES SPLIT INTO TWO SECTIONS:
+                // WIP FILES SPLIT INTO TWO RESIZABLE SECTIONS:
                 // 1) Unstaged & Untracked
                 // 2) Staged
                 // ==========================================
-                ColumnLayout {
+                SplitView {
+                    id: wipSectionsSplit
                     visible: root.isWipSelected
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    spacing: 8
+                    orientation: Qt.Vertical
+
+                    property real savedUnstagedHeight: -1
+
+                    function restorePreferredSplitHeight() {
+                        if (wipSectionsSplit.height <= 0) return;
+                        if (savedUnstagedHeight >= 76) {
+                            const maxAvail = Math.max(76, wipSectionsSplit.height - 86);
+                            wipUnstagedSection.SplitView.preferredHeight = Math.min(savedUnstagedHeight, maxAvail);
+                        } else {
+                            wipUnstagedSection.SplitView.preferredHeight = Math.max(76, Math.round((wipSectionsSplit.height - 10) * 0.5));
+                        }
+                    }
+
+                    onHeightChanged: {
+                        if (root.wipUnstagedExpanded && root.wipStagedExpanded && savedUnstagedHeight < 0 && height > 160) {
+                            restorePreferredSplitHeight();
+                        }
+                    }
+
+                    onResizingChanged: {
+                        if (!resizing && root.wipUnstagedExpanded && root.wipStagedExpanded) {
+                            savedUnstagedHeight = wipUnstagedSection.height;
+                        }
+                    }
+
+                    handle: Rectangle {
+                        implicitHeight: 10
+                        color: "transparent"
+
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: Math.min(96, Math.max(40, parent.width * 0.30))
+                            height: (SplitHandle.hovered || SplitHandle.pressed) ? 4 : 3
+                            radius: 2
+                            color: (SplitHandle.hovered || SplitHandle.pressed) ? "#38BDF8" : "#2B3647"
+
+                            Behavior on color { ColorAnimation { duration: 100 } }
+                        }
+                    }
 
                     WipSectionCard {
                         id: wipUnstagedSection
                         readonly property int untrackedInTree: (root.sessionVm && root.sessionVm.workingTree)
                             ? root.sessionVm.workingTree.untrackedCount
                             : 0
-                        Layout.fillWidth: true
-                        Layout.fillHeight: root.wipUnstagedExpanded && (root.wipUnstagedPathFiles.length > 0 || !root.wipStagedExpanded || root.wipStagedPathFiles.length === 0)
-                        Layout.preferredHeight: root.wipUnstagedExpanded
-                            ? (root.wipUnstagedPathFiles.length > 0 ? 180 : 76)
+
+                        SplitView.fillHeight: root.wipUnstagedExpanded && !root.wipStagedExpanded
+                        SplitView.minimumHeight: root.wipUnstagedExpanded ? 76 : 34
+                        SplitView.maximumHeight: root.wipUnstagedExpanded
+                            ? (root.wipStagedExpanded && wipSectionsSplit.height > 160
+                                ? Math.max(76, wipSectionsSplit.height - 86)
+                                : Infinity)
                             : 34
-                        Layout.minimumHeight: root.wipUnstagedExpanded ? 76 : 34
+                        SplitView.preferredHeight: root.wipUnstagedExpanded ? 180 : 34
 
                         titleText: "Modifiche Unstaged / Untracked"
                         accentColor: "#F59E0B"
@@ -4154,7 +4197,19 @@ Rectangle {
                             ? "Nessuna modifica unstaged o untracked"
                             : "Nessun file corrisponde al filtro selezionato"
 
-                        onToggleExpanded: root.wipUnstagedExpanded = !root.wipUnstagedExpanded
+                        onToggleExpanded: {
+                            if (root.wipUnstagedExpanded) {
+                                if (root.wipStagedExpanded && wipUnstagedSection.height >= 76) {
+                                    wipSectionsSplit.savedUnstagedHeight = wipUnstagedSection.height;
+                                }
+                                root.wipUnstagedExpanded = false;
+                            } else {
+                                root.wipUnstagedExpanded = true;
+                                if (root.wipStagedExpanded) {
+                                    wipSectionsSplit.restorePreferredSplitHeight();
+                                }
+                            }
+                        }
                         onActionClicked: {
                             if (root.sessionVm && root.sessionVm.workingTree) {
                                 root.sessionVm.workingTree.stageAll(root.sessionVm.activeRepoPath);
@@ -4164,12 +4219,10 @@ Rectangle {
 
                     WipSectionCard {
                         id: wipStagedSection
-                        Layout.fillWidth: true
-                        Layout.fillHeight: root.wipStagedExpanded && (root.wipStagedPathFiles.length > 0 || !root.wipUnstagedExpanded || root.wipUnstagedPathFiles.length === 0)
-                        Layout.preferredHeight: root.wipStagedExpanded
-                            ? (root.wipStagedPathFiles.length > 0 ? 180 : 76)
-                            : 34
-                        Layout.minimumHeight: root.wipStagedExpanded ? 76 : 34
+                        SplitView.fillHeight: root.wipStagedExpanded
+                        SplitView.minimumHeight: root.wipStagedExpanded ? 76 : 34
+                        SplitView.maximumHeight: root.wipStagedExpanded ? Infinity : 34
+                        SplitView.preferredHeight: root.wipStagedExpanded ? 180 : 34
 
                         titleText: "Modifiche in Staging"
                         accentColor: "#10B981"
@@ -4188,7 +4241,19 @@ Rectangle {
                             ? "Nessun file in staging (usa + sui file sopra per prepararli al commit)"
                             : "Nessun file corrisponde al filtro selezionato"
 
-                        onToggleExpanded: root.wipStagedExpanded = !root.wipStagedExpanded
+                        onToggleExpanded: {
+                            if (root.wipStagedExpanded) {
+                                if (root.wipUnstagedExpanded && wipUnstagedSection.height >= 76) {
+                                    wipSectionsSplit.savedUnstagedHeight = wipUnstagedSection.height;
+                                }
+                                root.wipStagedExpanded = false;
+                            } else {
+                                root.wipStagedExpanded = true;
+                                if (root.wipUnstagedExpanded) {
+                                    wipSectionsSplit.restorePreferredSplitHeight();
+                                }
+                            }
+                        }
                         onActionClicked: {
                             if (root.sessionVm && root.sessionVm.workingTree) {
                                 root.sessionVm.workingTree.unstageAll(root.sessionVm.activeRepoPath);
