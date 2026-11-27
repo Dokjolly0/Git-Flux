@@ -91,6 +91,39 @@ namespace gf::desktop
         }
     }
 
+    void WorkspaceSessionViewModel::setTerminalViewModel(TerminalSessionViewModel* terminalVm)
+    {
+        if (m_terminalVm == terminalVm)
+        {
+            return;
+        }
+        if (m_terminalVm)
+        {
+            disconnect(m_terminalVm, nullptr, this, nullptr);
+        }
+        m_terminalVm = terminalVm;
+        if (m_terminalVm)
+        {
+            connect(m_terminalVm, &TerminalSessionViewModel::gitCommandFinished,
+                    this, [this](const QString& repoPath, int /*exitCode*/)
+                    {
+                        if (!repoPath.isEmpty() && repoPath == activeRepoPath())
+                        {
+                            m_workingTree.refresh(repoPath);
+                            m_branchManager.refresh();
+                            m_stashManager.refresh();
+                            checkRebaseStatus();
+                        }
+                    });
+            if (m_activeTabIndex >= 0 && m_activeTabIndex < static_cast<int>(m_tabs.size()))
+            {
+                const auto& tab = m_tabs[static_cast<std::size_t>(m_activeTabIndex)];
+                m_terminalVm->setActiveRepository(tab.repoId, tab.name, tab.path, tab.branch);
+            }
+        }
+        emit terminalChanged();
+    }
+
     QVariantMap WorkspaceSessionViewModel::buildTabVariantMap(const SessionTabItem& item, const int tabIndex) const
     {
         QVariantMap map;
@@ -641,10 +674,15 @@ namespace gf::desktop
             return;
         }
 
+        const QString closedRepoId = m_tabs[static_cast<std::size_t>(index)].repoId;
         QString closedPath = m_tabs[static_cast<std::size_t>(index)].path;
         if (m_watcherService && !closedPath.isEmpty())
         {
             [[maybe_unused]] auto res = m_watcherService->stopWatching(std::filesystem::path(closedPath.toStdString()));
+        }
+        if (m_terminalVm)
+        {
+            m_terminalVm->closeRepositoryTerminals(closedRepoId, closedPath);
         }
 
         m_tabs.erase(m_tabs.begin() + index);
@@ -720,6 +758,10 @@ namespace gf::desktop
         m_branchManager.setRepositoryPath({});
         m_stashManager.setRepoPath({});
         m_conflictResolver.setRepoPath({});
+        if (m_terminalVm)
+        {
+            m_terminalVm->closeAllTerminals();
+        }
         m_isRebaseInProgress = false;
         emit rebaseStatusChanged();
         emit tabsChanged();
@@ -758,6 +800,11 @@ namespace gf::desktop
             m_stashManager.setRepoPath(path);
         }
         m_conflictResolver.setRepoPath(path);
+        if (m_terminalVm && m_activeTabIndex >= 0 && m_activeTabIndex < static_cast<int>(m_tabs.size()))
+        {
+            const auto& tab = m_tabs[static_cast<std::size_t>(m_activeTabIndex)];
+            m_terminalVm->setActiveRepository(tab.repoId, tab.name, tab.path, tab.branch);
+        }
         checkRebaseStatus();
     }
 
@@ -808,6 +855,10 @@ namespace gf::desktop
                 tab.branch = branch;
                 emit tabsChanged();
             }
+        }
+        if (m_terminalVm && !branch.isEmpty())
+        {
+            m_terminalVm->updateActiveBranch(repoPath, branch);
         }
     }
 

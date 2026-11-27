@@ -21,12 +21,15 @@
 #include "core/modules/git/bl/async_git_service.hpp"
 #include "core/modules/git/bl/multi_repo_batch_coordinator.hpp"
 #include "core/modules/tasks/bl/background_task_runner.hpp"
+#include "core/modules/terminal/bl/git_catalog_service.hpp"
 #include "infrastructure/watcher/native_polling_fs_watcher.hpp"
 #include "infrastructure/git/native/native_git_executor.hpp"
 #include "infrastructure/git/native/native_repository_git_ops.hpp"
+#include "infrastructure/terminal/native_terminal_process_runner.hpp"
 #include "desktop/viewmodels/batch_operations_viewmodel.hpp"
 #include "desktop/viewmodels/home_hub_viewmodel.hpp"
 #include "desktop/viewmodels/quick_open_viewmodel.hpp"
+#include "desktop/viewmodels/terminal_session_viewmodel.hpp"
 #include "desktop/viewmodels/workspace_session_viewmodel.hpp"
 #include "desktop/viewmodels/git_profiles_viewmodel.hpp"
 #include "infrastructure/persistence/profiles/sqlite_profile_store.hpp"
@@ -58,6 +61,7 @@ namespace gf::desktop
         [[nodiscard]] HomeHubViewModel& homeHubViewModel() noexcept;
         [[nodiscard]] QuickOpenViewModel& quickOpenViewModel() noexcept;
         [[nodiscard]] WorkspaceSessionViewModel& workspaceSessionViewModel() noexcept;
+        [[nodiscard]] TerminalSessionViewModel& terminalSessionViewModel() noexcept;
         [[nodiscard]] BatchOperationsViewModel& batchOperationsViewModel() noexcept;
         [[nodiscard]] viewmodels::GitProfilesViewModel& gitProfilesViewModel() noexcept;
         [[nodiscard]] git::bl::GitRepositoryWatcherService& watcherService() noexcept;
@@ -81,6 +85,8 @@ namespace gf::desktop
 
         std::unique_ptr<infra::git::NativeGitCommandExecutor> m_gitExecutor;
         std::unique_ptr<infra::git::NativeRepositoryGitOps> m_gitOps;
+        std::unique_ptr<infra::terminal::NativeTerminalProcessRunner> m_terminalProcessRunner;
+        std::unique_ptr<terminal::bl::GitCatalogService> m_gitCatalogService;
 
         std::unique_ptr<git::bl::GitWorkingTreeService> m_workingTreeService;
         std::unique_ptr<git::bl::GitStagingService> m_stagingService;
@@ -101,6 +107,7 @@ namespace gf::desktop
 
         std::unique_ptr<HomeHubViewModel> m_homeHubVm;
         std::unique_ptr<QuickOpenViewModel> m_quickOpenVm;
+        std::unique_ptr<TerminalSessionViewModel> m_terminalVm;
         std::unique_ptr<WorkspaceSessionViewModel> m_workspaceSessionVm;
         std::unique_ptr<BatchOperationsViewModel> m_batchOperationsVm;
 

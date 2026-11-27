@@ -95,6 +95,8 @@ namespace gf::desktop
 
         m_gitExecutor = std::make_unique<infra::git::NativeGitCommandExecutor>(gitExe);
         m_gitOps = std::make_unique<infra::git::NativeRepositoryGitOps>(*m_gitExecutor);
+        m_terminalProcessRunner = std::make_unique<infra::terminal::NativeTerminalProcessRunner>(gitExe);
+        m_gitCatalogService = std::make_unique<terminal::bl::GitCatalogService>(m_gitExecutor.get());
 
         m_workingTreeService = std::make_unique<git::bl::GitWorkingTreeService>(*m_gitOps);
         m_stagingService = std::make_unique<git::bl::GitStagingService>(*m_gitOps);
@@ -124,6 +126,12 @@ namespace gf::desktop
         m_homeHubVm = std::make_unique<HomeHubViewModel>(*m_repoService, *m_groupService, *m_workspaceService,
                                                          m_cloneService.get());
         m_quickOpenVm = std::make_unique<QuickOpenViewModel>(*m_groupService, *m_repoService);
+        m_terminalVm = std::make_unique<TerminalSessionViewModel>(
+            m_terminalProcessRunner.get(),
+            m_gitCatalogService.get(),
+            m_gitExecutor.get()
+        );
+        m_terminalVm->warmUpCatalog();
         m_workspaceSessionVm = std::make_unique<WorkspaceSessionViewModel>(
             *m_repoService,
             *m_workspaceService,
@@ -139,6 +147,7 @@ namespace gf::desktop
             m_watcherService.get()
         );
         m_workspaceSessionVm->setGroupService(m_groupService.get());
+        m_workspaceSessionVm->setTerminalViewModel(m_terminalVm.get());
         QObject::connect(m_homeHubVm.get(), &HomeHubViewModel::groupsChanged,
                          m_workspaceSessionVm.get(), &WorkspaceSessionViewModel::refreshTabGroups);
         QObject::connect(m_homeHubVm.get(), &HomeHubViewModel::workspacesChanged,
@@ -202,6 +211,12 @@ namespace gf::desktop
                                                               "ViewModel managed by WorkspaceSessionViewModel");
         qmlRegisterUncreatableType<WorkspaceSessionViewModel>("GitFlux.Desktop", 1, 0, "WorkspaceSessionViewModel",
                                                               "ViewModel managed by bootstrap");
+        qmlRegisterUncreatableType<TerminalSessionViewModel>("GitFlux.Desktop", 1, 0, "TerminalSessionViewModel",
+                                                             "ViewModel managed by bootstrap");
+        qmlRegisterUncreatableType<TerminalOutputListModel>("GitFlux.Desktop", 1, 0, "TerminalOutputListModel",
+                                                            "Model provided by TerminalSessionViewModel");
+        qmlRegisterUncreatableType<TerminalCompletionListModel>("GitFlux.Desktop", 1, 0, "TerminalCompletionListModel",
+                                                                "Model provided by TerminalSessionViewModel");
         qmlRegisterUncreatableType<BatchOperationsViewModel>("GitFlux.Desktop", 1, 0, "BatchOperationsViewModel",
                                                              "ViewModel managed by bootstrap");
         qmlRegisterUncreatableType<viewmodels::RemoteRepoListModel>("GitFlux.Desktop", 1, 0, "RemoteRepoListModel",
@@ -214,6 +229,7 @@ namespace gf::desktop
         rootCtx->setContextProperty(QStringLiteral("homeHubVm"), m_homeHubVm.get());
         rootCtx->setContextProperty(QStringLiteral("quickOpenVm"), m_quickOpenVm.get());
         rootCtx->setContextProperty(QStringLiteral("workspaceSessionVm"), m_workspaceSessionVm.get());
+        rootCtx->setContextProperty(QStringLiteral("terminalSessionVm"), m_terminalVm.get());
         rootCtx->setContextProperty(QStringLiteral("batchOperationsVm"), m_batchOperationsVm.get());
         rootCtx->setContextProperty(QStringLiteral("gitProfilesVm"), m_gitProfilesVm.get());
         rootCtx->setContextProperty(QStringLiteral("gfMonoFont"), resolveMonospaceFontFamily());
@@ -232,6 +248,11 @@ namespace gf::desktop
     WorkspaceSessionViewModel& AppBootstrap::workspaceSessionViewModel() noexcept
     {
         return *m_workspaceSessionVm;
+    }
+
+    TerminalSessionViewModel& AppBootstrap::terminalSessionViewModel() noexcept
+    {
+        return *m_terminalVm;
     }
 
     BatchOperationsViewModel& AppBootstrap::batchOperationsViewModel() noexcept

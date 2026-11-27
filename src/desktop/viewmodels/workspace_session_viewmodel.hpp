@@ -14,6 +14,7 @@
 #include "desktop/viewmodels/conflict_resolver_viewmodel.hpp"
 #include "desktop/viewmodels/diff_viewmodel.hpp"
 #include "desktop/viewmodels/stash_manager_viewmodel.hpp"
+#include "desktop/viewmodels/terminal_session_viewmodel.hpp"
 #include "desktop/viewmodels/working_tree_viewmodel.hpp"
 
 namespace gf::repositories::bl
@@ -74,6 +75,7 @@ namespace gf::desktop
         Q_PROPERTY(BranchManagerViewModel* branchManager READ branchManager CONSTANT)
         Q_PROPERTY(StashManagerViewModel* stashManager READ stashManager CONSTANT)
         Q_PROPERTY(ConflictResolverViewModel* conflictResolver READ conflictResolver CONSTANT)
+        Q_PROPERTY(TerminalSessionViewModel* terminal READ terminal NOTIFY terminalChanged)
         Q_PROPERTY(bool isRebaseInProgress READ isRebaseInProgress NOTIFY rebaseStatusChanged)
 
     public:
@@ -113,6 +115,9 @@ namespace gf::desktop
         ~WorkspaceSessionViewModel() override = default;
 
         void setGroupService(groups::bl::GroupService* groupService) noexcept { m_groupService = groupService; }
+        void setTerminalViewModel(TerminalSessionViewModel* terminalVm);
+
+        [[nodiscard]] TerminalSessionViewModel* terminal() const noexcept { return m_terminalVm; }
 
         [[nodiscard]] QVariantList tabs() const;
         [[nodiscard]] QVariantList tabClusters() const;
@@ -167,6 +172,7 @@ namespace gf::desktop
         void tabsChanged();
         void activeTabChanged();
         void currentGroupNameChanged();
+        void terminalChanged();
         void rebaseStatusChanged();
         void rebaseSucceeded(const QString& message);
         void rebaseConflictDetected();
@@ -189,6 +195,7 @@ namespace gf::desktop
         repositories::bl::RepositoryService& m_repoService;
         workspaces::bl::WorkspaceService& m_workspaceService;
         groups::bl::GroupService* m_groupService{nullptr};
+        TerminalSessionViewModel* m_terminalVm{nullptr};
         gf::git::bl::GitRebaseService& m_rebaseService;
         gf::git::bl::GitRepositoryWatcherService* m_watcherService{nullptr};
 
