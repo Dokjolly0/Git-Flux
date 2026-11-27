@@ -52,6 +52,9 @@ namespace gf::desktop
 
         Q_PROPERTY(QVariantList tabs READ tabs NOTIFY tabsChanged)
         Q_PROPERTY(int activeTabIndex READ activeTabIndex WRITE setActiveTabIndex NOTIFY activeTabChanged)
+        Q_PROPERTY(int activeTabId READ activeTabId NOTIFY activeTabChanged)
+        Q_PROPERTY(QString activeInputDraft READ activeInputDraft NOTIFY activeTabChanged)
+        Q_PROPERTY(int activeInputCursorPos READ activeInputCursorPos NOTIFY activeTabChanged)
         Q_PROPERTY(TerminalOutputListModel* activeOutputModel READ activeOutputModel NOTIFY activeTabChanged)
         Q_PROPERTY(TerminalCompletionListModel* completionModel READ completionModel CONSTANT)
         Q_PROPERTY(bool isVisible READ isVisible WRITE setIsVisible NOTIFY visibilityChanged)
@@ -90,6 +93,9 @@ namespace gf::desktop
         [[nodiscard]] QVariantList tabs() const;
         [[nodiscard]] int activeTabIndex() const noexcept;
         void setActiveTabIndex(int index);
+        [[nodiscard]] int activeTabId() const noexcept;
+        [[nodiscard]] QString activeInputDraft() const;
+        [[nodiscard]] int activeInputCursorPos() const noexcept;
 
         [[nodiscard]] TerminalOutputListModel* activeOutputModel() const noexcept;
         [[nodiscard]] TerminalOutputListModel* activePagerModel() const noexcept;
@@ -145,6 +151,7 @@ namespace gf::desktop
         Q_INVOKABLE void closeTab(int index);
         Q_INVOKABLE void renameTab(int index, const QString& newTitle);
         Q_INVOKABLE void setActiveTabShell(const QString& shellId);
+        Q_INVOKABLE void setActiveInputDraft(const QString& text, int cursorPos = -1);
 
         Q_INVOKABLE void executeCommand(const QString& commandLine);
         Q_INVOKABLE void sendStdinLine(const QString& text);

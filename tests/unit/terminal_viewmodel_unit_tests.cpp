@@ -87,6 +87,81 @@ TEST_CASE("TerminalSessionViewModel manages multi-tab per-repo state, cd, comple
         REQUIRE(vm.activeTabIndex() == 0);
     }
 
+    SECTION("Prompt input draft and cursor position are isolated and persisted per tab and per repository")
+    {
+        const int tab1Id = vm.activeTabId();
+        REQUIRE(tab1Id > 0);
+        REQUIRE(vm.activeInputDraft().isEmpty());
+        REQUIRE(vm.activeInputCursorPos() == 0);
+
+        // Type partial command in Terminal 1 with cursor mid-string
+        vm.setActiveInputDraft(QStringLiteral("git commit -m \"wip"), 10);
+        REQUIRE(vm.activeInputDraft() == QStringLiteral("git commit -m \"wip"));
+        REQUIRE(vm.activeInputCursorPos() == 10);
+
+        // Creating Terminal 2 gives it an empty draft without losing Terminal 1's draft
+        const int tab2Idx = vm.createTab();
+        REQUIRE(tab2Idx == 1);
+        const int tab2Id = vm.activeTabId();
+        REQUIRE(tab2Id != tab1Id);
+        REQUIRE(vm.activeInputDraft().isEmpty());
+        REQUIRE(vm.activeInputCursorPos() == 0);
+
+        // Type a different draft in Terminal 2
+        vm.setActiveInputDraft(QStringLiteral("cd src && ls"), 6);
+        REQUIRE(vm.activeInputDraft() == QStringLiteral("cd src && ls"));
+        REQUIRE(vm.activeInputCursorPos() == 6);
+
+        // Switching back to Terminal 1 restores Terminal 1's draft and cursor
+        vm.setActiveTabIndex(0);
+        REQUIRE(vm.activeTabId() == tab1Id);
+        REQUIRE(vm.activeInputDraft() == QStringLiteral("git commit -m \"wip"));
+        REQUIRE(vm.activeInputCursorPos() == 10);
+
+        // Switching to RepoB gives RepoB its own independent draft
+        vm.setActiveRepository(QStringLiteral("id-b"), QStringLiteral("RepoB"), repoB, QStringLiteral("develop"));
+        REQUIRE(vm.activeTabId() != tab1Id);
+        REQUIRE(vm.activeTabId() != tab2Id);
+        REQUIRE(vm.activeInputDraft().isEmpty());
+        vm.setActiveInputDraft(QStringLiteral("git status --short"));
+        REQUIRE(vm.activeInputDraft() == QStringLiteral("git status --short"));
+        REQUIRE(vm.activeInputCursorPos() == 18);
+
+        // Switching back to RepoA restores Terminal 1's draft
+        vm.setActiveRepository(QStringLiteral("id-a"), QStringLiteral("RepoA"), repoA, QStringLiteral("main"));
+        REQUIRE(vm.activeTabId() == tab1Id);
+        REQUIRE(vm.activeInputDraft() == QStringLiteral("git commit -m \"wip"));
+        REQUIRE(vm.activeInputCursorPos() == 10);
+
+        // Executing a command in Terminal 1 clears Terminal 1's draft without affecting Terminal 2
+        vm.executeCommand(QStringLiteral("pwd"));
+        REQUIRE(vm.activeInputDraft().isEmpty());
+        REQUIRE(vm.activeInputCursorPos() == 0);
+
+        // History navigation updates the active tab's draft
+        REQUIRE(vm.historyPrevious(QStringLiteral("draft_before_hist")) == QStringLiteral("pwd"));
+        REQUIRE(vm.activeInputDraft() == QStringLiteral("pwd"));
+        REQUIRE(vm.historyNext() == QStringLiteral("draft_before_hist"));
+        REQUIRE(vm.activeInputDraft() == QStringLiteral("draft_before_hist"));
+
+        // Switching to Terminal 2 still has Terminal 2's untouched draft
+        vm.setActiveTabIndex(1);
+        REQUIRE(vm.activeTabId() == tab2Id);
+        REQUIRE(vm.activeInputDraft() == QStringLiteral("cd src && ls"));
+        REQUIRE(vm.activeInputCursorPos() == 6);
+
+        // Closing Terminal 2 restores Terminal 1's draft
+        vm.closeTab(1);
+        REQUIRE(vm.activeTabId() == tab1Id);
+        REQUIRE(vm.activeInputDraft() == QStringLiteral("draft_before_hist"));
+
+        // Closing all terminals resets activeTabId and activeInputDraft
+        vm.closeAllTerminals();
+        REQUIRE(vm.activeTabId() == -1);
+        REQUIRE(vm.activeInputDraft().isEmpty());
+        REQUIRE(vm.activeInputCursorPos() == 0);
+    }
+
     SECTION("Built-in cd persists working directory per tab and updates relative path")
     {
         vm.executeCommand(QStringLiteral("cd src"));

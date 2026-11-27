@@ -32,6 +32,8 @@ namespace gf::desktop
         QStringList history;
         int historyCursor = -1; // -1 means not browsing history
         QString historyDraft;
+        QString inputDraft;
+        int inputCursorPos = 0;
 
         bool isRunning = false;
         int activeCommandHeaderId = 0;
@@ -481,6 +483,34 @@ namespace gf::desktop
         emit activeBranchChanged();
         emit pagerStateChanged();
         emit runningStateChanged();
+    }
+
+    int TerminalSessionViewModel::activeTabId() const noexcept
+    {
+        const auto* tab = activeTab();
+        return tab ? tab->id : -1;
+    }
+
+    QString TerminalSessionViewModel::activeInputDraft() const
+    {
+        const auto* tab = activeTab();
+        return tab ? tab->inputDraft : QString{};
+    }
+
+    int TerminalSessionViewModel::activeInputCursorPos() const noexcept
+    {
+        const auto* tab = activeTab();
+        if (!tab) return 0;
+        return std::clamp(tab->inputCursorPos, 0, static_cast<int>(tab->inputDraft.size()));
+    }
+
+    void TerminalSessionViewModel::setActiveInputDraft(const QString& text, const int cursorPos)
+    {
+        auto* tab = activeTab();
+        if (!tab) return;
+        tab->inputDraft = text;
+        const int maxPos = static_cast<int>(text.size());
+        tab->inputCursorPos = (cursorPos < 0) ? maxPos : std::clamp(cursorPos, 0, maxPos);
     }
 
     TerminalOutputListModel* TerminalSessionViewModel::activeOutputModel() const noexcept
@@ -1173,6 +1203,9 @@ namespace gf::desktop
         auto* tab = activeTab();
         if (!tab) return;
 
+        tab->inputDraft.clear();
+        tab->inputCursorPos = 0;
+
         // If a process is already running in this tab, forward the line to its stdin
         if (tab->isRunning && tab->activeProcess)
         {
@@ -1545,6 +1578,8 @@ namespace gf::desktop
     {
         auto* tab = activeTab();
         if (!tab || !tab->isRunning || !tab->activeProcess) return;
+        tab->inputDraft.clear();
+        tab->inputCursorPos = 0;
         const std::string payload = text.toStdString() + "\n";
         tab->activeProcess->writeStdin(payload);
         tab->outputModel->appendLine(QStringLiteral("system"),
@@ -1623,7 +1658,10 @@ namespace gf::desktop
         {
             --tab->historyCursor;
         }
-        return tab->history[tab->historyCursor];
+        const QString result = tab->history[tab->historyCursor];
+        tab->inputDraft = result;
+        tab->inputCursorPos = static_cast<int>(result.size());
+        return result;
     }
 
     QString TerminalSessionViewModel::historyNext()
@@ -1634,9 +1672,14 @@ namespace gf::desktop
         if (tab->historyCursor + 1 < static_cast<int>(tab->history.size()))
         {
             ++tab->historyCursor;
-            return tab->history[tab->historyCursor];
+            const QString result = tab->history[tab->historyCursor];
+            tab->inputDraft = result;
+            tab->inputCursorPos = static_cast<int>(result.size());
+            return result;
         }
         tab->historyCursor = -1;
+        tab->inputDraft = tab->historyDraft;
+        tab->inputCursorPos = static_cast<int>(tab->historyDraft.size());
         return tab->historyDraft;
     }
 

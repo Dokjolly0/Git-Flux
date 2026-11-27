@@ -19,6 +19,7 @@ Rectangle {
     readonly property var currentOutputModel: terminalVm ? terminalVm.activeOutputModel : null
     readonly property var currentPagerModel: terminalVm ? terminalVm.activePagerModel : null
     property bool _wasPagerOpen: false
+    property int _lastSyncedTabId: -1
 
     function syncAttachedDocuments() {
         if (currentOutputModel && outputTextEdit && outputTextEdit.textDocument) {
@@ -29,7 +30,28 @@ Rectangle {
         }
     }
 
-    Component.onCompleted: syncAttachedDocuments()
+    function syncActiveTabDraft() {
+        if (!cmdInput) return;
+        const nextId = terminalVm ? terminalVm.activeTabId : -1;
+        if (nextId === _lastSyncedTabId) return;
+        _lastSyncedTabId = nextId;
+        const draft = terminalVm ? terminalVm.activeInputDraft : "";
+        const cursor = terminalVm ? terminalVm.activeInputCursorPos : 0;
+        suppressCompletionOnTextChange = true;
+        cmdInput.text = draft;
+        cmdInput.cursorPosition = Math.max(0, Math.min(draft.length, cursor));
+        suppressCompletionOnTextChange = false;
+    }
+
+    Component.onCompleted: {
+        syncAttachedDocuments();
+        syncActiveTabDraft();
+    }
+    onTerminalVmChanged: {
+        _lastSyncedTabId = -1;
+        syncAttachedDocuments();
+        syncActiveTabDraft();
+    }
     onCurrentOutputModelChanged: syncAttachedDocuments()
     onCurrentPagerModelChanged: syncAttachedDocuments()
 
@@ -85,6 +107,7 @@ Rectangle {
             cmdInput.text = res.text;
             cmdInput.cursorPosition = res.cursorPos;
             suppressCompletionOnTextChange = false;
+            terminalVm.setActiveInputDraft(res.text, res.cursorPos);
             completionPopup.resetSelection();
             cmdInput.forceActiveFocus();
         }
@@ -118,6 +141,7 @@ Rectangle {
 
         function onActiveTabChanged() {
             panelRoot.syncAttachedDocuments();
+            panelRoot.syncActiveTabDraft();
             panelRoot.autoScroll = true;
             completionPopup.resetSelection();
             if (!panelRoot.isPagerOpen) {
@@ -1314,6 +1338,7 @@ Rectangle {
 
                         onTextChanged: {
                             if (panelRoot.suppressCompletionOnTextChange || !panelRoot.terminalVm) return;
+                            panelRoot.terminalVm.setActiveInputDraft(text, cursorPosition);
                             if (panelRoot.terminalVm.isRunning) {
                                 panelRoot.terminalVm.dismissCompletions();
                                 return;
@@ -1324,6 +1349,7 @@ Rectangle {
 
                         onCursorPositionChanged: {
                             if (panelRoot.suppressCompletionOnTextChange || !panelRoot.terminalVm) return;
+                            panelRoot.terminalVm.setActiveInputDraft(text, cursorPosition);
                             if (panelRoot.terminalVm.hasCompletions && !panelRoot.terminalVm.isRunning) {
                                 panelRoot.terminalVm.updateCompletions(text, cursorPosition, false);
                             }
@@ -1455,6 +1481,7 @@ Rectangle {
                                     panelRoot.suppressCompletionOnTextChange = true;
                                     cmdInput.text = "";
                                     panelRoot.suppressCompletionOnTextChange = false;
+                                    panelRoot.terminalVm.setActiveInputDraft("", 0);
                                     panelRoot.terminalVm.dismissCompletions();
                                 }
                                 return;
