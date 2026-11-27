@@ -1,8 +1,12 @@
 #pragma once
 
 #include <QAbstractListModel>
+#include <QPointer>
 #include <QString>
 #include <vector>
+
+class QQuickTextDocument;
+class QTextDocument;
 
 namespace gf::desktop
 {
@@ -24,7 +28,7 @@ namespace gf::desktop
 
     public:
         static constexpr int kMaxLines = 5000;
-        static constexpr int kMaxPagerLines = 50000;
+        static constexpr int kMaxPagerLines = 15000;
 
         enum Roles
         {
@@ -40,7 +44,7 @@ namespace gf::desktop
         explicit TerminalOutputListModel(QObject* parent = nullptr,
                                          int maxLines = kMaxLines,
                                          bool dropOldest = true);
-        ~TerminalOutputListModel() override = default;
+        ~TerminalOutputListModel() override;
 
         [[nodiscard]] int rowCount(const QModelIndex& parent = QModelIndex()) const override;
         [[nodiscard]] QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
@@ -48,6 +52,11 @@ namespace gf::desktop
 
         [[nodiscard]] int count() const noexcept { return static_cast<int>(m_entries.size()); }
         [[nodiscard]] bool isTruncated() const noexcept { return m_truncated; }
+
+        /// Attaches a QML TextEdit's QQuickTextDocument for native multi-line text selection & copy.
+        /// Automatically detaches any previously attached model from the same document.
+        Q_INVOKABLE void attachTextDocument(QQuickTextDocument* quickDoc);
+        Q_INVOKABLE void detachTextDocument();
 
         /// Appends a command header row and returns its unique monotonic entry id.
         int appendCommandHeader(const QString& promptPrefix, const QString& commandText);
@@ -73,6 +82,10 @@ namespace gf::desktop
 
     private:
         void trimIfNeeded();
+        void syncFullDocument();
+        void appendEntryToDocument(const TerminalOutputEntry& entry, bool isFirstBlock);
+        void replaceBlockInDocument(int row, const TerminalOutputEntry& entry);
+        [[nodiscard]] static QString formatEntryHtml(const TerminalOutputEntry& entry);
 
         struct StoredEntry
         {
@@ -85,5 +98,6 @@ namespace gf::desktop
         int m_maxLines = kMaxLines;
         bool m_dropOldest = true;
         bool m_truncated = false;
+        QPointer<QTextDocument> m_attachedDoc;
     };
 } // namespace gf::desktop

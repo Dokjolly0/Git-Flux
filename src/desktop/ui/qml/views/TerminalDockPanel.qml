@@ -16,27 +16,51 @@ Rectangle {
     property real lastContentY: 0
     property bool suppressCompletionOnTextChange: false
     readonly property bool isPagerOpen: Boolean(terminalVm && terminalVm.pagerActive)
+    readonly property var currentOutputModel: terminalVm ? terminalVm.activeOutputModel : null
+    readonly property var currentPagerModel: terminalVm ? terminalVm.activePagerModel : null
     property bool _wasPagerOpen: false
+
+    function syncAttachedDocuments() {
+        if (currentOutputModel && outputTextEdit && outputTextEdit.textDocument) {
+            currentOutputModel.attachTextDocument(outputTextEdit.textDocument);
+        }
+        if (currentPagerModel && pagerTextEdit && pagerTextEdit.textDocument) {
+            currentPagerModel.attachTextDocument(pagerTextEdit.textDocument);
+        }
+    }
+
+    Component.onCompleted: syncAttachedDocuments()
+    onCurrentOutputModelChanged: syncAttachedDocuments()
+    onCurrentPagerModelChanged: syncAttachedDocuments()
 
     function focusInput() {
         if (isPagerOpen) {
-            pagerFocusScope.forceActiveFocus();
+            pagerTextEdit.forceActiveFocus();
         } else {
             cmdInput.forceActiveFocus();
         }
     }
 
     function scrollOutputToBottom() {
-        if (outputList.count <= 0) return;
+        const maxY = Math.max(0, outputFlickable.contentHeight - outputFlickable.height);
         programmaticScroll = true;
-        outputList.positionViewAtEnd();
-        lastContentY = outputList.contentY;
+        outputFlickable.contentY = maxY;
+        lastContentY = outputFlickable.contentY;
         programmaticScroll = false;
+    }
+
+    function scrollPagerToTop() {
+        pagerFlickable.contentY = 0;
+    }
+
+    function scrollPagerToBottom() {
+        pagerFlickable.contentY = Math.max(0, pagerFlickable.contentHeight - pagerFlickable.height);
     }
 
     onIsPagerOpenChanged: {
         if (isPagerOpen && !_wasPagerOpen) {
-            pagerList.positionViewAtBeginning();
+            syncAttachedDocuments();
+            scrollPagerToTop();
             pagerFocusTimer.restart();
         }
         _wasPagerOpen = isPagerOpen;
@@ -76,12 +100,13 @@ Rectangle {
         }
 
         function onOutputAppended() {
-            if (panelRoot.autoScroll && !panelRoot.isPagerOpen && outputList.count > 0) {
+            if (panelRoot.autoScroll && !panelRoot.isPagerOpen) {
                 scrollBottomTimer.restart();
             }
         }
 
         function onActiveTabChanged() {
+            panelRoot.syncAttachedDocuments();
             panelRoot.autoScroll = true;
             completionPopup.resetSelection();
             if (!panelRoot.isPagerOpen) {
@@ -101,8 +126,8 @@ Rectangle {
         interval: 20
         onTriggered: {
             if (panelRoot.isPagerOpen) {
-                pagerList.positionViewAtBeginning();
-                pagerFocusScope.forceActiveFocus();
+                panelRoot.scrollPagerToTop();
+                pagerTextEdit.forceActiveFocus();
             }
         }
     }
@@ -111,7 +136,7 @@ Rectangle {
         id: scrollBottomTimer
         interval: 16
         onTriggered: {
-            if (panelRoot.autoScroll && !panelRoot.isPagerOpen && outputList.count > 0) {
+            if (panelRoot.autoScroll && !panelRoot.isPagerOpen) {
                 panelRoot.scrollOutputToBottom();
             }
         }
@@ -597,46 +622,40 @@ Rectangle {
         }
 
         // =====================================================================
-        // 2. VIRTUALIZED ANSI TERMINAL OUTPUT AREA (with Integrated Pager)
+        // 2. MULTI-LINE SELECTABLE ANSI TERMINAL OUTPUT AREA (with Integrated Pager)
         // =====================================================================
         Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
 
-            MouseArea {
-                anchors.fill: parent
-                visible: !panelRoot.isPagerOpen
-                acceptedButtons: Qt.LeftButton
-                onClicked: {
-                    cmdInput.forceActiveFocus();
-                }
-            }
-
-            ListView {
-                id: outputList
+            Flickable {
+                id: outputFlickable
                 visible: !panelRoot.isPagerOpen
                 anchors.fill: parent
-                anchors.leftMargin: 10
-                anchors.rightMargin: 10
-                anchors.topMargin: 6
-                anchors.bottomMargin: 6
+                anchors.leftMargin: 8
+                anchors.rightMargin: 4
+                anchors.topMargin: 4
+                anchors.bottomMargin: 4
                 clip: true
-                spacing: 1
+                interactive: false // Never steal left-mouse drag from multi-line TextEdit selection!
                 boundsBehavior: Flickable.StopAtBounds
-                model: panelRoot.terminalVm ? panelRoot.terminalVm.activeOutputModel : null
+                contentWidth: width
+                contentHeight: Math.max(height, outputTextEdit.implicitHeight + 12)
 
-                SmoothWheelScroller {}
-
-                // Immediately pause auto-scroll when the user rolls the mouse wheel upward
+                // Smooth wheel & touchpad scrolling (works cleanly with interactive: false)
                 WheelHandler {
-                    acceptedDevices: PointerDevice.Mouse
                     onWheel: function (event) {
-                        if (event.angleDelta.y > 0) {
+                        const delta = (event.pixelDelta.y !== 0)
+                            ? event.pixelDelta.y
+                            : (event.angleDelta.y * 0.45);
+                        if (delta > 0) {
                             panelRoot.autoScroll = false;
                             scrollBottomTimer.stop();
                         }
-                        event.accepted = false;
+                        const maxY = Math.max(0, outputFlickable.contentHeight - outputFlickable.height);
+                        outputFlickable.contentY = Math.max(0, Math.min(maxY, outputFlickable.contentY - delta));
+                        event.accepted = true;
                     }
                 }
 
@@ -667,135 +686,121 @@ Rectangle {
                     panelRoot.lastContentY = contentY;
                 }
 
-                delegate: Item {
-                    id: lineDelegate
-                    required property string lineKind
-                    required property string richHtml
-                    required property string plainText
-                    required property string promptPrefix
-                    required property int exitCode
-                    required property string durationText
-                    required property bool wasCancelled
+                // Single unified TextEdit backed by QTextDocument: supports true multi-line drag selection & Ctrl+C copy!
+                TextEdit {
+                    id: outputTextEdit
+                    width: Math.max(100, outputFlickable.width - 14)
+                    height: Math.max(outputFlickable.height, implicitHeight)
+                    readOnly: true
+                    selectByMouse: true
+                    selectByKeyboard: true
+                    persistentSelection: false
+                    textFormat: TextEdit.RichText
+                    wrapMode: TextEdit.WrapAnywhere
+                    color: "#E2E8F0"
+                    selectionColor: "#1D4ED8"
+                    selectedTextColor: "#FFFFFF"
+                    font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
+                    font.pixelSize: 12
 
-                    width: outputList.width - 8
-                    height: lineKind === "command"
-                        ? (cmdHeaderRect.height + 6)
-                        : Math.max(18, outputTextEdit.implicitHeight)
-
-                    // A) Command Block Header
-                    Rectangle {
-                        id: cmdHeaderRect
-                        visible: lineDelegate.lineKind === "command"
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.top: parent.top
-                        anchors.topMargin: 4
-                        height: Math.max(24, cmdHeaderRow.implicitHeight + 6)
-                        radius: 6
-                        color: "#0E1623"
-                        border.color: "#1B2A40"
-                        border.width: 1
-
-                        Rectangle {
-                            anchors.left: parent.left
-                            anchors.top: parent.top
-                            anchors.bottom: parent.bottom
-                            width: 3
-                            radius: 1.5
-                            color: lineDelegate.exitCode === -1
-                                ? "#38BDF8"
-                                : (lineDelegate.wasCancelled
-                                    ? "#F59E0B"
-                                    : (lineDelegate.exitCode === 0 ? "#10B981" : "#EF4444"))
+                    // Right-click context menu for Copy / Select All / Clear
+                    MouseArea {
+                        anchors.fill: parent
+                        acceptedButtons: Qt.RightButton
+                        onClicked: function (mouse) {
+                            outputContextMenu.popup();
+                            mouse.accepted = true;
                         }
+                    }
 
-                        RowLayout {
-                            id: cmdHeaderRow
-                            anchors.fill: parent
-                            anchors.leftMargin: 10
-                            anchors.rightMargin: 8
-                            spacing: 8
+                    FluxMenu {
+                        id: outputContextMenu
 
-                            Text {
-                                text: lineDelegate.promptPrefix
-                                color: "#38BDF8"
-                                font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
-                                font.pixelSize: 11
-                                font.bold: true
+                        FluxMenuItem {
+                            text: "📋 Copia selezione (Ctrl+C)"
+                            enabled: outputTextEdit.selectedText.length > 0
+                            font.pixelSize: 11
+                            onClicked: outputTextEdit.copy()
+                        }
+                        FluxMenuItem {
+                            text: "⧉ Copia tutto l'output"
+                            font.pixelSize: 11
+                            onClicked: {
+                                if (panelRoot.terminalVm) {
+                                    panelRoot.copyTextToClipboard(panelRoot.terminalVm.copyActiveOutput());
+                                }
                             }
-
-                            TextEdit {
-                                text: lineDelegate.plainText
-                                readOnly: true
-                                selectByMouse: true
-                                color: "#F8FAFC"
-                                selectionColor: "#1D4ED8"
-                                selectedTextColor: "#FFFFFF"
-                                font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
-                                font.pixelSize: 12
-                                font.bold: true
-                                Layout.fillWidth: true
-                                wrapMode: TextEdit.WrapAnywhere
+                        }
+                        FluxMenuItem {
+                            text: "☑ Seleziona tutto (Ctrl+A)"
+                            font.pixelSize: 11
+                            onClicked: {
+                                outputTextEdit.forceActiveFocus();
+                                outputTextEdit.selectAll();
                             }
-
-                            // Exit status + duration pill
-                            Rectangle {
-                                Layout.preferredHeight: 18
-                                implicitWidth: statusPillText.implicitWidth + 12
-                                radius: 9
-                                color: lineDelegate.exitCode === -1
-                                    ? "#0F2942"
-                                    : (lineDelegate.wasCancelled
-                                        ? "#3D2607"
-                                        : (lineDelegate.exitCode === 0 ? "#063D2E" : "#3B1219"))
-
-                                Text {
-                                    id: statusPillText
-                                    anchors.centerIn: parent
-                                    text: lineDelegate.exitCode === -1
-                                        ? "⏳ in esecuzione"
-                                        : (lineDelegate.wasCancelled
-                                            ? ("^C · " + lineDelegate.durationText)
-                                            : ((lineDelegate.exitCode === 0 ? "✓ " : ("✕ " + lineDelegate.exitCode + " · ")) + lineDelegate.durationText))
-                                    color: lineDelegate.exitCode === -1
-                                        ? "#38BDF8"
-                                        : (lineDelegate.wasCancelled
-                                            ? "#FBBF24"
-                                            : (lineDelegate.exitCode === 0 ? "#34D399" : "#F87171"))
-                                    font.pixelSize: 9
-                                    font.bold: true
+                        }
+                        FluxMenuSeparator {}
+                        FluxMenuItem {
+                            text: "⌫ Pulisci terminale (Ctrl+L)"
+                            font.pixelSize: 11
+                            onClicked: {
+                                if (panelRoot.terminalVm) {
+                                    panelRoot.terminalVm.clearActiveOutput();
+                                    cmdInput.forceActiveFocus();
                                 }
                             }
                         }
                     }
 
-                    // B) Stdout / Stderr / System Line
-                    TextEdit {
-                        id: outputTextEdit
-                        visible: lineDelegate.lineKind !== "command"
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.leftMargin: 6
-                        readOnly: true
-                        selectByMouse: true
-                        textFormat: TextEdit.RichText
-                        text: lineDelegate.richHtml
-                        color: lineDelegate.lineKind === "stderr"
-                            ? "#FCA5A5"
-                            : (lineDelegate.lineKind === "system" ? "#64748B" : "#E2E8F0")
-                        selectionColor: "#1D4ED8"
-                        selectedTextColor: "#FFFFFF"
-                        font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
-                        font.pixelSize: 12
-                        font.italic: lineDelegate.lineKind === "system"
-                        wrapMode: TextEdit.WrapAnywhere
+                    Keys.onPressed: function (event) {
+                        const ctrl = (event.modifiers & Qt.ControlModifier) !== 0;
+                        const alt = (event.modifiers & Qt.AltModifier) !== 0;
+
+                        // Ctrl+C copies when text is selected; otherwise interrupts running command
+                        if (ctrl && event.key === Qt.Key_C) {
+                            if (outputTextEdit.selectedText.length > 0) {
+                                outputTextEdit.copy();
+                                event.accepted = true;
+                                return;
+                            }
+                            if (panelRoot.terminalVm && panelRoot.terminalVm.isRunning) {
+                                panelRoot.terminalVm.interruptRunningCommand();
+                                event.accepted = true;
+                                return;
+                            }
+                        }
+
+                        // Ctrl+A selects all output
+                        if (ctrl && event.key === Qt.Key_A) {
+                            outputTextEdit.selectAll();
+                            event.accepted = true;
+                            return;
+                        }
+
+                        // Ctrl+L clears terminal
+                        if (ctrl && event.key === Qt.Key_L) {
+                            if (panelRoot.terminalVm) {
+                                panelRoot.terminalVm.clearActiveOutput();
+                            }
+                            cmdInput.forceActiveFocus();
+                            event.accepted = true;
+                            return;
+                        }
+
+                        // Typing any printable character while output is focused jumps smoothly to prompt
+                        if (!ctrl && !alt && event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32) {
+                            cmdInput.forceActiveFocus();
+                            cmdInput.insert(cmdInput.cursorPosition, event.text);
+                            event.accepted = true;
+                            return;
+                        }
                     }
                 }
             }
 
             // Floating "Jump to bottom" button when user scrolled up
             Button {
-                visible: !panelRoot.isPagerOpen && !panelRoot.autoScroll && outputList.count > 0
+                visible: !panelRoot.isPagerOpen && !panelRoot.autoScroll && outputFlickable.contentHeight > outputFlickable.height + 10
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
                 anchors.rightMargin: 16
@@ -825,111 +830,164 @@ Rectangle {
             }
 
             // =================================================================
-            // 2B. INTEGRATED `less`-STYLE PAGER VIEW (starts at line 1 / top!)
+            // 2B. INTEGRATED `less`-STYLE PAGER VIEW (multi-line selectable, starts at line 1!)
             // =================================================================
-            FocusScope {
-                id: pagerFocusScope
+            Flickable {
+                id: pagerFlickable
                 visible: panelRoot.isPagerOpen
                 anchors.fill: parent
+                anchors.leftMargin: 8
+                anchors.rightMargin: 4
+                anchors.topMargin: 4
+                anchors.bottomMargin: 4
+                clip: true
+                interactive: false // Never steal left-mouse drag from multi-line TextEdit selection!
+                boundsBehavior: Flickable.StopAtBounds
+                contentWidth: width
+                contentHeight: Math.max(height, pagerTextEdit.implicitHeight + 12)
+
+                readonly property int topVisibleLine: {
+                    const total = panelRoot.terminalVm ? panelRoot.terminalVm.pagerLineCount : 0;
+                    if (total <= 0) return 0;
+                    const maxY = Math.max(1, contentHeight - height);
+                    const ratio = Math.max(0, Math.min(1, contentY / maxY));
+                    const approx = Math.round(ratio * Math.max(0, total - 1)) + 1;
+                    return Math.max(1, Math.min(total, approx));
+                }
 
                 function scrollByDelta(dy) {
-                    const maxY = Math.max(0, pagerList.contentHeight - pagerList.height);
-                    pagerList.contentY = Math.max(0, Math.min(maxY, pagerList.contentY + dy));
+                    const maxY = Math.max(0, contentHeight - height);
+                    contentY = Math.max(0, Math.min(maxY, contentY + dy));
                 }
 
-                Keys.onPressed: function (event) {
-                    if (!panelRoot.terminalVm) return;
-                    const key = event.key;
-                    const ctrl = (event.modifiers & Qt.ControlModifier) !== 0;
-
-                    if (key === Qt.Key_Q || key === Qt.Key_Escape || (ctrl && key === Qt.Key_C)) {
+                WheelHandler {
+                    onWheel: function (event) {
+                        const delta = (event.pixelDelta.y !== 0)
+                            ? event.pixelDelta.y
+                            : (event.angleDelta.y * 0.45);
+                        pagerFlickable.scrollByDelta(-delta);
                         event.accepted = true;
-                        panelRoot.terminalVm.closePager();
-                        return;
-                    }
-                    if (key === Qt.Key_Down || key === Qt.Key_J || key === Qt.Key_Return || key === Qt.Key_Enter) {
-                        event.accepted = true;
-                        scrollByDelta(26);
-                        return;
-                    }
-                    if (key === Qt.Key_Up || key === Qt.Key_K) {
-                        event.accepted = true;
-                        scrollByDelta(-26);
-                        return;
-                    }
-                    if (key === Qt.Key_Space || key === Qt.Key_PageDown || key === Qt.Key_F) {
-                        event.accepted = true;
-                        scrollByDelta(Math.max(120, pagerList.height * 0.85));
-                        return;
-                    }
-                    if (key === Qt.Key_B || key === Qt.Key_PageUp) {
-                        event.accepted = true;
-                        scrollByDelta(-Math.max(120, pagerList.height * 0.85));
-                        return;
-                    }
-                    if (key === Qt.Key_Home || (key === Qt.Key_G && !(event.modifiers & Qt.ShiftModifier))) {
-                        event.accepted = true;
-                        pagerList.positionViewAtBeginning();
-                        return;
-                    }
-                    if (key === Qt.Key_End || (key === Qt.Key_G && (event.modifiers & Qt.ShiftModifier))) {
-                        event.accepted = true;
-                        pagerList.positionViewAtEnd();
-                        return;
                     }
                 }
 
-                ListView {
-                    id: pagerList
-                    anchors.fill: parent
-                    anchors.leftMargin: 10
-                    anchors.rightMargin: 10
-                    anchors.topMargin: 6
-                    anchors.bottomMargin: 6
-                    clip: true
-                    spacing: 1
-                    boundsBehavior: Flickable.StopAtBounds
-                    model: panelRoot.terminalVm ? panelRoot.terminalVm.activePagerModel : null
+                ScrollBar.vertical: FluxScrollBar {
+                    policy: ScrollBar.AsNeeded
+                }
 
-                    readonly property int topVisibleLine: {
-                        if (count <= 0) return 0;
-                        const idx = indexAt(10, contentY + 4);
-                        return (idx >= 0) ? (idx + 1) : 1;
+                TextEdit {
+                    id: pagerTextEdit
+                    width: Math.max(100, pagerFlickable.width - 14)
+                    height: Math.max(pagerFlickable.height, implicitHeight)
+                    readOnly: true
+                    selectByMouse: true
+                    selectByKeyboard: true
+                    persistentSelection: false
+                    textFormat: TextEdit.RichText
+                    wrapMode: TextEdit.WrapAnywhere
+                    color: "#E2E8F0"
+                    selectionColor: "#1D4ED8"
+                    selectedTextColor: "#FFFFFF"
+                    font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
+                    font.pixelSize: 12
+
+                    MouseArea {
+                        anchors.fill: parent
+                        acceptedButtons: Qt.RightButton
+                        onClicked: function (mouse) {
+                            pagerContextMenu.popup();
+                            mouse.accepted = true;
+                        }
                     }
 
-                    SmoothWheelScroller {}
+                    FluxMenu {
+                        id: pagerContextMenu
 
-                    ScrollBar.vertical: FluxScrollBar {
-                        policy: ScrollBar.AsNeeded
-                    }
-
-                    delegate: Item {
-                        id: pagerLineDelegate
-                        required property string lineKind
-                        required property string richHtml
-
-                        width: pagerList.width - 8
-                        height: Math.max(18, pagerTextEdit.implicitHeight)
-
-                        TextEdit {
-                            id: pagerTextEdit
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.leftMargin: 6
-                            readOnly: true
-                            selectByMouse: true
-                            textFormat: TextEdit.RichText
-                            text: pagerLineDelegate.richHtml
-                            color: pagerLineDelegate.lineKind === "system" ? "#94A3B8" : "#E2E8F0"
-                            selectionColor: "#1D4ED8"
-                            selectedTextColor: "#FFFFFF"
-                            font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
-                            font.pixelSize: 12
-                            font.italic: pagerLineDelegate.lineKind === "system"
-                            wrapMode: TextEdit.WrapAnywhere
-                            onActiveFocusChanged: {
-                                // Keep keyboard focus on pagerFocusScope when not actively selecting
+                        FluxMenuItem {
+                            text: "📋 Copia selezione (Ctrl+C)"
+                            enabled: pagerTextEdit.selectedText.length > 0
+                            font.pixelSize: 11
+                            onClicked: pagerTextEdit.copy()
+                        }
+                        FluxMenuItem {
+                            text: "⧉ Copia tutto il pager"
+                            font.pixelSize: 11
+                            onClicked: {
+                                if (panelRoot.terminalVm) {
+                                    panelRoot.copyTextToClipboard(panelRoot.terminalVm.copyPagerOutput());
+                                }
                             }
+                        }
+                        FluxMenuItem {
+                            text: "☑ Seleziona tutto (Ctrl+A)"
+                            font.pixelSize: 11
+                            onClicked: pagerTextEdit.selectAll()
+                        }
+                        FluxMenuSeparator {}
+                        FluxMenuItem {
+                            text: "✕ Chiudi pager (q)"
+                            font.pixelSize: 11
+                            onClicked: {
+                                if (panelRoot.terminalVm) {
+                                    panelRoot.terminalVm.closePager();
+                                }
+                            }
+                        }
+                    }
+
+                    Keys.onPressed: function (event) {
+                        if (!panelRoot.terminalVm) return;
+                        const key = event.key;
+                        const ctrl = (event.modifiers & Qt.ControlModifier) !== 0;
+
+                        // Ctrl+C copies selection if any text is selected; otherwise closes pager
+                        if (ctrl && key === Qt.Key_C) {
+                            event.accepted = true;
+                            if (pagerTextEdit.selectedText.length > 0) {
+                                pagerTextEdit.copy();
+                            } else {
+                                panelRoot.terminalVm.closePager();
+                            }
+                            return;
+                        }
+                        if (ctrl && key === Qt.Key_A) {
+                            event.accepted = true;
+                            pagerTextEdit.selectAll();
+                            return;
+                        }
+                        if (key === Qt.Key_Q || key === Qt.Key_Escape) {
+                            event.accepted = true;
+                            panelRoot.terminalVm.closePager();
+                            return;
+                        }
+                        if (key === Qt.Key_Down || key === Qt.Key_J || key === Qt.Key_Return || key === Qt.Key_Enter) {
+                            event.accepted = true;
+                            pagerFlickable.scrollByDelta(26);
+                            return;
+                        }
+                        if (key === Qt.Key_Up || key === Qt.Key_K) {
+                            event.accepted = true;
+                            pagerFlickable.scrollByDelta(-26);
+                            return;
+                        }
+                        if (key === Qt.Key_Space || key === Qt.Key_PageDown || key === Qt.Key_F) {
+                            event.accepted = true;
+                            pagerFlickable.scrollByDelta(Math.max(120, pagerFlickable.height * 0.85));
+                            return;
+                        }
+                        if (key === Qt.Key_B || key === Qt.Key_PageUp) {
+                            event.accepted = true;
+                            pagerFlickable.scrollByDelta(-Math.max(120, pagerFlickable.height * 0.85));
+                            return;
+                        }
+                        if (key === Qt.Key_Home || (key === Qt.Key_G && !(event.modifiers & Qt.ShiftModifier))) {
+                            event.accepted = true;
+                            panelRoot.scrollPagerToTop();
+                            return;
+                        }
+                        if (key === Qt.Key_End || (key === Qt.Key_G && (event.modifiers & Qt.ShiftModifier))) {
+                            event.accepted = true;
+                            panelRoot.scrollPagerToBottom();
+                            return;
                         }
                     }
                 }
@@ -988,7 +1046,7 @@ Rectangle {
                 }
 
                 Text {
-                    text: "Riga " + pagerList.topVisibleLine + " / " + (panelRoot.terminalVm ? panelRoot.terminalVm.pagerLineCount : 0)
+                    text: "Riga " + pagerFlickable.topVisibleLine + " / " + (panelRoot.terminalVm ? panelRoot.terminalVm.pagerLineCount : 0)
                     color: "#38BDF8"
                     font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
                     font.pixelSize: 11
@@ -996,7 +1054,7 @@ Rectangle {
                 }
 
                 Text {
-                    text: "↑↓/Spazio/PgDn scorri  •  g/G inizio/fine  •  q chiudi"
+                    text: "Seleziona + Ctrl+C copia  •  ↑↓/Spazio scorri  •  g/G inizio/fine  •  q chiudi"
                     color: "#64748B"
                     font.pixelSize: 10
                     Layout.fillWidth: true
@@ -1022,8 +1080,8 @@ Rectangle {
                         verticalAlignment: Text.AlignVCenter
                     }
                     onClicked: {
-                        pagerList.positionViewAtBeginning();
-                        pagerFocusScope.forceActiveFocus();
+                        panelRoot.scrollPagerToTop();
+                        pagerTextEdit.forceActiveFocus();
                     }
                 }
 
@@ -1046,8 +1104,8 @@ Rectangle {
                         verticalAlignment: Text.AlignVCenter
                     }
                     onClicked: {
-                        pagerList.positionViewAtEnd();
-                        pagerFocusScope.forceActiveFocus();
+                        panelRoot.scrollPagerToBottom();
+                        pagerTextEdit.forceActiveFocus();
                     }
                 }
 
