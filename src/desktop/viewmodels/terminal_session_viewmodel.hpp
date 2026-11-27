@@ -156,6 +156,10 @@ namespace gf::desktop
         Q_INVOKABLE void resetHistoryNavigation();
 
         Q_INVOKABLE void updateCompletions(const QString& inputText, int cursorPos, bool explicitTrigger = false);
+        Q_INVOKABLE bool shouldEnterAcceptCompletion(int selectedIndex,
+                                                     bool userNavigated,
+                                                     const QString& inputText,
+                                                     int cursorPos) const;
         Q_INVOKABLE QVariantMap acceptCompletion(int index, const QString& inputText, int cursorPos);
         Q_INVOKABLE void dismissCompletions();
         Q_INVOKABLE void refreshRepoCompletionContext();

@@ -114,6 +114,32 @@ TEST_CASE("TerminalSessionViewModel manages multi-tab per-repo state, cd, comple
         REQUIRE(accepted.value(QStringLiteral("cursorPos")).toInt() == 13);
     }
 
+    SECTION("Smart Enter completes incomplete prefixes or arrow-selected items, and executes complete commands directly")
+    {
+        // Incomplete prefix `git ch`: Enter should complete
+        vm.updateCompletions(QStringLiteral("git ch"), 6);
+        REQUIRE(vm.hasCompletions());
+        REQUIRE(vm.shouldEnterAcceptCompletion(0, false, QStringLiteral("git ch"), 6));
+
+        // Exact command `git log` without arrow navigation: Enter should execute immediately
+        vm.updateCompletions(QStringLiteral("git log"), 7);
+        REQUIRE(vm.hasCompletions());
+        REQUIRE_FALSE(vm.shouldEnterAcceptCompletion(0, false, QStringLiteral("git log"), 7));
+
+        // Exact command `git log` WITH explicit arrow navigation: Enter should accept the chosen suggestion
+        REQUIRE(vm.shouldEnterAcceptCompletion(0, true, QStringLiteral("git log"), 7));
+
+        // Trailing space `git log ` without arrow navigation: Enter should execute immediately
+        vm.updateCompletions(QStringLiteral("git log "), 8);
+        REQUIRE_FALSE(vm.shouldEnterAcceptCompletion(0, false, QStringLiteral("git log "), 8));
+
+        // Trailing space `git log ` WITH explicit arrow navigation (if completions exist): Enter accepts
+        if (vm.hasCompletions())
+        {
+            REQUIRE(vm.shouldEnterAcceptCompletion(0, true, QStringLiteral("git log "), 8));
+        }
+    }
+
     SECTION("Executing git command streams output and emits gitCommandFinished")
     {
         QSignalSpy finishedSpy(&vm, &TerminalSessionViewModel::gitCommandFinished);

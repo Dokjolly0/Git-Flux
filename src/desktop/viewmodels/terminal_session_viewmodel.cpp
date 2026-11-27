@@ -1606,6 +1606,54 @@ namespace gf::desktop
         });
     }
 
+    bool TerminalSessionViewModel::shouldEnterAcceptCompletion(const int selectedIndex,
+                                                               const bool userNavigated,
+                                                               const QString& inputText,
+                                                               const int /*cursorPos*/) const
+    {
+        if (m_completionModel.count() <= 0)
+        {
+            return false;
+        }
+        if (selectedIndex < 0 || selectedIndex >= m_completionModel.count())
+        {
+            return false;
+        }
+
+        // If the user explicitly moved selection inside the popup with Up/Down arrows, Enter accepts it.
+        if (userNavigated)
+        {
+            return true;
+        }
+
+        const int start = std::clamp(m_replaceStart, 0, static_cast<int>(inputText.size()));
+        const int len = std::clamp(m_replaceLength, 0, static_cast<int>(inputText.size()) - start);
+        const QString activePrefix = inputText.mid(start, len);
+
+        // Trailing space (empty active prefix, e.g. `git log ` after Tab): execute immediately on Enter.
+        if (activePrefix.isEmpty())
+        {
+            return false;
+        }
+
+        // If what the user typed already matches any suggested command/flag/ref/path exactly, execute immediately.
+        for (int i = 0; i < m_completionModel.count(); ++i)
+        {
+            const auto* item = m_completionModel.itemAt(i);
+            if (!item) continue;
+            const QString insertQ = QString::fromStdString(item->insertText);
+            const QString displayQ = QString::fromStdString(item->displayText);
+            if (activePrefix.compare(insertQ, Qt::CaseInsensitive) == 0 ||
+                activePrefix.compare(displayQ, Qt::CaseInsensitive) == 0)
+            {
+                return false;
+            }
+        }
+
+        // Incomplete prefix (e.g. `git ch`, `git commit --am`): Smart Enter completes the highlighted suggestion.
+        return true;
+    }
+
     QVariantMap TerminalSessionViewModel::acceptCompletion(const int index,
                                                            const QString& inputText,
                                                            const int cursorPos)

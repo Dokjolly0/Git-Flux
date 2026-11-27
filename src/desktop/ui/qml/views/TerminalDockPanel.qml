@@ -1312,9 +1312,23 @@ Rectangle {
                             }
                         }
 
-                        Keys.onReturnPressed: function (event) {
+                        function handleEnterKey(event) {
                             event.accepted = true;
                             if (!panelRoot.terminalVm) return;
+
+                            const forceExecute = Boolean(event.modifiers & (Qt.ShiftModifier | Qt.ControlModifier));
+                            if (!forceExecute &&
+                                !panelRoot.terminalVm.isRunning &&
+                                panelRoot.terminalVm.hasCompletions &&
+                                panelRoot.terminalVm.shouldEnterAcceptCompletion(
+                                    completionPopup.selectedIndex,
+                                    completionPopup.userNavigated,
+                                    cmdInput.text,
+                                    cmdInput.cursorPosition)) {
+                                panelRoot.applyAcceptedCompletion(completionPopup.selectedIndex);
+                                return;
+                            }
+
                             const line = cmdInput.text;
                             panelRoot.suppressCompletionOnTextChange = true;
                             cmdInput.text = "";
@@ -1323,15 +1337,12 @@ Rectangle {
                             panelRoot.terminalVm.executeCommand(line);
                         }
 
+                        Keys.onReturnPressed: function (event) {
+                            handleEnterKey(event);
+                        }
+
                         Keys.onEnterPressed: function (event) {
-                            event.accepted = true;
-                            if (!panelRoot.terminalVm) return;
-                            const line = cmdInput.text;
-                            panelRoot.suppressCompletionOnTextChange = true;
-                            cmdInput.text = "";
-                            panelRoot.suppressCompletionOnTextChange = false;
-                            panelRoot.autoScroll = true;
-                            panelRoot.terminalVm.executeCommand(line);
+                            handleEnterKey(event);
                         }
 
                         Keys.onEscapePressed: function (event) {
@@ -1394,6 +1405,15 @@ Rectangle {
     TerminalCompletionPopup {
         id: completionPopup
         completionModel: panelRoot.terminalVm ? panelRoot.terminalVm.completionModel : null
+        enterWillComplete: Boolean(
+            panelRoot.terminalVm &&
+            panelRoot.terminalVm.hasCompletions &&
+            panelRoot.terminalVm.shouldEnterAcceptCompletion(
+                selectedIndex,
+                userNavigated,
+                cmdInput.text,
+                cmdInput.cursorPosition)
+        )
         width: Math.min(580, Math.max(320, panelRoot.width - 24))
         x: {
             const desiredX = inputHost.mapToItem(panelRoot, replaceStartMetrics.advanceWidth, 0).x - 8;

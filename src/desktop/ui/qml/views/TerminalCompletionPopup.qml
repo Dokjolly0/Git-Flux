@@ -7,6 +7,8 @@ Rectangle {
 
     property var completionModel: null
     property int selectedIndex: 0
+    property bool userNavigated: false
+    property bool enterWillComplete: false
     property int totalCount: completionModel ? completionModel.count : 0
 
     signal itemAccepted(int index)
@@ -30,11 +32,13 @@ Rectangle {
         if (next < 0) next = totalCount - 1;
         else if (next >= totalCount) next = 0;
         selectedIndex = next;
+        userNavigated = true;
         completionList.positionViewAtIndex(selectedIndex, ListView.Contain);
     }
 
     function resetSelection() {
         selectedIndex = 0;
+        userNavigated = false;
         if (completionList.count > 0) {
             completionList.positionViewAtBeginning();
         }
@@ -246,7 +250,9 @@ Rectangle {
                 spacing: 8
 
                 Text {
-                    text: "Tab completa  •  ↑↓ naviga  •  Invio esegui  •  Esc chiudi"
+                    text: popupRoot.enterWillComplete
+                        ? "Tab / Invio completa  •  ↑↓ naviga  •  Shift+Invio esegui  •  Esc chiudi"
+                        : "Tab completa  •  ↑↓ naviga  •  Invio esegui  •  Esc chiudi"
                     color: "#64748B"
                     font.pixelSize: 10
                     Layout.fillWidth: true
