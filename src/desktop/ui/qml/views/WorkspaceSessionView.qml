@@ -18,7 +18,6 @@ Rectangle {
     readonly property bool hasStashes: stashCount > 0
     readonly property var terminalVm: (sessionVm && sessionVm.terminal) ? sessionVm.terminal : null
     readonly property bool isTerminalVisible: Boolean(terminalVm && terminalVm.isVisible)
-    property real terminalHeight: 280
 
     function isGroupCollapsed(groupId) {
         return Boolean(groupId && collapsedGroupIds && collapsedGroupIds[groupId] === true);
@@ -1344,99 +1343,31 @@ Rectangle {
         }
 
         // ==========================================
-        // 2. MAIN REPOSITORY VIEW + RESIZABLE BOTTOM TERMINAL DOCK
+        // 2. MAIN REPOSITORY VIEW (Commit Graph / Diff + Scoped Bottom Terminal | Full-Height WIP & Staging)
         // ==========================================
-        Item {
-            id: workspaceBodyHost
+        CommitHistoryPanel {
             Layout.fillWidth: true
             Layout.fillHeight: true
-
-            ColumnLayout {
-                anchors.fill: parent
-                spacing: 0
-
-                CommitHistoryPanel {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.minimumHeight: 160
-                    sessionVm: root.sessionVm
-                    onCreateBranchRequested: function (startPoint) {
-                        createBranchModal.openWithStartPoint(startPoint);
-                    }
-                    onCreatePullRequestRequested: function (sourceBranch, targetBranch) {
-                        pullRequestModal.openWithBranches(sourceBranch, targetBranch);
-                    }
-                    onCreateTagRequested: function (commitSha) {
-                        createTagModal.openWithCommit(commitSha);
-                    }
-                    onConflictResolveRequested: function (filePath) {
-                        if (root.sessionVm && root.sessionVm.openConflictResolver(filePath)) {
-                            conflictModal.open();
-                        }
-                    }
-                    onCreateWorktreeRequested: function (target) {
-                        createWorktreeModal.openWithTarget(target);
-                    }
-                    onStashModalRequested: function () {
-                        stashModal.open();
-                    }
+            sessionVm: root.sessionVm
+            onCreateBranchRequested: function (startPoint) {
+                createBranchModal.openWithStartPoint(startPoint);
+            }
+            onCreatePullRequestRequested: function (sourceBranch, targetBranch) {
+                pullRequestModal.openWithBranches(sourceBranch, targetBranch);
+            }
+            onCreateTagRequested: function (commitSha) {
+                createTagModal.openWithCommit(commitSha);
+            }
+            onConflictResolveRequested: function (filePath) {
+                if (root.sessionVm && root.sessionVm.openConflictResolver(filePath)) {
+                    conflictModal.open();
                 }
-
-                // Vertical Drag Resize Handle for Bottom Terminal
-                Rectangle {
-                    id: terminalResizeHandle
-                    visible: root.isTerminalVisible
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 5
-                    color: (resizeHandleMa.containsMouse || resizeHandleMa.pressed) ? "#1F3B5C" : "#0D131D"
-                    z: 20
-
-                    Rectangle {
-                        anchors.centerIn: parent
-                        width: 44
-                        height: 2
-                        radius: 1
-                        color: (resizeHandleMa.containsMouse || resizeHandleMa.pressed) ? "#00E5FF" : "#283952"
-                        Behavior on color { ColorAnimation { duration: 110 } }
-                    }
-
-                    MouseArea {
-                        id: resizeHandleMa
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.SizeVerCursor
-                        property real dragStartGlobalY: 0
-                        property real dragStartHeight: 280
-
-                        onPressed: function (mouse) {
-                            dragStartGlobalY = mapToItem(workspaceBodyHost, 0, mouse.y).y;
-                            dragStartHeight = terminalDock.height;
-                            if (root.terminalVm && root.terminalVm.isMaximized) {
-                                root.terminalVm.isMaximized = false;
-                            }
-                        }
-
-                        onPositionChanged: function (mouse) {
-                            if (!pressed) return;
-                            const currentY = mapToItem(workspaceBodyHost, 0, mouse.y).y;
-                            const delta = dragStartGlobalY - currentY;
-                            const maxH = Math.max(220, workspaceBodyHost.height - 160);
-                            root.terminalHeight = Math.max(150, Math.min(maxH, dragStartHeight + delta));
-                        }
-                    }
-                }
-
-                // Bottom Multi-Tab CLI Terminal Dock
-                TerminalDockPanel {
-                    id: terminalDock
-                    visible: root.isTerminalVisible
-                    terminalVm: root.terminalVm
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: (root.terminalVm && root.terminalVm.isMaximized)
-                        ? Math.max(260, workspaceBodyHost.height * 0.68)
-                        : Math.max(150, Math.min(root.terminalHeight, Math.max(220, workspaceBodyHost.height - 160)))
-                    z: 30
-                }
+            }
+            onCreateWorktreeRequested: function (target) {
+                createWorktreeModal.openWithTarget(target);
+            }
+            onStashModalRequested: function () {
+                stashModal.open();
             }
         }
     }

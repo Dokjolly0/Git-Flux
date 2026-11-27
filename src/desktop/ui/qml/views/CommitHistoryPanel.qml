@@ -10,6 +10,9 @@ Rectangle {
 
     property var sessionVm: null
     property var branchManager: (sessionVm && sessionVm.branchManager) ? sessionVm.branchManager : null
+    readonly property var terminalVm: (sessionVm && sessionVm.terminal) ? sessionVm.terminal : null
+    readonly property bool isTerminalVisible: Boolean(terminalVm && terminalVm.isVisible)
+    property real terminalHeight: 280
     property var selectedCommit: null
     property var commitFiles: []
     property var selectedFile: null
@@ -1790,18 +1793,29 @@ Rectangle {
         }
 
         // ==========================================
-        // 1. LEFT / CENTER MAIN PANE (Floating Island)
-        // Shows Commit Graph by default.
-        // Replaced by full-size Diff View when a modified file is touched!
+        // 1. LEFT / CENTER COLUMN (Commit Graph / Diff + Resizable Bottom CLI Terminal)
+        // Leaves the right Staging/Unstaging & Commit Box column at 100% full height!
         // ==========================================
-        Rectangle {
+        Item {
+            id: leftColumnHost
             SplitView.fillWidth: true
             SplitView.minimumWidth: 480
-            color: "#0D121A"
-            radius: 12
-            border.color: "#1E293B"
-            border.width: 1
-            clip: true
+            clip: false // Allows the terminal autocomplete popup to float cleanly above a compact dock
+
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: 0
+
+                // Floating Island: Commit Graph OR Full-Size Diff View
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.minimumHeight: 160
+                    color: "#0D121A"
+                    radius: 12
+                    border.color: "#1E293B"
+                    border.width: 1
+                    clip: true
 
             // ------------------------------------------
             // 1A. COMMIT GRAPH & TABLE (Visible when !root.isDiffOpen)
@@ -3403,6 +3417,64 @@ Rectangle {
                 diffViewer: root.sessionVm ? root.sessionVm.commitDiffViewer : null
                 onBackRequested: {
                     root.closeFileDiff();
+                }
+            }
+                }
+
+                // Vertical Drag Resize Handle between Graph/Diff and Bottom Terminal
+                Rectangle {
+                    id: terminalResizeHandle
+                    visible: root.isTerminalVisible
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 6
+                    color: "transparent"
+                    z: 20
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 44
+                        height: 2
+                        radius: 1
+                        color: (resizeHandleMa.containsMouse || resizeHandleMa.pressed) ? "#38BDF8" : "#1E293B"
+                        Behavior on color { ColorAnimation { duration: 110 } }
+                    }
+
+                    MouseArea {
+                        id: resizeHandleMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.SizeVerCursor
+                        property real dragStartY: 0
+                        property real dragStartHeight: 280
+
+                        onPressed: function (mouse) {
+                            dragStartY = mapToItem(leftColumnHost, 0, mouse.y).y;
+                            dragStartHeight = terminalDock.height;
+                            if (root.terminalVm && root.terminalVm.isMaximized) {
+                                root.terminalVm.isMaximized = false;
+                            }
+                        }
+
+                        onPositionChanged: function (mouse) {
+                            if (!pressed) return;
+                            const currentY = mapToItem(leftColumnHost, 0, mouse.y).y;
+                            const delta = dragStartY - currentY;
+                            const maxH = Math.max(220, leftColumnHost.height - 166);
+                            root.terminalHeight = Math.max(150, Math.min(maxH, dragStartHeight + delta));
+                        }
+                    }
+                }
+
+                // Floating Island: Bottom Multi-Tab CLI Terminal Dock (scoped under Left/Center pane)
+                TerminalDockPanel {
+                    id: terminalDock
+                    visible: root.isTerminalVisible
+                    terminalVm: root.terminalVm
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: (root.terminalVm && root.terminalVm.isMaximized)
+                        ? Math.max(260, leftColumnHost.height * 0.70)
+                        : Math.max(150, Math.min(root.terminalHeight, Math.max(220, leftColumnHost.height - 166)))
+                    z: 30
                 }
             }
         }

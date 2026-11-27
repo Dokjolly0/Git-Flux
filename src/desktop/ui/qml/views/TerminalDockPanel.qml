@@ -4,7 +4,10 @@ import QtQuick.Layouts
 
 Rectangle {
     id: panelRoot
-    color: "#080B10"
+    color: "#0A0E16"
+    radius: 12
+    border.color: "#1E293B"
+    border.width: 1
     clip: false // Allows the floating autocomplete popup to extend above a compact terminal dock
 
     property var terminalVm: null
@@ -114,19 +117,17 @@ Rectangle {
         }
     }
 
-    // Top accent separator
+    // Rounded inner surface matching the Floating Island aesthetic
     Rectangle {
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        height: 1
-        color: "#1E2D42"
-        z: 5
-    }
+        id: islandBody
+        anchors.fill: parent
+        anchors.margins: 1
+        radius: 11
+        color: "#080B10"
+        clip: true
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.topMargin: 1
         spacing: 0
 
         // =====================================================================
@@ -1398,6 +1399,7 @@ Rectangle {
             }
         }
     }
+    }
 
     // =========================================================================
     // 4. FLOATING GIT AUTOCOMPLETE POPUP (Anchored above cursor token)
@@ -1420,7 +1422,7 @@ Rectangle {
             const maxX = Math.max(12, panelRoot.width - width - 12);
             return Math.max(12, Math.min(desiredX, maxX));
         }
-        y: promptBar.y - height - 6
+        y: promptBar.mapToItem(panelRoot, 0, 0).y - height - 6
 
         onItemAccepted: function (idx) {
             panelRoot.applyAcceptedCompletion(idx);
