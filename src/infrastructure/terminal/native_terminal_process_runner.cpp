@@ -791,7 +791,9 @@ namespace gf::infra::terminal
             {
                 const std::string psScript =
                     "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; "
-                    "$OutputEncoding=[System.Text.Encoding]::UTF8; " + request.commandLine;
+                    "$OutputEncoding=[System.Text.Encoding]::UTF8; "
+                    "if ($PSStyle) { $PSStyle.FileInfo.Directory = $PSStyle.Foreground.FromRgb(56,189,248) + $PSStyle.Bold }; " +
+                    request.commandLine;
                 cmdLine.append(L" -NoLogo -NoProfile -NonInteractive -Command ");
                 appendQuotedWindowsArg(cmdLine, utf8ToWide(psScript));
             }

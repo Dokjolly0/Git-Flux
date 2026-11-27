@@ -30,6 +30,26 @@ namespace gf::terminal::bl
             "#F8FAFC"  // 15: Bright White
         };
 
+        // Dedicated muted dark-theme ANSI background palette (prevents glaring neon highlighter blocks)
+        constexpr std::array<const char*, 16> kAnsi16BgPalette = {
+            "#0F172A", // 40: Black bg
+            "#45141C", // 41: Red bg
+            "#0B3B2B", // 42: Green bg
+            "#422A07", // 43: Yellow bg
+            "#122B4A", // 44: Blue bg (subtle deep navy)
+            "#31184A", // 45: Magenta bg
+            "#0C3342", // 46: Cyan bg
+            "#334155", // 47: White bg
+            "#1E293B", // 100: Bright Black bg
+            "#5C1B26", // 101: Bright Red bg
+            "#0F4F3A", // 102: Bright Green bg
+            "#57380A", // 103: Bright Yellow bg
+            "#1A3B63", // 104: Bright Blue bg
+            "#422063", // 105: Bright Magenta bg
+            "#114559", // 106: Bright Cyan bg
+            "#475569"  // 107: Bright White bg
+        };
+
         [[nodiscard]] std::string rgbToHex(const int r, const int g, const int b)
         {
             const int cr = std::clamp(r, 0, 255);
@@ -94,7 +114,7 @@ namespace gf::terminal::bl
                 }
                 else if (code >= 40 && code <= 47)
                 {
-                    style.bgColor = kAnsi16Palette[static_cast<std::size_t>(code - 40)];
+                    style.bgColor = kAnsi16BgPalette[static_cast<std::size_t>(code - 40)];
                 }
                 else if (code == 49)
                 {
@@ -106,7 +126,7 @@ namespace gf::terminal::bl
                 }
                 else if (code >= 100 && code <= 107)
                 {
-                    style.bgColor = kAnsi16Palette[static_cast<std::size_t>(8 + (code - 100))];
+                    style.bgColor = kAnsi16BgPalette[static_cast<std::size_t>(8 + (code - 100))];
                 }
                 else if (code == 38 || code == 48)
                 {

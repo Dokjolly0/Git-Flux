@@ -64,6 +64,15 @@ TEST_CASE("AnsiParser parses standard, bright, 256-color and TrueColor SGR codes
         REQUIRE(line.spans[1].style.fgColor == "#102030");
     }
 
+    SECTION("Background SGR codes use muted dark palette instead of bright foreground colors")
+    {
+        const auto line = AnsiParser::parseLine("\x1b[44;1massets\x1b[0m");
+        REQUIRE(line.plainText == "assets");
+        REQUIRE(line.spans.size() == 1);
+        REQUIRE(line.spans[0].style.bold);
+        REQUIRE(line.spans[0].style.bgColor == "#122B4A");
+    }
+
     SECTION("Carriage return overwrite for progress lines")
     {
         const auto line = AnsiParser::parseLine("Receiving objects: 10%\rReceiving objects: 65%\rReceiving objects: 100%");
