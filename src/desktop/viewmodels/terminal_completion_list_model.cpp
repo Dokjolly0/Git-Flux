@@ -86,4 +86,10 @@ namespace gf::desktop
         }
         return &m_items[static_cast<std::size_t>(index)];
     }
+
+    bool TerminalCompletionListModel::isExecuteAction(const int index) const noexcept
+    {
+        const auto* item = itemAt(index);
+        return item != nullptr && item->kind == gf::terminal::bo::CompletionItemKind::ExecuteAction;
+    }
 } // namespace gf::desktop

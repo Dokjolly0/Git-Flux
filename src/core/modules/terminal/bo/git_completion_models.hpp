@@ -86,7 +86,8 @@ namespace gf::terminal::bo
         Stash,
         Commit,
         FilePath,
-        ShellBuiltin
+        ShellBuiltin,
+        ExecuteAction
     };
 
     [[nodiscard]] inline std::string_view completionKindToString(const CompletionItemKind kind) noexcept
@@ -104,6 +105,7 @@ namespace gf::terminal::bo
         case CompletionItemKind::Commit: return "commit";
         case CompletionItemKind::FilePath: return "file";
         case CompletionItemKind::ShellBuiltin: return "builtin";
+        case CompletionItemKind::ExecuteAction: return "execute";
         }
         return "command";
     }

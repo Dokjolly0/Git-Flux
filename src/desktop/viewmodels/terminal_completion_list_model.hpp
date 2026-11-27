@@ -40,6 +40,7 @@ namespace gf::desktop
         [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
 
         [[nodiscard]] int count() const noexcept { return static_cast<int>(m_items.size()); }
+        Q_INVOKABLE [[nodiscard]] bool isExecuteAction(int index) const noexcept;
 
         void setItems(std::vector<gf::terminal::bo::CompletionItem> items);
         void clear();

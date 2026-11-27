@@ -1,5 +1,6 @@
 #include "core/modules/terminal/bl/git_completion_engine.hpp"
 #include "core/modules/terminal/bl/command_line_tokenizer.hpp"
+#include "core/modules/terminal/bl/script_parameter_analyzer.hpp"
 #include "core/shared/utf8_path.hpp"
 
 #include <algorithm>
@@ -71,12 +72,202 @@ namespace gf::terminal::bl
                    cmd == "log" || cmd == "check-ignore" || cmd == "check-attr" || cmd == "grep";
         }
 
+        [[nodiscard]] bool isScriptInterpreter(const std::string_view cmdLower) noexcept
+        {
+            return cmdLower == "pwsh" || cmdLower == "pwsh.exe" ||
+                   cmdLower == "powershell" || cmdLower == "powershell.exe" ||
+                   cmdLower == "bash" || cmdLower == "bash.exe" ||
+                   cmdLower == "sh" || cmdLower == "zsh" ||
+                   cmdLower == "cmd" || cmdLower == "cmd.exe" ||
+                   cmdLower == "py" || cmdLower == "python" || cmdLower == "python3" ||
+                   cmdLower == "python.exe" || cmdLower == "python3.exe";
+        }
+
+        [[nodiscard]] std::string scriptDetailLabel(const bo::ScriptKind kind)
+        {
+            switch (kind)
+            {
+            case bo::ScriptKind::PowerShell: return "Script PowerShell";
+            case bo::ScriptKind::Batch: return "Script Batch";
+            case bo::ScriptKind::PosixShell: return "Script Shell";
+            case bo::ScriptKind::Python: return "Script Python";
+            case bo::ScriptKind::Unknown:
+            default: return "File";
+            }
+        }
+
+        [[nodiscard]] std::filesystem::path resolveTokenPath(const std::filesystem::path& workingDir,
+                                                             const std::string_view rawToken)
+        {
+            if (rawToken.empty() || workingDir.empty()) return {};
+            std::string normalized(rawToken);
+            std::ranges::replace(normalized, '\\', '/');
+            const std::filesystem::path rel = gf::core::utf8ToPath(normalized);
+            const std::filesystem::path full = rel.is_absolute() ? rel : (workingDir / rel);
+            std::error_code ec;
+            if (std::filesystem::exists(full, ec) && std::filesystem::is_regular_file(full, ec))
+            {
+                return full;
+            }
+            return {};
+        }
+
+        [[nodiscard]] const bo::ScriptParamSpec* findMatchingScriptParam(const bo::ScriptMetadata& meta,
+                                                                         const std::string_view token)
+        {
+            if (token.empty()) return nullptr;
+            const std::string tokLow = toLower(token);
+            for (const auto& p : meta.params)
+            {
+                if (toLower(p.name) == tokLow) return &p;
+                for (const auto& a : p.aliases)
+                {
+                    if (toLower(a) == tokLow) return &p;
+                }
+            }
+            return nullptr;
+        }
+
+        void addScriptParamCompletions(const bo::ScriptMetadata& meta,
+                                       const std::string_view prefix,
+                                       const std::string_view prevToken,
+                                       const std::unordered_set<std::string>& usedCanonicalLower,
+                                       const bool hasExistingArgs,
+                                       std::vector<bo::CompletionItem>& out,
+                                       std::unordered_set<std::string>& seen,
+                                       bool& outPrevExpectsValue)
+        {
+            outPrevExpectsValue = false;
+
+            // 1. Check if the previous token is a parameter that expects a value
+            if (const auto* prevParam = findMatchingScriptParam(meta, prevToken);
+                prevParam && prevParam->takesValue)
+            {
+                outPrevExpectsValue = true;
+                if (!prevParam->allowedValues.empty())
+                {
+                    for (const auto& val : prevParam->allowedValues)
+                    {
+                        if (!prefix.empty() && !startsWithCaseInsensitive(val, prefix)) continue;
+                        if (!seen.insert(val).second) continue;
+                        out.push_back(bo::CompletionItem{
+                            .insertText = val,
+                            .displayText = val,
+                            .detail = prevParam->description.empty()
+                                          ? ("Valore per " + prevParam->name)
+                                          : prevParam->description,
+                            .categoryLabel = "value",
+                            .kind = bo::CompletionItemKind::GitFlag,
+                            .matchStart = 0,
+                            .matchLength = prefix.size(),
+                            .appendSpace = true,
+                            .score = 720
+                        });
+                    }
+                }
+                return;
+            }
+
+            // 2. When activePrefix is empty, place an explicit top row so the user clearly sees
+            //    that pressing Enter runs the script instead of selecting the first flag.
+            if (prefix.empty())
+            {
+                out.push_back(bo::CompletionItem{
+                    .insertText = "",
+                    .displayText = hasExistingArgs ? "▶ Esegui script" : "▶ Esegui senza parametri",
+                    .detail = hasExistingArgs
+                                  ? "Premi Invio per eseguire con i parametri selezionati"
+                                  : "Premi Invio per avviare con i valori predefiniti",
+                    .categoryLabel = "run",
+                    .kind = bo::CompletionItemKind::ExecuteAction,
+                    .matchStart = 0,
+                    .matchLength = 0,
+                    .appendSpace = false,
+                    .score = 2000
+                });
+            }
+
+            // 3. Suggest all remaining (unused) script parameters and matching aliases
+            const std::string badge(bo::scriptKindBadge(meta.kind));
+            auto pushFlag = [&](const std::string& flag,
+                                const std::string& valueHint,
+                                const std::string& desc,
+                                const int score)
+            {
+                if (flag.empty()) return;
+                if (!prefix.empty() && !startsWithCaseInsensitive(flag, prefix)) return;
+                if (!seen.insert(toLower(flag)).second) return;
+
+                std::string display = flag;
+                if (!valueHint.empty())
+                {
+                    display.push_back(' ');
+                    display.append(valueHint);
+                }
+
+                out.push_back(bo::CompletionItem{
+                    .insertText = flag,
+                    .displayText = std::move(display),
+                    .detail = desc.empty() ? ("Parametro " + badge) : desc,
+                    .categoryLabel = "param",
+                    .kind = bo::CompletionItemKind::GitFlag,
+                    .matchStart = 0,
+                    .matchLength = prefix.size(),
+                    .appendSpace = true,
+                    .score = score
+                });
+            };
+
+            for (const auto& p : meta.params)
+            {
+                if (usedCanonicalLower.contains(toLower(p.name)))
+                {
+                    continue; // Already specified on this command line
+                }
+
+                std::string desc = p.description;
+                if (!p.aliases.empty())
+                {
+                    std::string aliasStr;
+                    for (std::size_t i = 0; i < p.aliases.size(); ++i)
+                    {
+                        if (i > 0) aliasStr += ", ";
+                        aliasStr += p.aliases[i];
+                    }
+                    if (desc.empty())
+                    {
+                        desc = "Alias: " + aliasStr;
+                    }
+                    else
+                    {
+                        desc = "[" + aliasStr + "] " + desc;
+                    }
+                }
+
+                pushFlag(p.name, p.valueHint, desc, 660);
+
+                // When the user types a prefix that matches an alias (e.g. `-q`, `-t`), surface the alias too
+                if (!prefix.empty())
+                {
+                    for (const auto& alias : p.aliases)
+                    {
+                        if (startsWithCaseInsensitive(alias, prefix))
+                        {
+                            const std::string aliasDesc = p.name + (p.description.empty() ? "" : (" — " + p.description));
+                            pushFlag(alias, p.valueHint, aliasDesc, 640);
+                        }
+                    }
+                }
+            }
+        }
+
         void addFilesystemCompletions(const std::filesystem::path& workingDir,
                                       const std::string_view prefix,
                                       const bool directoriesOnly,
                                       std::vector<bo::CompletionItem>& out,
                                       std::unordered_set<std::string>& seen,
-                                      const int baseScore)
+                                      const int baseScore,
+                                      const bo::TargetOs targetOs = bo::currentTargetOs())
         {
             if (workingDir.empty()) return;
 
@@ -149,16 +340,38 @@ namespace gf::terminal::bl
                     insertText = "\"" + insertText + "\"";
                 }
 
+                std::string detail = isDir ? "Directory" : "File";
+                std::string categoryLabel = isDir ? "dir" : "file";
+                int score = baseScore + (isDir ? 5 : 0);
+
+                if (!isDir)
+                {
+                    const auto sKind = ScriptParameterAnalyzer::detectScriptKind(entry.path());
+                    if (sKind != bo::ScriptKind::Unknown)
+                    {
+                        categoryLabel = std::string(bo::scriptKindBadge(sKind));
+                        detail = scriptDetailLabel(sKind);
+                        if (bo::isScriptNativeToOs(sKind, targetOs))
+                        {
+                            score += 12; // Prioritize scripts native to the current OS
+                        }
+                        else
+                        {
+                            score -= 5;
+                        }
+                    }
+                }
+
                 out.push_back(bo::CompletionItem{
                     .insertText = std::move(insertText),
                     .displayText = candidate,
-                    .detail = isDir ? "Directory" : "File",
-                    .categoryLabel = isDir ? "dir" : "file",
+                    .detail = std::move(detail),
+                    .categoryLabel = std::move(categoryLabel),
                     .kind = bo::CompletionItemKind::FilePath,
                     .matchStart = dirPrefix.size(),
                     .matchLength = leafPrefix.size(),
                     .appendSpace = !isDir,
-                    .score = baseScore + (isDir ? 5 : 0)
+                    .score = score
                 });
                 ++added;
             }
@@ -459,7 +672,8 @@ namespace gf::terminal::bl
                                                        const std::filesystem::path& workingDir,
                                                        const GitCatalogService& catalog,
                                                        const bo::RepoCompletionSnapshot& repoSnapshot,
-                                                       const bool explicitTrigger)
+                                                       const bool explicitTrigger,
+                                                       const bo::TargetOs targetOs)
     {
         const auto seg = CommandLineTokenizer::parseActiveSegment(inputLine, cursorPos);
 
@@ -512,7 +726,7 @@ namespace gf::terminal::bl
             }
 
             // Also complete local directories & files at position 0 (e.g. `sc` -> `scripts/`, `.\sc` -> `.\scripts\`)
-            addFilesystemCompletions(workingDir, seg.activePrefix, false, result.items, seen, 500);
+            addFilesystemCompletions(workingDir, seg.activePrefix, false, result.items, seen, 500, targetOs);
 
             std::ranges::stable_sort(result.items, [](const bo::CompletionItem& a, const bo::CompletionItem& b)
             {
@@ -524,19 +738,88 @@ namespace gf::terminal::bl
 
         const std::string cmd0 = toLower(seg.tokens[0].value);
 
-        // Non-git commands: support path completion for `cd` and general commands
+        // Non-git commands: detect local script invocations (direct or via interpreter) for parameter completion,
+        // plus filesystem path completion for `cd` and general commands.
         if (cmd0 != "git")
         {
-            if (cmd0 == "cd" || explicitTrigger || !seg.activePrefix.empty())
+            std::unordered_set<std::string> seen;
+
+            // Detect target script file (either tokens[0] directly, or first script file token after an interpreter)
+            std::filesystem::path scriptPath;
+            std::size_t scriptTokenIdx = std::string::npos;
+
+            if (const auto direct = resolveTokenPath(workingDir, seg.tokens[0].value); !direct.empty())
             {
-                std::unordered_set<std::string> seen;
-                addFilesystemCompletions(workingDir, seg.activePrefix, cmd0 == "cd", result.items, seen, 500);
-                std::ranges::stable_sort(result.items, [](const bo::CompletionItem& a, const bo::CompletionItem& b)
-                {
-                    if (a.score != b.score) return a.score > b.score;
-                    return a.displayText < b.displayText;
-                });
+                scriptPath = direct;
+                scriptTokenIdx = 0;
             }
+            else if (isScriptInterpreter(cmd0))
+            {
+                for (std::size_t i = 1; i < seg.activeTokenIndex; ++i)
+                {
+                    if (seg.tokens[i].value.starts_with('-')) continue;
+                    if (const auto resolved = resolveTokenPath(workingDir, seg.tokens[i].value); !resolved.empty())
+                    {
+                        scriptPath = resolved;
+                        scriptTokenIdx = i;
+                        break;
+                    }
+                }
+            }
+
+            bool inParameterizedScript = false;
+            bool prevExpectsValue = false;
+
+            if (!scriptPath.empty())
+            {
+                const auto meta = ScriptParameterAnalyzer::analyzeFileCached(scriptPath);
+                if (!meta.params.empty())
+                {
+                    inParameterizedScript = true;
+                    const bool hasExistingArgs = (seg.activeTokenIndex > scriptTokenIdx + 1);
+                    const std::string_view prevTok = hasExistingArgs
+                                                         ? std::string_view(seg.tokens[seg.activeTokenIndex - 1].value)
+                                                         : std::string_view{};
+
+                    std::unordered_set<std::string> usedCanonicalLower;
+                    for (std::size_t i = scriptTokenIdx + 1; i < seg.activeTokenIndex; ++i)
+                    {
+                        if (const auto* matched = findMatchingScriptParam(meta, seg.tokens[i].value))
+                        {
+                            usedCanonicalLower.insert(toLower(matched->name));
+                        }
+                    }
+
+                    addScriptParamCompletions(meta, seg.activePrefix, prevTok, usedCanonicalLower,
+                                              hasExistingArgs, result.items, seen, prevExpectsValue);
+                }
+            }
+
+            const bool onlyFlagPrefix = !seg.activePrefix.empty() && seg.activePrefix.front() == '-';
+            const bool looksLikePathPrefix = !seg.activePrefix.empty() &&
+                                             (seg.activePrefix.find('/') != std::string::npos ||
+                                              seg.activePrefix.find('\\') != std::string::npos ||
+                                              seg.activePrefix.front() == '.');
+
+            // Inside a parameterized script, only suggest filesystem entries when filling a parameter value
+            // or explicitly typing a path — never pollute parameter lists with unrelated root files on Tab!
+            const bool shouldSuggestFs = inParameterizedScript
+                                             ? (!onlyFlagPrefix &&
+                                                ((prevExpectsValue && result.items.empty() &&
+                                                  (explicitTrigger || !seg.activePrefix.empty())) ||
+                                                 looksLikePathPrefix))
+                                             : (!onlyFlagPrefix && (cmd0 == "cd" || explicitTrigger || !seg.activePrefix.empty()));
+
+            if (shouldSuggestFs)
+            {
+                addFilesystemCompletions(workingDir, seg.activePrefix, cmd0 == "cd", result.items, seen, 500, targetOs);
+            }
+
+            std::ranges::stable_sort(result.items, [](const bo::CompletionItem& a, const bo::CompletionItem& b)
+            {
+                if (a.score != b.score) return a.score > b.score;
+                return a.displayText < b.displayText;
+            });
             return result;
         }
 

@@ -1620,6 +1620,14 @@ namespace gf::desktop
             return false;
         }
 
+        // Explicit execute action row ("▶ Esegui senza parametri" / "▶ Esegui script"):
+        // pressing Enter executes the command immediately!
+        if (const auto* selectedItem = m_completionModel.itemAt(selectedIndex);
+            selectedItem && selectedItem->kind == gf::terminal::bo::CompletionItemKind::ExecuteAction)
+        {
+            return false;
+        }
+
         // If the user explicitly moved selection inside the popup with Up/Down arrows, Enter accepts it.
         if (userNavigated)
         {
@@ -1660,11 +1668,21 @@ namespace gf::desktop
     {
         QVariantMap out;
         out[QStringLiteral("accepted")] = false;
+        out[QStringLiteral("executeNow")] = false;
         out[QStringLiteral("text")] = inputText;
         out[QStringLiteral("cursorPos")] = cursorPos;
 
         const auto* item = m_completionModel.itemAt(index);
         if (!item) return out;
+
+        // Clicking or accepting the explicit execute row runs the current command line immediately
+        if (item->kind == gf::terminal::bo::CompletionItemKind::ExecuteAction)
+        {
+            dismissCompletions();
+            out[QStringLiteral("accepted")] = true;
+            out[QStringLiteral("executeNow")] = true;
+            return out;
+        }
 
         const int start = std::clamp(m_replaceStart, 0, static_cast<int>(inputText.size()));
         const int len = std::clamp(m_replaceLength, 0, static_cast<int>(inputText.size()) - start);
@@ -1684,11 +1702,23 @@ namespace gf::desktop
                               ((shouldAddSpace && alreadyHasTrailingSpace) ? 1 : 0);
 
         // Determine if we should immediately chain completions for the next stage
-        // (e.g. accepted "git" -> immediately show all git commands; accepted "checkout" -> show branches/flags!)
+        // (e.g. accepted "git" -> all git commands; accepted script -> "▶ Esegui" + script params;
+        //  accepted script param/value -> "▶ Esegui script" + remaining unused params!)
+        const bool isScriptFile =
+            (item->kind == gf::terminal::bo::CompletionItemKind::FilePath) &&
+            (item->categoryLabel == "ps1" || item->categoryLabel == "sh" ||
+             item->categoryLabel == "bat" || item->categoryLabel == "py");
+
+        const bool isScriptParamOrValue =
+            (item->kind == gf::terminal::bo::CompletionItemKind::GitFlag) &&
+            (item->categoryLabel == "param" || item->categoryLabel == "value");
+
         const bool chainNext =
             (item->kind == gf::terminal::bo::CompletionItemKind::ShellBuiltin && item->insertText == "git") ||
             (item->kind == gf::terminal::bo::CompletionItemKind::GitCommand) ||
             (item->kind == gf::terminal::bo::CompletionItemKind::GitSubcommand) ||
+            isScriptFile ||
+            isScriptParamOrValue ||
             (item->kind == gf::terminal::bo::CompletionItemKind::FilePath &&
              (item->insertText.ends_with('/') || item->insertText.ends_with('\\')));
 

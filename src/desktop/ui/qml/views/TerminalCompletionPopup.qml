@@ -10,6 +10,10 @@ Rectangle {
     property bool userNavigated: false
     property bool enterWillComplete: false
     property int totalCount: completionModel ? completionModel.count : 0
+    readonly property bool selectedIsExecuteAction: Boolean(
+        completionModel && totalCount > 0 && selectedIndex >= 0 && selectedIndex < totalCount &&
+        completionModel.isExecuteAction(selectedIndex)
+    )
 
     signal itemAccepted(int index)
 
@@ -75,7 +79,13 @@ Rectangle {
         if (categoryLabel === "alias" || kind === "alias") return "#C084FC";
         if (categoryLabel === "ancillary" || categoryLabel === "interop") return "#7DD3FC";
         if (categoryLabel === "external") return "#FBBF24";
-        if (categoryLabel === "flag" || kind === "flag") return "#34D399";
+        if (categoryLabel === "run" || kind === "execute") return "#34D399";
+        if (categoryLabel === "flag" || categoryLabel === "param" || kind === "flag") return "#34D399";
+        if (categoryLabel === "value") return "#F472B6";
+        if (categoryLabel === "ps1") return "#60A5FA";
+        if (categoryLabel === "sh") return "#4ADE80";
+        if (categoryLabel === "bat") return "#FBBF24";
+        if (categoryLabel === "py") return "#FACC15";
         if (categoryLabel === "branch" || categoryLabel === "ref" || kind === "branch") return "#4ADE80";
         if (categoryLabel === "remote" || kind === "remote") return "#60A5FA";
         if (categoryLabel === "tag" || kind === "tag") return "#FACC15";
@@ -90,7 +100,13 @@ Rectangle {
         if (categoryLabel === "alias" || kind === "alias") return "#2B1547";
         if (categoryLabel === "ancillary" || categoryLabel === "interop") return "#10283E";
         if (categoryLabel === "external") return "#3A2509";
-        if (categoryLabel === "flag" || kind === "flag") return "#083529";
+        if (categoryLabel === "run" || kind === "execute") return "#064E3B";
+        if (categoryLabel === "flag" || categoryLabel === "param" || kind === "flag") return "#083529";
+        if (categoryLabel === "value") return "#3B132A";
+        if (categoryLabel === "ps1") return "#10274A";
+        if (categoryLabel === "sh") return "#0A3320";
+        if (categoryLabel === "bat") return "#3A2509";
+        if (categoryLabel === "py") return "#382E08";
         if (categoryLabel === "branch" || categoryLabel === "ref" || kind === "branch") return "#0A3320";
         if (categoryLabel === "remote" || kind === "remote") return "#10274A";
         if (categoryLabel === "tag" || kind === "tag") return "#382E08";

@@ -69,6 +69,17 @@ Rectangle {
     function applyAcceptedCompletion(index) {
         if (!terminalVm) return;
         const res = terminalVm.acceptCompletion(index, cmdInput.text, cmdInput.cursorPosition);
+        if (res && res.executeNow) {
+            const line = res.text;
+            suppressCompletionOnTextChange = true;
+            cmdInput.text = "";
+            suppressCompletionOnTextChange = false;
+            autoScroll = true;
+            completionPopup.resetSelection();
+            terminalVm.executeCommand(line);
+            cmdInput.forceActiveFocus();
+            return;
+        }
         if (res && res.accepted) {
             suppressCompletionOnTextChange = true;
             cmdInput.text = res.text;
@@ -1322,11 +1333,15 @@ Rectangle {
                             event.accepted = true;
                             if (!panelRoot.terminalVm || panelRoot.terminalVm.isRunning) return;
                             if (panelRoot.terminalVm.hasCompletions) {
-                                panelRoot.applyAcceptedCompletion(completionPopup.selectedIndex);
+                                if (completionPopup.selectedIsExecuteAction && panelRoot.terminalVm.completionCount > 1) {
+                                    completionPopup.moveSelection(1);
+                                } else {
+                                    panelRoot.applyAcceptedCompletion(completionPopup.selectedIndex);
+                                }
                             } else {
                                 panelRoot.terminalVm.updateCompletions(text, cursorPosition, true);
                                 completionPopup.resetSelection();
-                                if (panelRoot.terminalVm.completionCount === 1) {
+                                if (panelRoot.terminalVm.completionCount === 1 && !completionPopup.selectedIsExecuteAction) {
                                     panelRoot.applyAcceptedCompletion(0);
                                 }
                             }
