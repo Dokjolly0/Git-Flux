@@ -86,6 +86,7 @@ add_library(gf_application STATIC
         src/core/modules/terminal/bl/command_line_tokenizer.cpp
         src/core/modules/terminal/bl/git_catalog_service.cpp
         src/core/modules/terminal/bl/git_completion_engine.cpp
+        src/core/modules/terminal/bl/script_parameter_analyzer.cpp
 )
 target_include_directories(gf_application PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
