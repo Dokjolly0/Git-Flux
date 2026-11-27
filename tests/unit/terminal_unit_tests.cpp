@@ -4,6 +4,7 @@
 #include "core/modules/terminal/bl/command_line_tokenizer.hpp"
 #include "core/modules/terminal/bl/git_catalog_service.hpp"
 #include "core/modules/terminal/bl/git_completion_engine.hpp"
+#include "core/modules/terminal/bl/script_parameter_analyzer.hpp"
 
 #include <algorithm>
 #include <string>
@@ -361,6 +362,194 @@ TEST_CASE("GitCompletionEngine progressively filters all Git commands, flags and
             // `cd sc` suggests `scripts/`
             const auto r3 = GitCompletionEngine::complete("cd sc", 5, cwd, catalog, snap);
             REQUIRE(containsItem(r3, "scripts/"));
+        }
+    }
+}
+
+TEST_CASE("ScriptParameterAnalyzer statically extracts parameters and descriptions across script types", "[terminal][scripts]")
+{
+    SECTION("PowerShell param() with comment-based .PARAMETER help, Alias and ValidateSet")
+    {
+        const std::string ps1 = R"(<#
+.SYNOPSIS
+    Demo build script
+.PARAMETER Target
+    Build only the specified CMake target
+.PARAMETER Mode
+    Build configuration mode
+#>
+param(
+    [Alias("t")][string]$Target,
+    [ValidateSet("Debug", "Release")][string]$Mode = "Release",
+    [Alias("c")][switch]$Clean,
+    [int]$Jobs = 8 # Parallel jobs
+)
+)";
+        const auto meta = ScriptParameterAnalyzer::parsePowerShell(ps1);
+        REQUIRE(meta.kind == ScriptKind::PowerShell);
+        REQUIRE(meta.params.size() == 4);
+
+        REQUIRE(meta.params[0].name == "-Target");
+        REQUIRE(meta.params[0].aliases == std::vector<std::string>{"-t"});
+        REQUIRE(meta.params[0].valueHint == "<string>");
+        REQUIRE(meta.params[0].description == "Build only the specified CMake target");
+        REQUIRE(meta.params[0].takesValue);
+
+        REQUIRE(meta.params[1].name == "-Mode");
+        REQUIRE(meta.params[1].allowedValues == std::vector<std::string>{"Debug", "Release"});
+        REQUIRE(meta.params[1].description == "Build configuration mode");
+
+        REQUIRE(meta.params[2].name == "-Clean");
+        REQUIRE_FALSE(meta.params[2].takesValue);
+
+        REQUIRE(meta.params[3].name == "-Jobs");
+        REQUIRE(meta.params[3].description == "Parallel jobs");
+    }
+
+    SECTION("POSIX shell script case arms, getopts and help descriptions")
+    {
+        const std::string sh = R"(#!/usr/bin/env bash
+# Options:
+#   -q, --qt            Build Desktop Qt Quick 6 preset
+#   -t, --target NAME   Build only the specified target
+#   -v, --verbose       Verbose compiler output
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -q|--qt) PRESET=qt; shift ;;
+    -t|--target) TARGET="$2"; shift 2 ;;
+    --clean) CLEAN=true; shift ;;
+  esac
+done
+)";
+        const auto meta = ScriptParameterAnalyzer::parsePosixShell(sh);
+        REQUIRE(meta.kind == ScriptKind::PosixShell);
+        REQUIRE(meta.params.size() >= 4);
+
+        auto findParam = [&](const std::string_view name) -> const ScriptParamSpec*
+        {
+            for (const auto& p : meta.params)
+            {
+                if (p.name == name) return &p;
+            }
+            return nullptr;
+        };
+
+        const auto* qt = findParam("--qt");
+        REQUIRE(qt != nullptr);
+        REQUIRE(qt->description == "Build Desktop Qt Quick 6 preset");
+        REQUIRE(std::ranges::find(qt->aliases, "-q") != qt->aliases.end());
+
+        const auto* target = findParam("--target");
+        REQUIRE(target != nullptr);
+        REQUIRE(target->takesValue);
+        REQUIRE(target->valueHint == "NAME");
+
+        REQUIRE(findParam("--clean") != nullptr);
+    }
+
+    SECTION("Windows Batch script flags and echo usage descriptions")
+    {
+        const std::string bat = R"(@echo off
+REM   /clean       Clean build folder
+echo   --release   Build release binary
+if /i "%~1"=="/clean" goto do_clean
+if "%1"=="--release" set MODE=Release
+if "%1"=="/?" goto help
+)";
+        const auto meta = ScriptParameterAnalyzer::parseBatch(bat);
+        REQUIRE(meta.kind == ScriptKind::Batch);
+        REQUIRE(meta.params.size() == 3);
+        REQUIRE(meta.params[0].name == "/clean");
+        REQUIRE(meta.params[0].description == "Clean build folder");
+        REQUIRE(meta.params[1].name == "--release");
+        REQUIRE(meta.params[1].description == "Build release binary");
+        REQUIRE(meta.params[2].name == "/?");
+    }
+
+    SECTION("Python argparse add_argument and choices extraction")
+    {
+        const std::string py = R"(#!/usr/bin/env python3
+import argparse
+p = argparse.ArgumentParser()
+p.add_argument("-o", "--output", metavar="DIR", help="Output directory path")
+p.add_argument("--format", choices=["png", "ico", "svg"], help="Target image format")
+p.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
+)";
+        const auto meta = ScriptParameterAnalyzer::parsePython(py);
+        REQUIRE(meta.kind == ScriptKind::Python);
+        REQUIRE(meta.params.size() == 3);
+
+        REQUIRE(meta.params[0].name == "--output");
+        REQUIRE(meta.params[0].aliases == std::vector<std::string>{"-o"});
+        REQUIRE(meta.params[0].valueHint == "<DIR>");
+        REQUIRE(meta.params[0].description == "Output directory path");
+        REQUIRE(meta.params[0].takesValue);
+
+        REQUIRE(meta.params[1].name == "--format");
+        REQUIRE(meta.params[1].allowedValues == std::vector<std::string>{"png", "ico", "svg"});
+
+        REQUIRE(meta.params[2].name == "--verbose");
+        REQUIRE_FALSE(meta.params[2].takesValue);
+    }
+
+    SECTION("End-to-end completion on real repository scripts (PowerShell + Bash)")
+    {
+        const auto cwd = std::filesystem::current_path();
+        GitCatalogService catalog;
+        RepoCompletionSnapshot snap;
+
+        if (std::filesystem::exists(cwd / "scripts/windows/build.ps1"))
+        {
+            // Right after script name: row 0 is "▶ Esegui senza parametri", no unrelated root files
+            const std::string cmd0 = ".\\scripts\\windows\\build.ps1 ";
+            const auto res0 = GitCompletionEngine::complete(cmd0, cmd0.size(), cwd, catalog, snap, false, TargetOs::Windows);
+            REQUIRE_FALSE(res0.items.empty());
+            REQUIRE(res0.items[0].kind == CompletionItemKind::ExecuteAction);
+            REQUIRE(res0.items[0].displayText == "▶ Esegui senza parametri");
+            REQUIRE(containsItem(res0, "-Qt"));
+            REQUIRE(containsItem(res0, "-Clean"));
+            REQUIRE_FALSE(containsItem(res0, "CMakeLists.txt"));
+            REQUIRE_FALSE(containsItem(res0, "assets/"));
+
+            // After inserting a switch parameter `-Clean `: row 0 becomes "▶ Esegui script",
+            // `-Clean` is excluded, and even with explicitTrigger (Tab) root files are NOT mixed in
+            const std::string cmd1 = ".\\scripts\\windows\\build.ps1 -Clean ";
+            const auto res1 = GitCompletionEngine::complete(cmd1, cmd1.size(), cwd, catalog, snap, true, TargetOs::Windows);
+            REQUIRE_FALSE(res1.items.empty());
+            REQUIRE(res1.items[0].kind == CompletionItemKind::ExecuteAction);
+            REQUIRE(res1.items[0].displayText == "▶ Esegui script");
+            REQUIRE_FALSE(containsItem(res1, "-Clean"));
+            REQUIRE(containsItem(res1, "-Qt"));
+            REQUIRE_FALSE(containsItem(res1, "CMakeLists.txt"));
+            REQUIRE_FALSE(containsItem(res1, "assets/"));
+
+            // After a value-taking parameter `-Target `, wait for value (no ExecuteAction row)
+            const std::string cmdVal = ".\\scripts\\windows\\build.ps1 -Target ";
+            const auto resVal = GitCompletionEngine::complete(cmdVal, cmdVal.size(), cwd, catalog, snap, false, TargetOs::Windows);
+            REQUIRE(resVal.items.empty());
+
+            // Once the value is provided + space, "▶ Esegui script" + remaining params reappear
+            const std::string cmdAfterVal = ".\\scripts\\windows\\build.ps1 -Target git_flux ";
+            const auto resAfterVal = GitCompletionEngine::complete(cmdAfterVal, cmdAfterVal.size(), cwd, catalog, snap, false, TargetOs::Windows);
+            REQUIRE_FALSE(resAfterVal.items.empty());
+            REQUIRE(resAfterVal.items[0].kind == CompletionItemKind::ExecuteAction);
+            REQUIRE(resAfterVal.items[0].displayText == "▶ Esegui script");
+            REQUIRE_FALSE(containsItem(resAfterVal, "-Target"));
+
+            // Prefix filtering `-t` matches `-Target` and alias `-t`
+            const std::string cmd = ".\\scripts\\windows\\build.ps1 -t";
+            const auto res = GitCompletionEngine::complete(cmd, cmd.size(), cwd, catalog, snap, false, TargetOs::Windows);
+            REQUIRE(containsItem(res, "-Target"));
+            REQUIRE(containsItem(res, "-t"));
+        }
+
+        if (std::filesystem::exists(cwd / "scripts/linux/build.sh"))
+        {
+            const std::string cmd = "./scripts/linux/build.sh --c";
+            const auto res = GitCompletionEngine::complete(cmd, cmd.size(), cwd, catalog, snap, false, TargetOs::Linux);
+            REQUIRE(containsItem(res, "--core"));
+            REQUIRE(containsItem(res, "--clean"));
+            REQUIRE(containsItem(res, "--configure"));
         }
     }
 }

@@ -206,4 +206,38 @@ TEST_CASE("TerminalSessionViewModel manages multi-tab per-repo state, cd, comple
             REQUIRE(vm.hasLastPagerOutput());
         }
     }
+
+    SECTION("Script completion shows ExecuteAction row 0, chains after accepting switches, and executes on click/Enter")
+    {
+        const QString workspaceRepo = QString::fromStdString(std::filesystem::current_path().string());
+        if (QFileInfo::exists(workspaceRepo + QStringLiteral("/scripts/windows/build.ps1")))
+        {
+            vm.setActiveRepository(QStringLiteral("id-self"), QStringLiteral("GitFlux"), workspaceRepo, QStringLiteral("develop"));
+            vm.waitForIdle(5000);
+
+            const QString input0 = QStringLiteral(".\\scripts\\windows\\build.ps1 ");
+            vm.updateCompletions(input0, static_cast<int>(input0.size()));
+            REQUIRE(vm.hasCompletions());
+            REQUIRE(vm.completionModel()->isExecuteAction(0));
+            // Enter on row 0 executes immediately (does NOT treat it as text completion)
+            REQUIRE_FALSE(vm.shouldEnterAcceptCompletion(0, false, input0, static_cast<int>(input0.size())));
+            REQUIRE_FALSE(vm.shouldEnterAcceptCompletion(0, true, input0, static_cast<int>(input0.size())));
+
+            // Accept parameter at index 1 (e.g. -Qt): popup must stay open with "▶ Esegui script" at row 0
+            const QVariantMap acc = vm.acceptCompletion(1, input0, static_cast<int>(input0.size()));
+            REQUIRE(acc.value(QStringLiteral("accepted")).toBool());
+            REQUIRE_FALSE(acc.value(QStringLiteral("executeNow")).toBool());
+            REQUIRE(vm.hasCompletions());
+            REQUIRE(vm.completionModel()->isExecuteAction(0));
+            const QString row0Label = vm.completionModel()->data(
+                vm.completionModel()->index(0, 0), TerminalCompletionListModel::DisplayTextRole).toString();
+            REQUIRE(row0Label == QStringLiteral("▶ Esegui script"));
+
+            // Clicking row 0 ("▶ Esegui script") returns executeNow = true
+            const QString afterText = acc.value(QStringLiteral("text")).toString();
+            const QVariantMap execRes = vm.acceptCompletion(0, afterText, static_cast<int>(afterText.size()));
+            REQUIRE(execRes.value(QStringLiteral("accepted")).toBool());
+            REQUIRE(execRes.value(QStringLiteral("executeNow")).toBool());
+        }
+    }
 }
