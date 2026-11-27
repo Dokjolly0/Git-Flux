@@ -41,5 +41,9 @@ namespace gf::terminal::bl
         /// the line contains unquoted shell metacharacters (`|`, `&`, `;`, `>`, `<`, `$`, `` ` ``, `*`, `?`).
         [[nodiscard]] static bool trySplitSimpleArgs(std::string_view input,
                                                      std::vector<std::string>& outArgs);
+
+        /// Returns true if the command line contains unquoted shell control/chaining
+        /// operators (`&&`, `||`, `;`, `|`, `&`, `>`, `<`, or newline).
+        [[nodiscard]] static bool containsShellOperators(std::string_view input) noexcept;
     };
 } // namespace gf::terminal::bl

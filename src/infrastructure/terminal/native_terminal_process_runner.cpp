@@ -8,6 +8,7 @@
 #include <cctype>
 #include <chrono>
 #include <cstdlib>
+#include <fstream>
 #include <mutex>
 #include <thread>
 #include <unordered_map>
@@ -92,6 +93,75 @@ namespace gf::infra::terminal
                 }
             }
             return &shells.front();
+        }
+
+        [[nodiscard]] std::filesystem::path makeCwdTempFilePath()
+        {
+            static std::atomic<std::uint64_t> s_counter{0};
+            std::error_code ec;
+            auto dir = std::filesystem::temp_directory_path(ec);
+            if (ec || dir.empty())
+            {
+                return {};
+            }
+#ifdef _WIN32
+            const auto pid = static_cast<std::uint64_t>(GetCurrentProcessId());
+#else
+            const auto pid = static_cast<std::uint64_t>(::getpid());
+#endif
+            const auto seq = s_counter.fetch_add(1, std::memory_order_relaxed);
+            return dir / ("gitflux_cwd_" + std::to_string(pid) + "_" + std::to_string(seq) + ".tmp");
+        }
+
+        [[nodiscard]] std::optional<std::filesystem::path> readAndCleanupCwdFile(
+            const std::filesystem::path& cwdFile,
+            const bool readValue)
+        {
+            if (cwdFile.empty()) return std::nullopt;
+
+            std::optional<std::filesystem::path> result;
+            if (readValue)
+            {
+                std::ifstream in(cwdFile, std::ios::binary);
+                if (in)
+                {
+                    std::string raw((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+                    // Strip optional UTF-8 BOM
+                    if (raw.size() >= 3 &&
+                        static_cast<unsigned char>(raw[0]) == 0xEF &&
+                        static_cast<unsigned char>(raw[1]) == 0xBB &&
+                        static_cast<unsigned char>(raw[2]) == 0xBF)
+                    {
+                        raw.erase(0, 3);
+                    }
+                    while (!raw.empty() && (raw.back() == '\r' || raw.back() == '\n' || raw.back() == ' ' || raw.back() == '\t'))
+                    {
+                        raw.pop_back();
+                    }
+                    std::size_t start = 0;
+                    while (start < raw.size() && (raw[start] == ' ' || raw[start] == '\t' || raw[start] == '\r' || raw[start] == '\n'))
+                    {
+                        ++start;
+                    }
+                    if (start > 0)
+                    {
+                        raw.erase(0, start);
+                    }
+                    if (!raw.empty())
+                    {
+                        const std::filesystem::path candidate = gf::core::utf8ToPath(raw);
+                        std::error_code ec;
+                        if (std::filesystem::exists(candidate, ec) && std::filesystem::is_directory(candidate, ec))
+                        {
+                            result = candidate;
+                        }
+                    }
+                }
+            }
+
+            std::error_code ec;
+            std::filesystem::remove(cwdFile, ec);
+            return result;
         }
 
 #ifdef _WIN32
@@ -252,13 +322,15 @@ namespace gf::infra::terminal
                                        HANDLE stdinWrite,
                                        HANDLE stdoutRead,
                                        HANDLE stderrRead,
-                                       tbo::TerminalExecutionCallbacks callbacks)
+                                       tbo::TerminalExecutionCallbacks callbacks,
+                                       std::filesystem::path cwdFilePath = {})
                 : m_process(processHandle)
                 , m_job(jobHandle)
                 , m_stdinWrite(stdinWrite)
                 , m_stdoutRead(stdoutRead)
                 , m_stderrRead(stderrRead)
                 , m_callbacks(std::move(callbacks))
+                , m_cwdFilePath(std::move(cwdFilePath))
                 , m_startTime(std::chrono::steady_clock::now())
             {
                 m_waiterThread = std::thread([this]() { runIoAndWait(); });
@@ -282,6 +354,11 @@ namespace gf::infra::terminal
                     }
                 }
                 closeHandles();
+                if (!m_cwdFilePath.empty())
+                {
+                    std::error_code ec;
+                    std::filesystem::remove(m_cwdFilePath, ec);
+                }
             }
 
             bool writeStdin(const std::string_view utf8Data) override
@@ -386,6 +463,8 @@ namespace gf::infra::terminal
                 res.exitCode = static_cast<int>(exitCode);
                 res.duration = elapsed;
                 res.wasCancelled = m_cancelled.load(std::memory_order_acquire);
+                res.finalWorkingDirectory = readAndCleanupCwdFile(m_cwdFilePath, !res.wasCancelled);
+                m_cwdFilePath.clear();
 
                 if (m_callbacks.onFinished)
                 {
@@ -432,6 +511,7 @@ namespace gf::infra::terminal
             HANDLE m_stdoutRead{nullptr};
             HANDLE m_stderrRead{nullptr};
             tbo::TerminalExecutionCallbacks m_callbacks;
+            std::filesystem::path m_cwdFilePath;
             std::chrono::steady_clock::time_point m_startTime;
             std::atomic<bool> m_running{true};
             std::atomic<bool> m_cancelled{false};
@@ -482,12 +562,14 @@ namespace gf::infra::terminal
                                        const int stdinFd,
                                        const int stdoutFd,
                                        const int stderrFd,
-                                       tbo::TerminalExecutionCallbacks callbacks)
+                                       tbo::TerminalExecutionCallbacks callbacks,
+                                       std::filesystem::path cwdFilePath = {})
                 : m_pid(pid)
                 , m_stdinFd(stdinFd)
                 , m_stdoutFd(stdoutFd)
                 , m_stderrFd(stderrFd)
                 , m_callbacks(std::move(callbacks))
+                , m_cwdFilePath(std::move(cwdFilePath))
                 , m_startTime(std::chrono::steady_clock::now())
             {
                 m_waiterThread = std::thread([this]() { runIoAndWait(); });
@@ -511,6 +593,11 @@ namespace gf::infra::terminal
                     }
                 }
                 closeFds();
+                if (!m_cwdFilePath.empty())
+                {
+                    std::error_code ec;
+                    std::filesystem::remove(m_cwdFilePath, ec);
+                }
             }
 
             bool writeStdin(const std::string_view utf8Data) override
@@ -620,6 +707,8 @@ namespace gf::infra::terminal
                 res.exitCode = exitCode;
                 res.duration = elapsed;
                 res.wasCancelled = m_cancelled.load(std::memory_order_acquire);
+                res.finalWorkingDirectory = readAndCleanupCwdFile(m_cwdFilePath, !res.wasCancelled);
+                m_cwdFilePath.clear();
 
                 if (m_callbacks.onFinished)
                 {
@@ -640,6 +729,7 @@ namespace gf::infra::terminal
             int m_stdoutFd{-1};
             int m_stderrFd{-1};
             tbo::TerminalExecutionCallbacks m_callbacks;
+            std::filesystem::path m_cwdFilePath;
             std::chrono::steady_clock::time_point m_startTime;
             std::atomic<bool> m_running{true};
             std::atomic<bool> m_cancelled{false};
@@ -749,6 +839,17 @@ namespace gf::infra::terminal
         const bool useDirectGit = isDirectGitInvocation(request.commandLine, directGitArgs) &&
                                   !m_gitExecutablePath.empty();
 
+        std::filesystem::path cwdFilePath;
+        std::vector<std::pair<std::string, std::string>> extraEnv = request.extraEnvironment;
+        if (!useDirectGit)
+        {
+            cwdFilePath = makeCwdTempFilePath();
+            if (!cwdFilePath.empty())
+            {
+                extraEnv.emplace_back("GF_CWD_FILE", gf::core::pathToUtf8(cwdFilePath));
+            }
+        }
+
 #ifdef _WIN32
         std::wstring applicationPath;
         std::wstring cmdLine;
@@ -789,23 +890,55 @@ namespace gf::infra::terminal
 
             if (shell->kind == tbo::TerminalShellKind::PowerShell)
             {
-                const std::string psScript =
-                    "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; "
-                    "$OutputEncoding=[System.Text.Encoding]::UTF8; "
-                    "if ($PSStyle) { $PSStyle.FileInfo.Directory = $PSStyle.Foreground.FromRgb(56,189,248) + $PSStyle.Bold }; " +
-                    request.commandLine;
+                std::string psScript;
+                if (!cwdFilePath.empty())
+                {
+                    psScript =
+                        "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8\n"
+                        "$OutputEncoding=[System.Text.Encoding]::UTF8\n"
+                        "if ($PSStyle) { $PSStyle.FileInfo.Directory = $PSStyle.Foreground.FromRgb(56,189,248) + $PSStyle.Bold }\n"
+                        "$global:LASTEXITCODE = 0\n"
+                        "try {\n" +
+                        request.commandLine +
+                        "\n$__gf_ok = $?\n"
+                        "$__gf_ec = $LASTEXITCODE\n"
+                        "} finally {\n"
+                        "try { [System.IO.File]::WriteAllText($env:GF_CWD_FILE, (Get-Location).ProviderPath, [System.Text.UTF8Encoding]::new($false)) } catch {}\n"
+                        "}\n"
+                        "if (-not $__gf_ok) { if ($null -ne $__gf_ec -and $__gf_ec -ne 0) { exit $__gf_ec } else { exit 1 } }";
+                }
+                else
+                {
+                    psScript =
+                        "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; "
+                        "$OutputEncoding=[System.Text.Encoding]::UTF8; "
+                        "if ($PSStyle) { $PSStyle.FileInfo.Directory = $PSStyle.Foreground.FromRgb(56,189,248) + $PSStyle.Bold }; " +
+                        request.commandLine;
+                }
                 cmdLine.append(L" -NoLogo -NoProfile -NonInteractive -Command ");
                 appendQuotedWindowsArg(cmdLine, utf8ToWide(psScript));
             }
             else if (shell->kind == tbo::TerminalShellKind::GitBash)
             {
+                std::string bashScript = request.commandLine;
+                if (!cwdFilePath.empty())
+                {
+                    bashScript =
+                        "__gf_save_cwd() { pwd -W > \"$GF_CWD_FILE\" 2>/dev/null || pwd -P > \"$GF_CWD_FILE\" 2>/dev/null; }; "
+                        "trap __gf_save_cwd EXIT\n" +
+                        request.commandLine;
+                }
                 cmdLine.append(L" -c ");
-                appendQuotedWindowsArg(cmdLine, utf8ToWide(request.commandLine));
+                appendQuotedWindowsArg(cmdLine, utf8ToWide(bashScript));
             }
             else // CMD
             {
                 cmdLine.append(L" /d /s /c \"chcp 65001>nul & ");
                 cmdLine.append(utf8ToWide(request.commandLine));
+                if (!cwdFilePath.empty())
+                {
+                    cmdLine.append(L" & if errorlevel 1 (cd>\"%GF_CWD_FILE%\" & cmd /c exit 1) else (cd>\"%GF_CWD_FILE%\")");
+                }
                 cmdLine.push_back(L'"');
             }
         }
@@ -856,7 +989,7 @@ namespace gf::infra::terminal
         si.hStdError = stderrWrite;
 
         PROCESS_INFORMATION pi{};
-        std::wstring envBlock = buildWindowsEnvironmentBlock(request.extraEnvironment);
+        std::wstring envBlock = buildWindowsEnvironmentBlock(extraEnv);
         std::wstring workDirW = request.workingDirectory.wstring();
 
         const BOOL created = CreateProcessW(
@@ -883,6 +1016,7 @@ namespace gf::infra::terminal
             CloseHandle(stdoutRead);
             CloseHandle(stderrRead);
             if (job) CloseHandle(job);
+            if (!cwdFilePath.empty()) std::filesystem::remove(cwdFilePath, ec);
             return std::unexpected(std::string("Impossibile avviare il processo (Win32 error ") +
                                    std::to_string(err) + ").");
         }
@@ -895,7 +1029,7 @@ namespace gf::infra::terminal
         CloseHandle(pi.hThread);
 
         return std::make_shared<Win32TerminalProcessHandle>(
-            pi.hProcess, job, stdinWrite, stdoutRead, stderrRead, std::move(callbacks));
+            pi.hProcess, job, stdinWrite, stdoutRead, stderrRead, std::move(callbacks), std::move(cwdFilePath));
 #else
         std::vector<std::string> argvStorage;
         std::string exePath;
@@ -926,7 +1060,17 @@ namespace gf::infra::terminal
             exePath = gf::core::pathToUtf8(shell->executablePath);
             argvStorage.push_back(exePath);
             argvStorage.emplace_back("-c");
-            argvStorage.push_back(request.commandLine);
+            if (!cwdFilePath.empty())
+            {
+                argvStorage.push_back(
+                    "__gf_save_cwd() { pwd -P > \"$GF_CWD_FILE\" 2>/dev/null || pwd > \"$GF_CWD_FILE\" 2>/dev/null; }; "
+                    "trap __gf_save_cwd EXIT\n" +
+                    request.commandLine);
+            }
+            else
+            {
+                argvStorage.push_back(request.commandLine);
+            }
         }
 
         int stdinPipe[2] = {-1, -1};
@@ -938,10 +1082,11 @@ namespace gf::infra::terminal
             {
                 if (fd >= 0) ::close(fd);
             }
+            if (!cwdFilePath.empty()) std::filesystem::remove(cwdFilePath, ec);
             return std::unexpected(std::string("Impossibile creare pipe POSIX."));
         }
 
-        const auto envStorage = buildPosixEnvironment(request.extraEnvironment);
+        const auto envStorage = buildPosixEnvironment(extraEnv);
         std::vector<char*> argvPtrs;
         argvPtrs.reserve(argvStorage.size() + 1);
         for (auto& s : argvStorage) argvPtrs.push_back(s.data());
@@ -961,6 +1106,7 @@ namespace gf::infra::terminal
             {
                 ::close(fd);
             }
+            if (!cwdFilePath.empty()) std::filesystem::remove(cwdFilePath, ec);
             return std::unexpected(std::string("fork() fallita."));
         }
 
@@ -992,7 +1138,7 @@ namespace gf::infra::terminal
         ::close(stderrPipe[1]);
 
         return std::make_shared<PosixTerminalProcessHandle>(
-            pid, stdinPipe[1], stdoutPipe[0], stderrPipe[0], std::move(callbacks));
+            pid, stdinPipe[1], stdoutPipe[0], stderrPipe[0], std::move(callbacks), std::move(cwdFilePath));
 #endif
     }
 } // namespace gf::infra::terminal

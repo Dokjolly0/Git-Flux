@@ -112,6 +112,22 @@ namespace gf::terminal::bl
             return {};
         }
 
+        [[nodiscard]] std::filesystem::path resolveDirectoryPath(const std::filesystem::path& workingDir,
+                                                                 const std::string_view rawToken)
+        {
+            if (rawToken.empty() || workingDir.empty()) return {};
+            std::string normalized(rawToken);
+            std::ranges::replace(normalized, '\\', '/');
+            const std::filesystem::path rel = gf::core::utf8ToPath(normalized);
+            const std::filesystem::path full = rel.is_absolute() ? rel : (workingDir / rel);
+            std::error_code ec;
+            if (std::filesystem::exists(full, ec) && std::filesystem::is_directory(full, ec))
+            {
+                return full;
+            }
+            return {};
+        }
+
         [[nodiscard]] const bo::ScriptParamSpec* findMatchingScriptParam(const bo::ScriptMetadata& meta,
                                                                          const std::string_view token)
         {
@@ -803,16 +819,45 @@ namespace gf::terminal::bl
 
             // Inside a parameterized script, only suggest filesystem entries when filling a parameter value
             // or explicitly typing a path — never pollute parameter lists with unrelated root files on Tab!
+            const bool isCdFirstArg = (cmd0 == "cd" && seg.activeTokenIndex == 1);
             const bool shouldSuggestFs = inParameterizedScript
                                              ? (!onlyFlagPrefix &&
                                                 ((prevExpectsValue && result.items.empty() &&
                                                   (explicitTrigger || !seg.activePrefix.empty())) ||
                                                  looksLikePathPrefix))
-                                             : (!onlyFlagPrefix && (cmd0 == "cd" || explicitTrigger || !seg.activePrefix.empty()));
+                                             : (!onlyFlagPrefix &&
+                                                (isCdFirstArg ||
+                                                 (cmd0 != "cd" && (explicitTrigger || !seg.activePrefix.empty()))));
 
             if (shouldSuggestFs)
             {
                 addFilesystemCompletions(workingDir, seg.activePrefix, cmd0 == "cd", result.items, seen, 500, targetOs);
+
+                // When the user has already typed an existing directory (e.g. `cd scripts` or `cd scripts/`)
+                // or existing file and other suggestions are shown (subfolders or sibling matches), place an
+                // explicit execute row at index 0 — just like parameterized scripts — so Enter runs the command
+                // immediately instead of auto-completing into the first subfolder/sibling.
+                if (!inParameterizedScript && !seg.activePrefix.empty() && !result.items.empty())
+                {
+                    const bool isExistingDir = !resolveDirectoryPath(workingDir, seg.activePrefix).empty();
+                    const bool isExistingFile = (cmd0 != "cd") && !resolveTokenPath(workingDir, seg.activePrefix).empty();
+                    if (isExistingDir || isExistingFile)
+                    {
+                        result.items.push_back(bo::CompletionItem{
+                            .insertText = "",
+                            .displayText = "▶ Esegui comando",
+                            .detail = (cmd0 == "cd")
+                                          ? ("Premi Invio per aprire \"" + seg.activePrefix + "\"")
+                                          : ("Premi Invio per eseguire con \"" + seg.activePrefix + "\""),
+                            .categoryLabel = "run",
+                            .kind = bo::CompletionItemKind::ExecuteAction,
+                            .matchStart = 0,
+                            .matchLength = 0,
+                            .appendSpace = false,
+                            .score = 2000
+                        });
+                    }
+                }
             }
 
             std::ranges::stable_sort(result.items, [](const bo::CompletionItem& a, const bo::CompletionItem& b)

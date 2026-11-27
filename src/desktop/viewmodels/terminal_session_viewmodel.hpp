@@ -103,6 +103,10 @@ namespace gf::desktop
         /// Returns true if the given command should use the integrated `less -FRX`-style pager.
         [[nodiscard]] static bool shouldPaginateCommand(std::string_view commandLine);
 
+        /// Returns true if the given command line is a pure `cd` invocation to handle in-process
+        /// (i.e. starts with `cd` and contains no unquoted shell operators such as `&&`, `||`, `;`, `|`).
+        [[nodiscard]] static bool isBuiltinCdCommand(std::string_view commandLine) noexcept;
+
         [[nodiscard]] bool isVisible() const noexcept { return m_isVisible; }
         void setIsVisible(bool visible);
 

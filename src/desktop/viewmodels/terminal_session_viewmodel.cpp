@@ -13,6 +13,7 @@
 #include <QThread>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 
 namespace gf::desktop
@@ -78,16 +79,6 @@ namespace gf::desktop
             return QString::number(sec, 'f', sec < 10.0 ? 2 : 1) + QStringLiteral("s");
         }
 
-        [[nodiscard]] bool looksLikeGitCommand(const QString& trimmed)
-        {
-            const QString lower = trimmed.toLower();
-            return lower == QStringLiteral("git") ||
-                   lower.startsWith(QStringLiteral("git ")) ||
-                   lower.startsWith(QStringLiteral("git\t")) ||
-                   lower.contains(QStringLiteral("&& git ")) ||
-                   lower.contains(QStringLiteral("; git "));
-        }
-
         [[nodiscard]] std::string_view trimSv(std::string_view sv) noexcept
         {
             while (!sv.empty() && (sv.front() == ' ' || sv.front() == '\t' || sv.front() == '\r' || sv.front() == '\n'))
@@ -99,6 +90,96 @@ namespace gf::desktop
                 sv.remove_suffix(1);
             }
             return sv;
+        }
+
+        [[nodiscard]] bool hasUnclosedQuote(const std::string_view input) noexcept
+        {
+            char quote = '\0';
+            for (const char c : input)
+            {
+                if (quote != '\0')
+                {
+                    if (c == quote)
+                    {
+                        quote = '\0';
+                    }
+                    continue;
+                }
+                if (c == '\'' || c == '"')
+                {
+                    quote = c;
+                }
+            }
+            return quote != '\0';
+        }
+
+        [[nodiscard]] bool looksLikeGitCommand(const QString& trimmed)
+        {
+            const std::string utf8 = trimmed.toStdString();
+            const std::string_view sv(utf8);
+            char quote = '\0';
+            std::size_t segStart = 0;
+
+            auto segmentStartsWithGit = [](std::string_view segment) -> bool
+            {
+                segment = trimSv(segment);
+                if (segment.empty()) return false;
+                std::size_t end = 0;
+                while (end < segment.size() &&
+                       segment[end] != ' ' && segment[end] != '\t' &&
+                       segment[end] != '\r' && segment[end] != '\n')
+                {
+                    ++end;
+                }
+                const std::string_view tok = segment.substr(0, end);
+                if (tok.size() == 3)
+                {
+                    return std::tolower(static_cast<unsigned char>(tok[0])) == 'g' &&
+                           std::tolower(static_cast<unsigned char>(tok[1])) == 'i' &&
+                           std::tolower(static_cast<unsigned char>(tok[2])) == 't';
+                }
+                if (tok.size() == 7)
+                {
+                    constexpr std::string_view kGitExe = "git.exe";
+                    for (std::size_t i = 0; i < 7; ++i)
+                    {
+                        if (std::tolower(static_cast<unsigned char>(tok[i])) != kGitExe[i])
+                        {
+                            return false;
+                        }
+                    }
+                    return true;
+                }
+                return false;
+            };
+
+            for (std::size_t i = 0; i < sv.size(); ++i)
+            {
+                const char c = sv[i];
+                if (quote != '\0')
+                {
+                    if (c == quote) quote = '\0';
+                    continue;
+                }
+                if (c == '\'' || c == '"')
+                {
+                    quote = c;
+                    continue;
+                }
+                if (c == ';' || c == '|' || c == '&' || c == '\n' || c == '\r')
+                {
+                    if (segmentStartsWithGit(sv.substr(segStart, i - segStart)))
+                    {
+                        return true;
+                    }
+                    if ((c == '&' || c == '|') && i + 1 < sv.size() && sv[i + 1] == c)
+                    {
+                        ++i;
+                    }
+                    segStart = i + 1;
+                }
+            }
+            return segmentStartsWithGit(sv.substr(segStart));
         }
 
         [[nodiscard]] gf::terminal::bo::RepoCompletionSnapshot collectRepoSnapshot(
@@ -533,6 +614,34 @@ namespace gf::desktop
             return true;
         }
         return false;
+    }
+
+    bool TerminalSessionViewModel::isBuiltinCdCommand(const std::string_view commandLine) noexcept
+    {
+        const std::string_view trimmed = trimSv(commandLine);
+        if (trimmed.size() < 2)
+        {
+            return false;
+        }
+        const auto c0 = static_cast<char>(std::tolower(static_cast<unsigned char>(trimmed[0])));
+        const auto c1 = static_cast<char>(std::tolower(static_cast<unsigned char>(trimmed[1])));
+        if (c0 != 'c' || c1 != 'd')
+        {
+            return false;
+        }
+        if (trimmed.size() > 2 && trimmed[2] != ' ' && trimmed[2] != '\t')
+        {
+            return false;
+        }
+        if (gf::terminal::bl::CommandLineTokenizer::containsShellOperators(trimmed))
+        {
+            return false;
+        }
+        if (hasUnclosedQuote(trimmed))
+        {
+            return false;
+        }
+        return true;
     }
 
     void TerminalSessionViewModel::setIsVisible(const bool visible)
@@ -1112,7 +1221,7 @@ namespace gf::desktop
             return;
         }
 
-        if (lower == QStringLiteral("cd") || lower.startsWith(QStringLiteral("cd ")) || lower.startsWith(QStringLiteral("cd\t")))
+        if (isBuiltinCdCommand(trimmed.toStdString()))
         {
             const QString arg = trimmed.mid(2).trimmed();
             handleBuiltinCd(*tab, arg, headerId);
@@ -1191,14 +1300,43 @@ namespace gf::desktop
             const int exitCode = res.exitCode;
             const auto duration = res.duration;
             const bool cancelled = res.wasCancelled;
-            QMetaObject::invokeMethod(this, [this, alive, tabId, headerId, repoPath, wasGit, exitCode, duration, cancelled]()
+            QString newWorkingDir;
+            if (!cancelled && res.finalWorkingDirectory && !res.finalWorkingDirectory->empty())
+            {
+                newWorkingDir = QString::fromStdString(gf::core::pathToUtf8(*res.finalWorkingDirectory));
+            }
+            QMetaObject::invokeMethod(this, [this, alive, tabId, headerId, repoPath, wasGit,
+                                             exitCode, duration, cancelled, newWorkingDir = std::move(newWorkingDir)]()
             {
                 if (!alive->load(std::memory_order_acquire)) return;
                 bool emitPagerUpdate = false;
                 bool shouldEmitOutputAppended = true;
+                bool workingDirChanged = false;
                 if (auto* t = findTabById(tabId))
                 {
                     flushPendingBuffers(*t);
+
+                    if (!newWorkingDir.isEmpty())
+                    {
+                        const QFileInfo dirInfo(newWorkingDir);
+                        if (dirInfo.exists() && dirInfo.isDir())
+                        {
+                            const QString resolved = dirInfo.canonicalFilePath().isEmpty()
+                                                         ? QDir::cleanPath(newWorkingDir)
+                                                         : dirInfo.canonicalFilePath();
+#ifdef _WIN32
+                            constexpr Qt::CaseSensitivity kPathCs = Qt::CaseInsensitive;
+#else
+                            constexpr Qt::CaseSensitivity kPathCs = Qt::CaseSensitive;
+#endif
+                            if (QDir::cleanPath(t->currentWorkingDir).compare(resolved, kPathCs) != 0)
+                            {
+                                t->previousWorkingDir = t->currentWorkingDir;
+                                t->currentWorkingDir = resolved;
+                                workingDirChanged = true;
+                            }
+                        }
+                    }
 
                     const bool closedEarly = t->closedPagerEarly;
                     const bool effectiveCancelled = cancelled && !closedEarly;
@@ -1239,6 +1377,10 @@ namespace gf::desktop
                     t->activeProcess.reset();
                 }
                 emit tabsChanged();
+                if (workingDirChanged && activeTab() && activeTab()->id == tabId)
+                {
+                    emit activeTabChanged();
+                }
                 emit runningStateChanged();
                 if (emitPagerUpdate)
                 {

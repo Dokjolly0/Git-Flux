@@ -239,4 +239,30 @@ namespace gf::terminal::bl
         }
         return !outArgs.empty();
     }
+
+    bool CommandLineTokenizer::containsShellOperators(const std::string_view input) noexcept
+    {
+        char quote = '\0';
+        for (const char c : input)
+        {
+            if (quote != '\0')
+            {
+                if (c == quote)
+                {
+                    quote = '\0';
+                }
+                continue;
+            }
+            if (c == '\'' || c == '"')
+            {
+                quote = c;
+                continue;
+            }
+            if (c == ';' || c == '|' || c == '&' || c == '>' || c == '<' || c == '\n' || c == '\r')
+            {
+                return true;
+            }
+        }
+        return false;
+    }
 } // namespace gf::terminal::bl

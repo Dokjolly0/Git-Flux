@@ -51,6 +51,7 @@ namespace gf::terminal::bo
         std::chrono::milliseconds duration{0};
         bool wasCancelled = false;
         std::string errorMessage;
+        std::optional<std::filesystem::path> finalWorkingDirectory;
     };
 
     struct TerminalExecutionCallbacks

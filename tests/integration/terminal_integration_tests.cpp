@@ -135,4 +135,30 @@ TEST_CASE("NativeTerminalProcessRunner streams Git and shell output in target wo
         REQUIRE(finalRes.exitCode == 0);
         REQUIRE(capturedOut.find("gitflux_cli_ok") != std::string::npos);
     }
+
+    SECTION("Shell command changing directory reports updated finalWorkingDirectory")
+    {
+        if (std::filesystem::exists(workDir / "scripts"))
+        {
+            TerminalCommandResult finalRes;
+            TerminalExecutionRequest req;
+            req.commandLine = "cd scripts/ && echo cwd_tracked";
+            req.workingDirectory = workDir;
+
+            TerminalExecutionCallbacks cb;
+            cb.onFinished = [&](const TerminalCommandResult& res)
+            {
+                finalRes = res;
+            };
+
+            auto handle = runner.start(req, std::move(cb));
+            REQUIRE(handle.has_value());
+            (*handle)->wait();
+
+            REQUIRE(finalRes.exitCode == 0);
+            REQUIRE(finalRes.finalWorkingDirectory.has_value());
+            std::error_code ec;
+            REQUIRE(std::filesystem::equivalent(*finalRes.finalWorkingDirectory, workDir / "scripts", ec));
+        }
+    }
 }

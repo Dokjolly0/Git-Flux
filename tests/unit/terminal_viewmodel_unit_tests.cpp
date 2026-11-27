@@ -7,6 +7,7 @@
 #include "infrastructure/terminal/native_terminal_process_runner.hpp"
 
 #include <QDir>
+#include <QFile>
 #include <QGuiApplication>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -93,6 +94,209 @@ TEST_CASE("TerminalSessionViewModel manages multi-tab per-repo state, cd, comple
 
         vm.executeCommand(QStringLiteral("cd .."));
         REQUIRE(vm.activeRelativeDir() == QStringLiteral("/"));
+
+        // Quoted directory name containing shell operator characters stays built-in cd
+        const QString specialDir = repoA + QStringLiteral("/dir && name");
+        REQUIRE(QDir().mkpath(specialDir));
+        vm.executeCommand(QStringLiteral("cd \"dir && name\""));
+        REQUIRE(vm.activeRelativeDir() == QStringLiteral("/dir && name"));
+
+        vm.executeCommand(QStringLiteral("cd -"));
+        REQUIRE(vm.activeRelativeDir() == QStringLiteral("/"));
+    }
+
+    SECTION("isBuiltinCdCommand distinguishes pure cd from shell-chained cd commands")
+    {
+        // Pure cd invocations
+        REQUIRE(TerminalSessionViewModel::isBuiltinCdCommand("cd"));
+        REQUIRE(TerminalSessionViewModel::isBuiltinCdCommand("CD"));
+        REQUIRE(TerminalSessionViewModel::isBuiltinCdCommand("  cd   src  "));
+        REQUIRE(TerminalSessionViewModel::isBuiltinCdCommand("cd\tsrc"));
+        REQUIRE(TerminalSessionViewModel::isBuiltinCdCommand("cd scripts/"));
+        REQUIRE(TerminalSessionViewModel::isBuiltinCdCommand("cd scripts\\windows"));
+        REQUIRE(TerminalSessionViewModel::isBuiltinCdCommand("cd .."));
+        REQUIRE(TerminalSessionViewModel::isBuiltinCdCommand("cd -"));
+        REQUIRE(TerminalSessionViewModel::isBuiltinCdCommand("cd ~"));
+        REQUIRE(TerminalSessionViewModel::isBuiltinCdCommand("cd \"dir && name\""));
+        REQUIRE(TerminalSessionViewModel::isBuiltinCdCommand("cd 'dir; name'"));
+        REQUIRE(TerminalSessionViewModel::isBuiltinCdCommand("cd \"scripts\\\""));
+
+        // Chained / shell-operator commands must be delegated to the shell
+        REQUIRE_FALSE(TerminalSessionViewModel::isBuiltinCdCommand("cd scripts/ && ls"));
+        REQUIRE_FALSE(TerminalSessionViewModel::isBuiltinCdCommand("cd src && git status"));
+        REQUIRE_FALSE(TerminalSessionViewModel::isBuiltinCdCommand("cd scripts; ls"));
+        REQUIRE_FALSE(TerminalSessionViewModel::isBuiltinCdCommand("cd scripts;ls"));
+        REQUIRE_FALSE(TerminalSessionViewModel::isBuiltinCdCommand("cd scripts || echo err"));
+        REQUIRE_FALSE(TerminalSessionViewModel::isBuiltinCdCommand("cd scripts | cat"));
+        REQUIRE_FALSE(TerminalSessionViewModel::isBuiltinCdCommand("cd \"dir name\" && ls"));
+        REQUIRE_FALSE(TerminalSessionViewModel::isBuiltinCdCommand("cd \"scripts\\\" && ls"));
+        REQUIRE_FALSE(TerminalSessionViewModel::isBuiltinCdCommand("cd scripts\\&&ls"));
+        REQUIRE_FALSE(TerminalSessionViewModel::isBuiltinCdCommand("cd src & dir"));
+        REQUIRE_FALSE(TerminalSessionViewModel::isBuiltinCdCommand("cd src > out.txt"));
+        REQUIRE_FALSE(TerminalSessionViewModel::isBuiltinCdCommand("cd src\nls"));
+        REQUIRE_FALSE(TerminalSessionViewModel::isBuiltinCdCommand("cd \"unclosed && ls"));
+        REQUIRE_FALSE(TerminalSessionViewModel::isBuiltinCdCommand("cd; ls"));
+        REQUIRE_FALSE(TerminalSessionViewModel::isBuiltinCdCommand("cd&&ls"));
+        REQUIRE_FALSE(TerminalSessionViewModel::isBuiltinCdCommand("git status"));
+    }
+
+    SECTION("Chained cd commands (&&, ;, ||, |) are delegated to the shell instead of failing as built-in cd")
+    {
+        auto lastCommandExitCode = [&]() -> int
+        {
+            const auto* model = vm.activeOutputModel();
+            for (int r = model->count() - 1; r >= 0; --r)
+            {
+                const QModelIndex idx = model->index(r, 0);
+                if (model->data(idx, TerminalOutputListModel::LineKindRole).toString() == QStringLiteral("command"))
+                {
+                    return model->data(idx, TerminalOutputListModel::ExitCodeRole).toInt();
+                }
+            }
+            return -1;
+        };
+
+        auto collectStreamText = [&](const QString& kind) -> QString
+        {
+            const auto* model = vm.activeOutputModel();
+            QStringList lines;
+            for (int r = 0; r < model->count(); ++r)
+            {
+                const QModelIndex idx = model->index(r, 0);
+                if (model->data(idx, TerminalOutputListModel::LineKindRole).toString() == kind)
+                {
+                    lines.append(model->data(idx, TerminalOutputListModel::PlainTextRole).toString());
+                }
+            }
+            return lines.join(QLatin1Char('\n'));
+        };
+
+        // Create a marker file inside repoA/src so listing it proves cd succeeded inside the shell
+        {
+            QFile marker(repoASub + QStringLiteral("/marker_from_src.txt"));
+            REQUIRE(marker.open(QIODevice::WriteOnly));
+            marker.write("ok\n");
+            marker.close();
+        }
+
+        // 1. `cd src/ && ls` (reproduces `cd scripts/ && ls`) AND persists working directory to `/src`
+        vm.clearActiveOutput();
+        vm.executeCommand(QStringLiteral("cd src/ && ls"));
+        REQUIRE(vm.waitForIdle(5000));
+        REQUIRE(lastCommandExitCode() == 0);
+        REQUIRE_FALSE(collectStreamText(QStringLiteral("stderr")).contains(QStringLiteral("cd: directory non trovata")));
+        REQUIRE(collectStreamText(QStringLiteral("stdout")).contains(QStringLiteral("marker_from_src.txt")));
+        REQUIRE(vm.activeRelativeDir() == QStringLiteral("/src"));
+
+        // `pwd` right after must reflect `/src`, not the previous repo root!
+        vm.clearActiveOutput();
+        vm.executeCommand(QStringLiteral("pwd"));
+        REQUIRE(collectStreamText(QStringLiteral("stdout")).endsWith(QStringLiteral("src"), Qt::CaseInsensitive));
+
+        // `cd -` returns to repo root `/`
+        vm.executeCommand(QStringLiteral("cd -"));
+        REQUIRE(vm.activeRelativeDir() == QStringLiteral("/"));
+
+        // 2. `cd src; ls` also persists working directory to `/src`
+        vm.clearActiveOutput();
+        vm.executeCommand(QStringLiteral("cd src; ls"));
+        REQUIRE(vm.waitForIdle(5000));
+        REQUIRE(lastCommandExitCode() == 0);
+        REQUIRE_FALSE(collectStreamText(QStringLiteral("stderr")).contains(QStringLiteral("cd: directory non trovata")));
+        REQUIRE(collectStreamText(QStringLiteral("stdout")).contains(QStringLiteral("marker_from_src.txt")));
+        REQUIRE(vm.activeRelativeDir() == QStringLiteral("/src"));
+
+        vm.executeCommand(QStringLiteral("cd .."));
+        REQUIRE(vm.activeRelativeDir() == QStringLiteral("/"));
+
+        // 3. `cd missing_dir_xyz || echo fallback_ok` keeps working directory at `/`
+        vm.clearActiveOutput();
+        vm.executeCommand(QStringLiteral("cd missing_dir_xyz || echo fallback_ok"));
+        REQUIRE(vm.waitForIdle(5000));
+        REQUIRE(lastCommandExitCode() == 0);
+        REQUIRE_FALSE(collectStreamText(QStringLiteral("stderr")).contains(QStringLiteral("cd: directory non trovata")));
+        REQUIRE(collectStreamText(QStringLiteral("stdout")).contains(QStringLiteral("fallback_ok")));
+        REQUIRE(vm.activeRelativeDir() == QStringLiteral("/"));
+
+        // 4. `cd missing_dir_xyz && echo should_not_run` fails and keeps `/`
+        vm.clearActiveOutput();
+        vm.executeCommand(QStringLiteral("cd missing_dir_xyz && echo should_not_run"));
+        REQUIRE(vm.waitForIdle(5000));
+        REQUIRE(lastCommandExitCode() != 0);
+        REQUIRE_FALSE(collectStreamText(QStringLiteral("stderr")).contains(QStringLiteral("cd: directory non trovata")));
+        REQUIRE_FALSE(collectStreamText(QStringLiteral("stdout")).contains(QStringLiteral("should_not_run")));
+        REQUIRE(vm.activeRelativeDir() == QStringLiteral("/"));
+
+        // 5. `cd src && git --version` runs in shell, persists `/src`, AND emits gitCommandFinished
+        vm.clearActiveOutput();
+        QSignalSpy gitFinishedSpy(&vm, &TerminalSessionViewModel::gitCommandFinished);
+        vm.executeCommand(QStringLiteral("cd src && git --version"));
+        REQUIRE(vm.waitForIdle(5000));
+        REQUIRE(lastCommandExitCode() == 0);
+        REQUIRE(gitFinishedSpy.count() == 1);
+        REQUIRE(gitFinishedSpy.at(0).at(1).toInt() == 0);
+        REQUIRE(collectStreamText(QStringLiteral("stdout")).contains(QStringLiteral("git version")));
+        REQUIRE(vm.activeRelativeDir() == QStringLiteral("/src"));
+
+        // 6. Real workspace repo reproducer: `cd scripts/ && ls` then `pwd`
+        const QString workspaceRepo = QString::fromStdString(std::filesystem::current_path().string());
+        if (QDir(workspaceRepo + QStringLiteral("/scripts")).exists())
+        {
+            vm.setActiveRepository(QStringLiteral("id-self-cd"), QStringLiteral("GitFlux"), workspaceRepo, QStringLiteral("develop"));
+            vm.waitForIdle(5000);
+            vm.clearActiveOutput();
+            vm.executeCommand(QStringLiteral("cd scripts/ && ls"));
+            REQUIRE(vm.waitForIdle(5000));
+            REQUIRE(lastCommandExitCode() == 0);
+            REQUIRE_FALSE(collectStreamText(QStringLiteral("stderr")).contains(QStringLiteral("cd: directory non trovata")));
+            const QString outWorkspace = collectStreamText(QStringLiteral("stdout"));
+            REQUIRE(outWorkspace.contains(QStringLiteral("windows")));
+            REQUIRE(outWorkspace.contains(QStringLiteral("linux")));
+            REQUIRE(vm.activeRelativeDir() == QStringLiteral("/scripts"));
+
+            vm.clearActiveOutput();
+            vm.executeCommand(QStringLiteral("pwd"));
+            REQUIRE(collectStreamText(QStringLiteral("stdout")).endsWith(QStringLiteral("scripts"), Qt::CaseInsensitive));
+        }
+    }
+
+    SECTION("cd completion shows ExecuteAction row 0 for existing directories so Enter executes instead of diving into first subfolder")
+    {
+        // Create subfolders inside repoA/src and a sibling folder `src_extra`
+        REQUIRE(QDir().mkpath(repoASub + QStringLiteral("/alpha")));
+        REQUIRE(QDir().mkpath(repoASub + QStringLiteral("/beta")));
+        REQUIRE(QDir().mkpath(repoA + QStringLiteral("/src_extra")));
+
+        // Incomplete prefix `cd sr`: Enter should complete (no ExecuteAction)
+        const QString partial = QStringLiteral("cd sr");
+        vm.updateCompletions(partial, static_cast<int>(partial.size()));
+        REQUIRE(vm.hasCompletions());
+        REQUIRE_FALSE(vm.completionModel()->isExecuteAction(0));
+        REQUIRE(vm.shouldEnterAcceptCompletion(0, false, partial, static_cast<int>(partial.size())));
+
+        // Exact existing directory `cd src` with sibling `src_extra/`: row 0 is ExecuteAction -> Enter executes!
+        const QString exactDir = QStringLiteral("cd src");
+        vm.updateCompletions(exactDir, static_cast<int>(exactDir.size()));
+        REQUIRE(vm.completionCount() >= 2);
+        REQUIRE(vm.completionModel()->isExecuteAction(0));
+        REQUIRE_FALSE(vm.shouldEnterAcceptCompletion(0, false, exactDir, static_cast<int>(exactDir.size())));
+        REQUIRE_FALSE(vm.shouldEnterAcceptCompletion(0, true, exactDir, static_cast<int>(exactDir.size())));
+        // Navigating down to row 1 (`src/` or `src_extra/`) allows Enter to complete it
+        REQUIRE(vm.shouldEnterAcceptCompletion(1, true, exactDir, static_cast<int>(exactDir.size())));
+
+        // Clicking row 0 returns executeNow = true
+        const QVariantMap execExact = vm.acceptCompletion(0, exactDir, static_cast<int>(exactDir.size()));
+        REQUIRE(execExact.value(QStringLiteral("accepted")).toBool());
+        REQUIRE(execExact.value(QStringLiteral("executeNow")).toBool());
+
+        // Existing directory with trailing slash `cd src/` and subfolders `alpha/`, `beta/`:
+        // row 0 is ExecuteAction so pressing Enter executes `cd src/` instead of completing `src/alpha/`!
+        const QString withSlash = QStringLiteral("cd src/");
+        vm.updateCompletions(withSlash, static_cast<int>(withSlash.size()));
+        REQUIRE(vm.completionCount() >= 3); // ExecuteAction + alpha/ + beta/
+        REQUIRE(vm.completionModel()->isExecuteAction(0));
+        REQUIRE_FALSE(vm.shouldEnterAcceptCompletion(0, false, withSlash, static_cast<int>(withSlash.size())));
+        REQUIRE(vm.shouldEnterAcceptCompletion(1, true, withSlash, static_cast<int>(withSlash.size())));
     }
 
     SECTION("Live git completion filters progressively and chains on acceptCompletion")

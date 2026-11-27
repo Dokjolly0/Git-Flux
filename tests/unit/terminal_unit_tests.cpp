@@ -134,6 +134,34 @@ TEST_CASE("CommandLineTokenizer handles quotes, cursor position and chained comm
         REQUIRE_FALSE(CommandLineTokenizer::trySplitSimpleArgs("git log | grep fix", args));
         REQUIRE_FALSE(CommandLineTokenizer::trySplitSimpleArgs("git add . && git status", args));
     }
+
+    SECTION("containsShellOperators detects unquoted operators while ignoring quoted text")
+    {
+        REQUIRE_FALSE(CommandLineTokenizer::containsShellOperators("cd"));
+        REQUIRE_FALSE(CommandLineTokenizer::containsShellOperators("cd src"));
+        REQUIRE_FALSE(CommandLineTokenizer::containsShellOperators("cd scripts/"));
+        REQUIRE_FALSE(CommandLineTokenizer::containsShellOperators("cd scripts\\windows"));
+        REQUIRE_FALSE(CommandLineTokenizer::containsShellOperators("cd \"my folder\""));
+        REQUIRE_FALSE(CommandLineTokenizer::containsShellOperators("cd \"a && b\""));
+        REQUIRE_FALSE(CommandLineTokenizer::containsShellOperators("cd 'a; b'"));
+        REQUIRE_FALSE(CommandLineTokenizer::containsShellOperators("cd \"a || b\""));
+        REQUIRE_FALSE(CommandLineTokenizer::containsShellOperators("cd 'a | b'"));
+
+        REQUIRE(CommandLineTokenizer::containsShellOperators("cd scripts/ && ls"));
+        REQUIRE(CommandLineTokenizer::containsShellOperators("cd src && git status"));
+        REQUIRE(CommandLineTokenizer::containsShellOperators("cd scripts&&ls"));
+        REQUIRE(CommandLineTokenizer::containsShellOperators("cd scripts\\&&ls"));
+        REQUIRE(CommandLineTokenizer::containsShellOperators("cd scripts; ls"));
+        REQUIRE(CommandLineTokenizer::containsShellOperators("cd scripts;ls"));
+        REQUIRE(CommandLineTokenizer::containsShellOperators("cd scripts || echo fail"));
+        REQUIRE(CommandLineTokenizer::containsShellOperators("cd scripts | cat"));
+        REQUIRE(CommandLineTokenizer::containsShellOperators("cd \"my dir\" && ls"));
+        REQUIRE(CommandLineTokenizer::containsShellOperators("cd \"scripts\\\" && ls"));
+        REQUIRE(CommandLineTokenizer::containsShellOperators("cd 'my dir'; ls"));
+        REQUIRE(CommandLineTokenizer::containsShellOperators("cd src & dir"));
+        REQUIRE(CommandLineTokenizer::containsShellOperators("cd src > out.txt"));
+        REQUIRE(CommandLineTokenizer::containsShellOperators("cd src\nls"));
+    }
 }
 
 TEST_CASE("GitCatalogService parses git help -a, aliases, and subcommand options", "[terminal][catalog]")
@@ -359,9 +387,30 @@ TEST_CASE("GitCompletionEngine progressively filters all Git commands, flags and
             const auto r2 = GitCompletionEngine::complete(".\\sc", 4, cwd, catalog, snap);
             REQUIRE(containsItem(r2, ".\\scripts\\"));
 
-            // `cd sc` suggests `scripts/`
+            // `cd sc` (incomplete prefix) suggests `scripts/` without ExecuteAction
             const auto r3 = GitCompletionEngine::complete("cd sc", 5, cwd, catalog, snap);
             REQUIRE(containsItem(r3, "scripts/"));
+            REQUIRE_FALSE(r3.items.empty());
+            REQUIRE(r3.items[0].kind != CompletionItemKind::ExecuteAction);
+
+            // `cd scripts` (existing dir with suggestions) puts ExecuteAction at row 0 so Enter executes
+            const auto r4 = GitCompletionEngine::complete("cd scripts", 10, cwd, catalog, snap);
+            REQUIRE(r4.items.size() >= 2);
+            REQUIRE(r4.items[0].kind == CompletionItemKind::ExecuteAction);
+            REQUIRE(r4.items[0].displayText == "▶ Esegui comando");
+            REQUIRE(containsItem(r4, "scripts/"));
+
+            // `cd scripts/` (existing dir with subfolders) puts ExecuteAction at row 0 ahead of subfolders
+            const auto r5 = GitCompletionEngine::complete("cd scripts/", 11, cwd, catalog, snap);
+            REQUIRE(r5.items.size() >= 2);
+            REQUIRE(r5.items[0].kind == CompletionItemKind::ExecuteAction);
+            REQUIRE(r5.items[0].displayText == "▶ Esegui comando");
+            REQUIRE(containsItem(r5, "scripts/windows/"));
+            REQUIRE(containsItem(r5, "scripts/linux/"));
+
+            // `cd scripts ` (trailing space -> 2nd arg) does not suggest unrelated root folders
+            const auto r6 = GitCompletionEngine::complete("cd scripts ", 11, cwd, catalog, snap);
+            REQUIRE(r6.items.empty());
         }
     }
 }
