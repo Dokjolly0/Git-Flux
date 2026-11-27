@@ -1689,7 +1689,8 @@ namespace gf::desktop
             (item->kind == gf::terminal::bo::CompletionItemKind::ShellBuiltin && item->insertText == "git") ||
             (item->kind == gf::terminal::bo::CompletionItemKind::GitCommand) ||
             (item->kind == gf::terminal::bo::CompletionItemKind::GitSubcommand) ||
-            (item->kind == gf::terminal::bo::CompletionItemKind::FilePath && item->insertText.ends_with('/'));
+            (item->kind == gf::terminal::bo::CompletionItemKind::FilePath &&
+             (item->insertText.ends_with('/') || item->insertText.ends_with('\\')));
 
         out[QStringLiteral("accepted")] = true;
         out[QStringLiteral("text")] = newText;

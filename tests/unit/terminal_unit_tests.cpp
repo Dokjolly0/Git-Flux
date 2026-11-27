@@ -344,4 +344,23 @@ TEST_CASE("GitCompletionEngine progressively filters all Git commands, flags and
         REQUIRE(res.replaceStart == 17);
         REQUIRE(res.replaceLength == 2);
     }
+
+    SECTION("Filesystem directories and files autocomplete at token 0 and with Windows backslashes")
+    {
+        const auto cwd = std::filesystem::current_path();
+        if (std::filesystem::exists(cwd / "scripts"))
+        {
+            // Bare `sc` at position 0 suggests `scripts/`
+            const auto r1 = GitCompletionEngine::complete("sc", 2, cwd, catalog, snap);
+            REQUIRE(containsItem(r1, "scripts/"));
+
+            // Windows backslash prefix `.\sc` preserves separator and suggests `.\scripts\`
+            const auto r2 = GitCompletionEngine::complete(".\\sc", 4, cwd, catalog, snap);
+            REQUIRE(containsItem(r2, ".\\scripts\\"));
+
+            // `cd sc` suggests `scripts/`
+            const auto r3 = GitCompletionEngine::complete("cd sc", 5, cwd, catalog, snap);
+            REQUIRE(containsItem(r3, "scripts/"));
+        }
+    }
 }

@@ -86,7 +86,8 @@ namespace gf::terminal::bl
                 return;
             }
 
-            // Split prefix into dir part and leaf prefix (support both '/' and '\')
+            // Split prefix into dir part and leaf prefix (preserve user's '/' or '\' separator style)
+            const bool useBackslash = (prefix.find('\\') != std::string_view::npos);
             std::string normalized(prefix);
             std::ranges::replace(normalized, '\\', '/');
 
@@ -134,6 +135,10 @@ namespace gf::terminal::bl
                 if (isDir)
                 {
                     candidate.push_back('/');
+                }
+                if (useBackslash)
+                {
+                    std::ranges::replace(candidate, '/', '\\');
                 }
 
                 if (!seen.insert(candidate).second) continue;
@@ -486,10 +491,12 @@ namespace gf::terminal::bl
                 {"exit", "Chiudi la scheda terminale corrente", 600}
             };
 
+            std::unordered_set<std::string> seen;
             for (const auto& b : kBuiltins)
             {
                 if (seg.activePrefix.empty() || startsWithCaseInsensitive(b.name, seg.activePrefix))
                 {
+                    seen.insert(b.name);
                     result.items.push_back(bo::CompletionItem{
                         .insertText = b.name,
                         .displayText = b.name,
@@ -503,6 +510,15 @@ namespace gf::terminal::bl
                     });
                 }
             }
+
+            // Also complete local directories & files at position 0 (e.g. `sc` -> `scripts/`, `.\sc` -> `.\scripts\`)
+            addFilesystemCompletions(workingDir, seg.activePrefix, false, result.items, seen, 500);
+
+            std::ranges::stable_sort(result.items, [](const bo::CompletionItem& a, const bo::CompletionItem& b)
+            {
+                if (a.score != b.score) return a.score > b.score;
+                return a.displayText < b.displayText;
+            });
             return result;
         }
 

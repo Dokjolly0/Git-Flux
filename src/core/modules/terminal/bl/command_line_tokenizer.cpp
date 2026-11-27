@@ -132,7 +132,8 @@ namespace gf::terminal::bl
                     ++i;
                     continue;
                 }
-                if (c == '\\' && i + 1 < prefix.size())
+                if (c == '\\' && i + 1 < prefix.size() &&
+                    (prefix[i + 1] == ' ' || prefix[i + 1] == '\t' || prefix[i + 1] == '"' || prefix[i + 1] == '\''))
                 {
                     tok.value.push_back(prefix[i + 1]);
                     i += 2;
