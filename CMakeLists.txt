@@ -82,6 +82,10 @@ add_library(gf_application STATIC
         src/core/modules/syntax/language_detector.cpp
         src/core/modules/syntax/syntax_highlighter.cpp
         src/core/modules/syntax/markdown_parser.cpp
+        src/core/modules/terminal/bl/ansi_parser.cpp
+        src/core/modules/terminal/bl/command_line_tokenizer.cpp
+        src/core/modules/terminal/bl/git_catalog_service.cpp
+        src/core/modules/terminal/bl/git_completion_engine.cpp
 )
 target_include_directories(gf_application PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
@@ -203,6 +207,15 @@ target_include_directories(gf_watcher_native PUBLIC
 target_link_libraries(gf_watcher_native PUBLIC gf_application)
 gf_apply_compiler_warnings(gf_watcher_native)
 
+add_library(gf_terminal_native STATIC
+        src/infrastructure/terminal/native_terminal_process_runner.cpp
+)
+target_include_directories(gf_terminal_native PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
+target_link_libraries(gf_terminal_native PUBLIC gf_application)
+gf_apply_compiler_warnings(gf_terminal_native)
+
 if (GF_BUILD_DESKTOP)
     set(CMAKE_AUTOMOC ON)
     set(CMAKE_AUTORCC ON)
@@ -273,6 +286,9 @@ if (GF_BUILD_DESKTOP)
             src/desktop/services/diff_file_inspector.cpp
             src/desktop/viewmodels/remote_repo_list_model.cpp
             src/desktop/viewmodels/git_profiles_viewmodel.cpp
+            src/desktop/viewmodels/terminal_completion_list_model.cpp
+            src/desktop/viewmodels/terminal_output_list_model.cpp
+            src/desktop/viewmodels/terminal_session_viewmodel.cpp
             src/desktop/bootstrap/app_bootstrap.cpp
     )
     target_include_directories(gf_desktop_viewmodels PUBLIC
@@ -283,6 +299,7 @@ if (GF_BUILD_DESKTOP)
             gf_persistence_sqlite
             gf_git_cli_native
             gf_watcher_native
+            gf_terminal_native
             Qt6::Core
             Qt6::Gui
             Qt6::Quick
@@ -345,6 +362,8 @@ if (GF_BUILD_DESKTOP)
             src/desktop/ui/qml/views/CreateWorktreeModal.qml
             src/desktop/ui/qml/views/EditCommitMessageModal.qml
             src/desktop/ui/qml/views/ForcePushConfirmModal.qml
+            src/desktop/ui/qml/views/TerminalCompletionPopup.qml
+            src/desktop/ui/qml/views/TerminalDockPanel.qml
             RESOURCES
             assets/logo.png
             assets/icons/providers/github.png
@@ -466,10 +485,12 @@ if (GF_BUILD_TESTING)
             tests/unit/batch_coordinator_unit_tests.cpp
             tests/unit/syntax_highlighter_unit_tests.cpp
             tests/unit/crypto_and_profiles_unit_tests.cpp
+            tests/unit/terminal_unit_tests.cpp
     )
     target_link_libraries(gf_unit_tests PRIVATE
             gf_git_cli_native
             gf_watcher_native
+            gf_terminal_native
             gf_persistence_sqlite
             Catch2::Catch2WithMain
     )
@@ -492,10 +513,12 @@ if (GF_BUILD_TESTING)
             tests/integration/fs_watcher_integration_tests.cpp
             tests/integration/async_git_integration_tests.cpp
             tests/integration/batch_coordinator_integration_tests.cpp
+            tests/integration/terminal_integration_tests.cpp
     )
     target_link_libraries(gf_integration_tests PRIVATE
             gf_git_cli_native
             gf_watcher_native
+            gf_terminal_native
             gf_persistence_sqlite
             gf_fixture_gen_lib
             Catch2::Catch2WithMain
@@ -508,6 +531,7 @@ if (GF_BUILD_TESTING)
         # MVVM Unit Tests (ViewModels & Models with Catch2 + QSignalSpy)
         add_executable(gf_viewmodels_tests
                 tests/unit/viewmodels_unit_tests.cpp
+                tests/unit/terminal_viewmodel_unit_tests.cpp
         )
         target_link_libraries(gf_viewmodels_tests PRIVATE
                 gf_desktop_viewmodels
