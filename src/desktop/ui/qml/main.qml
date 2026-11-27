@@ -161,12 +161,25 @@ ApplicationWindow {
         }
     }
 
+    // Toggle Integrated Bottom Terminal (Ctrl+` / Ctrl+J)
+    Shortcut {
+        sequences: ["Ctrl+`", "Ctrl+J"]
+        enabled: appWindow.currentView === "session"
+        onActivated: {
+            if (typeof terminalSessionVm !== "undefined" && terminalSessionVm) {
+                terminalSessionVm.toggleVisible();
+            }
+        }
+    }
+
     // Global Escape
     Shortcut {
         sequence: "Escape"
         onActivated: {
             if (quickOpenModal.visible) {
                 quickOpenModal.close();
+            } else if (typeof terminalSessionVm !== "undefined" && terminalSessionVm && terminalSessionVm.hasCompletions) {
+                terminalSessionVm.dismissCompletions();
             }
         }
     }

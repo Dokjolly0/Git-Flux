@@ -16,6 +16,9 @@ Rectangle {
     readonly property bool hasWipChanges: Boolean(sessionVm && sessionVm.workingTree && !sessionVm.workingTree.isClean)
     readonly property int stashCount: (sessionVm && sessionVm.stashManager) ? sessionVm.stashManager.stashCount : 0
     readonly property bool hasStashes: stashCount > 0
+    readonly property var terminalVm: (sessionVm && sessionVm.terminal) ? sessionVm.terminal : null
+    readonly property bool isTerminalVisible: Boolean(terminalVm && terminalVm.isVisible)
+    property real terminalHeight: 280
 
     function isGroupCollapsed(groupId) {
         return Boolean(groupId && collapsedGroupIds && collapsedGroupIds[groupId] === true);
@@ -1035,12 +1038,65 @@ Rectangle {
                 }
             }
 
-            // RIGHT SIDE: Branch & Remote modal + Background progress indicator
+            // RIGHT SIDE: Terminal toggle + Branch & Remote modal + Background progress indicator
             RowLayout {
                 anchors.right: parent.right
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 8
+
+                Button {
+                    id: terminalToggleBtn
+                    Layout.preferredHeight: 32
+                    leftPadding: 12
+                    rightPadding: 12
+                    hoverEnabled: true
+                    background: Rectangle {
+                        color: root.isTerminalVisible
+                            ? (terminalToggleBtn.hovered ? "#15324D" : "#0F253B")
+                            : (terminalToggleBtn.down ? "#1E2D42" : (terminalToggleBtn.hovered ? "#1A2639" : "#121A27"))
+                        radius: 9
+                        border.color: root.isTerminalVisible
+                            ? "#00E5FF"
+                            : (terminalToggleBtn.hovered ? "#334968" : "#222F42")
+                        border.width: 1
+
+                        Behavior on color { ColorAnimation { duration: 120 } }
+                        Behavior on border.color { ColorAnimation { duration: 120 } }
+                    }
+                    contentItem: RowLayout {
+                        spacing: 6
+                        Text {
+                            text: ">_"
+                            color: root.isTerminalVisible ? "#00E5FF" : "#38BDF8"
+                            font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
+                            font.pixelSize: 11
+                            font.bold: true
+                        }
+                        Text {
+                            text: "Terminal"
+                            color: root.isTerminalVisible ? "#F8FAFC" : "#CBD5E1"
+                            font.pixelSize: 11
+                            font.bold: true
+                        }
+                        Rectangle {
+                            visible: Boolean(root.terminalVm && root.terminalVm.anyTabRunning)
+                            width: 6
+                            height: 6
+                            radius: 3
+                            color: "#F59E0B"
+                        }
+                    }
+                    ToolTip.visible: hovered
+                    ToolTip.text: root.isTerminalVisible
+                        ? "Nascondi terminale integrato (Ctrl+`)"
+                        : "Apri terminale integrato nella root del repository (Ctrl+`)"
+                    onClicked: {
+                        if (root.terminalVm) {
+                            root.terminalVm.toggleVisible();
+                        }
+                    }
+                }
 
                 TopBarCapsuleButton {
                     text: "⚙ Branch & Sync..."
@@ -1288,31 +1344,99 @@ Rectangle {
         }
 
         // ==========================================
-        // 2. MAIN REPOSITORY VIEW (Unified GitKraken Graph + WIP + Details)
+        // 2. MAIN REPOSITORY VIEW + RESIZABLE BOTTOM TERMINAL DOCK
         // ==========================================
-        CommitHistoryPanel {
+        Item {
+            id: workspaceBodyHost
             Layout.fillWidth: true
             Layout.fillHeight: true
-            sessionVm: root.sessionVm
-            onCreateBranchRequested: function (startPoint) {
-                createBranchModal.openWithStartPoint(startPoint);
-            }
-            onCreatePullRequestRequested: function (sourceBranch, targetBranch) {
-                pullRequestModal.openWithBranches(sourceBranch, targetBranch);
-            }
-            onCreateTagRequested: function (commitSha) {
-                createTagModal.openWithCommit(commitSha);
-            }
-            onConflictResolveRequested: function (filePath) {
-                if (root.sessionVm && root.sessionVm.openConflictResolver(filePath)) {
-                    conflictModal.open();
+
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: 0
+
+                CommitHistoryPanel {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.minimumHeight: 160
+                    sessionVm: root.sessionVm
+                    onCreateBranchRequested: function (startPoint) {
+                        createBranchModal.openWithStartPoint(startPoint);
+                    }
+                    onCreatePullRequestRequested: function (sourceBranch, targetBranch) {
+                        pullRequestModal.openWithBranches(sourceBranch, targetBranch);
+                    }
+                    onCreateTagRequested: function (commitSha) {
+                        createTagModal.openWithCommit(commitSha);
+                    }
+                    onConflictResolveRequested: function (filePath) {
+                        if (root.sessionVm && root.sessionVm.openConflictResolver(filePath)) {
+                            conflictModal.open();
+                        }
+                    }
+                    onCreateWorktreeRequested: function (target) {
+                        createWorktreeModal.openWithTarget(target);
+                    }
+                    onStashModalRequested: function () {
+                        stashModal.open();
+                    }
                 }
-            }
-            onCreateWorktreeRequested: function (target) {
-                createWorktreeModal.openWithTarget(target);
-            }
-            onStashModalRequested: function () {
-                stashModal.open();
+
+                // Vertical Drag Resize Handle for Bottom Terminal
+                Rectangle {
+                    id: terminalResizeHandle
+                    visible: root.isTerminalVisible
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 5
+                    color: (resizeHandleMa.containsMouse || resizeHandleMa.pressed) ? "#1F3B5C" : "#0D131D"
+                    z: 20
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 44
+                        height: 2
+                        radius: 1
+                        color: (resizeHandleMa.containsMouse || resizeHandleMa.pressed) ? "#00E5FF" : "#283952"
+                        Behavior on color { ColorAnimation { duration: 110 } }
+                    }
+
+                    MouseArea {
+                        id: resizeHandleMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.SizeVerCursor
+                        property real dragStartGlobalY: 0
+                        property real dragStartHeight: 280
+
+                        onPressed: function (mouse) {
+                            dragStartGlobalY = mapToItem(workspaceBodyHost, 0, mouse.y).y;
+                            dragStartHeight = terminalDock.height;
+                            if (root.terminalVm && root.terminalVm.isMaximized) {
+                                root.terminalVm.isMaximized = false;
+                            }
+                        }
+
+                        onPositionChanged: function (mouse) {
+                            if (!pressed) return;
+                            const currentY = mapToItem(workspaceBodyHost, 0, mouse.y).y;
+                            const delta = dragStartGlobalY - currentY;
+                            const maxH = Math.max(220, workspaceBodyHost.height - 160);
+                            root.terminalHeight = Math.max(150, Math.min(maxH, dragStartHeight + delta));
+                        }
+                    }
+                }
+
+                // Bottom Multi-Tab CLI Terminal Dock
+                TerminalDockPanel {
+                    id: terminalDock
+                    visible: root.isTerminalVisible
+                    terminalVm: root.terminalVm
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: (root.terminalVm && root.terminalVm.isMaximized)
+                        ? Math.max(260, workspaceBodyHost.height * 0.68)
+                        : Math.max(150, Math.min(root.terminalHeight, Math.max(220, workspaceBodyHost.height - 160)))
+                    z: 30
+                }
             }
         }
     }
