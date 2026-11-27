@@ -4,8 +4,12 @@
 
 namespace gf::desktop
 {
-    TerminalOutputListModel::TerminalOutputListModel(QObject* parent)
+    TerminalOutputListModel::TerminalOutputListModel(QObject* parent,
+                                                     const int maxLines,
+                                                     const bool dropOldest)
         : QAbstractListModel(parent)
+        , m_maxLines(maxLines > 0 ? maxLines : kMaxLines)
+        , m_dropOldest(dropOldest)
     {
     }
 
@@ -51,8 +55,8 @@ namespace gf::desktop
 
     void TerminalOutputListModel::trimIfNeeded()
     {
-        if (static_cast<int>(m_entries.size()) <= kMaxLines) return;
-        const int overflow = static_cast<int>(m_entries.size()) - kMaxLines;
+        if (!m_dropOldest || static_cast<int>(m_entries.size()) <= m_maxLines) return;
+        const int overflow = static_cast<int>(m_entries.size()) - m_maxLines;
         beginRemoveRows(QModelIndex(), 0, overflow - 1);
         m_entries.erase(m_entries.begin(), m_entries.begin() + overflow);
         endRemoveRows();
@@ -106,6 +110,36 @@ namespace gf::desktop
                                              const QString& richHtml,
                                              const QString& plainText)
     {
+        if (!m_dropOldest)
+        {
+            if (m_truncated)
+            {
+                return;
+            }
+            if (static_cast<int>(m_entries.size()) >= m_maxLines)
+            {
+                m_truncated = true;
+                const QString notice = QStringLiteral("… Output limitato a %1 righe nel pager (usa filtri come -n per restringere).").arg(m_maxLines);
+                const int row = static_cast<int>(m_entries.size());
+                beginInsertRows(QModelIndex(), row, row);
+                m_entries.push_back(StoredEntry{
+                    .id = m_nextId++,
+                    .data = TerminalOutputEntry{
+                        .lineKind = QStringLiteral("system"),
+                        .richHtml = notice.toHtmlEscaped(),
+                        .plainText = notice,
+                        .promptPrefix = {},
+                        .exitCode = -1,
+                        .durationText = {},
+                        .wasCancelled = false
+                    }
+                });
+                endInsertRows();
+                emit countChanged();
+                return;
+            }
+        }
+
         const int row = static_cast<int>(m_entries.size());
         beginInsertRows(QModelIndex(), row, row);
         m_entries.push_back(StoredEntry{
@@ -123,6 +157,15 @@ namespace gf::desktop
         endInsertRows();
         emit countChanged();
         trimIfNeeded();
+    }
+
+    void TerminalOutputListModel::copyLinesTo(TerminalOutputListModel& target) const
+    {
+        if (m_entries.empty()) return;
+        for (const auto& e : m_entries)
+        {
+            target.appendLine(e.data.lineKind, e.data.richHtml, e.data.plainText);
+        }
     }
 
     void TerminalOutputListModel::upsertProgressLine(const QString& lineKind,
@@ -144,6 +187,7 @@ namespace gf::desktop
 
     void TerminalOutputListModel::clear()
     {
+        m_truncated = false;
         if (m_entries.empty()) return;
         beginResetModel();
         m_entries.clear();

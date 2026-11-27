@@ -178,6 +178,8 @@ ApplicationWindow {
         onActivated: {
             if (quickOpenModal.visible) {
                 quickOpenModal.close();
+            } else if (typeof terminalSessionVm !== "undefined" && terminalSessionVm && terminalSessionVm.pagerActive) {
+                terminalSessionVm.closePager();
             } else if (typeof terminalSessionVm !== "undefined" && terminalSessionVm && terminalSessionVm.hasCompletions) {
                 terminalSessionVm.dismissCompletions();
             }

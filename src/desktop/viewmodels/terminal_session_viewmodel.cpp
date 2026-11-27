@@ -27,6 +27,7 @@ namespace gf::desktop
         QString branch;
         QString shellId;
         std::unique_ptr<TerminalOutputListModel> outputModel;
+        std::unique_ptr<TerminalOutputListModel> pagerModel;
         QStringList history;
         int historyCursor = -1; // -1 means not browsing history
         QString historyDraft;
@@ -34,6 +35,10 @@ namespace gf::desktop
         bool isRunning = false;
         int activeCommandHeaderId = 0;
         bool activeCommandWasGit = false;
+        bool activeCommandCanPage = false;
+        bool pagerActive = false;
+        bool closedPagerEarly = false;
+        QString pagerCommand;
         std::shared_ptr<gf::terminal::ports::ITerminalProcessHandle> activeProcess;
 
         std::string stdoutPending;
@@ -392,6 +397,8 @@ namespace gf::desktop
         bucket->activeTabIndex = index;
         dismissCompletions();
         emit activeTabChanged();
+        emit activeBranchChanged();
+        emit pagerStateChanged();
         emit runningStateChanged();
     }
 
@@ -399,6 +406,133 @@ namespace gf::desktop
     {
         const auto* tab = activeTab();
         return (tab && tab->outputModel) ? tab->outputModel.get() : const_cast<TerminalOutputListModel*>(&m_emptyOutputModel);
+    }
+
+    TerminalOutputListModel* TerminalSessionViewModel::activePagerModel() const noexcept
+    {
+        const auto* tab = activeTab();
+        return (tab && tab->pagerModel) ? tab->pagerModel.get() : const_cast<TerminalOutputListModel*>(&m_emptyOutputModel);
+    }
+
+    bool TerminalSessionViewModel::pagerActive() const noexcept
+    {
+        const auto* tab = activeTab();
+        return tab && tab->pagerActive;
+    }
+
+    QString TerminalSessionViewModel::pagerCommand() const
+    {
+        const auto* tab = activeTab();
+        return tab ? tab->pagerCommand : QString{};
+    }
+
+    int TerminalSessionViewModel::pagerLineCount() const noexcept
+    {
+        const auto* tab = activeTab();
+        return (tab && tab->pagerModel) ? tab->pagerModel->count() : 0;
+    }
+
+    bool TerminalSessionViewModel::hasLastPagerOutput() const noexcept
+    {
+        const auto* tab = activeTab();
+        return tab && tab->pagerModel && tab->pagerModel->count() > 0;
+    }
+
+    bool TerminalSessionViewModel::shouldPaginateCommand(const std::string_view commandLine)
+    {
+        std::vector<std::string> args;
+        if (!gf::terminal::bl::CommandLineTokenizer::trySplitSimpleArgs(commandLine, args) || args.size() < 2)
+        {
+            return false;
+        }
+
+        auto toLowerStr = [](const std::string_view sv)
+        {
+            std::string out;
+            out.reserve(sv.size());
+            for (const char c : sv)
+            {
+                out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+            }
+            return out;
+        };
+
+        const std::string cmd0 = toLowerStr(args[0]);
+        if (cmd0 != "git" && cmd0 != "git.exe")
+        {
+            return false;
+        }
+
+        bool explicitPaginate = false;
+        std::size_t subIdx = std::string::npos;
+        bool skipNext = false;
+        for (std::size_t i = 1; i < args.size(); ++i)
+        {
+            const std::string_view tok = args[i];
+            if (skipNext)
+            {
+                skipNext = false;
+                continue;
+            }
+            if (tok == "-P" || tok == "--no-pager")
+            {
+                return false;
+            }
+            if (tok == "-p" || tok == "--paginate")
+            {
+                explicitPaginate = true;
+                continue;
+            }
+            if (tok == "-C" || tok == "-c" || tok == "--git-dir" ||
+                tok == "--work-tree" || tok == "--namespace" || tok == "--config-env")
+            {
+                skipNext = true;
+                continue;
+            }
+            if (tok.starts_with('-'))
+            {
+                continue;
+            }
+            subIdx = i;
+            break;
+        }
+
+        if (explicitPaginate)
+        {
+            return true;
+        }
+        if (subIdx == std::string::npos)
+        {
+            return false;
+        }
+
+        const std::string_view sub = args[subIdx];
+        if (sub == "log" || sub == "diff" || sub == "show" || sub == "reflog" ||
+            sub == "shortlog" || sub == "blame" || sub == "whatchanged" ||
+            sub == "range-diff" || sub == "grep" || sub == "help")
+        {
+            return true;
+        }
+        if (sub == "stash" && subIdx + 1 < args.size())
+        {
+            const std::string_view action = args[subIdx + 1];
+            return action == "list" || action == "show";
+        }
+        if (sub == "branch" || sub == "tag")
+        {
+            // Paginate listing operations (skip mutating flags like -d/-D/-m/-M/-c/-C/-a/-s)
+            for (std::size_t i = subIdx + 1; i < args.size(); ++i)
+            {
+                const std::string_view a = args[i];
+                if (a == "-d" || a == "-D" || a == "--delete" || a == "-m" || a == "-M" ||
+                    a == "--move" || a == "-c" || a == "-C" || a == "--copy" || a == "-s")
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return false;
     }
 
     void TerminalSessionViewModel::setIsVisible(const bool visible)
@@ -603,37 +737,53 @@ namespace gf::desktop
 
         emit tabsChanged();
         emit activeTabChanged();
+        emit activeBranchChanged();
+        emit pagerStateChanged();
         emit runningStateChanged();
     }
 
     void TerminalSessionViewModel::updateActiveBranch(const QString& repoPath, const QString& branch)
     {
         if (repoPath.isEmpty()) return;
-        bool updatedActive = false;
+        bool activeBranchDidChange = false;
         for (auto& [key, bucket] : m_buckets)
         {
             if (bucket->repoPath == repoPath)
             {
-                bucket->branch = branch;
+                if (bucket->branch != branch)
+                {
+                    bucket->branch = branch;
+                    if (key == m_activeRepoKey)
+                    {
+                        activeBranchDidChange = true;
+                    }
+                }
                 for (auto& tab : bucket->tabs)
                 {
-                    tab->branch = branch;
+                    if (tab->branch != branch)
+                    {
+                        tab->branch = branch;
+                        if (key == m_activeRepoKey)
+                        {
+                            activeBranchDidChange = true;
+                        }
+                    }
                 }
-                if (key == m_activeRepoKey)
+                if (key == m_activeRepoKey && m_activeBranch != branch)
                 {
                     m_activeBranch = branch;
-                    updatedActive = true;
+                    activeBranchDidChange = true;
                 }
             }
         }
         if (repoPath == m_activeRepoPath && m_activeBranch != branch)
         {
             m_activeBranch = branch;
-            updatedActive = true;
+            activeBranchDidChange = true;
         }
-        if (updatedActive)
+        if (activeBranchDidChange)
         {
-            emit activeTabChanged();
+            emit activeBranchChanged();
         }
     }
 
@@ -689,6 +839,8 @@ namespace gf::desktop
         dismissCompletions();
         emit tabsChanged();
         emit activeTabChanged();
+        emit activeBranchChanged();
+        emit pagerStateChanged();
         emit runningStateChanged();
     }
 
@@ -749,6 +901,8 @@ namespace gf::desktop
         tab->branch = m_activeBranch;
         tab->shellId = resolvedShell;
         tab->outputModel = std::make_unique<TerminalOutputListModel>();
+        tab->pagerModel = std::make_unique<TerminalOutputListModel>(
+            nullptr, TerminalOutputListModel::kMaxPagerLines, false);
 
         const QString welcome = QStringLiteral("GitFlux CLI • Root: %1  (digita `git ` per l'autocompletamento di tutti i comandi)")
                                     .arg(QDir::toNativeSeparators(tab->repoRootPath));
@@ -760,6 +914,8 @@ namespace gf::desktop
 
         emit tabsChanged();
         emit activeTabChanged();
+        emit activeBranchChanged();
+        emit pagerStateChanged();
         emit runningStateChanged();
         return newIdx;
     }
@@ -796,6 +952,8 @@ namespace gf::desktop
         dismissCompletions();
         emit tabsChanged();
         emit activeTabChanged();
+        emit activeBranchChanged();
+        emit pagerStateChanged();
         emit runningStateChanged();
     }
 
@@ -970,9 +1128,24 @@ namespace gf::desktop
             return;
         }
 
+        constexpr int kPagerLineThreshold = 28;
+        const bool canPage = shouldPaginateCommand(trimmed.toStdString());
+
         tab->isRunning = true;
         tab->activeCommandHeaderId = headerId;
         tab->activeCommandWasGit = looksLikeGitCommand(trimmed);
+        tab->activeCommandCanPage = canPage;
+        tab->closedPagerEarly = false;
+        if (canPage)
+        {
+            tab->pagerModel->clear();
+            tab->pagerCommand = trimmed;
+            if (tab->pagerActive)
+            {
+                tab->pagerActive = false;
+            }
+            emit pagerStateChanged();
+        }
         tab->stdoutPending.clear();
         tab->stderrPending.clear();
         tab->stdoutOverwriteLast = false;
@@ -1021,21 +1194,60 @@ namespace gf::desktop
             QMetaObject::invokeMethod(this, [this, alive, tabId, headerId, repoPath, wasGit, exitCode, duration, cancelled]()
             {
                 if (!alive->load(std::memory_order_acquire)) return;
+                bool emitPagerUpdate = false;
+                bool shouldEmitOutputAppended = true;
                 if (auto* t = findTabById(tabId))
                 {
                     flushPendingBuffers(*t);
-                    if (cancelled)
+
+                    const bool closedEarly = t->closedPagerEarly;
+                    const bool effectiveCancelled = cancelled && !closedEarly;
+                    const int effectiveExitCode = closedEarly ? 0 : exitCode;
+
+                    if (t->activeCommandCanPage)
+                    {
+                        const int pagedCount = t->pagerModel->count();
+                        if (!t->pagerActive && !closedEarly && pagedCount <= kPagerLineThreshold)
+                        {
+                            // Short output (less -FRX behavior): print directly inline in terminal scrollback
+                            t->pagerModel->copyLinesTo(*t->outputModel);
+                            t->pagerModel->clear();
+                            t->pagerCommand.clear();
+                        }
+                        else if (pagedCount > 0)
+                        {
+                            if (!closedEarly && !t->pagerActive)
+                            {
+                                t->pagerActive = true;
+                            }
+                            const QString summary = QStringLiteral("📄 Output nel pager (%1 righe) — usa \"Riapri pager\" nella barra in alto per consultarlo di nuovo")
+                                                        .arg(pagedCount);
+                            t->outputModel->appendLine(QStringLiteral("system"), summary.toHtmlEscaped(), summary);
+                            shouldEmitOutputAppended = !t->pagerActive;
+                        }
+                        t->activeCommandCanPage = false;
+                        emitPagerUpdate = true;
+                    }
+
+                    if (effectiveCancelled)
                     {
                         const QString msg = QStringLiteral("^C (comando interrotto)");
                         t->outputModel->appendLine(QStringLiteral("system"), msg.toHtmlEscaped(), msg);
                     }
-                    t->outputModel->finishCommandHeader(headerId, exitCode, formatDuration(duration), cancelled);
+                    t->outputModel->finishCommandHeader(headerId, effectiveExitCode, formatDuration(duration), effectiveCancelled);
                     t->isRunning = false;
                     t->activeProcess.reset();
                 }
                 emit tabsChanged();
                 emit runningStateChanged();
-                emit outputAppended();
+                if (emitPagerUpdate)
+                {
+                    emit pagerStateChanged();
+                }
+                if (shouldEmitOutputAppended)
+                {
+                    emit outputAppended();
+                }
 
                 if (wasGit && !repoPath.isEmpty())
                 {
@@ -1052,6 +1264,7 @@ namespace gf::desktop
             tab->outputModel->appendLine(QStringLiteral("stderr"), err.toHtmlEscaped(), err);
             tab->outputModel->finishCommandHeader(headerId, 1, QStringLiteral("0ms"), false);
             tab->isRunning = false;
+            tab->activeCommandCanPage = false;
             emit tabsChanged();
             emit runningStateChanged();
             emit outputAppended();
@@ -1065,7 +1278,15 @@ namespace gf::desktop
                                                      const int streamKind,
                                                      const QByteArray& utf8Bytes)
     {
+        constexpr int kPagerLineThreshold = 28;
         const bool isStderr = (streamKind == 1);
+        const bool routeToPager = (!isStderr && tab.activeCommandCanPage);
+        if (routeToPager && tab.closedPagerEarly)
+        {
+            return;
+        }
+
+        TerminalOutputListModel* targetModel = routeToPager ? tab.pagerModel.get() : tab.outputModel.get();
         std::string& pending = isStderr ? tab.stderrPending : tab.stdoutPending;
         bool& overwriteLast = isStderr ? tab.stderrOverwriteLast : tab.stdoutOverwriteLast;
         auto& style = isStderr ? tab.stderrStyle : tab.stdoutStyle;
@@ -1086,12 +1307,12 @@ namespace gf::desktop
 
             if (overwriteLast)
             {
-                tab.outputModel->upsertProgressLine(kindStr, html, plain);
+                targetModel->upsertProgressLine(kindStr, html, plain);
                 overwriteLast = false;
             }
             else
             {
-                tab.outputModel->appendLine(kindStr, html, plain);
+                targetModel->appendLine(kindStr, html, plain);
             }
             pos = nl + 1;
         }
@@ -1112,11 +1333,11 @@ namespace gf::desktop
             {
                 if (overwriteLast)
                 {
-                    tab.outputModel->upsertProgressLine(kindStr, html, plain);
+                    targetModel->upsertProgressLine(kindStr, html, plain);
                 }
                 else
                 {
-                    tab.outputModel->appendLine(kindStr, html, plain);
+                    targetModel->appendLine(kindStr, html, plain);
                     overwriteLast = true;
                 }
             }
@@ -1132,32 +1353,50 @@ namespace gf::desktop
             }
         }
 
-        emit outputAppended();
+        if (routeToPager)
+        {
+            if (!tab.pagerActive && tab.pagerModel->count() > kPagerLineThreshold)
+            {
+                tab.pagerActive = true;
+            }
+            if (tab.pagerActive)
+            {
+                emit pagerStateChanged();
+            }
+        }
+        else
+        {
+            emit outputAppended();
+        }
     }
 
     void TerminalSessionViewModel::flushPendingBuffers(TerminalTabState& tab)
     {
         auto flushOne = [&](std::string& pending, bool& overwriteLast,
-                            gf::terminal::bo::TerminalTextStyle& style, const QString& kindStr)
+                            gf::terminal::bo::TerminalTextStyle& style, const QString& kindStr,
+                            TerminalOutputListModel* targetModel)
         {
-            if (pending.empty()) return;
+            if (pending.empty() || !targetModel) return;
             const auto rendered = gf::terminal::bl::AnsiParser::parseLine(pending, style);
             const QString html = QString::fromStdString(rendered.richHtml);
             const QString plain = QString::fromStdString(rendered.plainText);
             if (overwriteLast)
             {
-                tab.outputModel->upsertProgressLine(kindStr, html, plain);
+                targetModel->upsertProgressLine(kindStr, html, plain);
                 overwriteLast = false;
             }
             else
             {
-                tab.outputModel->appendLine(kindStr, html, plain);
+                targetModel->appendLine(kindStr, html, plain);
             }
             pending.clear();
         };
 
-        flushOne(tab.stdoutPending, tab.stdoutOverwriteLast, tab.stdoutStyle, QStringLiteral("stdout"));
-        flushOne(tab.stderrPending, tab.stderrOverwriteLast, tab.stderrStyle, QStringLiteral("stderr"));
+        TerminalOutputListModel* stdoutTarget = (tab.activeCommandCanPage && !tab.closedPagerEarly)
+                                                    ? tab.pagerModel.get()
+                                                    : tab.outputModel.get();
+        flushOne(tab.stdoutPending, tab.stdoutOverwriteLast, tab.stdoutStyle, QStringLiteral("stdout"), stdoutTarget);
+        flushOne(tab.stderrPending, tab.stderrOverwriteLast, tab.stderrStyle, QStringLiteral("stderr"), tab.outputModel.get());
     }
 
     void TerminalSessionViewModel::sendStdinLine(const QString& text)
@@ -1184,6 +1423,10 @@ namespace gf::desktop
         auto* tab = activeTab();
         if (!tab || !tab->outputModel) return;
         tab->outputModel->clear();
+        if (tab->pagerActive)
+        {
+            closePager();
+        }
     }
 
     QString TerminalSessionViewModel::copyActiveOutput() const
@@ -1191,6 +1434,37 @@ namespace gf::desktop
         const auto* tab = activeTab();
         if (!tab || !tab->outputModel) return {};
         return tab->outputModel->allPlainText();
+    }
+
+    void TerminalSessionViewModel::closePager()
+    {
+        auto* tab = activeTab();
+        if (!tab || !tab->pagerActive) return;
+
+        tab->pagerActive = false;
+        if (tab->isRunning && tab->activeCommandCanPage && tab->activeProcess)
+        {
+            tab->closedPagerEarly = true;
+            tab->activeProcess->terminate();
+        }
+        emit pagerStateChanged();
+        emit focusInputRequested();
+    }
+
+    void TerminalSessionViewModel::reopenLastPager()
+    {
+        auto* tab = activeTab();
+        if (!tab || !tab->pagerModel || tab->pagerModel->count() == 0) return;
+        tab->pagerActive = true;
+        dismissCompletions();
+        emit pagerStateChanged();
+    }
+
+    QString TerminalSessionViewModel::copyPagerOutput() const
+    {
+        const auto* tab = activeTab();
+        if (!tab || !tab->pagerModel) return {};
+        return tab->pagerModel->allPlainText();
     }
 
     QString TerminalSessionViewModel::historyPrevious(const QString& currentInput)

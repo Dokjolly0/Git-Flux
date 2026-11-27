@@ -9,10 +9,34 @@ Rectangle {
 
     property var terminalVm: null
     property bool autoScroll: true
+    property bool programmaticScroll: false
+    property real lastContentY: 0
     property bool suppressCompletionOnTextChange: false
+    readonly property bool isPagerOpen: Boolean(terminalVm && terminalVm.pagerActive)
+    property bool _wasPagerOpen: false
 
     function focusInput() {
-        cmdInput.forceActiveFocus();
+        if (isPagerOpen) {
+            pagerFocusScope.forceActiveFocus();
+        } else {
+            cmdInput.forceActiveFocus();
+        }
+    }
+
+    function scrollOutputToBottom() {
+        if (outputList.count <= 0) return;
+        programmaticScroll = true;
+        outputList.positionViewAtEnd();
+        lastContentY = outputList.contentY;
+        programmaticScroll = false;
+    }
+
+    onIsPagerOpenChanged: {
+        if (isPagerOpen && !_wasPagerOpen) {
+            pagerList.positionViewAtBeginning();
+            pagerFocusTimer.restart();
+        }
+        _wasPagerOpen = isPagerOpen;
     }
 
     function applyAcceptedCompletion(index) {
@@ -49,7 +73,7 @@ Rectangle {
         }
 
         function onOutputAppended() {
-            if (panelRoot.autoScroll && outputList.count > 0) {
+            if (panelRoot.autoScroll && !panelRoot.isPagerOpen && outputList.count > 0) {
                 scrollBottomTimer.restart();
             }
         }
@@ -57,22 +81,35 @@ Rectangle {
         function onActiveTabChanged() {
             panelRoot.autoScroll = true;
             completionPopup.resetSelection();
-            scrollBottomTimer.restart();
+            if (!panelRoot.isPagerOpen) {
+                scrollBottomTimer.restart();
+            }
         }
     }
 
     Timer {
         id: focusTimer
         interval: 20
-        onTriggered: cmdInput.forceActiveFocus()
+        onTriggered: panelRoot.focusInput()
+    }
+
+    Timer {
+        id: pagerFocusTimer
+        interval: 20
+        onTriggered: {
+            if (panelRoot.isPagerOpen) {
+                pagerList.positionViewAtBeginning();
+                pagerFocusScope.forceActiveFocus();
+            }
+        }
     }
 
     Timer {
         id: scrollBottomTimer
         interval: 16
         onTriggered: {
-            if (panelRoot.autoScroll && outputList.count > 0) {
-                outputList.positionViewAtEnd();
+            if (panelRoot.autoScroll && !panelRoot.isPagerOpen && outputList.count > 0) {
+                panelRoot.scrollOutputToBottom();
             }
         }
     }
@@ -424,6 +461,36 @@ Rectangle {
                     }
                 }
 
+                // Reopen last pager output button (when closed)
+                Button {
+                    visible: Boolean(!panelRoot.isPagerOpen && panelRoot.terminalVm && panelRoot.terminalVm.hasLastPagerOutput)
+                    Layout.preferredHeight: 24
+                    leftPadding: 8
+                    rightPadding: 8
+                    hoverEnabled: true
+                    background: Rectangle {
+                        radius: 6
+                        color: parent.hovered ? "#15324D" : "#0F2238"
+                        border.color: "#2A4B70"
+                        border.width: 1
+                    }
+                    contentItem: Text {
+                        text: "📄 Riapri pager"
+                        color: "#7DD3FC"
+                        font.pixelSize: 10
+                        font.bold: true
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Riapri l'ultimo output paginato (" + (panelRoot.terminalVm ? panelRoot.terminalVm.pagerCommand : "") + ")"
+                    onClicked: {
+                        if (panelRoot.terminalVm) {
+                            panelRoot.terminalVm.reopenLastPager();
+                        }
+                    }
+                }
+
                 // Copy Output button
                 Button {
                     Layout.preferredWidth: 24
@@ -529,7 +596,7 @@ Rectangle {
         }
 
         // =====================================================================
-        // 2. VIRTUALIZED ANSI TERMINAL OUTPUT AREA
+        // 2. VIRTUALIZED ANSI TERMINAL OUTPUT AREA (with Integrated Pager)
         // =====================================================================
         Item {
             Layout.fillWidth: true
@@ -538,6 +605,7 @@ Rectangle {
 
             MouseArea {
                 anchors.fill: parent
+                visible: !panelRoot.isPagerOpen
                 acceptedButtons: Qt.LeftButton
                 onClicked: {
                     cmdInput.forceActiveFocus();
@@ -546,6 +614,7 @@ Rectangle {
 
             ListView {
                 id: outputList
+                visible: !panelRoot.isPagerOpen
                 anchors.fill: parent
                 anchors.leftMargin: 10
                 anchors.rightMargin: 10
@@ -558,17 +627,43 @@ Rectangle {
 
                 SmoothWheelScroller {}
 
-                ScrollBar.vertical: FluxScrollBar {
-                    policy: ScrollBar.AsNeeded
+                // Immediately pause auto-scroll when the user rolls the mouse wheel upward
+                WheelHandler {
+                    acceptedDevices: PointerDevice.Mouse
+                    onWheel: function (event) {
+                        if (event.angleDelta.y > 0) {
+                            panelRoot.autoScroll = false;
+                            scrollBottomTimer.stop();
+                        }
+                        event.accepted = false;
+                    }
                 }
 
-                onMovementEnded: {
-                    panelRoot.autoScroll = atYEnd;
-                }
-                onContentYChanged: {
-                    if (moving || dragging) {
-                        panelRoot.autoScroll = atYEnd;
+                ScrollBar.vertical: FluxScrollBar {
+                    id: outputVScrollBar
+                    policy: ScrollBar.AsNeeded
+                    onPressedChanged: {
+                        if (pressed) {
+                            panelRoot.autoScroll = false;
+                            scrollBottomTimer.stop();
+                        }
                     }
+                }
+
+                onContentYChanged: {
+                    if (!panelRoot.programmaticScroll) {
+                        const maxY = Math.max(0, contentHeight - height);
+                        const nearBottom = (maxY <= 4) || (contentY >= maxY - 24);
+                        if (contentY < panelRoot.lastContentY - 1) {
+                            panelRoot.autoScroll = false;
+                            scrollBottomTimer.stop();
+                        } else if (nearBottom && !outputVScrollBar.pressed) {
+                            panelRoot.autoScroll = true;
+                        } else if (!nearBottom) {
+                            panelRoot.autoScroll = false;
+                        }
+                    }
+                    panelRoot.lastContentY = contentY;
                 }
 
                 delegate: Item {
@@ -699,7 +794,7 @@ Rectangle {
 
             // Floating "Jump to bottom" button when user scrolled up
             Button {
-                visible: !panelRoot.autoScroll && outputList.count > 0
+                visible: !panelRoot.isPagerOpen && !panelRoot.autoScroll && outputList.count > 0
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
                 anchors.rightMargin: 16
@@ -723,17 +818,296 @@ Rectangle {
                 }
                 onClicked: {
                     panelRoot.autoScroll = true;
-                    outputList.positionViewAtEnd();
+                    panelRoot.scrollOutputToBottom();
                     cmdInput.forceActiveFocus();
+                }
+            }
+
+            // =================================================================
+            // 2B. INTEGRATED `less`-STYLE PAGER VIEW (starts at line 1 / top!)
+            // =================================================================
+            FocusScope {
+                id: pagerFocusScope
+                visible: panelRoot.isPagerOpen
+                anchors.fill: parent
+
+                function scrollByDelta(dy) {
+                    const maxY = Math.max(0, pagerList.contentHeight - pagerList.height);
+                    pagerList.contentY = Math.max(0, Math.min(maxY, pagerList.contentY + dy));
+                }
+
+                Keys.onPressed: function (event) {
+                    if (!panelRoot.terminalVm) return;
+                    const key = event.key;
+                    const ctrl = (event.modifiers & Qt.ControlModifier) !== 0;
+
+                    if (key === Qt.Key_Q || key === Qt.Key_Escape || (ctrl && key === Qt.Key_C)) {
+                        event.accepted = true;
+                        panelRoot.terminalVm.closePager();
+                        return;
+                    }
+                    if (key === Qt.Key_Down || key === Qt.Key_J || key === Qt.Key_Return || key === Qt.Key_Enter) {
+                        event.accepted = true;
+                        scrollByDelta(26);
+                        return;
+                    }
+                    if (key === Qt.Key_Up || key === Qt.Key_K) {
+                        event.accepted = true;
+                        scrollByDelta(-26);
+                        return;
+                    }
+                    if (key === Qt.Key_Space || key === Qt.Key_PageDown || key === Qt.Key_F) {
+                        event.accepted = true;
+                        scrollByDelta(Math.max(120, pagerList.height * 0.85));
+                        return;
+                    }
+                    if (key === Qt.Key_B || key === Qt.Key_PageUp) {
+                        event.accepted = true;
+                        scrollByDelta(-Math.max(120, pagerList.height * 0.85));
+                        return;
+                    }
+                    if (key === Qt.Key_Home || (key === Qt.Key_G && !(event.modifiers & Qt.ShiftModifier))) {
+                        event.accepted = true;
+                        pagerList.positionViewAtBeginning();
+                        return;
+                    }
+                    if (key === Qt.Key_End || (key === Qt.Key_G && (event.modifiers & Qt.ShiftModifier))) {
+                        event.accepted = true;
+                        pagerList.positionViewAtEnd();
+                        return;
+                    }
+                }
+
+                ListView {
+                    id: pagerList
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    anchors.topMargin: 6
+                    anchors.bottomMargin: 6
+                    clip: true
+                    spacing: 1
+                    boundsBehavior: Flickable.StopAtBounds
+                    model: panelRoot.terminalVm ? panelRoot.terminalVm.activePagerModel : null
+
+                    readonly property int topVisibleLine: {
+                        if (count <= 0) return 0;
+                        const idx = indexAt(10, contentY + 4);
+                        return (idx >= 0) ? (idx + 1) : 1;
+                    }
+
+                    SmoothWheelScroller {}
+
+                    ScrollBar.vertical: FluxScrollBar {
+                        policy: ScrollBar.AsNeeded
+                    }
+
+                    delegate: Item {
+                        id: pagerLineDelegate
+                        required property string lineKind
+                        required property string richHtml
+
+                        width: pagerList.width - 8
+                        height: Math.max(18, pagerTextEdit.implicitHeight)
+
+                        TextEdit {
+                            id: pagerTextEdit
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.leftMargin: 6
+                            readOnly: true
+                            selectByMouse: true
+                            textFormat: TextEdit.RichText
+                            text: pagerLineDelegate.richHtml
+                            color: pagerLineDelegate.lineKind === "system" ? "#94A3B8" : "#E2E8F0"
+                            selectionColor: "#1D4ED8"
+                            selectedTextColor: "#FFFFFF"
+                            font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
+                            font.pixelSize: 12
+                            font.italic: pagerLineDelegate.lineKind === "system"
+                            wrapMode: TextEdit.WrapAnywhere
+                            onActiveFocusChanged: {
+                                // Keep keyboard focus on pagerFocusScope when not actively selecting
+                            }
+                        }
+                    }
                 }
             }
         }
 
         // =====================================================================
-        // 3. INTERACTIVE PROMPT & GIT AUTOCOMPLETE INPUT BAR
+        // 3A. PAGER FOOTER BAR (shown while pager is open)
+        // =====================================================================
+        Rectangle {
+            id: pagerFooterBar
+            visible: panelRoot.isPagerOpen
+            Layout.fillWidth: true
+            Layout.preferredHeight: 38
+            color: "#0C1524"
+
+            Rectangle {
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 1
+                color: "#1F3B5C"
+            }
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 12
+                anchors.rightMargin: 10
+                spacing: 8
+
+                Rectangle {
+                    Layout.preferredHeight: 20
+                    implicitWidth: pagerBadgeText.implicitWidth + 12
+                    radius: 5
+                    color: "#0C2A44"
+                    border.color: "#00E5FF"
+                    border.width: 1
+                    Text {
+                        id: pagerBadgeText
+                        anchors.centerIn: parent
+                        text: "PAGER"
+                        color: "#00E5FF"
+                        font.pixelSize: 9
+                        font.bold: true
+                    }
+                }
+
+                Text {
+                    text: panelRoot.terminalVm ? panelRoot.terminalVm.pagerCommand : ""
+                    color: "#F8FAFC"
+                    font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
+                    font.pixelSize: 11
+                    font.bold: true
+                    Layout.maximumWidth: 320
+                    elide: Text.ElideRight
+                }
+
+                Text {
+                    text: "Riga " + pagerList.topVisibleLine + " / " + (panelRoot.terminalVm ? panelRoot.terminalVm.pagerLineCount : 0)
+                    color: "#38BDF8"
+                    font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
+                    font.pixelSize: 11
+                    font.bold: true
+                }
+
+                Text {
+                    text: "↑↓/Spazio/PgDn scorri  •  g/G inizio/fine  •  q chiudi"
+                    color: "#64748B"
+                    font.pixelSize: 10
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
+
+                Button {
+                    Layout.preferredHeight: 24
+                    leftPadding: 8
+                    rightPadding: 8
+                    hoverEnabled: true
+                    background: Rectangle {
+                        radius: 6
+                        color: parent.hovered ? "#1A2B42" : "#111C2D"
+                        border.color: "#253750"
+                        border.width: 1
+                    }
+                    contentItem: Text {
+                        text: "↑ Inizio"
+                        color: "#CBD5E1"
+                        font.pixelSize: 10
+                        font.bold: true
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: {
+                        pagerList.positionViewAtBeginning();
+                        pagerFocusScope.forceActiveFocus();
+                    }
+                }
+
+                Button {
+                    Layout.preferredHeight: 24
+                    leftPadding: 8
+                    rightPadding: 8
+                    hoverEnabled: true
+                    background: Rectangle {
+                        radius: 6
+                        color: parent.hovered ? "#1A2B42" : "#111C2D"
+                        border.color: "#253750"
+                        border.width: 1
+                    }
+                    contentItem: Text {
+                        text: "↓ Fine"
+                        color: "#CBD5E1"
+                        font.pixelSize: 10
+                        font.bold: true
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: {
+                        pagerList.positionViewAtEnd();
+                        pagerFocusScope.forceActiveFocus();
+                    }
+                }
+
+                Button {
+                    Layout.preferredHeight: 24
+                    leftPadding: 8
+                    rightPadding: 8
+                    hoverEnabled: true
+                    background: Rectangle {
+                        radius: 6
+                        color: parent.hovered ? "#1A2B42" : "#111C2D"
+                        border.color: "#253750"
+                        border.width: 1
+                    }
+                    contentItem: Text {
+                        text: "⧉ Copia"
+                        color: "#CBD5E1"
+                        font.pixelSize: 10
+                        font.bold: true
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: {
+                        if (panelRoot.terminalVm) {
+                            panelRoot.copyTextToClipboard(panelRoot.terminalVm.copyPagerOutput());
+                        }
+                    }
+                }
+
+                Button {
+                    Layout.preferredHeight: 24
+                    leftPadding: 10
+                    rightPadding: 10
+                    hoverEnabled: true
+                    background: Rectangle {
+                        radius: 6
+                        color: parent.hovered ? "#1E4268" : "#122B45"
+                        border.color: "#38BDF8"
+                        border.width: 1
+                    }
+                    contentItem: Text {
+                        text: "✕ Chiudi (q)"
+                        color: "#F8FAFC"
+                        font.pixelSize: 10
+                        font.bold: true
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: {
+                        if (panelRoot.terminalVm) {
+                            panelRoot.terminalVm.closePager();
+                        }
+                    }
+                }
+            }
+        }
+
+        // =====================================================================
+        // 3B. INTERACTIVE PROMPT & GIT AUTOCOMPLETE INPUT BAR
         // =====================================================================
         Rectangle {
             id: promptBar
+            visible: !panelRoot.isPagerOpen
             Layout.fillWidth: true
             Layout.preferredHeight: 40
             color: "#0C121C"

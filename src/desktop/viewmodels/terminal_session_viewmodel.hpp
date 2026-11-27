@@ -62,9 +62,14 @@ namespace gf::desktop
         Q_PROPERTY(QString activeRepoPath READ activeRepoPath NOTIFY activeTabChanged)
         Q_PROPERTY(QString activeWorkingDir READ activeWorkingDir NOTIFY activeTabChanged)
         Q_PROPERTY(QString activeRelativeDir READ activeRelativeDir NOTIFY activeTabChanged)
-        Q_PROPERTY(QString activeBranch READ activeBranch NOTIFY activeTabChanged)
+        Q_PROPERTY(QString activeBranch READ activeBranch NOTIFY activeBranchChanged)
         Q_PROPERTY(QString activeShellId READ activeShellId NOTIFY activeTabChanged)
         Q_PROPERTY(QVariantList availableShells READ availableShells CONSTANT)
+        Q_PROPERTY(bool pagerActive READ pagerActive NOTIFY pagerStateChanged)
+        Q_PROPERTY(TerminalOutputListModel* activePagerModel READ activePagerModel NOTIFY pagerStateChanged)
+        Q_PROPERTY(QString pagerCommand READ pagerCommand NOTIFY pagerStateChanged)
+        Q_PROPERTY(int pagerLineCount READ pagerLineCount NOTIFY pagerStateChanged)
+        Q_PROPERTY(bool hasLastPagerOutput READ hasLastPagerOutput NOTIFY pagerStateChanged)
         Q_PROPERTY(QString ghostText READ ghostText NOTIFY completionsChanged)
         Q_PROPERTY(int completionCount READ completionCount NOTIFY completionsChanged)
         Q_PROPERTY(bool hasCompletions READ hasCompletions NOTIFY completionsChanged)
@@ -87,7 +92,16 @@ namespace gf::desktop
         void setActiveTabIndex(int index);
 
         [[nodiscard]] TerminalOutputListModel* activeOutputModel() const noexcept;
+        [[nodiscard]] TerminalOutputListModel* activePagerModel() const noexcept;
         [[nodiscard]] TerminalCompletionListModel* completionModel() noexcept { return &m_completionModel; }
+
+        [[nodiscard]] bool pagerActive() const noexcept;
+        [[nodiscard]] QString pagerCommand() const;
+        [[nodiscard]] int pagerLineCount() const noexcept;
+        [[nodiscard]] bool hasLastPagerOutput() const noexcept;
+
+        /// Returns true if the given command should use the integrated `less -FRX`-style pager.
+        [[nodiscard]] static bool shouldPaginateCommand(std::string_view commandLine);
 
         [[nodiscard]] bool isVisible() const noexcept { return m_isVisible; }
         void setIsVisible(bool visible);
@@ -133,6 +147,9 @@ namespace gf::desktop
         Q_INVOKABLE void interruptRunningCommand();
         Q_INVOKABLE void clearActiveOutput();
         Q_INVOKABLE QString copyActiveOutput() const;
+        Q_INVOKABLE void closePager();
+        Q_INVOKABLE void reopenLastPager();
+        Q_INVOKABLE QString copyPagerOutput() const;
 
         Q_INVOKABLE QString historyPrevious(const QString& currentInput);
         Q_INVOKABLE QString historyNext();
@@ -149,9 +166,11 @@ namespace gf::desktop
     signals:
         void tabsChanged();
         void activeTabChanged();
+        void activeBranchChanged();
         void visibilityChanged();
         void maximizedChanged();
         void runningStateChanged();
+        void pagerStateChanged();
         void completionsChanged();
         void catalogReadyChanged();
         void focusInputRequested();

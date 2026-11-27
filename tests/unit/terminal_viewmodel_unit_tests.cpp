@@ -123,4 +123,61 @@ TEST_CASE("TerminalSessionViewModel manages multi-tab per-repo state, cd, comple
         REQUIRE(finishedSpy.at(0).at(1).toInt() == 0);
         REQUIRE(vm.copyActiveOutput().contains(QStringLiteral("git version")));
     }
+
+    SECTION("updateActiveBranch does not emit activeTabChanged and only notifies when branch changes")
+    {
+        QSignalSpy tabSpy(&vm, &TerminalSessionViewModel::activeTabChanged);
+        QSignalSpy branchSpy(&vm, &TerminalSessionViewModel::activeBranchChanged);
+
+        // Same branch ("main") must not emit either signal (prevents 1.5s scroll snap-back!)
+        vm.updateActiveBranch(repoA, QStringLiteral("main"));
+        REQUIRE(tabSpy.count() == 0);
+        REQUIRE(branchSpy.count() == 0);
+
+        // Different branch emits only activeBranchChanged, never activeTabChanged
+        vm.updateActiveBranch(repoA, QStringLiteral("develop"));
+        REQUIRE(tabSpy.count() == 0);
+        REQUIRE(branchSpy.count() == 1);
+        REQUIRE(vm.activeBranch() == QStringLiteral("develop"));
+    }
+
+    SECTION("shouldPaginateCommand detects paged Git commands and respects --no-pager")
+    {
+        REQUIRE(TerminalSessionViewModel::shouldPaginateCommand("git log"));
+        REQUIRE(TerminalSessionViewModel::shouldPaginateCommand("git log 7852ebbd8d382e076b2c8c5c96ff2153771204b5"));
+        REQUIRE(TerminalSessionViewModel::shouldPaginateCommand("git diff"));
+        REQUIRE(TerminalSessionViewModel::shouldPaginateCommand("git show HEAD"));
+        REQUIRE(TerminalSessionViewModel::shouldPaginateCommand("git -p status"));
+        REQUIRE_FALSE(TerminalSessionViewModel::shouldPaginateCommand("git --no-pager log"));
+        REQUIRE_FALSE(TerminalSessionViewModel::shouldPaginateCommand("git -P log"));
+        REQUIRE_FALSE(TerminalSessionViewModel::shouldPaginateCommand("git status"));
+    }
+
+    SECTION("Integrated less-FRX pager keeps short git log inline and opens long git log at top (newest commit first)")
+    {
+        const QString workspaceRepo = QString::fromStdString(std::filesystem::current_path().string());
+        if (QDir(workspaceRepo + QStringLiteral("/.git")).exists())
+        {
+            vm.setActiveRepository(QStringLiteral("id-self"), QStringLiteral("GitFlux"), workspaceRepo, QStringLiteral("develop"));
+            vm.waitForIdle(5000);
+
+            // Short output (2 lines) stays inline without activating pager
+            vm.executeCommand(QStringLiteral("git log -n 2 --oneline"));
+            REQUIRE(vm.waitForIdle(5000));
+            REQUIRE_FALSE(vm.pagerActive());
+
+            // Long output (> 28 lines) opens integrated pager starting at line 0 (newest commit at top!)
+            vm.executeCommand(QStringLiteral("git log -n 40"));
+            REQUIRE(vm.waitForIdle(5000));
+            REQUIRE(vm.pagerActive());
+            REQUIRE(vm.pagerLineCount() > 28);
+            const QString firstLine = vm.activePagerModel()->data(
+                vm.activePagerModel()->index(0, 0), TerminalOutputListModel::PlainTextRole).toString();
+            REQUIRE(firstLine.startsWith(QStringLiteral("commit ")));
+
+            vm.closePager();
+            REQUIRE_FALSE(vm.pagerActive());
+            REQUIRE(vm.hasLastPagerOutput());
+        }
+    }
 }

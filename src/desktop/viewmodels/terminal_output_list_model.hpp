@@ -24,6 +24,7 @@ namespace gf::desktop
 
     public:
         static constexpr int kMaxLines = 5000;
+        static constexpr int kMaxPagerLines = 50000;
 
         enum Roles
         {
@@ -36,7 +37,9 @@ namespace gf::desktop
             WasCancelledRole
         };
 
-        explicit TerminalOutputListModel(QObject* parent = nullptr);
+        explicit TerminalOutputListModel(QObject* parent = nullptr,
+                                         int maxLines = kMaxLines,
+                                         bool dropOldest = true);
         ~TerminalOutputListModel() override = default;
 
         [[nodiscard]] int rowCount(const QModelIndex& parent = QModelIndex()) const override;
@@ -44,6 +47,7 @@ namespace gf::desktop
         [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
 
         [[nodiscard]] int count() const noexcept { return static_cast<int>(m_entries.size()); }
+        [[nodiscard]] bool isTruncated() const noexcept { return m_truncated; }
 
         /// Appends a command header row and returns its unique monotonic entry id.
         int appendCommandHeader(const QString& promptPrefix, const QString& commandText);
@@ -56,6 +60,9 @@ namespace gf::desktop
 
         /// Overwrites the last output line in place (for `\r` progress bar updates) if it matches `lineKind`.
         void upsertProgressLine(const QString& lineKind, const QString& richHtml, const QString& plainText);
+
+        /// Copies all entries from this model into `target` in order.
+        void copyLinesTo(TerminalOutputListModel& target) const;
 
         void clear();
 
@@ -75,5 +82,8 @@ namespace gf::desktop
 
         std::vector<StoredEntry> m_entries;
         int m_nextId = 1;
+        int m_maxLines = kMaxLines;
+        bool m_dropOldest = true;
+        bool m_truncated = false;
     };
 } // namespace gf::desktop
