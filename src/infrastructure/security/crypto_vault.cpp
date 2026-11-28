@@ -112,14 +112,9 @@ namespace gf::infra::security
 
         std::filesystem::path getDefaultVaultDir()
         {
-            auto home = core::getEnvVar("HOME");
-            if (!home)
+            if (const auto home = core::getUserHomeDir())
             {
-                home = core::getEnvVar("USERPROFILE");
-            }
-            if (home)
-            {
-                return std::filesystem::path(*home) / ".local" / "share" / "GitFlux";
+                return *home / ".local" / "share" / "GitFlux";
             }
             return std::filesystem::current_path() / ".gitflux_vault";
         }

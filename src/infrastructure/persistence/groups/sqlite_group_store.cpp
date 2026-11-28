@@ -1,5 +1,6 @@
 #include "infrastructure/persistence/groups/sqlite_group_store.hpp"
 #include "infrastructure/persistence/sqlite/connection/sqlite_statement.hpp"
+#include "infrastructure/persistence/sqlite/sqlite_store_helpers.hpp"
 
 #include <sqlite3.h>
 
@@ -14,10 +15,18 @@ namespace gf::infra::persistence::groups
     {
         GroupStoreError makeStorageError(const sqlite::SqliteError& err)
         {
-            return GroupStoreError{
-                .kind = GroupStoreError::Kind::StorageError,
-                .message = err.message
-            };
+            return sqlite::makeStorageError<GroupStoreError>(err);
+        }
+
+        Group rowToGroup(const sqlite::SqliteStatement& stmt)
+        {
+            Group grp;
+            grp.id = GroupId(stmt.getText(0));
+            grp.name = stmt.getText(1);
+            grp.color = stmt.getText(2);
+            grp.createdAtUnixEpochMs = stmt.getInt64(3);
+            grp.updatedAtUnixEpochMs = stmt.getInt64(4);
+            return grp;
         }
     } // namespace
 
@@ -29,39 +38,10 @@ namespace gf::infra::persistence::groups
     std::expected<std::vector<RepositoryId>, GroupStoreError>
     SqliteGroupStore::loadRepositoryIds(const GroupId& groupId) const
     {
-        constexpr std::string_view kSql = R"(
-SELECT repository_id
-FROM group_repositories
-WHERE group_id = ?
-ORDER BY sort_order ASC;
-)";
-
-        auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
-        if (!stmtRes)
-        {
-            return std::unexpected(makeStorageError(stmtRes.error()));
-        }
-
-        if (const auto bindRes = stmtRes->bindText(1, groupId.value()); !bindRes)
-        {
-            return std::unexpected(makeStorageError(bindRes.error()));
-        }
-
-        std::vector<RepositoryId> ids;
-        while (true)
-        {
-            auto stepRes = stmtRes->step();
-            if (!stepRes)
-            {
-                return std::unexpected(makeStorageError(stepRes.error()));
-            }
-            if (!*stepRes)
-            {
-                break;
-            }
-            ids.emplace_back(stmtRes->getText(0));
-        }
-        return ids;
+        return sqlite::loadOrderedRelationIds<RepositoryId, GroupStoreError>(
+            conn_,
+            "SELECT repository_id FROM group_repositories WHERE group_id = ? ORDER BY sort_order ASC;",
+            groupId.value());
     }
 
     std::expected<void, GroupStoreError>
@@ -130,54 +110,16 @@ ON CONFLICT(id) DO UPDATE SET
         }
 
         // Rebuild ordered repository associations
-        auto delStmtRes = sqlite::SqliteStatement::prepare(
-            conn_, "DELETE FROM group_repositories WHERE group_id = ?;");
-        if (!delStmtRes)
+        if (const auto relRes = sqlite::replaceOrderedRelationIds<RepositoryId, GroupStoreError>(
+                conn_,
+                "DELETE FROM group_repositories WHERE group_id = ?;",
+                "INSERT INTO group_repositories (group_id, repository_id, sort_order) VALUES (?, ?, ?);",
+                group.id.value(),
+                group.repositoryIds,
+                "Repository non presente nel catalogo o errore foreign key");
+            !relRes)
         {
-            return std::unexpected(makeStorageError(delStmtRes.error()));
-        }
-        if (const auto bindRes = delStmtRes->bindText(1, group.id.value()); !bindRes)
-        {
-            return std::unexpected(makeStorageError(bindRes.error()));
-        }
-        if (const auto delStepRes = delStmtRes->step(); !delStepRes)
-        {
-            return std::unexpected(makeStorageError(delStepRes.error()));
-        }
-
-        if (!group.repositoryIds.empty())
-        {
-            auto insStmtRes = sqlite::SqliteStatement::prepare(
-                conn_, "INSERT INTO group_repositories (group_id, repository_id, sort_order) VALUES (?, ?, ?);");
-            if (!insStmtRes)
-            {
-                return std::unexpected(makeStorageError(insStmtRes.error()));
-            }
-
-            for (int i = 0; i < static_cast<int>(group.repositoryIds.size()); ++i)
-            {
-                insStmtRes->reset();
-                insStmtRes->clearBindings();
-                if (const auto bindRes = insStmtRes->bindText(1, group.id.value()); !bindRes)
-                {
-                    return std::unexpected(makeStorageError(bindRes.error()));
-                }
-                if (const auto bindRes = insStmtRes->bindText(2, group.repositoryIds[static_cast<std::size_t>(i)].value()); !bindRes)
-                {
-                    return std::unexpected(makeStorageError(bindRes.error()));
-                }
-                if (const auto bindRes = insStmtRes->bindInt(3, i); !bindRes)
-                {
-                    return std::unexpected(makeStorageError(bindRes.error()));
-                }
-                if (const auto insStep = insStmtRes->step(); !insStep)
-                {
-                    return std::unexpected(GroupStoreError{
-                        .kind = GroupStoreError::Kind::StorageError,
-                        .message = "Repository non presente nel catalogo o errore foreign key"
-                    });
-                }
-            }
+            return std::unexpected(relRes.error());
         }
 
         if (const auto commitRes = tx->commit(); !commitRes)
@@ -218,12 +160,7 @@ WHERE id = ?;
             return std::nullopt;
         }
 
-        Group grp;
-        grp.id = GroupId(stmtRes->getText(0));
-        grp.name = stmtRes->getText(1);
-        grp.color = stmtRes->getText(2);
-        grp.createdAtUnixEpochMs = stmtRes->getInt64(3);
-        grp.updatedAtUnixEpochMs = stmtRes->getInt64(4);
+        Group grp = rowToGroup(*stmtRes);
 
         auto reposRes = loadRepositoryIds(grp.id);
         if (!reposRes)
@@ -263,13 +200,7 @@ ORDER BY name COLLATE NOCASE ASC;
                 break;
             }
 
-            Group g;
-            g.id = GroupId(stmtRes->getText(0));
-            g.name = stmtRes->getText(1);
-            g.color = stmtRes->getText(2);
-            g.createdAtUnixEpochMs = stmtRes->getInt64(3);
-            g.updatedAtUnixEpochMs = stmtRes->getInt64(4);
-            groups.push_back(std::move(g));
+            groups.push_back(rowToGroup(*stmtRes));
         }
 
         for (auto& g : groups)
@@ -288,24 +219,8 @@ ORDER BY name COLLATE NOCASE ASC;
     std::expected<bool, GroupStoreError>
     SqliteGroupStore::remove(const GroupId& id)
     {
-        constexpr std::string_view kSql = "DELETE FROM groups WHERE id = ?;";
-
-        auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
-        if (!stmtRes)
-        {
-            return std::unexpected(makeStorageError(stmtRes.error()));
-        }
-
-        if (const auto bindRes = stmtRes->bindText(1, id.value()); !bindRes)
-        {
-            return std::unexpected(makeStorageError(bindRes.error()));
-        }
-        if (const auto stepRes = stmtRes->step(); !stepRes)
-        {
-            return std::unexpected(makeStorageError(stepRes.error()));
-        }
-
-        return conn_.changes() > 0;
+        return sqlite::deleteRowById<GroupStoreError>(
+            conn_, "DELETE FROM groups WHERE id = ?;", id.value(), makeStorageError);
     }
 
     std::expected<std::vector<Group>, GroupStoreError>
@@ -342,13 +257,7 @@ ORDER BY g.name COLLATE NOCASE ASC;
                 break;
             }
 
-            Group g;
-            g.id = GroupId(stmtRes->getText(0));
-            g.name = stmtRes->getText(1);
-            g.color = stmtRes->getText(2);
-            g.createdAtUnixEpochMs = stmtRes->getInt64(3);
-            g.updatedAtUnixEpochMs = stmtRes->getInt64(4);
-            groups.push_back(std::move(g));
+            groups.push_back(rowToGroup(*stmtRes));
         }
 
         for (auto& g : groups)

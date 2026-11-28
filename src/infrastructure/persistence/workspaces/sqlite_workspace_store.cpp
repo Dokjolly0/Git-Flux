@@ -1,5 +1,6 @@
 #include "infrastructure/persistence/workspaces/sqlite_workspace_store.hpp"
 #include "infrastructure/persistence/sqlite/connection/sqlite_statement.hpp"
+#include "infrastructure/persistence/sqlite/sqlite_store_helpers.hpp"
 
 #include <sqlite3.h>
 
@@ -17,10 +18,18 @@ namespace gf::infra::persistence::workspaces
     {
         WorkspaceStoreError makeStorageError(const sqlite::SqliteError& err)
         {
-            return WorkspaceStoreError{
-                .kind = WorkspaceStoreError::Kind::StorageError,
-                .message = err.message
-            };
+            return sqlite::makeStorageError<WorkspaceStoreError>(err);
+        }
+
+        Workspace rowToWorkspace(const sqlite::SqliteStatement& stmt)
+        {
+            Workspace ws;
+            ws.id = WorkspaceId(stmt.getText(0));
+            ws.name = stmt.getText(1);
+            ws.color = stmt.getText(2);
+            ws.createdAtUnixEpochMs = stmt.getInt64(3);
+            ws.updatedAtUnixEpochMs = stmt.getInt64(4);
+            return ws;
         }
 
         std::string serializeRepoIds(const std::vector<RepositoryId>& ids)
@@ -68,75 +77,19 @@ namespace gf::infra::persistence::workspaces
     std::expected<std::vector<GroupId>, WorkspaceStoreError>
     SqliteWorkspaceStore::loadWorkspaceGroupIds(const WorkspaceId& wsId) const
     {
-        constexpr std::string_view kSql = R"(
-SELECT group_id
-FROM workspace_groups
-WHERE workspace_id = ?
-ORDER BY sort_order ASC;
-)";
-
-        auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
-        if (!stmtRes)
-        {
-            return std::unexpected(makeStorageError(stmtRes.error()));
-        }
-
-        if (const auto bindRes = stmtRes->bindText(1, wsId.value()); !bindRes)
-        {
-            return std::unexpected(makeStorageError(bindRes.error()));
-        }
-        std::vector<GroupId> ids;
-        while (true)
-        {
-            auto stepRes = stmtRes->step();
-            if (!stepRes)
-            {
-                return std::unexpected(makeStorageError(stepRes.error()));
-            }
-            if (!*stepRes)
-            {
-                break;
-            }
-            ids.emplace_back(stmtRes->getText(0));
-        }
-        return ids;
+        return sqlite::loadOrderedRelationIds<GroupId, WorkspaceStoreError>(
+            conn_,
+            "SELECT group_id FROM workspace_groups WHERE workspace_id = ? ORDER BY sort_order ASC;",
+            wsId.value());
     }
 
     std::expected<std::vector<RepositoryId>, WorkspaceStoreError>
     SqliteWorkspaceStore::loadWorkspaceDirectRepoIds(const WorkspaceId& wsId) const
     {
-        constexpr std::string_view kSql = R"(
-SELECT repository_id
-FROM workspace_repositories
-WHERE workspace_id = ?
-ORDER BY sort_order ASC;
-)";
-
-        auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
-        if (!stmtRes)
-        {
-            return std::unexpected(makeStorageError(stmtRes.error()));
-        }
-
-        if (const auto bindRes = stmtRes->bindText(1, wsId.value()); !bindRes)
-        {
-            return std::unexpected(makeStorageError(bindRes.error()));
-        }
-        std::vector<RepositoryId> ids;
-        while (true)
-        {
-            auto stepRes = stmtRes->step();
-            if (!stepRes)
-            {
-                return std::unexpected(makeStorageError(stepRes.error()));
-            }
-            if (!*stepRes)
-            {
-                break;
-            }
-            ids.emplace_back(stmtRes->getText(0));
-        }
-        return ids;
+        return sqlite::loadOrderedRelationIds<RepositoryId, WorkspaceStoreError>(
+            conn_,
+            "SELECT repository_id FROM workspace_repositories WHERE workspace_id = ? ORDER BY sort_order ASC;",
+            wsId.value());
     }
 
     std::expected<void, WorkspaceStoreError>
@@ -205,106 +158,29 @@ ON CONFLICT(id) DO UPDATE SET
         }
 
         // 1. workspace_groups
-        auto delGroupsStmt = sqlite::SqliteStatement::prepare(
-            conn_, "DELETE FROM workspace_groups WHERE workspace_id = ?;");
-        if (!delGroupsStmt)
+        if (const auto grpRel = sqlite::replaceOrderedRelationIds<GroupId, WorkspaceStoreError>(
+                conn_,
+                "DELETE FROM workspace_groups WHERE workspace_id = ?;",
+                "INSERT INTO workspace_groups (workspace_id, group_id, sort_order) VALUES (?, ?, ?);",
+                workspace.id.value(),
+                workspace.groupIds,
+                "Gruppo referenziato inesistente o errore foreign key");
+            !grpRel)
         {
-            return std::unexpected(makeStorageError(delGroupsStmt.error()));
-        }
-        if (const auto bindRes = delGroupsStmt->bindText(1, workspace.id.value()); !bindRes)
-        {
-            return std::unexpected(makeStorageError(bindRes.error()));
-        }
-        if (const auto delStepRes = delGroupsStmt->step(); !delStepRes)
-        {
-            return std::unexpected(makeStorageError(delStepRes.error()));
-        }
-
-        if (!workspace.groupIds.empty())
-        {
-            auto insGrpStmt = sqlite::SqliteStatement::prepare(
-                conn_, "INSERT INTO workspace_groups (workspace_id, group_id, sort_order) VALUES (?, ?, ?);");
-            if (!insGrpStmt)
-            {
-                return std::unexpected(makeStorageError(insGrpStmt.error()));
-            }
-
-            for (int i = 0; i < static_cast<int>(workspace.groupIds.size()); ++i)
-            {
-                insGrpStmt->reset();
-                insGrpStmt->clearBindings();
-                if (const auto bindRes = insGrpStmt->bindText(1, workspace.id.value()); !bindRes)
-                {
-                    return std::unexpected(makeStorageError(bindRes.error()));
-                }
-                if (const auto bindRes = insGrpStmt->bindText(2, workspace.groupIds[static_cast<std::size_t>(i)].value()); !bindRes)
-                {
-                    return std::unexpected(makeStorageError(bindRes.error()));
-                }
-                if (const auto bindRes = insGrpStmt->bindInt(3, i); !bindRes)
-                {
-                    return std::unexpected(makeStorageError(bindRes.error()));
-                }
-                if (const auto insStep = insGrpStmt->step(); !insStep)
-                {
-                    return std::unexpected(WorkspaceStoreError{
-                        .kind = WorkspaceStoreError::Kind::StorageError,
-                        .message = "Gruppo referenziato inesistente o errore foreign key"
-                    });
-                }
-            }
+            return std::unexpected(grpRel.error());
         }
 
         // 2. workspace_repositories (direct)
-        auto delReposStmt = sqlite::SqliteStatement::prepare(
-            conn_, "DELETE FROM workspace_repositories WHERE workspace_id = ?;");
-        if (!delReposStmt)
-        {
-            return std::unexpected(makeStorageError(delReposStmt.error()));
-        }
-        if (const auto bindRes = delReposStmt->bindText(1, workspace.id.value()); !bindRes)
-        {
-            return std::unexpected(makeStorageError(bindRes.error()));
-        }
-        if (const auto delStepRes = delReposStmt->step(); !delStepRes)
-        {
-            return std::unexpected(makeStorageError(delStepRes.error()));
-        }
-
-        if (!workspace.directRepositoryIds.empty())
-        {
-            auto insRepoStmt = sqlite::SqliteStatement::prepare(
+        if (const auto repoRel = sqlite::replaceOrderedRelationIds<RepositoryId, WorkspaceStoreError>(
                 conn_,
-                "INSERT INTO workspace_repositories (workspace_id, repository_id, sort_order) VALUES (?, ?, ?);");
-            if (!insRepoStmt)
-            {
-                return std::unexpected(makeStorageError(insRepoStmt.error()));
-            }
-
-            for (int i = 0; i < static_cast<int>(workspace.directRepositoryIds.size()); ++i)
-            {
-                insRepoStmt->reset();
-                insRepoStmt->clearBindings();
-                if (const auto bindRes = insRepoStmt->bindText(1, workspace.id.value()); !bindRes)
-                {
-                    return std::unexpected(makeStorageError(bindRes.error()));
-                }
-                if (const auto bindRes = insRepoStmt->bindText(2, workspace.directRepositoryIds[static_cast<std::size_t>(i)].value()); !bindRes)
-                {
-                    return std::unexpected(makeStorageError(bindRes.error()));
-                }
-                if (const auto bindRes = insRepoStmt->bindInt(3, i); !bindRes)
-                {
-                    return std::unexpected(makeStorageError(bindRes.error()));
-                }
-                if (const auto insStep = insRepoStmt->step(); !insStep)
-                {
-                    return std::unexpected(WorkspaceStoreError{
-                        .kind = WorkspaceStoreError::Kind::StorageError,
-                        .message = "Repository referenziato inesistente o errore foreign key"
-                    });
-                }
-            }
+                "DELETE FROM workspace_repositories WHERE workspace_id = ?;",
+                "INSERT INTO workspace_repositories (workspace_id, repository_id, sort_order) VALUES (?, ?, ?);",
+                workspace.id.value(),
+                workspace.directRepositoryIds,
+                "Repository referenziato inesistente o errore foreign key");
+            !repoRel)
+        {
+            return std::unexpected(repoRel.error());
         }
 
         if (const auto commitRes = tx->commit(); !commitRes)
@@ -345,12 +221,7 @@ WHERE id = ?;
             return std::nullopt;
         }
 
-        Workspace ws;
-        ws.id = WorkspaceId(stmtRes->getText(0));
-        ws.name = stmtRes->getText(1);
-        ws.color = stmtRes->getText(2);
-        ws.createdAtUnixEpochMs = stmtRes->getInt64(3);
-        ws.updatedAtUnixEpochMs = stmtRes->getInt64(4);
+        Workspace ws = rowToWorkspace(*stmtRes);
 
         auto groupsRes = loadWorkspaceGroupIds(ws.id);
         if (!groupsRes)
@@ -397,13 +268,7 @@ ORDER BY name COLLATE NOCASE ASC;
                 break;
             }
 
-            Workspace ws;
-            ws.id = WorkspaceId(stmtRes->getText(0));
-            ws.name = stmtRes->getText(1);
-            ws.color = stmtRes->getText(2);
-            ws.createdAtUnixEpochMs = stmtRes->getInt64(3);
-            ws.updatedAtUnixEpochMs = stmtRes->getInt64(4);
-            list.push_back(std::move(ws));
+            list.push_back(rowToWorkspace(*stmtRes));
         }
 
         for (auto& ws : list)
@@ -429,24 +294,8 @@ ORDER BY name COLLATE NOCASE ASC;
     std::expected<bool, WorkspaceStoreError>
     SqliteWorkspaceStore::remove(const WorkspaceId& id)
     {
-        constexpr std::string_view kSql = "DELETE FROM workspaces WHERE id = ?;";
-
-        auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
-        if (!stmtRes)
-        {
-            return std::unexpected(makeStorageError(stmtRes.error()));
-        }
-
-        if (const auto bindRes = stmtRes->bindText(1, id.value()); !bindRes)
-        {
-            return std::unexpected(makeStorageError(bindRes.error()));
-        }
-        if (const auto stepRes = stmtRes->step(); !stepRes)
-        {
-            return std::unexpected(makeStorageError(stepRes.error()));
-        }
-
-        return conn_.changes() > 0;
+        return sqlite::deleteRowById<WorkspaceStoreError>(
+            conn_, "DELETE FROM workspaces WHERE id = ?;", id.value(), makeStorageError);
     }
 
     std::expected<void, WorkspaceStoreError>

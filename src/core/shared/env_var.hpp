@@ -1,6 +1,9 @@
 #pragma once
 
+#include "core/shared/utf8_path.hpp"
+
 #include <cstdlib>
+#include <filesystem>
 #include <optional>
 #include <string>
 
@@ -29,5 +32,20 @@ namespace gf::core
         }
         return std::string(value);
 #endif
+    }
+
+    /// Resolves the current user's home directory (`HOME`, falling back to `USERPROFILE`).
+    [[nodiscard]] inline std::optional<std::filesystem::path> getUserHomeDir()
+    {
+        auto home = getEnvVar("HOME");
+        if (!home)
+        {
+            home = getEnvVar("USERPROFILE");
+        }
+        if (home && !home->empty())
+        {
+            return utf8ToPath(*home);
+        }
+        return std::nullopt;
     }
 } // namespace gf::core

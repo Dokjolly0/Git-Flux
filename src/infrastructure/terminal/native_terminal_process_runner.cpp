@@ -1,4 +1,5 @@
 #include "infrastructure/terminal/native_terminal_process_runner.hpp"
+#include "infrastructure/process/native_process_utils.hpp"
 
 #include "core/modules/terminal/bl/command_line_tokenizer.hpp"
 #include "core/shared/string_utils.hpp"
@@ -12,7 +13,6 @@
 #include <fstream>
 #include <mutex>
 #include <thread>
-#include <unordered_map>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -27,7 +27,6 @@
 #include <csignal>
 #include <sys/wait.h>
 #include <unistd.h>
-extern char** environ;
 #endif
 
 namespace gf::infra::terminal
@@ -151,171 +150,74 @@ namespace gf::infra::terminal
             return result;
         }
 
-#ifdef _WIN32
-        [[nodiscard]] std::wstring utf8ToWide(const std::string_view utf8)
+        void appendDirectGitArgs(std::vector<std::string>& outArgs,
+                                 std::vector<std::string>& directGitArgs,
+                                 const bool forceGitColor)
         {
-            if (utf8.empty()) return {};
-            const int needed = MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), nullptr, 0);
-            if (needed <= 0) return {};
-            std::wstring result(static_cast<std::size_t>(needed), L'\0');
-            MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), result.data(), needed);
-            return result;
+            outArgs.emplace_back("-c");
+            outArgs.emplace_back("core.quotepath=false");
+            if (forceGitColor && !hasExplicitColorFlag(directGitArgs))
+            {
+                outArgs.emplace_back("-c");
+                outArgs.emplace_back("color.ui=always");
+            }
+            for (auto& a : directGitArgs)
+            {
+                outArgs.push_back(std::move(a));
+            }
         }
 
-        void appendQuotedWindowsArg(std::wstring& cmdLine, const std::wstring_view arg)
+        [[nodiscard]] std::vector<std::pair<std::string, std::string>>
+        withTerminalEnvDefaults(const std::vector<std::pair<std::string, std::string>>& overrides)
         {
-            const bool needsQuotes = arg.empty() || arg.find_first_of(L" \t\n\v\"") != std::wstring_view::npos;
-            if (!needsQuotes)
-            {
-                cmdLine.append(arg);
-                return;
-            }
-            cmdLine.push_back(L'"');
-            for (std::size_t i = 0; i < arg.size();)
-            {
-                std::size_t backslashes = 0;
-                while (i < arg.size() && arg[i] == L'\\')
-                {
-                    ++backslashes;
-                    ++i;
-                }
-                if (i == arg.size())
-                {
-                    cmdLine.append(backslashes * 2, L'\\');
-                    break;
-                }
-                if (arg[i] == L'"')
-                {
-                    cmdLine.append(backslashes * 2 + 1, L'\\');
-                    cmdLine.push_back(L'"');
-                    ++i;
-                }
-                else
-                {
-                    cmdLine.append(backslashes, L'\\');
-                    cmdLine.push_back(arg[i]);
-                    ++i;
-                }
-            }
-            cmdLine.push_back(L'"');
-        }
-
-        [[nodiscard]] std::filesystem::path findInPathWin(const wchar_t* fileName)
-        {
-            wchar_t buffer[MAX_PATH * 4];
-            const DWORD len = SearchPathW(nullptr, fileName, nullptr,
-                                          static_cast<DWORD>(std::size(buffer)), buffer, nullptr);
-            if (len > 0 && len < std::size(buffer))
-            {
-                return std::filesystem::path(std::wstring(buffer, len));
-            }
-            return {};
-        }
-
-        [[nodiscard]] std::wstring buildWindowsEnvironmentBlock(
-            const std::vector<std::pair<std::string, std::string>>& overrides)
-        {
-            std::vector<std::pair<std::wstring, std::wstring>> entries;
-            std::unordered_map<std::wstring, std::size_t> keyIndex;
-
-            auto toUpperW = [](const std::wstring_view s)
-            {
-                std::wstring out;
-                out.reserve(s.size());
-                for (const wchar_t c : s)
-                {
-                    out.push_back(static_cast<wchar_t>(towupper(c)));
-                }
-                return out;
+            std::vector<std::pair<std::string, std::string>> env = {
+                {"GIT_PAGER", "cat"},
+                {"PAGER", "cat"},
+                {"TERM", "xterm-256color"},
+                {"CLICOLOR_FORCE", "1"},
+                {"FORCE_COLOR", "1"}
             };
-
-            if (LPWCH envStrings = GetEnvironmentStringsW(); envStrings != nullptr)
-            {
-                const wchar_t* ptr = envStrings;
-                while (*ptr != L'\0')
-                {
-                    const std::wstring_view entry(ptr);
-                    ptr += entry.size() + 1;
-                    const std::size_t eq = entry.find(L'=', 1);
-                    if (eq == std::wstring_view::npos) continue;
-                    std::wstring key(entry.substr(0, eq));
-                    std::wstring val(entry.substr(eq + 1));
-                    const std::wstring upper = toUpperW(key);
-                    keyIndex[upper] = entries.size();
-                    entries.emplace_back(std::move(key), std::move(val));
-                }
-                FreeEnvironmentStringsW(envStrings);
-            }
-
-            auto setVar = [&](const std::wstring& key, const std::wstring& val)
-            {
-                const std::wstring upper = toUpperW(key);
-                if (const auto it = keyIndex.find(upper); it != keyIndex.end())
-                {
-                    entries[it->second].second = val;
-                }
-                else
-                {
-                    keyIndex[upper] = entries.size();
-                    entries.emplace_back(key, val);
-                }
-            };
-
-            setVar(L"GIT_PAGER", L"cat");
-            setVar(L"PAGER", L"cat");
-            setVar(L"TERM", L"xterm-256color");
-            setVar(L"CLICOLOR_FORCE", L"1");
-            setVar(L"FORCE_COLOR", L"1");
-
-            for (const auto& [k, v] : overrides)
-            {
-                setVar(utf8ToWide(k), utf8ToWide(v));
-            }
-
-            std::ranges::sort(entries, [&](const auto& a, const auto& b)
-            {
-                return toUpperW(a.first) < toUpperW(b.first);
-            });
-
-            std::wstring block;
-            for (const auto& [k, v] : entries)
-            {
-                block.append(k);
-                block.push_back(L'=');
-                block.append(v);
-                block.push_back(L'\0');
-            }
-            block.push_back(L'\0');
-            return block;
+            env.insert(env.end(), overrides.begin(), overrides.end());
+            return env;
         }
 
-        class Win32TerminalProcessHandle final : public gf::terminal::ports::ITerminalProcessHandle
+        template <typename Derived>
+        class TerminalProcessHandleBase : public gf::terminal::ports::ITerminalProcessHandle
         {
         public:
-            Win32TerminalProcessHandle(HANDLE processHandle,
-                                       HANDLE jobHandle,
-                                       HANDLE stdinWrite,
-                                       HANDLE stdoutRead,
-                                       HANDLE stderrRead,
-                                       tbo::TerminalExecutionCallbacks callbacks,
-                                       std::filesystem::path cwdFilePath = {})
-                : m_process(processHandle)
-                , m_job(jobHandle)
-                , m_stdinWrite(stdinWrite)
-                , m_stdoutRead(stdoutRead)
-                , m_stderrRead(stderrRead)
-                , m_callbacks(std::move(callbacks))
+            TerminalProcessHandleBase(tbo::TerminalExecutionCallbacks callbacks,
+                                      std::filesystem::path cwdFilePath)
+                : m_callbacks(std::move(callbacks))
                 , m_cwdFilePath(std::move(cwdFilePath))
                 , m_startTime(std::chrono::steady_clock::now())
+            {
+            }
+
+            [[nodiscard]] bool isRunning() const noexcept override
+            {
+                return m_running.load(std::memory_order_acquire);
+            }
+
+            void wait() override
+            {
+                if (m_waiterThread.joinable() && std::this_thread::get_id() != m_waiterThread.get_id())
+                {
+                    m_waiterThread.join();
+                }
+            }
+
+        protected:
+            void startWaiter()
             {
                 m_waiterThread = std::thread([this]() { runIoAndWait(); });
             }
 
-            ~Win32TerminalProcessHandle() override
+            void shutdownWaiterAndCleanup()
             {
+                auto* self = static_cast<Derived*>(this);
                 if (m_running.load(std::memory_order_acquire))
                 {
-                    terminate();
+                    self->terminate();
                 }
                 if (m_waiterThread.joinable())
                 {
@@ -328,13 +230,96 @@ namespace gf::infra::terminal
                         m_waiterThread.join();
                     }
                 }
-                closeHandles();
+                self->closeOsHandles();
                 if (!m_cwdFilePath.empty())
                 {
                     std::error_code ec;
                     std::filesystem::remove(m_cwdFilePath, ec);
                 }
             }
+
+            void emitOutput(const tbo::TerminalOutputStream stream, const std::string_view data)
+            {
+                if (m_callbacks.onOutput)
+                {
+                    std::scoped_lock cbLock(m_callbackMutex);
+                    m_callbacks.onOutput(stream, data);
+                }
+            }
+
+            void runIoAndWait()
+            {
+                auto* self = static_cast<Derived*>(this);
+                std::thread outThread([self]() { self->readStreamLoop(true); });
+                std::thread errThread([self]() { self->readStreamLoop(false); });
+
+                if (outThread.joinable()) outThread.join();
+                if (errThread.joinable()) errThread.join();
+
+                const int exitCode = self->waitForExitCode();
+                const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - m_startTime);
+
+                m_running.store(false, std::memory_order_release);
+
+                tbo::TerminalCommandResult res;
+                res.exitCode = exitCode;
+                res.duration = elapsed;
+                res.wasCancelled = m_cancelled.load(std::memory_order_acquire);
+                res.finalWorkingDirectory = readAndCleanupCwdFile(m_cwdFilePath, !res.wasCancelled);
+                m_cwdFilePath.clear();
+
+                if (m_callbacks.onFinished)
+                {
+                    m_callbacks.onFinished(res);
+                }
+            }
+
+            tbo::TerminalExecutionCallbacks m_callbacks;
+            std::filesystem::path m_cwdFilePath;
+            std::chrono::steady_clock::time_point m_startTime;
+            std::atomic<bool> m_running{true};
+            std::atomic<bool> m_cancelled{false};
+            std::mutex m_stdinMutex;
+            std::mutex m_callbackMutex;
+            std::thread m_waiterThread;
+        };
+
+#ifdef _WIN32
+        [[nodiscard]] std::filesystem::path findInPathWin(const wchar_t* fileName)
+        {
+            wchar_t buffer[MAX_PATH * 4];
+            const DWORD len = SearchPathW(nullptr, fileName, nullptr,
+                                          static_cast<DWORD>(std::size(buffer)), buffer, nullptr);
+            if (len > 0 && len < std::size(buffer))
+            {
+                return std::filesystem::path(std::wstring(buffer, len));
+            }
+            return {};
+        }
+
+        class Win32TerminalProcessHandle final : public TerminalProcessHandleBase<Win32TerminalProcessHandle>
+        {
+            friend class TerminalProcessHandleBase<Win32TerminalProcessHandle>;
+        public:
+            Win32TerminalProcessHandle(HANDLE processHandle,
+                                       HANDLE jobHandle,
+                                       HANDLE stdinWrite,
+                                       HANDLE stdoutRead,
+                                       HANDLE stderrRead,
+                                       tbo::TerminalExecutionCallbacks callbacks,
+                                       std::filesystem::path cwdFilePath = {})
+                : TerminalProcessHandleBase(std::move(callbacks), std::move(cwdFilePath))
+                , m_process(processHandle)
+                , m_job(jobHandle)
+                , m_stdinWrite(stdinWrite)
+                , m_stdoutRead(stdoutRead)
+                , m_stderrRead(stderrRead)
+            {
+                startWaiter();
+            }
+
+            ~Win32TerminalProcessHandle() override { shutdownWaiterAndCleanup(); }
 
             bool writeStdin(const std::string_view utf8Data) override
             {
@@ -381,103 +366,43 @@ namespace gf::infra::terminal
                 }
             }
 
-            [[nodiscard]] bool isRunning() const noexcept override
-            {
-                return m_running.load(std::memory_order_acquire);
-            }
-
-            void wait() override
-            {
-                if (m_waiterThread.joinable() && std::this_thread::get_id() != m_waiterThread.get_id())
-                {
-                    m_waiterThread.join();
-                }
-            }
-
         private:
-            void readPipeLoop(HANDLE pipe, const tbo::TerminalOutputStream stream)
+            void readStreamLoop(const bool isStdout)
             {
+                HANDLE pipe = isStdout ? m_stdoutRead : m_stderrRead;
+                const auto stream = isStdout ? tbo::TerminalOutputStream::Stdout : tbo::TerminalOutputStream::Stderr;
                 char buffer[4096];
                 while (true)
                 {
                     DWORD bytesRead = 0;
                     const BOOL ok = ReadFile(pipe, buffer, sizeof(buffer), &bytesRead, nullptr);
-                    if (!ok || bytesRead == 0)
-                    {
-                        break;
-                    }
-                    if (m_callbacks.onOutput)
-                    {
-                        std::scoped_lock cbLock(m_callbackMutex);
-                        m_callbacks.onOutput(stream, std::string_view(buffer, bytesRead));
-                    }
+                    if (!ok || bytesRead == 0) break;
+                    emitOutput(stream, std::string_view(buffer, bytesRead));
                 }
             }
 
-            void runIoAndWait()
+            [[nodiscard]] int waitForExitCode() const
             {
-                std::thread outThread([this]() { readPipeLoop(m_stdoutRead, tbo::TerminalOutputStream::Stdout); });
-                std::thread errThread([this]() { readPipeLoop(m_stderrRead, tbo::TerminalOutputStream::Stderr); });
-
-                if (outThread.joinable()) outThread.join();
-                if (errThread.joinable()) errThread.join();
-
                 DWORD exitCode = 1;
                 if (m_process && m_process != INVALID_HANDLE_VALUE)
                 {
                     WaitForSingleObject(m_process, INFINITE);
                     GetExitCodeProcess(m_process, &exitCode);
                 }
-
-                const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::steady_clock::now() - m_startTime);
-
-                m_running.store(false, std::memory_order_release);
-
-                tbo::TerminalCommandResult res;
-                res.exitCode = static_cast<int>(exitCode);
-                res.duration = elapsed;
-                res.wasCancelled = m_cancelled.load(std::memory_order_acquire);
-                res.finalWorkingDirectory = readAndCleanupCwdFile(m_cwdFilePath, !res.wasCancelled);
-                m_cwdFilePath.clear();
-
-                if (m_callbacks.onFinished)
-                {
-                    m_callbacks.onFinished(res);
-                }
+                return static_cast<int>(exitCode);
             }
 
-            void closeHandles()
+            void closeOsHandles()
             {
                 {
                     std::scoped_lock lock(m_stdinMutex);
-                    if (m_stdinWrite && m_stdinWrite != INVALID_HANDLE_VALUE)
-                    {
-                        CloseHandle(m_stdinWrite);
-                        m_stdinWrite = nullptr;
-                    }
+                    if (m_stdinWrite && m_stdinWrite != INVALID_HANDLE_VALUE) { CloseHandle(m_stdinWrite); m_stdinWrite = nullptr; }
                 }
-                if (m_stdoutRead && m_stdoutRead != INVALID_HANDLE_VALUE)
-                {
-                    CloseHandle(m_stdoutRead);
-                    m_stdoutRead = nullptr;
-                }
-                if (m_stderrRead && m_stderrRead != INVALID_HANDLE_VALUE)
-                {
-                    CloseHandle(m_stderrRead);
-                    m_stderrRead = nullptr;
-                }
+                if (m_stdoutRead && m_stdoutRead != INVALID_HANDLE_VALUE) { CloseHandle(m_stdoutRead); m_stdoutRead = nullptr; }
+                if (m_stderrRead && m_stderrRead != INVALID_HANDLE_VALUE) { CloseHandle(m_stderrRead); m_stderrRead = nullptr; }
                 std::scoped_lock procLock(m_procMutex);
-                if (m_process && m_process != INVALID_HANDLE_VALUE)
-                {
-                    CloseHandle(m_process);
-                    m_process = nullptr;
-                }
-                if (m_job && m_job != INVALID_HANDLE_VALUE)
-                {
-                    CloseHandle(m_job);
-                    m_job = nullptr;
-                }
+                if (m_process && m_process != INVALID_HANDLE_VALUE) { CloseHandle(m_process); m_process = nullptr; }
+                if (m_job && m_job != INVALID_HANDLE_VALUE) { CloseHandle(m_job); m_job = nullptr; }
             }
 
             HANDLE m_process{nullptr};
@@ -485,53 +410,12 @@ namespace gf::infra::terminal
             HANDLE m_stdinWrite{nullptr};
             HANDLE m_stdoutRead{nullptr};
             HANDLE m_stderrRead{nullptr};
-            tbo::TerminalExecutionCallbacks m_callbacks;
-            std::filesystem::path m_cwdFilePath;
-            std::chrono::steady_clock::time_point m_startTime;
-            std::atomic<bool> m_running{true};
-            std::atomic<bool> m_cancelled{false};
-            std::mutex m_stdinMutex;
             std::mutex m_procMutex;
-            std::mutex m_callbackMutex;
-            std::thread m_waiterThread;
         };
 #else
-        [[nodiscard]] std::vector<std::string> buildPosixEnvironment(
-            const std::vector<std::pair<std::string, std::string>>& overrides)
+        class PosixTerminalProcessHandle final : public TerminalProcessHandleBase<PosixTerminalProcessHandle>
         {
-            std::unordered_map<std::string, std::string> envMap;
-            if (environ != nullptr)
-            {
-                for (char** p = environ; *p != nullptr; ++p)
-                {
-                    const std::string_view entry(*p);
-                    if (const std::size_t eq = entry.find('='); eq != std::string_view::npos)
-                    {
-                        envMap[std::string(entry.substr(0, eq))] = std::string(entry.substr(eq + 1));
-                    }
-                }
-            }
-            envMap["GIT_PAGER"] = "cat";
-            envMap["PAGER"] = "cat";
-            envMap["TERM"] = "xterm-256color";
-            envMap["CLICOLOR_FORCE"] = "1";
-            envMap["FORCE_COLOR"] = "1";
-            for (const auto& [k, v] : overrides)
-            {
-                envMap[k] = v;
-            }
-
-            std::vector<std::string> result;
-            result.reserve(envMap.size());
-            for (const auto& [k, v] : envMap)
-            {
-                result.push_back(k + "=" + v);
-            }
-            return result;
-        }
-
-        class PosixTerminalProcessHandle final : public gf::terminal::ports::ITerminalProcessHandle
-        {
+            friend class TerminalProcessHandleBase<PosixTerminalProcessHandle>;
         public:
             PosixTerminalProcessHandle(const pid_t pid,
                                        const int stdinFd,
@@ -539,41 +423,16 @@ namespace gf::infra::terminal
                                        const int stderrFd,
                                        tbo::TerminalExecutionCallbacks callbacks,
                                        std::filesystem::path cwdFilePath = {})
-                : m_pid(pid)
+                : TerminalProcessHandleBase(std::move(callbacks), std::move(cwdFilePath))
+                , m_pid(pid)
                 , m_stdinFd(stdinFd)
                 , m_stdoutFd(stdoutFd)
                 , m_stderrFd(stderrFd)
-                , m_callbacks(std::move(callbacks))
-                , m_cwdFilePath(std::move(cwdFilePath))
-                , m_startTime(std::chrono::steady_clock::now())
             {
-                m_waiterThread = std::thread([this]() { runIoAndWait(); });
+                startWaiter();
             }
 
-            ~PosixTerminalProcessHandle() override
-            {
-                if (m_running.load(std::memory_order_acquire))
-                {
-                    terminate();
-                }
-                if (m_waiterThread.joinable())
-                {
-                    if (std::this_thread::get_id() == m_waiterThread.get_id())
-                    {
-                        m_waiterThread.detach();
-                    }
-                    else
-                    {
-                        m_waiterThread.join();
-                    }
-                }
-                closeFds();
-                if (!m_cwdFilePath.empty())
-                {
-                    std::error_code ec;
-                    std::filesystem::remove(m_cwdFilePath, ec);
-                }
-            }
+            ~PosixTerminalProcessHandle() override { shutdownWaiterAndCleanup(); }
 
             bool writeStdin(const std::string_view utf8Data) override
             {
@@ -603,11 +462,7 @@ namespace gf::infra::terminal
                 m_cancelled.store(true, std::memory_order_release);
                 {
                     std::scoped_lock lock(m_stdinMutex);
-                    if (m_stdinFd >= 0)
-                    {
-                        ::close(m_stdinFd);
-                        m_stdinFd = -1;
-                    }
+                    if (m_stdinFd >= 0) { ::close(m_stdinFd); m_stdinFd = -1; }
                 }
                 if (m_pid > 0 && m_running.load(std::memory_order_acquire))
                 {
@@ -615,53 +470,28 @@ namespace gf::infra::terminal
                 }
             }
 
-            [[nodiscard]] bool isRunning() const noexcept override
-            {
-                return m_running.load(std::memory_order_acquire);
-            }
-
-            void wait() override
-            {
-                if (m_waiterThread.joinable() && std::this_thread::get_id() != m_waiterThread.get_id())
-                {
-                    m_waiterThread.join();
-                }
-            }
-
         private:
-            void readFdLoop(const int fd, const tbo::TerminalOutputStream stream)
+            void readStreamLoop(const bool isStdout)
             {
+                const int fd = isStdout ? m_stdoutFd : m_stderrFd;
+                const auto stream = isStdout ? tbo::TerminalOutputStream::Stdout : tbo::TerminalOutputStream::Stderr;
                 char buffer[4096];
                 while (true)
                 {
                     const ssize_t n = ::read(fd, buffer, sizeof(buffer));
                     if (n > 0)
                     {
-                        if (m_callbacks.onOutput)
-                        {
-                            std::scoped_lock cbLock(m_callbackMutex);
-                            m_callbacks.onOutput(stream, std::string_view(buffer, static_cast<std::size_t>(n)));
-                        }
+                        emitOutput(stream, std::string_view(buffer, static_cast<std::size_t>(n)));
                     }
-                    else if (n == 0)
-                    {
-                        break;
-                    }
-                    else if (errno != EINTR)
+                    else if (n == 0 || errno != EINTR)
                     {
                         break;
                     }
                 }
             }
 
-            void runIoAndWait()
+            [[nodiscard]] int waitForExitCode() const
             {
-                std::thread outThread([this]() { readFdLoop(m_stdoutFd, tbo::TerminalOutputStream::Stdout); });
-                std::thread errThread([this]() { readFdLoop(m_stderrFd, tbo::TerminalOutputStream::Stderr); });
-
-                if (outThread.joinable()) outThread.join();
-                if (errThread.joinable()) errThread.join();
-
                 int status = 0;
                 int exitCode = 1;
                 if (m_pid > 0)
@@ -672,26 +502,10 @@ namespace gf::infra::terminal
                     if (WIFEXITED(status)) exitCode = WEXITSTATUS(status);
                     else if (WIFSIGNALED(status)) exitCode = 128 + WTERMSIG(status);
                 }
-
-                const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::steady_clock::now() - m_startTime);
-
-                m_running.store(false, std::memory_order_release);
-
-                tbo::TerminalCommandResult res;
-                res.exitCode = exitCode;
-                res.duration = elapsed;
-                res.wasCancelled = m_cancelled.load(std::memory_order_acquire);
-                res.finalWorkingDirectory = readAndCleanupCwdFile(m_cwdFilePath, !res.wasCancelled);
-                m_cwdFilePath.clear();
-
-                if (m_callbacks.onFinished)
-                {
-                    m_callbacks.onFinished(res);
-                }
+                return exitCode;
             }
 
-            void closeFds()
+            void closeOsHandles()
             {
                 std::scoped_lock lock(m_stdinMutex);
                 if (m_stdinFd >= 0) { ::close(m_stdinFd); m_stdinFd = -1; }
@@ -703,14 +517,6 @@ namespace gf::infra::terminal
             int m_stdinFd{-1};
             int m_stdoutFd{-1};
             int m_stderrFd{-1};
-            tbo::TerminalExecutionCallbacks m_callbacks;
-            std::filesystem::path m_cwdFilePath;
-            std::chrono::steady_clock::time_point m_startTime;
-            std::atomic<bool> m_running{true};
-            std::atomic<bool> m_cancelled{false};
-            std::mutex m_stdinMutex;
-            std::mutex m_callbackMutex;
-            std::thread m_waiterThread;
         };
 #endif
 
@@ -833,25 +639,10 @@ namespace gf::infra::terminal
         {
             std::vector<std::string> finalArgs;
             finalArgs.reserve(directGitArgs.size() + 4);
-            finalArgs.emplace_back("-c");
-            finalArgs.emplace_back("core.quotepath=false");
-            if (request.forceGitColor && !hasExplicitColorFlag(directGitArgs))
-            {
-                finalArgs.emplace_back("-c");
-                finalArgs.emplace_back("color.ui=always");
-            }
-            for (auto& a : directGitArgs)
-            {
-                finalArgs.push_back(std::move(a));
-            }
+            appendDirectGitArgs(finalArgs, directGitArgs, request.forceGitColor);
 
             applicationPath = m_gitExecutablePath.wstring();
-            appendQuotedWindowsArg(cmdLine, applicationPath);
-            for (const auto& a : finalArgs)
-            {
-                cmdLine.push_back(L' ');
-                appendQuotedWindowsArg(cmdLine, utf8ToWide(a));
-            }
+            cmdLine = process::buildWindowsCommandLine(m_gitExecutablePath, finalArgs);
         }
         else
         {
@@ -861,7 +652,7 @@ namespace gf::infra::terminal
                 return std::unexpected(std::string("Nessuna shell disponibile sul sistema."));
             }
             applicationPath = shell->executablePath.wstring();
-            appendQuotedWindowsArg(cmdLine, applicationPath);
+            process::appendQuotedWindowsArg(cmdLine, applicationPath);
 
             if (shell->kind == tbo::TerminalShellKind::PowerShell)
             {
@@ -891,7 +682,7 @@ namespace gf::infra::terminal
                         request.commandLine;
                 }
                 cmdLine.append(L" -NoLogo -NoProfile -NonInteractive -Command ");
-                appendQuotedWindowsArg(cmdLine, utf8ToWide(psScript));
+                process::appendQuotedWindowsArg(cmdLine, process::utf8ToWide(psScript));
             }
             else if (shell->kind == tbo::TerminalShellKind::GitBash)
             {
@@ -904,12 +695,12 @@ namespace gf::infra::terminal
                         request.commandLine;
                 }
                 cmdLine.append(L" -c ");
-                appendQuotedWindowsArg(cmdLine, utf8ToWide(bashScript));
+                process::appendQuotedWindowsArg(cmdLine, process::utf8ToWide(bashScript));
             }
             else // CMD
             {
                 cmdLine.append(L" /d /s /c \"chcp 65001>nul & ");
-                cmdLine.append(utf8ToWide(request.commandLine));
+                cmdLine.append(process::utf8ToWide(request.commandLine));
                 if (!cwdFilePath.empty())
                 {
                     cmdLine.append(L" & if errorlevel 1 (cd>\"%GF_CWD_FILE%\" & cmd /c exit 1) else (cd>\"%GF_CWD_FILE%\")");
@@ -964,7 +755,7 @@ namespace gf::infra::terminal
         si.hStdError = stderrWrite;
 
         PROCESS_INFORMATION pi{};
-        std::wstring envBlock = buildWindowsEnvironmentBlock(extraEnv);
+        std::wstring envBlock = process::buildWindowsEnvironmentBlock(withTerminalEnvDefaults(extraEnv));
         std::wstring workDirW = request.workingDirectory.wstring();
 
         const BOOL created = CreateProcessW(
@@ -1013,17 +804,7 @@ namespace gf::infra::terminal
         {
             exePath = gf::core::pathToUtf8(m_gitExecutablePath);
             argvStorage.push_back(exePath);
-            argvStorage.emplace_back("-c");
-            argvStorage.emplace_back("core.quotepath=false");
-            if (request.forceGitColor && !hasExplicitColorFlag(directGitArgs))
-            {
-                argvStorage.emplace_back("-c");
-                argvStorage.emplace_back("color.ui=always");
-            }
-            for (auto& a : directGitArgs)
-            {
-                argvStorage.push_back(std::move(a));
-            }
+            appendDirectGitArgs(argvStorage, directGitArgs, request.forceGitColor);
         }
         else
         {
@@ -1061,7 +842,7 @@ namespace gf::infra::terminal
             return std::unexpected(std::string("Impossibile creare pipe POSIX."));
         }
 
-        const auto envStorage = buildPosixEnvironment(extraEnv);
+        const auto envStorage = process::buildPosixEnvironment(withTerminalEnvDefaults(extraEnv));
         std::vector<char*> argvPtrs;
         argvPtrs.reserve(argvStorage.size() + 1);
         for (auto& s : argvStorage) argvPtrs.push_back(s.data());

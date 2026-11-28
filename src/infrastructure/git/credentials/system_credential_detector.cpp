@@ -24,16 +24,7 @@ namespace gf::infra::git::credentials
 
         std::filesystem::path getSystemHomeDir()
         {
-            auto home = core::getEnvVar("HOME");
-            if (!home)
-            {
-                home = core::getEnvVar("USERPROFILE");
-            }
-            if (home)
-            {
-                return {*home};
-            }
-            return std::filesystem::current_path();
+            return core::getUserHomeDir().value_or(std::filesystem::current_path());
         }
     } // namespace
 

@@ -1,5 +1,6 @@
 #include "infrastructure/persistence/profiles/sqlite_profile_store.hpp"
 #include "infrastructure/persistence/sqlite/connection/sqlite_statement.hpp"
+#include "infrastructure/persistence/sqlite/sqlite_store_helpers.hpp"
 #include "core/shared/time_utils.hpp"
 
 namespace gf::infra::persistence::profiles
@@ -137,11 +138,7 @@ DELETE FROM git_provider_profiles WHERE id = ?;
     std::expected<bool, sqlite::SqliteError>
     SqliteProfileStore::deleteProfile(const std::string& id) const
     {
-        auto stmtRes = sqlite::SqliteStatement::prepare(m_conn, kDeleteSql);
-        if (!stmtRes) return std::unexpected(stmtRes.error());
-
-        if (const auto b = stmtRes->bindText(1, id); !b) return std::unexpected(b.error());
-        if (const auto stepRes = stmtRes->step(); !stepRes) return std::unexpected(stepRes.error());
-        return m_conn.changes() > 0;
+        return sqlite::deleteRowById<sqlite::SqliteError>(
+            m_conn, kDeleteSql, id, [](const sqlite::SqliteError& e) { return e; });
     }
 } // namespace gf::infra::persistence::profiles

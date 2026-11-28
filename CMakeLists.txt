@@ -184,8 +184,16 @@ target_link_libraries(gf_persistence_sqlite PUBLIC
 gf_apply_compiler_warnings(gf_persistence_sqlite)
 
 # ==============================================================================
-# 3. INFRASTRUCTURE — Git CLI Adapter (Native OS vs Qt 6)
+# 3. INFRASTRUCTURE — Native OS Process Utils & Adapters
 # ==============================================================================
+add_library(gf_process_utils STATIC
+        src/infrastructure/process/native_process_utils.cpp
+)
+target_include_directories(gf_process_utils PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
+gf_apply_compiler_warnings(gf_process_utils)
+
 add_library(gf_git_cli_native STATIC
         src/infrastructure/git/git_discovery.cpp
         src/infrastructure/git/native/native_git_executor.cpp
@@ -194,7 +202,7 @@ add_library(gf_git_cli_native STATIC
 target_include_directories(gf_git_cli_native PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
-target_link_libraries(gf_git_cli_native PUBLIC gf_application)
+target_link_libraries(gf_git_cli_native PUBLIC gf_application gf_process_utils)
 gf_apply_compiler_warnings(gf_git_cli_native)
 
 add_library(gf_watcher_native STATIC
@@ -212,7 +220,7 @@ add_library(gf_terminal_native STATIC
 target_include_directories(gf_terminal_native PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
-target_link_libraries(gf_terminal_native PUBLIC gf_application)
+target_link_libraries(gf_terminal_native PUBLIC gf_application gf_process_utils)
 gf_apply_compiler_warnings(gf_terminal_native)
 
 if (GF_BUILD_DESKTOP)

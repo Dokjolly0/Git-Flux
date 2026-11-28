@@ -1,4 +1,5 @@
 #include "infrastructure/git/native/native_git_executor.hpp"
+#include "infrastructure/process/native_process_utils.hpp"
 #include "core/shared/utf8_path.hpp"
 
 #include <atomic>
@@ -22,7 +23,6 @@
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
-extern char** environ;
 #endif
 
 namespace gf::infra::git
@@ -30,68 +30,6 @@ namespace gf::infra::git
     namespace
     {
 #ifdef _WIN32
-        [[nodiscard]] std::wstring utf8ToWide(const std::string_view utf8)
-        {
-            if (utf8.empty())
-            {
-                return {};
-            }
-            const int needed = MultiByteToWideChar(CP_UTF8, 0,
-                                                   utf8.data(), static_cast<int>(utf8.size()),
-                                                   nullptr, 0);
-            if (needed <= 0)
-            {
-                return {};
-            }
-            std::wstring result(needed, L'\0');
-            MultiByteToWideChar(CP_UTF8, 0,
-                                utf8.data(), static_cast<int>(utf8.size()),
-                                result.data(), needed);
-            return result;
-        }
-
-        /// Applies MSVCRT / CommandLineToArgvW quoting rules directly without passing through cmd.exe.
-        void appendQuotedWindowsArg(std::wstring& cmdLine, const std::wstring_view arg)
-        {
-            const bool needsQuotes = arg.empty() ||
-                arg.find_first_of(L" \t\n\v\"") != std::wstring_view::npos;
-            if (!needsQuotes)
-            {
-                cmdLine.append(arg);
-                return;
-            }
-
-            cmdLine.push_back(L'"');
-            for (std::size_t i = 0; i < arg.size();)
-            {
-                std::size_t backslashes = 0;
-                while (i < arg.size() && arg[i] == L'\\')
-                {
-                    ++backslashes;
-                    ++i;
-                }
-
-                if (i == arg.size())
-                {
-                    cmdLine.append(backslashes * 2, L'\\');
-                    break;
-                }
-                if (arg[i] == L'"')
-                {
-                    cmdLine.append(backslashes * 2 + 1, L'\\');
-                    cmdLine.push_back(L'"');
-                    ++i;
-                }
-                else
-                {
-                    cmdLine.append(backslashes, L'\\');
-                    cmdLine.push_back(arg[i]);
-                    ++i;
-                }
-            }
-            cmdLine.push_back(L'"');
-        }
-
         struct ScopedHandle
         {
             HANDLE h = nullptr;
@@ -285,79 +223,36 @@ namespace gf::infra::git
                 }
             }
         };
+#endif
 
+        [[nodiscard]] std::vector<std::pair<std::string, std::string>> gitEnvOverrides(const bool noOptionalLocks)
+        {
+            std::vector<std::pair<std::string, std::string>> overrides = {
+                {"GIT_TERMINAL_PROMPT", "0"},
+                {"GCM_INTERACTIVE", "never"},
+                {"LC_ALL", "C"},
+                {"GIT_EDITOR", "true"}
+            };
+            if (noOptionalLocks)
+            {
+                overrides.emplace_back("GIT_OPTIONAL_LOCKS", "0");
+            }
+            return overrides;
+        }
+
+#ifdef _WIN32
         [[nodiscard]] std::wstring buildGitEnvironmentBlock(const bool noOptionalLocks)
         {
-            std::wstring block;
-            if (LPWCH rawEnv = GetEnvironmentStringsW())
-            {
-                const wchar_t* cur = rawEnv;
-                while (*cur != L'\0')
-                {
-                    std::wstring_view entry(cur);
-                    const bool skip =
-                        entry.starts_with(L"GIT_TERMINAL_PROMPT=") ||
-                        entry.starts_with(L"GCM_INTERACTIVE=") ||
-                        entry.starts_with(L"GIT_OPTIONAL_LOCKS=") ||
-                        entry.starts_with(L"GIT_EDITOR=") ||
-                        entry.starts_with(L"LC_ALL=");
-                    if (!skip)
-                    {
-                        block.append(entry);
-                        block.push_back(L'\0');
-                    }
-                    cur += entry.size() + 1;
-                }
-                FreeEnvironmentStringsW(rawEnv);
-            }
-
-            block.append(L"GIT_TERMINAL_PROMPT=0");
-            block.push_back(L'\0');
-            block.append(L"GCM_INTERACTIVE=never");
-            block.push_back(L'\0');
-            block.append(L"LC_ALL=C");
-            block.push_back(L'\0');
-            block.append(L"GIT_EDITOR=true");
-            block.push_back(L'\0');
-            if (noOptionalLocks)
-            {
-                block.append(L"GIT_OPTIONAL_LOCKS=0");
-                block.push_back(L'\0');
-            }
-            block.push_back(L'\0');
-            return block;
+            return process::buildWindowsEnvironmentBlock(
+                gitEnvOverrides(noOptionalLocks),
+                {L"GIT_TERMINAL_PROMPT", L"GCM_INTERACTIVE", L"GIT_OPTIONAL_LOCKS", L"GIT_EDITOR", L"LC_ALL"});
         }
 #else
-        [[nodiscard]] std::vector<std::string> buildLinuxEnvironment(bool noOptionalLocks)
+        [[nodiscard]] std::vector<std::string> buildLinuxEnvironment(const bool noOptionalLocks)
         {
-            std::vector<std::string> envStrings;
-            if (environ)
-            {
-                for (char** env = environ; *env != nullptr; ++env)
-                {
-                    std::string_view entry(*env);
-                    const bool skip =
-                        entry.starts_with("GIT_TERMINAL_PROMPT=") ||
-                        entry.starts_with("GCM_INTERACTIVE=") ||
-                        entry.starts_with("GIT_OPTIONAL_LOCKS=") ||
-                        entry.starts_with("GIT_EDITOR=") ||
-                        entry.starts_with("LC_ALL=");
-                    if (!skip)
-                    {
-                        envStrings.emplace_back(entry);
-                    }
-                }
-            }
-
-            envStrings.emplace_back("GIT_TERMINAL_PROMPT=0");
-            envStrings.emplace_back("GCM_INTERACTIVE=never");
-            envStrings.emplace_back("LC_ALL=C");
-            envStrings.emplace_back("GIT_EDITOR=true");
-            if (noOptionalLocks)
-            {
-                envStrings.emplace_back("GIT_OPTIONAL_LOCKS=0");
-            }
-            return envStrings;
+            return process::buildPosixEnvironment(
+                gitEnvOverrides(noOptionalLocks),
+                {"GIT_TERMINAL_PROMPT", "GCM_INTERACTIVE", "GIT_OPTIONAL_LOCKS", "GIT_EDITOR", "LC_ALL"});
         }
 #endif
     } // namespace
@@ -375,19 +270,13 @@ namespace gf::infra::git
         const std::filesystem::path& executable,
         const std::vector<std::string>& utf8Args)
     {
-        std::wstring cmdLine;
 #ifdef _WIN32
-        appendQuotedWindowsArg(cmdLine, executable.wstring());
-        for (const auto& arg : utf8Args)
-        {
-            cmdLine.push_back(L' ');
-            appendQuotedWindowsArg(cmdLine, utf8ToWide(arg));
-        }
+        return process::buildWindowsCommandLine(executable, utf8Args);
 #else
         (void)executable;
         (void)utf8Args;
+        return {};
 #endif
-        return cmdLine;
     }
 
     std::expected<gf::git::bo::GitProcessResult, gf::git::bo::GitExecutionError>
@@ -498,9 +387,9 @@ namespace gf::infra::git
             if (!envBlock.empty()) envBlock.pop_back(); // drop the block terminator
             for (const auto& [name, value] : command.extraEnvironment)
             {
-                envBlock.append(utf8ToWide(name));
+                envBlock.append(process::utf8ToWide(name));
                 envBlock.push_back(L'=');
-                envBlock.append(utf8ToWide(value));
+                envBlock.append(process::utf8ToWide(value));
                 envBlock.push_back(L'\0');
             }
             envBlock.push_back(L'\0');

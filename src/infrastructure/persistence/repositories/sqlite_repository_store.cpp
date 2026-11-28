@@ -1,5 +1,6 @@
 #include "infrastructure/persistence/repositories/sqlite_repository_store.hpp"
 #include "infrastructure/persistence/sqlite/connection/sqlite_statement.hpp"
+#include "infrastructure/persistence/sqlite/sqlite_store_helpers.hpp"
 #include "core/shared/utf8_path.hpp"
 
 #include <sqlite3.h>
@@ -15,10 +16,7 @@ namespace gf::infra::persistence::repositories
     {
         RepositoryStoreError makeStorageError(const sqlite::SqliteError& err)
         {
-            return RepositoryStoreError{
-                .kind = RepositoryStoreError::Kind::StorageError,
-                .message = err.message
-            };
+            return sqlite::makeStorageError<RepositoryStoreError>(err);
         }
 
         Repository rowToRepository(const sqlite::SqliteStatement& stmt)
@@ -206,24 +204,8 @@ ORDER BY display_name COLLATE NOCASE ASC;
     std::expected<bool, RepositoryStoreError>
     SqliteRepositoryStore::remove(const RepositoryId& id)
     {
-        constexpr std::string_view kSql = "DELETE FROM repositories WHERE id = ?;";
-
-        auto stmtRes = sqlite::SqliteStatement::prepare(conn_, kSql);
-        if (!stmtRes)
-        {
-            return std::unexpected(makeStorageError(stmtRes.error()));
-        }
-
-        if (const auto bindRes = stmtRes->bindText(1, id.value()); !bindRes)
-        {
-            return std::unexpected(makeStorageError(bindRes.error()));
-        }
-        if (const auto stepRes = stmtRes->step(); !stepRes)
-        {
-            return std::unexpected(makeStorageError(stepRes.error()));
-        }
-
-        return conn_.changes() > 0;
+        return sqlite::deleteRowById<RepositoryStoreError>(
+            conn_, "DELETE FROM repositories WHERE id = ?;", id.value(), makeStorageError);
     }
 
     std::expected<void, RepositoryStoreError>
