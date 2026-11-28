@@ -5,10 +5,8 @@ import QtQuick.Layouts
 MenuItem {
     id: control
 
-    property bool destructive: false
     property bool selected: false
-    readonly property bool isDestructive: destructive
-        || text.indexOf("🗑") !== -1
+    readonly property bool isDestructive: text.indexOf("🗑") !== -1
         || text.indexOf("🔴") !== -1
         || text.indexOf("Scarta") !== -1
         || text.indexOf("Elimina") !== -1

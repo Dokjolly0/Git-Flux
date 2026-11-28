@@ -353,7 +353,6 @@ Rectangle {
         id: selMouse
         property ListView listView: null
         property string viewType: "inline" // "inline", "split", "blame"
-        property real maxHScroll: 0
 
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         hoverEnabled: true
@@ -1559,7 +1558,6 @@ Rectangle {
                     anchors.fill: inlineListView
                     listView: inlineListView
                     viewType: "inline"
-                    maxHScroll: root.inlineMaxScroll
                     z: 5
                 }
 
@@ -1975,7 +1973,6 @@ Rectangle {
                         anchors.fill: splitListView
                         listView: splitListView
                         viewType: "split"
-                        maxHScroll: root.splitMaxScroll
                         z: 5
                     }
 
@@ -2540,7 +2537,6 @@ Rectangle {
                     anchors.fill: blameListView
                     listView: blameListView
                     viewType: "blame"
-                    maxHScroll: root.blameMaxScroll
                     z: 5
                 }
 

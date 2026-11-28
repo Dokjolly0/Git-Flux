@@ -318,8 +318,6 @@ if (GF_BUILD_DESKTOP)
             src/desktop/ui/qml/views/HomeHubView.qml
             src/desktop/ui/qml/views/QuickOpenModal.qml
             src/desktop/ui/qml/views/WorkspaceSessionView.qml
-            src/desktop/ui/qml/views/WorkingTreePanel.qml
-            src/desktop/ui/qml/views/CommitBox.qml
             src/desktop/ui/qml/views/DiffViewerPanel.qml
             src/desktop/ui/qml/views/DiffOverviewScrollBar.qml
             src/desktop/ui/qml/views/MarkdownPreviewView.qml

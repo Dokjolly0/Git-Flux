@@ -341,7 +341,6 @@ Dialog {
     }
 
     function resetFormAndCache() {
-        console.log("[CloneModal] Reset completo del form e della cache...");
         urlField.text = "";
         destFolderField.text = "";
         dirNameField.text = "";
@@ -1069,16 +1068,7 @@ Dialog {
                                         onClicked: {
                                             if (root.profilesVm) {
                                                 root.profilesVm.setSelectedProtocol("ssh");
-                                                if (root.selectedRepoFullName.length > 0) {
-                                                    // refresh active clone url in field
-                                                    for (let i = 0; i < repoListView.count; ++i) {
-                                                        const r = root.profilesVm.remoteReposModel.getRepoAt(i);
-                                                        if (r.fullName === root.selectedRepoFullName) {
-                                                            urlField.text = r.activeCloneUrl;
-                                                            break;
-                                                        }
-                                                    }
-                                                }
+                                                root.refreshSelectedRepoUrl();
                                             }
                                         }
                                     }
@@ -1104,15 +1094,7 @@ Dialog {
                                         onClicked: {
                                             if (root.profilesVm) {
                                                 root.profilesVm.setSelectedProtocol("https");
-                                                if (root.selectedRepoFullName.length > 0) {
-                                                    for (let i = 0; i < repoListView.count; ++i) {
-                                                        const r = root.profilesVm.remoteReposModel.getRepoAt(i);
-                                                        if (r.fullName === root.selectedRepoFullName) {
-                                                            urlField.text = r.activeCloneUrl;
-                                                            break;
-                                                        }
-                                                    }
-                                                }
+                                                root.refreshSelectedRepoUrl();
                                             }
                                         }
                                     }
@@ -1912,7 +1894,6 @@ Dialog {
                                                     dirNameField.propertyModified = true;
                                                     root.showRepoPicker = false;
                                                     root.repoTouched = false;
-                                                    console.log("[CloneModal] Repo selezionato:", model.fullName, "URL:", targetUrl, "Cartella:", defaultName);
                                                 }
                                             }
                                         }
@@ -2480,14 +2461,11 @@ Dialog {
                     hoverEnabled: true
                     enabled: !(root.effectiveHubVm && root.effectiveHubVm.isCloning)
                     onClicked: {
-                        console.log("[CloneModal] Avvia Clonazione cliccato. URL=" + urlField.text + " DestFolder=" + destFolderField.text + " Dir=" + dirNameField.text);
                         if (urlField.text.trim().length === 0) {
                             if (root.profilesVm && root.profilesVm.activeProfileId === "url") {
-                                console.warn("[CloneModal] URL del repository non inserito!");
                                 root.urlMissing = true;
                                 urlField.forceActiveFocus();
                             } else {
-                                console.warn("[CloneModal] Nessun repository selezionato! Apertura automatica cassetto...");
                                 root.repoTouched = true;
                                 root.showRepoPicker = true;
                                 if (typeof searchField !== "undefined") searchField.forceActiveFocus();
@@ -2495,7 +2473,6 @@ Dialog {
                             return;
                         }
                         if (destFolderField.text.trim().length === 0) {
-                            console.warn("[CloneModal] Cartella di destinazione non specificata!");
                             root.destFolderMissing = true;
                             destFolderField.forceActiveFocus();
                             return;
@@ -2505,15 +2482,12 @@ Dialog {
                         root.urlMissing = false;
                         const vm = root.effectiveHubVm;
                         if (vm) {
-                            console.log("[CloneModal] Invocazione cloneRepositoryAsync su ViewModel per: " + urlField.text.trim());
                             vm.cloneRepositoryAsync(
                                 urlField.text.trim(),
                                 destFolderField.text.trim(),
                                 dirNameField.text.trim(),
                                 displayNameField.text.trim()
                             );
-                        } else {
-                            console.error("[CloneModal] ERRORE CRITICO: ViewModel HomeHub non disponibile!");
                         }
                     }
                     contentItem: Text {

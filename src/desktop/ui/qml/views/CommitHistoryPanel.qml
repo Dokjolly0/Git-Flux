@@ -62,7 +62,6 @@ Rectangle {
     signal conflictResolveRequested(string filePath)
 
     property string draggingBranchName: ""
-    property string draggingBranchType: ""
     property string hoveredTargetBranch: ""
     property real dragCursorRootX: 0
     property real dragCursorRootY: 0
@@ -72,7 +71,6 @@ Rectangle {
             branchDragOverlay.resetPendingState();
         }
         root.draggingBranchName = "";
-        root.draggingBranchType = "";
         root.hoveredTargetBranch = "";
         dragGhostBadge.visible = false;
     }
@@ -2739,16 +2737,6 @@ Rectangle {
                                 Layout.fillHeight: true
                                 clip: true
 
-                                readonly property bool hasOrphanBadge: {
-                                    if (commitRow.isOrphan) return true;
-                                    const decs = commitRow.structuredDecorations;
-                                    if (!decs) return false;
-                                    for (let d = 0; d < decs.length; ++d) {
-                                        if (decs[d].isOrphan || (decs[d].name && decs[d].name.indexOf("gh-pages") !== -1)) return true;
-                                    }
-                                    return false;
-                                }
-
                                 // Only one "primary" badge is rendered inline (HEAD first, otherwise
                                 // the first local/remote/tag). The others collapse into a "+N" chip
                                 // that opens a popup with the full list, so the column never overflows.
@@ -3549,7 +3537,6 @@ Rectangle {
                             if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
                                 isDragging = true;
                                 root.draggingBranchName = pendingBranchName;
-                                root.draggingBranchType = pendingBranchType;
                             }
                         }
 

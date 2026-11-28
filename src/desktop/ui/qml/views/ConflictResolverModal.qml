@@ -185,7 +185,6 @@ Dialog {
                                 text: {
                                     if (model.chosenSide === 1) return "Scelto: Ours";
                                     if (model.chosenSide === 2) return "Scelto: Theirs";
-                                    if (model.chosenSide === 0) return "Scelto: Base";
                                     if (model.chosenSide === 3) return "Scelto: Custom";
                                     return "Nessuna selezione";
                                 }
