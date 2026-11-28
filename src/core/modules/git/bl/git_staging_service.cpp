@@ -1,4 +1,5 @@
 #include "core/modules/git/bl/git_staging_service.hpp"
+#include "core/modules/git/bl/git_validation.hpp"
 #include "core/modules/git/bl/repository_lock_coordinator.hpp"
 
 #include <algorithm>
@@ -23,79 +24,10 @@ namespace gf::git::bl
     }
 
     std::expected<void, ports::GitOpsError>
-    GitStagingService::validateRepoPath(const std::filesystem::path& repoPath)
-    {
-        if (repoPath.empty())
-        {
-            return std::unexpected(ports::GitOpsError{
-                .kind = ports::GitOpsError::Kind::InvalidRepositoryPath,
-                .exitCode = -1,
-                .message = "Il percorso del repository non può essere vuoto",
-                .command = "staging"
-            });
-        }
-
-        if (std::error_code ec; !std::filesystem::exists(repoPath, ec) || !std::filesystem::is_directory(repoPath, ec))
-        {
-            return std::unexpected(ports::GitOpsError{
-                .kind = ports::GitOpsError::Kind::PathNotFound,
-                .exitCode = -1,
-                .message = "La directory del repository non esiste: " + repoPath.string(),
-                .command = "staging"
-            });
-        }
-
-        return {};
-    }
-
-    std::expected<void, ports::GitOpsError>
-    GitStagingService::validateRelativeFilePaths(const std::vector<std::string>& filePaths)
-    {
-        for (const auto& pathStr : filePaths)
-        {
-            if (pathStr.empty())
-            {
-                return std::unexpected(ports::GitOpsError{
-                    .kind = ports::GitOpsError::Kind::InvalidRepositoryPath,
-                    .exitCode = -1,
-                    .message = "Il percorso di un file non può essere vuoto",
-                    .command = "staging"
-                });
-            }
-
-            std::filesystem::path p(pathStr);
-            if (p.is_absolute() || p.has_root_path())
-            {
-                return std::unexpected(ports::GitOpsError{
-                    .kind = ports::GitOpsError::Kind::InvalidRepositoryPath,
-                    .exitCode = -1,
-                    .message = "I percorsi dei file devono essere relativi al repository: " + pathStr,
-                    .command = "staging"
-                });
-            }
-
-            // Reject path traversal
-            for (const auto& part : p)
-            {
-                if (part == "..")
-                {
-                    return std::unexpected(ports::GitOpsError{
-                        .kind = ports::GitOpsError::Kind::InvalidRepositoryPath,
-                        .exitCode = -1,
-                        .message = "Rilevato tentativo di path traversal illegale: " + pathStr,
-                        .command = "staging"
-                    });
-                }
-            }
-        }
-        return {};
-    }
-
-    std::expected<void, ports::GitOpsError>
     GitStagingService::stageFiles(const std::filesystem::path& repoPath,
                                   const std::vector<std::string>& filePaths) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "staging"); !valid)
         {
             return valid;
         }
@@ -103,7 +35,7 @@ namespace gf::git::bl
         {
             return {};
         }
-        if (auto validPaths = validateRelativeFilePaths(filePaths); !validPaths)
+        if (auto validPaths = validateRelativeFilePaths(filePaths, "staging"); !validPaths)
         {
             return validPaths;
         }
@@ -115,7 +47,7 @@ namespace gf::git::bl
     std::expected<void, ports::GitOpsError>
     GitStagingService::stageAll(const std::filesystem::path& repoPath) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "staging"); !valid)
         {
             return valid;
         }
@@ -128,7 +60,7 @@ namespace gf::git::bl
     GitStagingService::unstageFiles(const std::filesystem::path& repoPath,
                                     const std::vector<std::string>& filePaths) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "staging"); !valid)
         {
             return valid;
         }
@@ -136,7 +68,7 @@ namespace gf::git::bl
         {
             return {};
         }
-        if (auto validPaths = validateRelativeFilePaths(filePaths); !validPaths)
+        if (auto validPaths = validateRelativeFilePaths(filePaths, "staging"); !validPaths)
         {
             return validPaths;
         }
@@ -148,7 +80,7 @@ namespace gf::git::bl
     std::expected<void, ports::GitOpsError>
     GitStagingService::unstageAll(const std::filesystem::path& repoPath) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "staging"); !valid)
         {
             return valid;
         }
@@ -161,7 +93,7 @@ namespace gf::git::bl
     GitStagingService::discardFiles(const std::filesystem::path& repoPath,
                                     const std::vector<std::string>& filePaths) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "staging"); !valid)
         {
             return valid;
         }
@@ -169,7 +101,7 @@ namespace gf::git::bl
         {
             return {};
         }
-        if (auto validPaths = validateRelativeFilePaths(filePaths); !validPaths)
+        if (auto validPaths = validateRelativeFilePaths(filePaths, "staging"); !validPaths)
         {
             return validPaths;
         }
@@ -182,7 +114,7 @@ namespace gf::git::bl
     GitStagingService::createCommit(const std::filesystem::path& repoPath,
                                     const bo::CommitOptions& options) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "staging"); !valid)
         {
             return std::unexpected(valid.error());
         }

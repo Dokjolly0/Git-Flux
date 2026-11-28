@@ -1,5 +1,6 @@
 #include "core/modules/syntax/markdown_parser.hpp"
 #include "core/modules/syntax/syntax_highlighter.hpp"
+#include "core/shared/string_utils.hpp"
 
 #include <algorithm>
 #include <iterator>
@@ -24,7 +25,7 @@ namespace gf::core::syntax
 
         [[nodiscard]] constexpr char mdToLowerAscii(const char c) noexcept
         {
-            return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
+            return core::toLowerAsciiChar(c);
         }
 
         [[nodiscard]] constexpr std::size_t utf8SeqLen(const unsigned char b) noexcept
@@ -36,28 +37,14 @@ namespace gf::core::syntax
             return 1;
         }
 
-        [[nodiscard]] std::string_view trimSpaces(std::string_view sv) noexcept
+        [[nodiscard]] constexpr std::string_view trimSpaces(const std::string_view sv) noexcept
         {
-            while (!sv.empty() && (sv.front() == ' ' || sv.front() == '\t' || sv.front() == '\r'))
-            {
-                sv.remove_prefix(1);
-            }
-            while (!sv.empty() && (sv.back() == ' ' || sv.back() == '\t' || sv.back() == '\r'))
-            {
-                sv.remove_suffix(1);
-            }
-            return sv;
+            return core::trim(sv);
         }
 
         [[nodiscard]] std::string toLowerCopy(const std::string_view sv)
         {
-            std::string out;
-            out.reserve(sv.size());
-            for (const char c : sv)
-            {
-                out.push_back(mdToLowerAscii(c));
-            }
-            return out;
+            return core::toLowerAscii(sv);
         }
 
         [[nodiscard]] std::string normalizeLineEndings(const std::string_view input)

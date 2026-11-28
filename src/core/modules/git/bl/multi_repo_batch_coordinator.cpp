@@ -273,22 +273,25 @@ namespace gf::git::bl
     }
 
     std::string
-    MultiRepoBatchCoordinator::executeBatchFetchAsync(const std::vector<bo::RepoBatchTarget>& targets,
-                                                      const std::string& remoteName,
-                                                      const BatchProgressCallback& onProgress,
-                                                      const BatchCompletionCallback& onCompleted)
+    MultiRepoBatchCoordinator::executeBatchAsync(const bo::BatchOperationType opType,
+                                                 const std::string_view opPrefix,
+                                                 const std::vector<bo::RepoBatchTarget>& targets,
+                                                 const std::string& remoteName,
+                                                 const tasks::bo::TaskPriority priority,
+                                                 const BatchProgressCallback& onProgress,
+                                                 const BatchCompletionCallback& onCompleted)
     {
         const uint64_t idNum = m_nextOpId.fetch_add(1);
-        std::string opId = "batch-fetch-" + std::to_string(idNum);
+        std::string opId = std::string(opPrefix) + "-" + std::to_string(idNum);
 
         std::lock_guard opsLock(m_activeOpsMutex); // see m_opToTaskId
         const std::string taskId = m_taskRunner.postTask(
             opId,
-            guardTask([this, opId, targets, remoteName, onProgress, onCompleted](
+            guardTask([this, opId, opType, targets, remoteName, onProgress, onCompleted](
             tasks::ports::ITaskProgressSink& sink) -> std::expected<void, std::string>
             {
                 const auto report =
-                    runBatchLoop(opId, bo::BatchOperationType::Fetch, targets, remoteName, onProgress, &sink);
+                    runBatchLoop(opId, opType, targets, remoteName, onProgress, &sink);
 
                 {
                     std::lock_guard lock(m_activeOpsMutex);
@@ -306,11 +309,21 @@ namespace gf::git::bl
                 }
                 return {};
             }),
-            tasks::bo::TaskPriority::Normal
+            priority
         );
         m_opToTaskId[opId] = taskId;
 
         return opId;
+    }
+
+    std::string
+    MultiRepoBatchCoordinator::executeBatchFetchAsync(const std::vector<bo::RepoBatchTarget>& targets,
+                                                      const std::string& remoteName,
+                                                      const BatchProgressCallback& onProgress,
+                                                      const BatchCompletionCallback& onCompleted)
+    {
+        return executeBatchAsync(bo::BatchOperationType::Fetch, "batch-fetch", targets, remoteName,
+                                 tasks::bo::TaskPriority::Normal, onProgress, onCompleted);
     }
 
     std::string
@@ -338,39 +351,8 @@ namespace gf::git::bl
                                                        const BatchProgressCallback& onProgress,
                                                        const BatchCompletionCallback& onCompleted)
     {
-        const uint64_t idNum = m_nextOpId.fetch_add(1);
-        std::string opId = "batch-status-" + std::to_string(idNum);
-
-        std::lock_guard opsLock(m_activeOpsMutex); // see m_opToTaskId
-        const std::string taskId = m_taskRunner.postTask(
-            opId,
-            guardTask([this, opId, targets, onProgress, onCompleted](
-            tasks::ports::ITaskProgressSink& sink) -> std::expected<void, std::string>
-            {
-                const auto report =
-                    runBatchLoop(opId, bo::BatchOperationType::Status, targets, "", onProgress, &sink);
-
-                {
-                    std::lock_guard lock(m_activeOpsMutex);
-                    m_opToTaskId.erase(opId);
-                }
-
-                if (onCompleted)
-                {
-                    onCompleted(report);
-                }
-
-                if (report.hasFailures())
-                {
-                    return std::unexpected(std::to_string(report.failedCount) + " repository hanno riportato errori");
-                }
-                return {};
-            }),
-            tasks::bo::TaskPriority::High
-        );
-        m_opToTaskId[opId] = taskId;
-
-        return opId;
+        return executeBatchAsync(bo::BatchOperationType::Status, "batch-status", targets, "",
+                                 tasks::bo::TaskPriority::High, onProgress, onCompleted);
     }
 
     bo::BatchOperationReport

@@ -58,9 +58,6 @@ namespace gf::git::bl
         deleteTag(const std::filesystem::path& repoPath, const std::string& tagName) const;
 
     private:
-        [[nodiscard]] static std::expected<void, ports::GitOpsError>
-        validateRepoPath(const std::filesystem::path& repoPath);
-
         ports::IRepositoryGitOps& m_gitOps;
     };
 } // namespace gf::git::bl

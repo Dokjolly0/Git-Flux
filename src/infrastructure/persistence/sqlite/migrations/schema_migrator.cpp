@@ -1,7 +1,6 @@
 #include "infrastructure/persistence/sqlite/migrations/schema_migrator.hpp"
 #include "infrastructure/persistence/sqlite/connection/sqlite_statement.hpp"
-
-#include <chrono>
+#include "core/shared/time_utils.hpp"
 
 namespace gf::infra::persistence::sqlite
 {
@@ -137,9 +136,7 @@ ALTER TABLE workspaces ADD COLUMN color TEXT NOT NULL DEFAULT '';
                 return std::unexpected(execRes.error());
             }
 
-            const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::system_clock::now().time_since_epoch())
-                .count();
+            const auto nowMs = core::currentUnixMs();
 
             auto recordStmt = SqliteStatement::prepare(
                 conn, "INSERT INTO schema_migrations (version, applied_at_ms) VALUES (?, ?);");

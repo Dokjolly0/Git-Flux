@@ -1,6 +1,9 @@
 #pragma once
 
+#include "core/shared/string_utils.hpp"
+
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -81,6 +84,82 @@ namespace gf::core::git::bo
         int forksCount{0};
     };
 
+    struct ParsedRemoteUrl
+    {
+        std::string scheme;
+        std::string user;
+        std::string host;
+        std::string port;
+        std::string path;
+        bool isScpLike{false};
+    };
+
+    [[nodiscard]] inline bool isSshSchemeOrScpUrl(const std::string_view url) noexcept
+    {
+        if (url.starts_with("ssh://") || url.starts_with("git+ssh://") || url.starts_with("ssh+git://"))
+        {
+            return true;
+        }
+        if (url.find("://") != std::string_view::npos) return false;
+        // scp-like "user@host:path" / "alias:path": a ':' before any '/' (and not "C:\..." drives)
+        const auto colon = url.find(':');
+        if (colon == std::string_view::npos || colon < 2) return false;
+        const auto slash = url.find('/');
+        return slash == std::string_view::npos || colon < slash;
+    }
+
+    [[nodiscard]] inline std::optional<ParsedRemoteUrl> parseRemoteUrl(const std::string_view url)
+    {
+        if (url.empty()) return std::nullopt;
+        ParsedRemoteUrl parsed;
+        if (const auto schemePos = url.find("://"); schemePos != std::string_view::npos)
+        {
+            parsed.scheme = std::string(url.substr(0, schemePos));
+            const auto rest = url.substr(schemePos + 3);
+            const auto slash = rest.find('/');
+            std::string_view authority = slash == std::string_view::npos ? rest : rest.substr(0, slash);
+            if (slash != std::string_view::npos)
+            {
+                parsed.path = std::string(rest.substr(slash + 1));
+            }
+            if (const auto at = authority.rfind('@'); at != std::string_view::npos)
+            {
+                parsed.user = std::string(authority.substr(0, at));
+                authority.remove_prefix(at + 1);
+            }
+            if (authority.starts_with('['))
+            {
+                const auto close = authority.find(']');
+                if (close == std::string_view::npos) return std::nullopt;
+                parsed.host = std::string(authority.substr(1, close - 1));
+                const auto after = authority.substr(close + 1);
+                if (after.starts_with(':')) parsed.port = std::string(after.substr(1));
+                return parsed;
+            }
+            if (const auto colon = authority.rfind(':'); colon != std::string_view::npos)
+            {
+                parsed.port = std::string(authority.substr(colon + 1));
+                authority = authority.substr(0, colon);
+            }
+            parsed.host = std::string(authority);
+            return parsed;
+        }
+
+        if (!isSshSchemeOrScpUrl(url)) return std::nullopt;
+        parsed.isScpLike = true;
+        const auto colon = url.find(':');
+        auto authority = url.substr(0, colon);
+        parsed.path = std::string(url.substr(colon + 1));
+        if (const auto at = authority.rfind('@'); at != std::string_view::npos)
+        {
+            parsed.user = std::string(authority.substr(0, at));
+            authority.remove_prefix(at + 1);
+        }
+        parsed.host = std::string(authority);
+        if (parsed.path.starts_with('/')) parsed.path.erase(0, 1);
+        return parsed;
+    }
+
     /// Adapts an SSH clone URL returned by a provider API to the user's ~/.ssh/config:
     ///  - if the server is reached through a "Host" alias different from its real name, the URL
     ///    uses that alias, so ssh applies the block's HostName, Port, User and IdentityFile;
@@ -95,67 +174,30 @@ namespace gf::core::git::bo
         const bool hasPort = profile.sshPort > 0 && profile.sshPort != 22;
         if (!hasAlias && !hasPort) return url;
 
-        // Split into user, host, port and path for both "ssh://user@host:port/path" and the
-        // scp-like "user@host:path" forms.
-        std::string user;
-        std::string host;
-        std::string port;
-        std::string path; // without the leading '/'
+        const auto parsed = parseRemoteUrl(url);
+        if (!parsed) return url;
+        if (!parsed->isScpLike && parsed->scheme != "ssh") return url;
+        if (parsed->scheme == "ssh" && url.find('/', 6) == std::string::npos) return url;
+
+        if (parsed->host.empty() || core::toLowerAscii(parsed->host) != core::toLowerAscii(profile.host))
+        {
+            return url;
+        }
+
         constexpr std::string_view kScheme = "ssh://";
-        if (url.starts_with(kScheme))
-        {
-            const auto rest = url.substr(kScheme.size());
-            const auto slash = rest.find('/');
-            if (slash == std::string::npos) return url;
-            auto authority = rest.substr(0, slash);
-            path = rest.substr(slash + 1);
-            if (const auto at = authority.find('@'); at != std::string::npos)
-            {
-                user = authority.substr(0, at);
-                authority = authority.substr(at + 1);
-            }
-            if (const auto colon = authority.rfind(':'); colon != std::string::npos)
-            {
-                port = authority.substr(colon + 1);
-                authority = authority.substr(0, colon);
-            }
-            host = authority;
-        }
-        else
-        {
-            if (url.find("://") != std::string::npos) return url; // https://, git://...
-            const auto colon = url.find(':');
-            if (colon == std::string::npos) return url;
-            auto authority = url.substr(0, colon);
-            path = url.substr(colon + 1);
-            if (const auto at = authority.find('@'); at != std::string::npos)
-            {
-                user = authority.substr(0, at);
-                authority = authority.substr(at + 1);
-            }
-            host = authority;
-            if (path.starts_with('/')) path.erase(0, 1);
-        }
-
-        auto lower = [](std::string s)
-        {
-            for (auto& c : s) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
-            return s;
-        };
-        if (host.empty() || lower(host) != lower(profile.host)) return url;
-
-        const std::string userPart = user.empty() ? std::string{} : user + "@";
+        const std::string userPart = parsed->user.empty() ? std::string{} : parsed->user + "@";
         if (hasAlias)
         {
             // The alias block supplies HostName/Port/IdentityFile; keep the server's user, and
             // the server's port only when the block doesn't set one.
-            if (!hasPort && !port.empty())
+            if (!hasPort && !parsed->port.empty())
             {
-                return std::string(kScheme) + userPart + profile.sshHostAlias + ":" + port + "/" + path;
+                return std::string(kScheme) + userPart + profile.sshHostAlias + ":" + parsed->port + "/" + parsed->path;
             }
-            return userPart + profile.sshHostAlias + ":" + path;
+            return userPart + profile.sshHostAlias + ":" + parsed->path;
         }
-        if (!port.empty()) return url; // the server already advertises an explicit port
-        return std::string(kScheme) + userPart + host + ":" + std::to_string(profile.sshPort) + "/" + path;
+        if (!parsed->port.empty()) return url; // the server already advertises an explicit port
+        return std::string(kScheme) + userPart + parsed->host + ":" + std::to_string(profile.sshPort) + "/" +
+            parsed->path;
     }
 } // namespace gf::core::git::bo

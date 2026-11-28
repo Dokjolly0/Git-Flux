@@ -1,6 +1,7 @@
 #include "infrastructure/terminal/native_terminal_process_runner.hpp"
 
 #include "core/modules/terminal/bl/command_line_tokenizer.hpp"
+#include "core/shared/string_utils.hpp"
 #include "core/shared/utf8_path.hpp"
 
 #include <algorithm>
@@ -35,17 +36,6 @@ namespace gf::infra::terminal
     {
         namespace tbo = gf::terminal::bo;
 
-        [[nodiscard]] std::string toLowerCopy(const std::string_view sv)
-        {
-            std::string out;
-            out.reserve(sv.size());
-            for (const char c : sv)
-            {
-                out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-            }
-            return out;
-        }
-
         [[nodiscard]] bool hasExplicitColorFlag(const std::vector<std::string>& args)
         {
             for (std::size_t i = 1; i < args.size(); ++i)
@@ -68,7 +58,7 @@ namespace gf::infra::terminal
                 return false;
             }
             if (rawArgs.empty()) return false;
-            const std::string cmd0 = toLowerCopy(rawArgs[0]);
+            const std::string cmd0 = gf::core::toLowerAscii(rawArgs[0]);
             if (cmd0 != "git" && cmd0 != "git.exe")
             {
                 return false;

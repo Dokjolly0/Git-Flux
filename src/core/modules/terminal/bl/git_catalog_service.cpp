@@ -1,35 +1,36 @@
 #include "core/modules/terminal/bl/git_catalog_service.hpp"
+#include "core/shared/string_utils.hpp"
 
 #include <algorithm>
-#include <cctype>
 #include <unordered_set>
 
 namespace gf::terminal::bl
 {
     namespace
     {
-        [[nodiscard]] std::string_view trimView(std::string_view sv) noexcept
+        [[nodiscard]] constexpr std::string_view trimView(const std::string_view sv) noexcept
         {
-            while (!sv.empty() && (sv.front() == ' ' || sv.front() == '\t' || sv.front() == '\r' || sv.front() == '\n'))
-            {
-                sv.remove_prefix(1);
-            }
-            while (!sv.empty() && (sv.back() == ' ' || sv.back() == '\t' || sv.back() == '\r' || sv.back() == '\n'))
-            {
-                sv.remove_suffix(1);
-            }
-            return sv;
+            return core::trim(sv);
         }
 
         [[nodiscard]] std::string toLowerCopy(const std::string_view sv)
         {
-            std::string out;
-            out.reserve(sv.size());
-            for (const char c : sv)
-            {
-                out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-            }
-            return out;
+            return core::toLowerAscii(sv);
+        }
+
+        [[nodiscard]] std::optional<gf::git::bo::GitProcessResult>
+        runGitCLocale(gf::git::ports::IGitCommandExecutor* executor,
+                      std::vector<std::string> args,
+                      const int timeoutMs)
+        {
+            if (!executor) return std::nullopt;
+            gf::git::bo::GitCommand cmd;
+            cmd.args = std::move(args);
+            cmd.timeout = std::chrono::milliseconds{timeoutMs};
+            cmd.extraEnvironment = {{"LC_ALL", "C"}, {"LANG", "C"}};
+            auto res = executor->execute(cmd);
+            if (!res) return std::nullopt;
+            return *res;
         }
 
         [[nodiscard]] bool isInteractiveGuiTool(const std::string_view cmd) noexcept
@@ -540,62 +541,47 @@ namespace gf::terminal::bl
 
         if (m_executor)
         {
-            const std::vector<std::pair<std::string, std::string>> cLocaleEnv = {
-                {"LC_ALL", "C"},
-                {"LANG", "C"}
-            };
-
             // 1. `git help -a` (authoritative categories + official descriptions)
+            if (const auto res = runGitCLocale(m_executor, {"help", "-a"}, 5000);
+                res && !res->stdoutBytes.empty())
             {
-                gf::git::bo::GitCommand cmd;
-                cmd.args = {"help", "-a"};
-                cmd.timeout = std::chrono::milliseconds{5000};
-                cmd.extraEnvironment = cLocaleEnv;
-                if (const auto res = m_executor->execute(cmd); res && !res->stdoutBytes.empty())
+                auto parsed = parseHelpAllOutput(res->stdoutBytes);
+                for (auto& spec : parsed)
                 {
-                    auto parsed = parseHelpAllOutput(res->stdoutBytes);
-                    for (auto& spec : parsed)
+                    if (spec.category == bo::GitCommandCategory::Alias)
                     {
-                        if (spec.category == bo::GitCommandCategory::Alias)
+                        continue; // aliases are loaded separately with full expansion
+                    }
+                    if (const auto it = byName.find(spec.name); it != byName.end())
+                    {
+                        discovered[it->second].category = spec.category;
+                        if (!spec.description.empty())
                         {
-                            continue; // aliases are loaded separately with full expansion
+                            discovered[it->second].description = std::move(spec.description);
                         }
-                        if (const auto it = byName.find(spec.name); it != byName.end())
-                        {
-                            discovered[it->second].category = spec.category;
-                            if (!spec.description.empty())
-                            {
-                                discovered[it->second].description = std::move(spec.description);
-                            }
-                        }
-                        else
-                        {
-                            byName[spec.name] = discovered.size();
-                            discovered.push_back(std::move(spec));
-                        }
+                    }
+                    else
+                    {
+                        byName[spec.name] = discovered.size();
+                        discovered.push_back(std::move(spec));
                     }
                 }
             }
 
             // 2. `git --list-cmds=main,others,nohelpers` (100% coverage of all runnable commands)
+            if (const auto res = runGitCLocale(m_executor, {"--list-cmds=main,others,nohelpers"}, 5000);
+                res && res->succeeded())
             {
-                gf::git::bo::GitCommand cmd;
-                cmd.args = {"--list-cmds=main,others,nohelpers"};
-                cmd.timeout = std::chrono::milliseconds{5000};
-                cmd.extraEnvironment = cLocaleEnv;
-                if (const auto res = m_executor->execute(cmd); res && res->succeeded())
+                for (const auto& name : parseListCmdsOutput(res->stdoutBytes))
                 {
-                    for (const auto& name : parseListCmdsOutput(res->stdoutBytes))
+                    if (!byName.contains(name))
                     {
-                        if (!byName.contains(name))
-                        {
-                            byName[name] = discovered.size();
-                            discovered.push_back(bo::GitCommandSpec{
-                                .name = name,
-                                .description = "Comando Git",
-                                .category = bo::GitCommandCategory::External
-                            });
-                        }
+                        byName[name] = discovered.size();
+                        discovered.push_back(bo::GitCommandSpec{
+                            .name = name,
+                            .description = "Comando Git",
+                            .category = bo::GitCommandCategory::External
+                        });
                     }
                 }
             }
@@ -710,44 +696,28 @@ namespace gf::terminal::bl
 
         if (m_executor && !isInteractiveGuiTool(subcommand))
         {
-            const std::vector<std::pair<std::string, std::string>> cLocaleEnv = {
-                {"LC_ALL", "C"},
-                {"LANG", "C"}
-            };
-
             // 1. `git <subcommand> -h` (rich descriptions + short flags + value hints)
+            if (const auto res = runGitCLocale(m_executor, {std::string(subcommand), "-h"}, 3000))
             {
-                gf::git::bo::GitCommand cmd;
-                cmd.args = {std::string(subcommand), "-h"};
-                cmd.timeout = std::chrono::milliseconds{3000};
-                cmd.extraEnvironment = cLocaleEnv;
-                if (const auto res = m_executor->execute(cmd); res)
+                std::string combined = res->stdoutBytes;
+                if (!res->stderrBytes.empty())
                 {
-                    std::string combined = res->stdoutBytes;
-                    if (!res->stderrBytes.empty())
-                    {
-                        if (!combined.empty()) combined.push_back('\n');
-                        combined.append(res->stderrBytes);
-                    }
-                    for (auto& opt : parseSubcommandHelpOptions(combined))
-                    {
-                        mergeOptionSpec(merged, byLong, byShort, std::move(opt));
-                    }
+                    if (!combined.empty()) combined.push_back('\n');
+                    combined.append(res->stderrBytes);
+                }
+                for (auto& opt : parseSubcommandHelpOptions(combined))
+                {
+                    mergeOptionSpec(merged, byLong, byShort, std::move(opt));
                 }
             }
 
             // 2. `git <subcommand> --git-completion-helper` (catches flags omitted from `-h`)
+            if (const auto res = runGitCLocale(m_executor, {std::string(subcommand), "--git-completion-helper"}, 3000);
+                res && res->succeeded() && !res->stdoutBytes.empty())
             {
-                gf::git::bo::GitCommand cmd;
-                cmd.args = {std::string(subcommand), "--git-completion-helper"};
-                cmd.timeout = std::chrono::milliseconds{3000};
-                cmd.extraEnvironment = cLocaleEnv;
-                if (const auto res = m_executor->execute(cmd); res && res->succeeded() && !res->stdoutBytes.empty())
+                for (auto& opt : parseCompletionHelperOptions(res->stdoutBytes))
                 {
-                    for (auto& opt : parseCompletionHelperOptions(res->stdoutBytes))
-                    {
-                        mergeOptionSpec(merged, byLong, byShort, std::move(opt));
-                    }
+                    mergeOptionSpec(merged, byLong, byShort, std::move(opt));
                 }
             }
         }

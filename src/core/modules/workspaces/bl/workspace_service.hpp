@@ -74,6 +74,9 @@ namespace gf::workspaces::bl
         saveSession(const bo::WorkspaceSession& session) const;
 
     private:
+        [[nodiscard]] std::expected<bo::WorkspaceSession, WorkspaceServiceError>
+        createDefaultSession(const bo::WorkspaceId& id, std::int64_t updatedAtMs) const;
+
         ports::IWorkspaceStore& wsStore_;
         groups::ports::IGroupStore& groupStore_;
         repositories::ports::IRepositoryStore& repoStore_;

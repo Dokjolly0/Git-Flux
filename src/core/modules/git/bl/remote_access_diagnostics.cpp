@@ -1,4 +1,6 @@
 #include "core/modules/git/bl/remote_access_diagnostics.hpp"
+#include "core/modules/git/bo/git_provider_profile.hpp"
+#include "core/shared/string_utils.hpp"
 
 #include <algorithm>
 #include <array>
@@ -157,42 +159,13 @@ namespace gf::core::git::bl
 
     bool isSshRemoteUrl(const std::string_view url) noexcept
     {
-        if (url.starts_with("ssh://") || url.starts_with("git+ssh://") || url.starts_with("ssh+git://"))
-        {
-            return true;
-        }
-        if (url.find("://") != std::string_view::npos) return false;
-        // scp-like "user@host:path" / "alias:path": a ':' before any '/' (and not "C:\..." drives)
-        const auto colon = url.find(':');
-        if (colon == std::string_view::npos || colon < 2) return false;
-        const auto slash = url.find('/');
-        return slash == std::string_view::npos || colon < slash;
+        return bo::isSshSchemeOrScpUrl(url);
     }
 
     std::string extractRemoteHost(const std::string_view url)
     {
-        std::string_view authority;
-        if (const auto scheme = url.find("://"); scheme != std::string_view::npos)
-        {
-            auto rest = url.substr(scheme + 3);
-            authority = rest.substr(0, rest.find('/'));
-            if (const auto at = authority.rfind('@'); at != std::string_view::npos) authority.remove_prefix(at + 1);
-            if (authority.starts_with('['))
-            {
-                const auto close = authority.find(']');
-                return close == std::string_view::npos ? std::string{} : std::string(authority.substr(1, close - 1));
-            }
-            authority = authority.substr(0, authority.find(':'));
-        }
-        else
-        {
-            if (!isSshRemoteUrl(url)) return {};
-            authority = url.substr(0, url.find(':'));
-            if (const auto at = authority.rfind('@'); at != std::string_view::npos) authority.remove_prefix(at + 1);
-        }
-        std::string host(authority);
-        std::ranges::transform(host, host.begin(),
-                               [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        return host;
+        const auto parsed = bo::parseRemoteUrl(url);
+        if (!parsed || parsed->host.empty()) return {};
+        return core::toLowerAscii(parsed->host);
     }
 } // namespace gf::core::git::bl

@@ -1,4 +1,5 @@
 #include "core/modules/git/bl/git_history_service.hpp"
+#include "core/modules/git/bl/git_validation.hpp"
 #include "core/modules/git/bl/repository_lock_coordinator.hpp"
 
 namespace gf::git::bl
@@ -10,83 +11,14 @@ namespace gf::git::bl
 
     bool GitHistoryService::isValidTagName(const std::string_view name) noexcept
     {
-        if (name.empty() || name == "@")
-        {
-            return false;
-        }
-        if (name.front() == '.' || name.front() == '-' || name.front() == '/')
-        {
-            return false;
-        }
-        if (name.back() == '.' || name.back() == '/')
-        {
-            return false;
-        }
-        if (name.ends_with(".lock"))
-        {
-            return false;
-        }
-
-        for (const char ch : name)
-        {
-            const auto c = static_cast<unsigned char>(ch);
-            if (c < 0x20 || c == 0x7f)
-            {
-                return false;
-            }
-            if (c == ' ' || c == '~' || c == '^' || c == ':' || c == '?' || c == '*' || c == '[' || c == '\\')
-            {
-                return false;
-            }
-        }
-
-        if (name.find("..") != std::string_view::npos)
-        {
-            return false;
-        }
-        if (name.find("//") != std::string_view::npos)
-        {
-            return false;
-        }
-        if (name.find("@{") != std::string_view::npos)
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-    std::expected<void, ports::GitOpsError>
-    GitHistoryService::validateRepoPath(const std::filesystem::path& repoPath)
-    {
-        if (repoPath.empty())
-        {
-            return std::unexpected(ports::GitOpsError{
-                .kind = ports::GitOpsError::Kind::InvalidRepositoryPath,
-                .exitCode = -1,
-                .message = "Il percorso del repository non può essere vuoto",
-                .command = "history"
-            });
-        }
-
-        if (std::error_code ec; !std::filesystem::exists(repoPath, ec) || !std::filesystem::is_directory(repoPath, ec))
-        {
-            return std::unexpected(ports::GitOpsError{
-                .kind = ports::GitOpsError::Kind::PathNotFound,
-                .exitCode = -1,
-                .message = "La directory del repository non esiste: " + repoPath.string(),
-                .command = "history"
-            });
-        }
-
-        return {};
+        return isValidRefName(name);
     }
 
     std::expected<std::vector<bo::GitCommitLogItem>, ports::GitOpsError>
     GitHistoryService::getCommitHistory(const std::filesystem::path& repoPath,
                                         const bo::CommitLogOptions& options) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "history"); !valid)
         {
             return std::unexpected(valid.error());
         }
@@ -98,7 +30,7 @@ namespace gf::git::bl
     GitHistoryService::getCommitDetails(const std::filesystem::path& repoPath,
                                         const std::string& commitSha) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "history"); !valid)
         {
             return std::unexpected(valid.error());
         }
@@ -135,7 +67,7 @@ namespace gf::git::bl
     GitHistoryService::getCommitFiles(const std::filesystem::path& repoPath,
                                       const std::string& commitSha) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "history"); !valid)
         {
             return std::unexpected(valid.error());
         }
@@ -160,7 +92,7 @@ namespace gf::git::bl
                                              const std::string& baseRevision,
                                              const std::string& headSha) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "history"); !valid)
         {
             return std::unexpected(valid.error());
         }
@@ -185,7 +117,7 @@ namespace gf::git::bl
     std::expected<std::vector<std::string>, ports::GitOpsError>
     GitHistoryService::listTrackedFiles(const std::filesystem::path& repoPath) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "history"); !valid)
         {
             return std::unexpected(valid.error());
         }
@@ -196,7 +128,7 @@ namespace gf::git::bl
     std::expected<std::vector<bo::GitTag>, ports::GitOpsError>
     GitHistoryService::listTags(const std::filesystem::path& repoPath) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "history"); !valid)
         {
             return std::unexpected(valid.error());
         }
@@ -208,7 +140,7 @@ namespace gf::git::bl
     GitHistoryService::createTag(const std::filesystem::path& repoPath,
                                  const bo::CreateTagOptions& options) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "history"); !valid)
         {
             return std::unexpected(valid.error());
         }
@@ -231,7 +163,7 @@ namespace gf::git::bl
     GitHistoryService::deleteTag(const std::filesystem::path& repoPath,
                                  const std::string& tagName) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "history"); !valid)
         {
             return std::unexpected(valid.error());
         }

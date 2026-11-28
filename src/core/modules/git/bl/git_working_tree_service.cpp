@@ -1,6 +1,5 @@
 #include "core/modules/git/bl/git_working_tree_service.hpp"
-
-#include <system_error>
+#include "core/modules/git/bl/git_validation.hpp"
 
 namespace gf::git::bl
 {
@@ -12,24 +11,9 @@ namespace gf::git::bl
     std::expected<bo::RepoWorkingTreeStatus, ports::GitOpsError>
     GitWorkingTreeService::getWorkingTreeStatus(const std::filesystem::path& repoPath) const
     {
-        if (repoPath.empty())
+        if (auto valid = validateRepoPath(repoPath); !valid)
         {
-            return std::unexpected(ports::GitOpsError{
-                .kind = ports::GitOpsError::Kind::InvalidRepositoryPath,
-                .exitCode = -1,
-                .message = "Il percorso del repository non può essere vuoto",
-                .command = {}
-            });
-        }
-
-        if (std::error_code ec; !std::filesystem::exists(repoPath, ec) || !std::filesystem::is_directory(repoPath, ec))
-        {
-            return std::unexpected(ports::GitOpsError{
-                .kind = ports::GitOpsError::Kind::PathNotFound,
-                .exitCode = -1,
-                .message = "La directory del repository non esiste su filesystem: " + repoPath.string(),
-                .command = {}
-            });
+            return std::unexpected(valid.error());
         }
 
         return m_gitOps.getWorkingTreeStatus(repoPath);

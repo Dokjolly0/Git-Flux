@@ -1,4 +1,5 @@
 #include "core/modules/git/bl/unified_diff_parser.hpp"
+#include "core/shared/string_utils.hpp"
 
 #include <charconv>
 #include <string_view>
@@ -7,15 +8,6 @@ namespace gf::git::bl
 {
     namespace
     {
-        [[nodiscard]] std::string_view trimRight(std::string_view sv) noexcept
-        {
-            while (!sv.empty() && (sv.back() == '\r' || sv.back() == '\n'))
-            {
-                sv.remove_suffix(1);
-            }
-            return sv;
-        }
-
         [[nodiscard]] std::string stripPrefix(std::string_view path)
         {
             if (path.starts_with("a/") || path.starts_with("b/"))
@@ -179,7 +171,7 @@ namespace gf::git::bl
                                                  : diffOutput.substr(startPos, endPos - startPos);
             startPos = endPos == std::string_view::npos ? diffOutput.size() : endPos + 1;
 
-            const std::string_view line = trimRight(rawLine);
+            const std::string_view line = core::trimTrailingNewlines(rawLine);
 
             // Start of a new diff file
             if (line.starts_with("diff --git "))

@@ -7,6 +7,7 @@
 #include "core/modules/git/bl/porcelain_status_parser.hpp"
 #include "core/modules/git/bl/unified_diff_parser.hpp"
 #include "core/modules/git/bo/git_command.hpp"
+#include "core/shared/string_utils.hpp"
 
 #include <algorithm>
 #include <fstream>
@@ -4917,16 +4918,6 @@ namespace gf::infra::git
         }
 
         constexpr std::size_t kMaxContentBytes = 2 * 1024 * 1024;
-        auto stripUtf8Bom = [](std::string& text)
-        {
-            if (text.size() >= 3 &&
-                static_cast<unsigned char>(text[0]) == 0xEF &&
-                static_cast<unsigned char>(text[1]) == 0xBB &&
-                static_cast<unsigned char>(text[2]) == 0xBF)
-            {
-                text.erase(0, 3);
-            }
-        };
 
         if (revision.empty() || revision == "WORKTREE")
         {
@@ -4984,7 +4975,7 @@ namespace gf::infra::git
                 });
             }
 
-            stripUtf8Bom(content);
+            core::stripUtf8Bom(content);
             return content;
         }
 
@@ -5050,7 +5041,7 @@ namespace gf::infra::git
             });
         }
 
-        stripUtf8Bom(content);
+        core::stripUtf8Bom(content);
         return content;
     }
 

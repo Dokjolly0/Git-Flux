@@ -1,4 +1,5 @@
 #include "core/modules/git/bl/git_remote_merge_service.hpp"
+#include "core/modules/git/bl/git_validation.hpp"
 #include "core/modules/git/bl/repository_lock_coordinator.hpp"
 
 #include <algorithm>
@@ -27,36 +28,10 @@ namespace gf::git::bl
         });
     }
 
-    std::expected<void, ports::GitOpsError>
-    GitRemoteMergeService::validateRepoPath(const std::filesystem::path& repoPath)
-    {
-        if (repoPath.empty())
-        {
-            return std::unexpected(ports::GitOpsError{
-                .kind = ports::GitOpsError::Kind::InvalidRepositoryPath,
-                .exitCode = -1,
-                .message = "Il percorso del repository non può essere vuoto",
-                .command = "remote"
-            });
-        }
-
-        if (std::error_code ec; !std::filesystem::exists(repoPath, ec) || !std::filesystem::is_directory(repoPath, ec))
-        {
-            return std::unexpected(ports::GitOpsError{
-                .kind = ports::GitOpsError::Kind::PathNotFound,
-                .exitCode = -1,
-                .message = "La directory del repository non esiste: " + repoPath.string(),
-                .command = "remote"
-            });
-        }
-
-        return {};
-    }
-
     std::expected<std::vector<bo::GitRemote>, ports::GitOpsError>
     GitRemoteMergeService::listRemotes(const std::filesystem::path& repoPath) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "remote"); !valid)
         {
             return std::unexpected(valid.error());
         }
@@ -69,7 +44,7 @@ namespace gf::git::bl
                                      const std::string& name,
                                      const std::string& url) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "remote"); !valid)
         {
             return std::unexpected(valid.error());
         }
@@ -102,7 +77,7 @@ namespace gf::git::bl
     GitRemoteMergeService::removeRemote(const std::filesystem::path& repoPath,
                                         const std::string& name) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "remote"); !valid)
         {
             return std::unexpected(valid.error());
         }
@@ -126,7 +101,7 @@ namespace gf::git::bl
                                         const std::string& name,
                                         const std::string& url) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "remote"); !valid)
         {
             return std::unexpected(valid.error());
         }
@@ -159,7 +134,7 @@ namespace gf::git::bl
     GitRemoteMergeService::fetchRemote(const std::filesystem::path& repoPath,
                                        const bo::RemoteOperationOptions& options) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "remote"); !valid)
         {
             return std::unexpected(valid.error());
         }
@@ -172,7 +147,7 @@ namespace gf::git::bl
     GitRemoteMergeService::pullRemote(const std::filesystem::path& repoPath,
                                       const bo::RemoteOperationOptions& options) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "remote"); !valid)
         {
             return std::unexpected(valid.error());
         }
@@ -185,7 +160,7 @@ namespace gf::git::bl
     GitRemoteMergeService::pushRemote(const std::filesystem::path& repoPath,
                                       const bo::RemoteOperationOptions& options) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "remote"); !valid)
         {
             return std::unexpected(valid.error());
         }
@@ -198,7 +173,7 @@ namespace gf::git::bl
     GitRemoteMergeService::mergeBranch(const std::filesystem::path& repoPath,
                                        const bo::MergeOptions& options) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "remote"); !valid)
         {
             return std::unexpected(valid.error());
         }
@@ -220,7 +195,7 @@ namespace gf::git::bl
     std::expected<void, ports::GitOpsError>
     GitRemoteMergeService::abortMerge(const std::filesystem::path& repoPath) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "remote"); !valid)
         {
             return std::unexpected(valid.error());
         }

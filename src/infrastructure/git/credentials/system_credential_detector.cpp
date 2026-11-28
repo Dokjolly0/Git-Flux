@@ -1,30 +1,25 @@
 #include "infrastructure/git/credentials/system_credential_detector.hpp"
 #include "core/shared/env_var.hpp"
+#include "core/shared/string_utils.hpp"
 
 #include <fstream>
 #include <sstream>
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <string_view>
 
 namespace gf::infra::git::credentials
 {
     namespace
     {
-        std::string trim(const std::string& str)
+        std::string trim(const std::string_view str)
         {
-            const auto first = str.find_first_not_of(" \t\r\n");
-            if (first == std::string::npos) return "";
-            const auto last = str.find_last_not_of(" \t\r\n");
-            return str.substr(first, last - first + 1);
+            return std::string(core::trim(str));
         }
 
-        std::string toLower(std::string str)
+        std::string toLower(const std::string_view str)
         {
-            std::ranges::transform(str, str.begin(),
-                                   [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
-            return str;
+            return core::toLowerAscii(str);
         }
 
         std::filesystem::path getSystemHomeDir()

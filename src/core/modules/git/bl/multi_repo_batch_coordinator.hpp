@@ -80,6 +80,14 @@ namespace gf::git::bl
         bool cancelBatch(const std::string& operationId) const;
 
     private:
+        std::string executeBatchAsync(bo::BatchOperationType opType,
+                                      std::string_view opPrefix,
+                                      const std::vector<bo::RepoBatchTarget>& targets,
+                                      const std::string& remoteName,
+                                      tasks::bo::TaskPriority priority,
+                                      const BatchProgressCallback& onProgress,
+                                      const BatchCompletionCallback& onCompleted);
+
         bo::BatchOperationReport runBatchLoop(const std::string& operationId,
                                               bo::BatchOperationType opType,
                                               const std::vector<bo::RepoBatchTarget>& targets,

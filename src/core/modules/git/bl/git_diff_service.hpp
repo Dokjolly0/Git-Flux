@@ -95,12 +95,6 @@ namespace gf::git::bl
                      const std::string& filePath) const;
 
     private:
-        [[nodiscard]] static std::expected<void, ports::GitOpsError>
-        validateRepoPath(const std::filesystem::path& repoPath);
-
-        [[nodiscard]] static std::expected<void, ports::GitOpsError>
-        validateRelativeFilePath(const std::string& filePath);
-
         ports::IRepositoryGitOps& m_gitOps;
     };
 } // namespace gf::git::bl

@@ -1,6 +1,6 @@
 #include "infrastructure/persistence/profiles/sqlite_profile_store.hpp"
 #include "infrastructure/persistence/sqlite/connection/sqlite_statement.hpp"
-#include <chrono>
+#include "core/shared/time_utils.hpp"
 
 namespace gf::infra::persistence::profiles
 {
@@ -78,8 +78,7 @@ DELETE FROM git_provider_profiles WHERE id = ?;
         auto stmtRes = sqlite::SqliteStatement::prepare(m_conn, kUpsertSql);
         if (!stmtRes) return std::unexpected(stmtRes.error());
 
-        const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
+        const auto now = core::currentUnixMs();
         const auto createdAt = profile.createdAtMs > 0 ? profile.createdAtMs : now;
 
         if (const auto b = stmtRes->bindText(1, profile.id); !b) return std::unexpected(b.error());

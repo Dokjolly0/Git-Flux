@@ -1,24 +1,14 @@
 #include "core/modules/repositories/bl/repository_service.hpp"
 #include "core/shared/id_generator.hpp"
+#include "core/shared/time_utils.hpp"
 #include "core/shared/utf8_path.hpp"
-
-#include <chrono>
 
 namespace gf::repositories::bl
 {
     using bo::Repository;
     using bo::RepositoryId;
     using bo::RepositoryPathStatus;
-
-    namespace
-    {
-        [[nodiscard]] std::int64_t currentUnixMs() noexcept
-        {
-            return std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::system_clock::now().time_since_epoch())
-                .count();
-        }
-    } // namespace
+    using core::currentUnixMs;
 
     RepositoryService::RepositoryService(ports::IRepositoryStore& store) noexcept
         : store_(store)

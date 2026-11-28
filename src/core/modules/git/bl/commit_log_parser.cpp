@@ -1,24 +1,12 @@
 #include "core/modules/git/bl/commit_log_parser.hpp"
-
-#include <cctype>
+#include "core/shared/string_utils.hpp"
 
 namespace gf::git::bl
 {
+    using core::trim;
+
     namespace
     {
-        [[nodiscard]] std::string_view trim(std::string_view s) noexcept
-        {
-            while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front())))
-            {
-                s.remove_prefix(1);
-            }
-            while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())))
-            {
-                s.remove_suffix(1);
-            }
-            return s;
-        }
-
         [[nodiscard]] std::vector<std::string> splitSpaces(std::string_view s)
         {
             std::vector<std::string> tokens;

@@ -54,6 +54,7 @@ target_include_directories(gf_domain INTERFACE
 )
 
 add_library(gf_application STATIC
+        src/core/modules/git/bl/git_validation.cpp
         src/core/modules/git/bl/porcelain_status_parser.cpp
         src/core/modules/git/bl/unified_diff_parser.cpp
         src/core/modules/git/bl/git_working_tree_service.cpp

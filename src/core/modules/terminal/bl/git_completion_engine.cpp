@@ -1,6 +1,7 @@
 #include "core/modules/terminal/bl/git_completion_engine.hpp"
 #include "core/modules/terminal/bl/command_line_tokenizer.hpp"
 #include "core/modules/terminal/bl/script_parameter_analyzer.hpp"
+#include "core/shared/string_utils.hpp"
 #include "core/shared/utf8_path.hpp"
 
 #include <algorithm>
@@ -13,13 +14,16 @@ namespace gf::terminal::bl
     {
         [[nodiscard]] std::string toLower(const std::string_view sv)
         {
-            std::string out;
-            out.reserve(sv.size());
-            for (const char c : sv)
+            return core::toLowerAscii(sv);
+        }
+
+        void sortCompletionItems(std::vector<bo::CompletionItem>& items)
+        {
+            std::ranges::stable_sort(items, [](const bo::CompletionItem& a, const bo::CompletionItem& b)
             {
-                out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-            }
-            return out;
+                if (a.score != b.score) return a.score > b.score;
+                return a.displayText < b.displayText;
+            });
         }
 
         [[nodiscard]] bool startsWithCaseInsensitive(const std::string_view text, const std::string_view prefix) noexcept
@@ -95,8 +99,9 @@ namespace gf::terminal::bl
             }
         }
 
-        [[nodiscard]] std::filesystem::path resolveTokenPath(const std::filesystem::path& workingDir,
-                                                             const std::string_view rawToken)
+        [[nodiscard]] std::filesystem::path resolvePathByKind(const std::filesystem::path& workingDir,
+                                                            const std::string_view rawToken,
+                                                            const bool expectDirectory)
         {
             if (rawToken.empty() || workingDir.empty()) return {};
             std::string normalized(rawToken);
@@ -104,27 +109,20 @@ namespace gf::terminal::bl
             const std::filesystem::path rel = gf::core::utf8ToPath(normalized);
             const std::filesystem::path full = rel.is_absolute() ? rel : (workingDir / rel);
             std::error_code ec;
-            if (std::filesystem::exists(full, ec) && std::filesystem::is_regular_file(full, ec))
+            const bool matched = expectDirectory
+                                     ? std::filesystem::is_directory(full, ec)
+                                     : std::filesystem::is_regular_file(full, ec);
+            if (std::filesystem::exists(full, ec) && matched)
             {
                 return full;
             }
             return {};
         }
 
-        [[nodiscard]] std::filesystem::path resolveDirectoryPath(const std::filesystem::path& workingDir,
-                                                                 const std::string_view rawToken)
+        [[nodiscard]] std::filesystem::path resolveTokenPath(const std::filesystem::path& workingDir,
+                                                             const std::string_view rawToken)
         {
-            if (rawToken.empty() || workingDir.empty()) return {};
-            std::string normalized(rawToken);
-            std::ranges::replace(normalized, '\\', '/');
-            const std::filesystem::path rel = gf::core::utf8ToPath(normalized);
-            const std::filesystem::path full = rel.is_absolute() ? rel : (workingDir / rel);
-            std::error_code ec;
-            if (std::filesystem::exists(full, ec) && std::filesystem::is_directory(full, ec))
-            {
-                return full;
-            }
-            return {};
+            return resolvePathByKind(workingDir, rawToken, false);
         }
 
         [[nodiscard]] const bo::ScriptParamSpec* findMatchingScriptParam(const bo::ScriptMetadata& meta,
@@ -743,11 +741,7 @@ namespace gf::terminal::bl
             // Also complete local directories & files at position 0 (e.g. `sc` -> `scripts/`, `.\sc` -> `.\scripts\`)
             addFilesystemCompletions(workingDir, seg.activePrefix, false, result.items, seen, 500, targetOs);
 
-            std::ranges::stable_sort(result.items, [](const bo::CompletionItem& a, const bo::CompletionItem& b)
-            {
-                if (a.score != b.score) return a.score > b.score;
-                return a.displayText < b.displayText;
-            });
+            sortCompletionItems(result.items);
             return result;
         }
 
@@ -838,7 +832,7 @@ namespace gf::terminal::bl
                 // immediately instead of auto-completing into the first subfolder/sibling.
                 if (!inParameterizedScript && !seg.activePrefix.empty() && !result.items.empty())
                 {
-                    const bool isExistingDir = !resolveDirectoryPath(workingDir, seg.activePrefix).empty();
+                    const bool isExistingDir = !resolvePathByKind(workingDir, seg.activePrefix, true).empty();
                     const bool isExistingFile = (cmd0 != "cd") && !resolveTokenPath(workingDir, seg.activePrefix).empty();
                     if (isExistingDir || isExistingFile)
                     {
@@ -859,11 +853,7 @@ namespace gf::terminal::bl
                 }
             }
 
-            std::ranges::stable_sort(result.items, [](const bo::CompletionItem& a, const bo::CompletionItem& b)
-            {
-                if (a.score != b.score) return a.score > b.score;
-                return a.displayText < b.displayText;
-            });
+            sortCompletionItems(result.items);
             return result;
         }
 
@@ -915,11 +905,7 @@ namespace gf::terminal::bl
                                           bo::CompletionItemKind::GitCommand, result.items);
             }
 
-            std::ranges::stable_sort(result.items, [](const bo::CompletionItem& a, const bo::CompletionItem& b)
-            {
-                if (a.score != b.score) return a.score > b.score;
-                return a.displayText < b.displayText;
-            });
+            sortCompletionItems(result.items);
             return result;
         }
 
@@ -957,11 +943,7 @@ namespace gf::terminal::bl
                 result.needsSubcommandOptionsLoad = true;
             }
 
-            std::ranges::stable_sort(result.items, [](const bo::CompletionItem& a, const bo::CompletionItem& b)
-            {
-                if (a.score != b.score) return a.score > b.score;
-                return a.displayText < b.displayText;
-            });
+            sortCompletionItems(result.items);
             return result;
         }
 
@@ -970,11 +952,7 @@ namespace gf::terminal::bl
         {
             addCommandListCompletions(catalog.allCommands(), seg.activePrefix,
                                       bo::CompletionItemKind::GitCommand, result.items);
-            std::ranges::stable_sort(result.items, [](const bo::CompletionItem& a, const bo::CompletionItem& b)
-            {
-                if (a.score != b.score) return a.score > b.score;
-                return a.displayText < b.displayText;
-            });
+            sortCompletionItems(result.items);
             return result;
         }
 
@@ -1110,11 +1088,7 @@ namespace gf::terminal::bl
             }
         }
 
-        std::ranges::stable_sort(result.items, [](const bo::CompletionItem& a, const bo::CompletionItem& b)
-        {
-            if (a.score != b.score) return a.score > b.score;
-            return a.displayText < b.displayText;
-        });
+        sortCompletionItems(result.items);
 
         return result;
     }

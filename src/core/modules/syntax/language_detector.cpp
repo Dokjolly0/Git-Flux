@@ -1,22 +1,10 @@
 #include "core/modules/syntax/language_detector.hpp"
-
-#include <cctype>
+#include "core/shared/string_utils.hpp"
 
 namespace gf::core::syntax
 {
     namespace
     {
-        std::string toLower(const std::string_view sv)
-        {
-            std::string s;
-            s.reserve(sv.size());
-            for (const char c : sv)
-            {
-                s.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-            }
-            return s;
-        }
-
         std::string_view extractFileName(const std::string_view path) noexcept
         {
             const auto pos = path.find_last_of("/\\");
@@ -40,7 +28,7 @@ namespace gf::core::syntax
 
     Language LanguageDetector::fromFileName(const std::string_view fileName) noexcept
     {
-        const std::string lower = toLower(fileName);
+        const std::string lower = toLowerAscii(fileName);
         if (lower == "cmakelists.txt") return Language::CMake;
         if (lower == "makefile" || lower == "gnumakefile") return Language::Makefile;
         if (lower.starts_with("dockerfile") || lower.starts_with("containerfile")) return Language::Docker;
@@ -50,7 +38,7 @@ namespace gf::core::syntax
 
     Language LanguageDetector::fromExtension(const std::string_view ext) noexcept
     {
-        const std::string lower = toLower(ext);
+        const std::string lower = toLowerAscii(ext);
 
         // C / C++
         if (lower == ".cpp" || lower == ".cxx" || lower == ".cc" || lower == ".hpp" ||
@@ -146,7 +134,7 @@ namespace gf::core::syntax
             ++endPos;
         }
 
-        std::string tag = toLower(infoString.substr(0, endPos));
+        std::string tag = toLowerAscii(infoString.substr(0, endPos));
         if (tag.starts_with('.'))
         {
             tag.erase(0, 1);

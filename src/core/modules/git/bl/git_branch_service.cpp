@@ -1,4 +1,5 @@
 #include "core/modules/git/bl/git_branch_service.hpp"
+#include "core/modules/git/bl/git_validation.hpp"
 #include "core/modules/git/bl/repository_lock_coordinator.hpp"
 
 namespace gf::git::bl
@@ -10,82 +11,13 @@ namespace gf::git::bl
 
     bool GitBranchService::isValidBranchName(const std::string_view name) noexcept
     {
-        if (name.empty() || name == "@")
-        {
-            return false;
-        }
-        if (name.front() == '.' || name.front() == '-' || name.front() == '/')
-        {
-            return false;
-        }
-        if (name.back() == '.' || name.back() == '/')
-        {
-            return false;
-        }
-        if (name.ends_with(".lock"))
-        {
-            return false;
-        }
-
-        for (const char ch : name)
-        {
-            const auto c = static_cast<unsigned char>(ch);
-            if (c < 0x20 || c == 0x7f)
-            {
-                return false;
-            }
-            if (c == ' ' || c == '~' || c == '^' || c == ':' || c == '?' || c == '*' || c == '[' || c == '\\')
-            {
-                return false;
-            }
-        }
-
-        if (name.find("..") != std::string_view::npos)
-        {
-            return false;
-        }
-        if (name.find("//") != std::string_view::npos)
-        {
-            return false;
-        }
-        if (name.find("@{") != std::string_view::npos)
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-    std::expected<void, ports::GitOpsError>
-    GitBranchService::validateRepoPath(const std::filesystem::path& repoPath)
-    {
-        if (repoPath.empty())
-        {
-            return std::unexpected(ports::GitOpsError{
-                .kind = ports::GitOpsError::Kind::InvalidRepositoryPath,
-                .exitCode = -1,
-                .message = "Il percorso del repository non può essere vuoto",
-                .command = "branch"
-            });
-        }
-
-        if (std::error_code ec; !std::filesystem::exists(repoPath, ec) || !std::filesystem::is_directory(repoPath, ec))
-        {
-            return std::unexpected(ports::GitOpsError{
-                .kind = ports::GitOpsError::Kind::PathNotFound,
-                .exitCode = -1,
-                .message = "La directory del repository non esiste: " + repoPath.string(),
-                .command = "branch"
-            });
-        }
-
-        return {};
+        return isValidRefName(name);
     }
 
     std::expected<std::vector<bo::GitBranch>, ports::GitOpsError>
     GitBranchService::listBranches(const std::filesystem::path& repoPath) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "branch"); !valid)
         {
             return std::unexpected(valid.error());
         }
@@ -156,7 +88,7 @@ namespace gf::git::bl
     GitBranchService::createBranch(const std::filesystem::path& repoPath,
                                    const bo::CreateBranchOptions& options) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "branch"); !valid)
         {
             return valid;
         }
@@ -179,7 +111,7 @@ namespace gf::git::bl
     GitBranchService::checkoutBranch(const std::filesystem::path& repoPath,
                                      const bo::CheckoutOptions& options) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "branch"); !valid)
         {
             return valid;
         }
@@ -213,7 +145,7 @@ namespace gf::git::bl
                                    const std::string& branchName,
                                    const bool force) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "branch"); !valid)
         {
             return valid;
         }
@@ -237,7 +169,7 @@ namespace gf::git::bl
                                    const std::string& oldName,
                                    const std::string& newName) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "branch"); !valid)
         {
             return valid;
         }
@@ -271,7 +203,7 @@ namespace gf::git::bl
                                   const std::string& commitSha,
                                   const std::string& mode) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "branch"); !valid)
         {
             return valid;
         }
@@ -292,7 +224,7 @@ namespace gf::git::bl
     GitBranchService::revertCommit(const std::filesystem::path& repoPath,
                                    const std::string& commitSha) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "branch"); !valid)
         {
             return valid;
         }
@@ -314,7 +246,7 @@ namespace gf::git::bl
                                    const std::string& commitSha,
                                    const std::string& newMessage) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "branch"); !valid)
         {
             return std::unexpected(valid.error());
         }
@@ -345,7 +277,7 @@ namespace gf::git::bl
                                            const std::string& targetBranch,
                                            const std::string& sourceRef) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "branch"); !valid)
         {
             return std::unexpected(valid.error());
         }
@@ -361,7 +293,7 @@ namespace gf::git::bl
                                         const std::string& targetBranch,
                                         const std::string& sourceRef) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "branch"); !valid)
         {
             return valid;
         }
@@ -383,7 +315,7 @@ namespace gf::git::bl
                                      const std::filesystem::path& worktreePath,
                                      const std::string& commitOrBranch) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "branch"); !valid)
         {
             return valid;
         }

@@ -1,8 +1,8 @@
 #include "core/modules/groups/bl/group_service.hpp"
 #include "core/shared/id_generator.hpp"
+#include "core/shared/time_utils.hpp"
 
 #include <algorithm>
-#include <chrono>
 #include <unordered_set>
 
 namespace gf::groups::bl
@@ -11,16 +11,7 @@ namespace gf::groups::bl
     using bo::GroupId;
     using repositories::bo::Repository;
     using repositories::bo::RepositoryId;
-
-    namespace
-    {
-        [[nodiscard]] std::int64_t currentUnixMs() noexcept
-        {
-            return std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::system_clock::now().time_since_epoch())
-                .count();
-        }
-    } // namespace
+    using core::currentUnixMs;
 
     GroupService::GroupService(ports::IGroupStore& groupStore,
                                repositories::ports::IRepositoryStore& repoStore) noexcept

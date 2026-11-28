@@ -33,6 +33,78 @@ namespace gf::terminal::bl
             }
             return false;
         }
+        [[nodiscard]] bool isShellMetachar(const char c) noexcept
+        {
+            return c == '|' || c == '&' || c == ';' || c == '>' || c == '<' ||
+                c == '$' || c == '`' || c == '*' || c == '?' || c == '(' || c == ')';
+        }
+
+        enum class TokenizeMode
+        {
+            CompletionPrefix,
+            SimpleCommandArgs
+        };
+
+        // Consumes a single token starting at `i`, returns false if rejected in SimpleCommandArgs mode
+        [[nodiscard]] bool readToken(const std::string_view src,
+                                     std::size_t& i,
+                                     const TokenizeMode mode,
+                                     std::string& outValue)
+        {
+            char quote = '\0';
+            while (i < src.size())
+            {
+                const char c = src[i];
+                if (quote != '\0')
+                {
+                    const bool escQuote = (c == '\\' && quote == '"' && i + 1 < src.size()) &&
+                        (mode == TokenizeMode::CompletionPrefix || src[i + 1] == '"' || src[i + 1] == '\\');
+                    if (escQuote)
+                    {
+                        outValue.push_back(src[i + 1]);
+                        i += 2;
+                        continue;
+                    }
+                    if (c == quote)
+                    {
+                        quote = '\0';
+                        ++i;
+                        continue;
+                    }
+                    outValue.push_back(c);
+                    ++i;
+                    continue;
+                }
+
+                if (isSpace(c))
+                {
+                    break;
+                }
+                if (c == '\'' || c == '"')
+                {
+                    quote = c;
+                    ++i;
+                    continue;
+                }
+                if (mode == TokenizeMode::CompletionPrefix)
+                {
+                    if (c == '\\' && i + 1 < src.size() &&
+                        (src[i + 1] == ' ' || src[i + 1] == '\t' || src[i + 1] == '"' || src[i + 1] == '\''))
+                    {
+                        outValue.push_back(src[i + 1]);
+                        i += 2;
+                        continue;
+                    }
+                }
+                else if (isShellMetachar(c))
+                {
+                    return false;
+                }
+                outValue.push_back(c);
+                ++i;
+            }
+            return mode == TokenizeMode::CompletionPrefix || quote == '\0';
+        }
     } // namespace
 
     ParsedCommandSegment CommandLineTokenizer::parseActiveSegment(const std::string_view input,
@@ -96,49 +168,7 @@ namespace gf::terminal::bl
 
             CommandToken tok;
             tok.startOffset = i;
-            char quote = '\0';
-            while (i < prefix.size())
-            {
-                const char c = prefix[i];
-                if (quote != '\0')
-                {
-                    if (c == '\\' && quote == '"' && i + 1 < prefix.size())
-                    {
-                        tok.value.push_back(prefix[i + 1]);
-                        i += 2;
-                        continue;
-                    }
-                    if (c == quote)
-                    {
-                        quote = '\0';
-                        ++i;
-                        continue;
-                    }
-                    tok.value.push_back(c);
-                    ++i;
-                    continue;
-                }
-
-                if (isSpace(c))
-                {
-                    break;
-                }
-                if (c == '\'' || c == '"')
-                {
-                    quote = c;
-                    ++i;
-                    continue;
-                }
-                if (c == '\\' && i + 1 < prefix.size() &&
-                    (prefix[i + 1] == ' ' || prefix[i + 1] == '\t' || prefix[i + 1] == '"' || prefix[i + 1] == '\''))
-                {
-                    tok.value.push_back(prefix[i + 1]);
-                    i += 2;
-                    continue;
-                }
-                tok.value.push_back(c);
-                ++i;
-            }
+            (void)readToken(prefix, i, TokenizeMode::CompletionPrefix, tok.value);
 
             seg.tokens.push_back(std::move(tok));
         }
@@ -182,52 +212,8 @@ namespace gf::terminal::bl
             }
 
             std::string arg;
-            char quote = '\0';
-            while (i < input.size())
+            if (!readToken(input, i, TokenizeMode::SimpleCommandArgs, arg))
             {
-                const char c = input[i];
-                if (quote != '\0')
-                {
-                    if (c == '\\' && quote == '"' && i + 1 < input.size() &&
-                        (input[i + 1] == '"' || input[i + 1] == '\\'))
-                    {
-                        arg.push_back(input[i + 1]);
-                        i += 2;
-                        continue;
-                    }
-                    if (c == quote)
-                    {
-                        quote = '\0';
-                        ++i;
-                        continue;
-                    }
-                    arg.push_back(c);
-                    ++i;
-                    continue;
-                }
-
-                if (isSpace(c))
-                {
-                    break;
-                }
-                if (c == '\'' || c == '"')
-                {
-                    quote = c;
-                    ++i;
-                    continue;
-                }
-                // Shell metacharacters require delegating to the OS shell
-                if (c == '|' || c == '&' || c == ';' || c == '>' || c == '<' ||
-                    c == '$' || c == '`' || c == '*' || c == '?' || c == '(' || c == ')')
-                {
-                    return false;
-                }
-                arg.push_back(c);
-                ++i;
-            }
-            if (quote != '\0')
-            {
-                // Unclosed quote: delegate to shell or fail cleanly
                 return false;
             }
             outArgs.push_back(std::move(arg));

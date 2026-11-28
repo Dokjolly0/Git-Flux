@@ -1,4 +1,5 @@
 #include "core/modules/git/bl/conflict_marker_parser.hpp"
+#include "core/shared/string_utils.hpp"
 
 namespace gf::git::bl
 {
@@ -11,6 +12,60 @@ namespace gf::git::bl
             InBase,
             InTheirs
         };
+
+        template <typename OnMarkerLine, typename OnContentLine>
+        std::expected<void, std::string> scanConflictLines(const std::string_view content,
+                                                           OnMarkerLine&& onHunkStart,
+                                                           OnContentLine&& onContentLine)
+        {
+            auto state = ParseState::Normal;
+            std::size_t currentLineNum = 1;
+            std::size_t startPos = 0;
+
+            while (startPos < content.size())
+            {
+                const auto endPos = content.find('\n', startPos);
+                const std::string_view fullLine = endPos == std::string_view::npos
+                                                      ? content.substr(startPos)
+                                                      : content.substr(startPos, endPos - startPos + 1);
+                const std::string_view trimmedLine = core::trimTrailingNewlines(fullLine);
+
+                if (trimmedLine.starts_with("<<<<<<<"))
+                {
+                    state = ParseState::InOurs;
+                    if (auto res = onHunkStart(currentLineNum); !res)
+                    {
+                        return res;
+                    }
+                }
+                else if (state == ParseState::InOurs && trimmedLine.starts_with("|||||||"))
+                {
+                    state = ParseState::InBase;
+                }
+                else if ((state == ParseState::InOurs || state == ParseState::InBase) &&
+                    trimmedLine.starts_with("======="))
+                {
+                    state = ParseState::InTheirs;
+                }
+                else if (state == ParseState::InTheirs && trimmedLine.starts_with(">>>>>>>"))
+                {
+                    state = ParseState::Normal;
+                    onContentLine(state, fullLine, true);
+                }
+                else
+                {
+                    onContentLine(state, fullLine, false);
+                }
+
+                if (endPos == std::string_view::npos)
+                {
+                    break;
+                }
+                startPos = endPos + 1;
+                ++currentLineNum;
+            }
+            return {};
+        }
     } // namespace
 
     bool ConflictMarkerParser::hasConflictMarkers(const std::string_view content) noexcept
@@ -29,47 +84,24 @@ namespace gf::git::bl
             return hunks;
         }
 
-        auto state = ParseState::Normal;
         bo::ConflictHunk currentHunk;
-        std::size_t currentLineNum = 1;
-
-        std::size_t startPos = 0;
-        while (startPos < content.size())
-        {
-            const auto endPos = content.find('\n', startPos);
-            const std::string_view fullLine = endPos == std::string_view::npos
-                                                  ? content.substr(startPos)
-                                                  : content.substr(startPos, endPos - startPos + 1);
-
-            std::string_view trimmedLine = fullLine;
-            while (!trimmedLine.empty() && (trimmedLine.back() == '\n' || trimmedLine.back() == '\r'))
+        (void)scanConflictLines(
+            content,
+            [&](const std::size_t lineNum) -> std::expected<void, std::string>
             {
-                trimmedLine.remove_suffix(1);
-            }
-
-            if (trimmedLine.starts_with("<<<<<<<"))
-            {
-                state = ParseState::InOurs;
                 currentHunk = bo::ConflictHunk{};
                 currentHunk.hunkIndex = hunks.size();
-                currentHunk.startLine = currentLineNum;
-            }
-            else if (state == ParseState::InOurs && trimmedLine.starts_with("|||||||"))
+                currentHunk.startLine = lineNum;
+                return {};
+            },
+            [&](const ParseState state, const std::string_view fullLine, const bool closedHunk)
             {
-                state = ParseState::InBase;
-            }
-            else if ((state == ParseState::InOurs || state == ParseState::InBase) && trimmedLine.starts_with("======="))
-            {
-                state = ParseState::InTheirs;
-            }
-            else if (state == ParseState::InTheirs && trimmedLine.starts_with(">>>>>>>"))
-            {
-                state = ParseState::Normal;
-                hunks.push_back(std::move(currentHunk));
-                currentHunk = bo::ConflictHunk{};
-            }
-            else
-            {
+                if (closedHunk)
+                {
+                    hunks.push_back(std::move(currentHunk));
+                    currentHunk = bo::ConflictHunk{};
+                    return;
+                }
                 switch (state)
                 {
                 case ParseState::InOurs:
@@ -84,15 +116,7 @@ namespace gf::git::bl
                 case ParseState::Normal:
                     break;
                 }
-            }
-
-            if (endPos == std::string_view::npos)
-            {
-                break;
-            }
-            startPos = endPos + 1;
-            ++currentLineNum;
-        }
+            });
 
         return hunks;
     }
@@ -103,27 +127,12 @@ namespace gf::git::bl
     {
         std::string result;
         result.reserve(originalContent.size());
-
-        auto state = ParseState::Normal;
         std::size_t currentHunkIndex = 0;
 
-        std::size_t startPos = 0;
-        while (startPos < originalContent.size())
-        {
-            const auto endPos = originalContent.find('\n', startPos);
-            const std::string_view fullLine = endPos == std::string_view::npos
-                                                  ? originalContent.substr(startPos)
-                                                  : originalContent.substr(startPos, endPos - startPos + 1);
-
-            std::string_view trimmedLine = fullLine;
-            while (!trimmedLine.empty() && (trimmedLine.back() == '\n' || trimmedLine.back() == '\r'))
+        auto res = scanConflictLines(
+            originalContent,
+            [&](std::size_t) -> std::expected<void, std::string>
             {
-                trimmedLine.remove_suffix(1);
-            }
-
-            if (trimmedLine.starts_with("<<<<<<<"))
-            {
-                state = ParseState::InOurs;
                 if (currentHunkIndex >= hunks.size())
                 {
                     return std::unexpected("Trovato blocco conflitto inatteso senza hunk associato");
@@ -136,31 +145,20 @@ namespace gf::git::bl
                 }
                 result.append(hunk.resolvedContent());
                 ++currentHunkIndex;
-            }
-            else if (state == ParseState::InOurs && trimmedLine.starts_with("|||||||"))
+                return {};
+            },
+            [&](const ParseState state, const std::string_view fullLine, const bool closedHunk)
             {
-                state = ParseState::InBase;
-            }
-            else if ((state == ParseState::InOurs || state == ParseState::InBase) && trimmedLine.starts_with("======="))
-            {
-                state = ParseState::InTheirs;
-            }
-            else if (state == ParseState::InTheirs && trimmedLine.starts_with(">>>>>>>"))
-            {
-                state = ParseState::Normal;
-            }
-            else if (state == ParseState::Normal)
-            {
-                result.append(fullLine);
-            }
+                if (!closedHunk && state == ParseState::Normal)
+                {
+                    result.append(fullLine);
+                }
+            });
 
-            if (endPos == std::string_view::npos)
-            {
-                break;
-            }
-            startPos = endPos + 1;
+        if (!res)
+        {
+            return std::unexpected(res.error());
         }
-
         return result;
     }
 } // namespace gf::git::bl

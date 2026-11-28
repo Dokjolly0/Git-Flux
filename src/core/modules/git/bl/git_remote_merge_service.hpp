@@ -57,9 +57,6 @@ namespace gf::git::bl
         abortMerge(const std::filesystem::path& repoPath) const;
 
     private:
-        [[nodiscard]] static std::expected<void, ports::GitOpsError>
-        validateRepoPath(const std::filesystem::path& repoPath);
-
         ports::IRepositoryGitOps& m_gitOps;
     };
 } // namespace gf::git::bl

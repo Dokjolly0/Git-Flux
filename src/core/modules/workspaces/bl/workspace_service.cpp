@@ -1,7 +1,7 @@
 #include "core/modules/workspaces/bl/workspace_service.hpp"
 #include "core/shared/id_generator.hpp"
+#include "core/shared/time_utils.hpp"
 
-#include <chrono>
 #include <unordered_set>
 
 namespace gf::workspaces::bl
@@ -13,16 +13,7 @@ namespace gf::workspaces::bl
     using groups::bo::GroupId;
     using repositories::bo::Repository;
     using repositories::bo::RepositoryId;
-
-    namespace
-    {
-        [[nodiscard]] std::int64_t currentUnixMs() noexcept
-        {
-            return std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::system_clock::now().time_since_epoch())
-                .count();
-        }
-    } // namespace
+    using core::currentUnixMs;
 
     WorkspaceService::WorkspaceService(ports::IWorkspaceStore& wsStore,
                                        groups::ports::IGroupStore& groupStore,
@@ -105,30 +96,9 @@ namespace gf::workspaces::bl
             });
         }
 
-        // Resolve actual repositories and initialize the initial session
-        std::vector<RepositoryId> openTabs;
-        std::optional<RepositoryId> activeRepo;
-        if (const auto reposRes = resolveWorkspaceRepositories(ws.id); reposRes && !reposRes->empty())
+        if (const auto sessionRes = createDefaultSession(ws.id, now); !sessionRes)
         {
-            openTabs.push_back(reposRes->front().id);
-            activeRepo = reposRes->front().id;
-        }
-
-        const WorkspaceSession initialSession{
-            .workspaceId = ws.id,
-            .schemaVersion = 1,
-            .openedRepositoryIds = std::move(openTabs),
-            .activeRepositoryId = activeRepo,
-            .layout = PanelLayoutState{},
-            .customStateJson = "{}",
-            .updatedAtUnixEpochMs = now
-        };
-        if (const auto sessionSaveRes = wsStore_.saveSession(initialSession); !sessionSaveRes)
-        {
-            return std::unexpected(WorkspaceServiceError{
-                .kind = WorkspaceServiceError::Kind::StorageError,
-                .message = sessionSaveRes.error().message
-            });
+            return std::unexpected(sessionRes.error());
         }
 
         return ws;
@@ -359,14 +329,8 @@ namespace gf::workspaces::bl
     }
 
     std::expected<WorkspaceSession, WorkspaceServiceError>
-    WorkspaceService::loadOrCreateSession(const WorkspaceId& id) const
+    WorkspaceService::createDefaultSession(const WorkspaceId& id, const std::int64_t updatedAtMs) const
     {
-        if (auto existing = wsStore_.getSession(id); existing && existing->has_value())
-        {
-            return std::move(**existing);
-        }
-
-        // If it does not exist yet, create a default one
         std::vector<RepositoryId> openTabs;
         std::optional<RepositoryId> activeRepo;
         if (const auto reposRes = resolveWorkspaceRepositories(id); reposRes && !reposRes->empty())
@@ -375,23 +339,34 @@ namespace gf::workspaces::bl
             activeRepo = reposRes->front().id;
         }
 
-        WorkspaceSession newSession{
+        WorkspaceSession session{
             .workspaceId = id,
             .schemaVersion = 1,
             .openedRepositoryIds = std::move(openTabs),
             .activeRepositoryId = activeRepo,
             .layout = PanelLayoutState{},
             .customStateJson = "{}",
-            .updatedAtUnixEpochMs = currentUnixMs()
+            .updatedAtUnixEpochMs = updatedAtMs
         };
-        if (const auto saveRes = wsStore_.saveSession(newSession); !saveRes)
+        if (const auto saveRes = wsStore_.saveSession(session); !saveRes)
         {
             return std::unexpected(WorkspaceServiceError{
                 .kind = WorkspaceServiceError::Kind::StorageError,
                 .message = saveRes.error().message
             });
         }
-        return newSession;
+        return session;
+    }
+
+    std::expected<WorkspaceSession, WorkspaceServiceError>
+    WorkspaceService::loadOrCreateSession(const WorkspaceId& id) const
+    {
+        if (auto existing = wsStore_.getSession(id); existing && existing->has_value())
+        {
+            return std::move(**existing);
+        }
+
+        return createDefaultSession(id, currentUnixMs());
     }
 
     std::expected<void, WorkspaceServiceError>

@@ -1,4 +1,5 @@
 #include "core/modules/git/bl/git_conflict_service.hpp"
+#include "core/modules/git/bl/git_validation.hpp"
 #include "core/modules/git/bl/repository_lock_coordinator.hpp"
 
 namespace gf::git::bl
@@ -8,37 +9,11 @@ namespace gf::git::bl
     {
     }
 
-    std::expected<void, ports::GitOpsError>
-    GitConflictService::validateRepoPath(const std::filesystem::path& repoPath)
-    {
-        if (repoPath.empty())
-        {
-            return std::unexpected(ports::GitOpsError{
-                .kind = ports::GitOpsError::Kind::InvalidRepositoryPath,
-                .exitCode = -1,
-                .message = "Il percorso del repository non può essere vuoto",
-                .command = "conflict"
-            });
-        }
-
-        if (std::error_code ec; !std::filesystem::exists(repoPath, ec) || !std::filesystem::is_directory(repoPath, ec))
-        {
-            return std::unexpected(ports::GitOpsError{
-                .kind = ports::GitOpsError::Kind::PathNotFound,
-                .exitCode = -1,
-                .message = "La directory del repository non esiste: " + repoPath.string(),
-                .command = "conflict"
-            });
-        }
-
-        return {};
-    }
-
     std::expected<bo::ConflictFile, ports::GitOpsError>
     GitConflictService::getConflictFile(const std::filesystem::path& repoPath,
                                         const std::string& filePath) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "conflict"); !valid)
         {
             return std::unexpected(valid.error());
         }
@@ -61,7 +36,7 @@ namespace gf::git::bl
                                             const std::string& filePath,
                                             const int stage) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "conflict"); !valid)
         {
             return std::unexpected(valid.error());
         }
@@ -93,7 +68,7 @@ namespace gf::git::bl
     GitConflictService::applyConflictResolution(const std::filesystem::path& repoPath,
                                                 const bo::ApplyConflictResolutionOptions& options) const
     {
-        if (auto valid = validateRepoPath(repoPath); !valid)
+        if (auto valid = validateRepoPath(repoPath, "conflict"); !valid)
         {
             return std::unexpected(valid.error());
         }

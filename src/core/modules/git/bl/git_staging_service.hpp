@@ -40,12 +40,6 @@ namespace gf::git::bl
         createCommit(const std::filesystem::path& repoPath, const bo::CommitOptions& options) const;
 
     private:
-        [[nodiscard]] static std::expected<void, ports::GitOpsError>
-        validateRepoPath(const std::filesystem::path& repoPath);
-
-        [[nodiscard]] static std::expected<void, ports::GitOpsError>
-        validateRelativeFilePaths(const std::vector<std::string>& filePaths);
-
         ports::IRepositoryGitOps& m_gitOps;
     };
 } // namespace gf::git::bl

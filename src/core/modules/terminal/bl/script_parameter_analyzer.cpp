@@ -1,5 +1,6 @@
 #include "core/modules/terminal/bl/script_parameter_analyzer.hpp"
 
+#include "core/shared/string_utils.hpp"
 #include "core/shared/utf8_path.hpp"
 
 #include <algorithm>
@@ -19,26 +20,12 @@ namespace gf::terminal::bl
 
         [[nodiscard]] std::string toLowerCopy(const std::string_view sv)
         {
-            std::string out;
-            out.reserve(sv.size());
-            for (const char c : sv)
-            {
-                out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-            }
-            return out;
+            return core::toLowerAscii(sv);
         }
 
-        [[nodiscard]] std::string_view trimSv(std::string_view sv) noexcept
+        [[nodiscard]] constexpr std::string_view trimSv(const std::string_view sv) noexcept
         {
-            while (!sv.empty() && (sv.front() == ' ' || sv.front() == '\t' || sv.front() == '\r' || sv.front() == '\n'))
-            {
-                sv.remove_prefix(1);
-            }
-            while (!sv.empty() && (sv.back() == ' ' || sv.back() == '\t' || sv.back() == '\r' || sv.back() == '\n'))
-            {
-                sv.remove_suffix(1);
-            }
-            return sv;
+            return core::trim(sv);
         }
 
         [[nodiscard]] bool isIdentChar(const char c) noexcept
@@ -51,6 +38,28 @@ namespace gf::terminal::bl
         {
             const unsigned char uc = static_cast<unsigned char>(c);
             return std::isalnum(uc) || c == '-' || c == '_' || c == '?';
+        }
+
+        [[nodiscard]] std::string readQuotedLiteral(const std::string_view sv, std::size_t& pos)
+        {
+            const char q = sv[pos++];
+            std::string val;
+            while (pos < sv.size())
+            {
+                if (sv[pos] == '\\' && pos + 1 < sv.size())
+                {
+                    val.push_back(sv[pos + 1]);
+                    pos += 2;
+                    continue;
+                }
+                if (sv[pos] == q)
+                {
+                    ++pos;
+                    break;
+                }
+                val.push_back(sv[pos++]);
+            }
+            return val;
         }
 
         [[nodiscard]] std::string unquoteSimple(std::string_view sv)
@@ -74,23 +83,7 @@ namespace gf::terminal::bl
             {
                 if (sv[i] == '"' || sv[i] == '\'')
                 {
-                    const char q = sv[i++];
-                    std::string val;
-                    while (i < sv.size())
-                    {
-                        if (sv[i] == '\\' && i + 1 < sv.size())
-                        {
-                            val.push_back(sv[i + 1]);
-                            i += 2;
-                            continue;
-                        }
-                        if (sv[i] == q)
-                        {
-                            ++i;
-                            break;
-                        }
-                        val.push_back(sv[i++]);
-                    }
+                    std::string val = readQuotedLiteral(sv, i);
                     if (!val.empty())
                     {
                         out.push_back(std::move(val));
@@ -947,15 +940,7 @@ namespace gf::terminal::bl
                         }
                         if (p < callBody.size() && (callBody[p] == '"' || callBody[p] == '\''))
                         {
-                            const char q = callBody[p++];
-                            std::string val;
-                            while (p < callBody.size())
-                            {
-                                if (callBody[p] == '\\' && p + 1 < callBody.size()) { val.push_back(callBody[p + 1]); p += 2; continue; }
-                                if (callBody[p] == q) break;
-                                val.push_back(callBody[p++]);
-                            }
-                            return val;
+                            return readQuotedLiteral(callBody, p);
                         }
                     }
                 }

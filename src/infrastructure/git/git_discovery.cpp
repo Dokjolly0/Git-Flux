@@ -1,4 +1,5 @@
 #include "infrastructure/git/git_discovery.hpp"
+#include "core/shared/string_utils.hpp"
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -21,20 +22,6 @@
 
 namespace gf::infra::git
 {
-#ifdef _WIN32
-    namespace
-    {
-        [[nodiscard]] std::string toLowerAscii(std::string s)
-        {
-            std::ranges::transform(s, s.begin(), [](const unsigned char c)
-            {
-                return static_cast<char>(std::tolower(c));
-            });
-            return s;
-        }
-    } // namespace
-#endif
-
     std::expected<gf::git::bo::GitExecutableInfo, gf::git::bo::GitExecutionError>
     GitDiscovery::discover()
     {
@@ -64,7 +51,7 @@ namespace gf::infra::git
 
         // Check if path points to "...\Git\cmd\git.exe" (Git for Windows wrapper shim)
         if (const fs::path parentDir = info.discoveredInPath.parent_path();
-            toLowerAscii(parentDir.filename().string()) == "cmd")
+            gf::core::toLowerAscii(parentDir.filename().string()) == "cmd")
         {
             const fs::path gitRoot = parentDir.parent_path();
             const fs::path candidates[] = {

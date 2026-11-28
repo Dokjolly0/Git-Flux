@@ -29,9 +29,6 @@ namespace gf::git::bl
                                 const bo::ApplyConflictResolutionOptions& options) const;
 
     private:
-        [[nodiscard]] static std::expected<void, ports::GitOpsError>
-        validateRepoPath(const std::filesystem::path& repoPath);
-
         ports::IRepositoryGitOps& m_gitOps;
     };
 } // namespace gf::git::bl
