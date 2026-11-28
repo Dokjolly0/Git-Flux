@@ -67,19 +67,6 @@ namespace gf::git::bo
         {
             return hunks.size();
         }
-
-        [[nodiscard]] std::size_t resolvedHunksCount() const noexcept
-        {
-            std::size_t count = 0;
-            for (const auto& hunk : hunks)
-            {
-                if (hunk.isResolved)
-                {
-                    ++count;
-                }
-            }
-            return count;
-        }
     };
 
     struct ApplyConflictResolutionOptions

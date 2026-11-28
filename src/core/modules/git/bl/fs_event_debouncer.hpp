@@ -33,9 +33,6 @@ namespace gf::git::bl
         [[nodiscard]] bool hasPending() const noexcept;
         void clear();
 
-        void setQuietPeriod(Milliseconds ms) noexcept;
-        void setMaxWindow(Milliseconds ms) noexcept;
-
         [[nodiscard]] Milliseconds quietPeriod() const noexcept { return m_quietPeriod; }
         [[nodiscard]] Milliseconds maxWindow() const noexcept { return m_maxWindow; }
 

@@ -85,19 +85,6 @@ namespace gf::terminal::bo
         std::string richHtml;
     };
 
-    [[nodiscard]] inline std::string_view shellKindToId(const TerminalShellKind kind) noexcept
-    {
-        switch (kind)
-        {
-        case TerminalShellKind::PowerShell: return "powershell";
-        case TerminalShellKind::Cmd: return "cmd";
-        case TerminalShellKind::GitBash: return "git-bash";
-        case TerminalShellKind::PosixShell: return "posix";
-        case TerminalShellKind::Auto:
-        default: return "auto";
-        }
-    }
-
     [[nodiscard]] inline TerminalShellKind shellKindFromId(const std::string_view id) noexcept
     {
         if (id == "powershell" || id == "pwsh") return TerminalShellKind::PowerShell;

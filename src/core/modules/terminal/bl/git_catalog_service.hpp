@@ -32,9 +32,6 @@ namespace gf::terminal::bl
         /// Returns a snapshot of all known Git commands (Porcelain, Ancillary, External, Plumbing, Aliases).
         [[nodiscard]] std::vector<bo::GitCommandSpec> allCommands() const;
 
-        /// Returns true if `name` matches any known Git command or alias.
-        [[nodiscard]] bool isKnownCommand(std::string_view name) const;
-
         /// Returns global options accepted directly after `git` (before the subcommand).
         [[nodiscard]] static const std::vector<bo::GitOptionSpec>& globalOptions();
 

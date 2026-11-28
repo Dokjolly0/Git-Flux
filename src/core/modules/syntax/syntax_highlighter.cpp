@@ -616,7 +616,7 @@ namespace gf::core::syntax
             return count >= 3;
         }
 
-        std::string renderTokensToHtml(const std::vector<Token>& tokens, const bool wrapFriendly) noexcept
+        std::string renderTokensToHtml(const std::vector<Token>& tokens) noexcept
         {
             std::string html;
             std::size_t estSize = 0;
@@ -629,9 +629,7 @@ namespace gf::core::syntax
                 const bool atLineStart = isFirstToken;
                 isFirstToken = false;
 
-                const std::string escaped = wrapFriendly
-                                                ? SyntaxHighlighter::escapeHtmlWrapFriendly(text, atLineStart)
-                                                : SyntaxHighlighter::escapeHtml(text);
+                const std::string escaped = SyntaxHighlighter::escapeHtmlWrapFriendly(text, atLineStart);
 
                 if (type == TokenType::Whitespace || type == TokenType::PlainText)
                 {
@@ -1536,7 +1534,7 @@ namespace gf::core::syntax
                                 ? tokenizeMarkdownLine(line, mdState)
                                 : tokenize(line, lang);
 
-        return renderTokensToHtml(tokens, true);
+        return renderTokensToHtml(tokens);
     }
 
     std::vector<MarkdownLineState> SyntaxHighlighter::computeMarkdownLineStates(const std::string_view content) noexcept

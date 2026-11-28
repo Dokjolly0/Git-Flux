@@ -1,6 +1,5 @@
 #include "core/modules/syntax/language_detector.hpp"
 
-#include <algorithm>
 #include <cctype>
 
 namespace gf::core::syntax

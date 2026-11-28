@@ -13,7 +13,6 @@ namespace gf::git::bo
         Applied,
         Conflict,
         Failed,
-        Aborted,
         Skipped,
         Finished
     };

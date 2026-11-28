@@ -26,8 +26,6 @@ namespace gf::tasks::bo
     {
         std::optional<int> percentage{std::nullopt};
         std::string message{};
-        int currentStep{0};
-        int totalSteps{0};
 
         auto operator<=>(const TaskProgress&) const = default;
     };

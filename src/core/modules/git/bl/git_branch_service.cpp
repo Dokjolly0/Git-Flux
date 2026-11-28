@@ -1,8 +1,6 @@
 #include "core/modules/git/bl/git_branch_service.hpp"
 #include "core/modules/git/bl/repository_lock_coordinator.hpp"
 
-#include <algorithm>
-
 namespace gf::git::bl
 {
     GitBranchService::GitBranchService(ports::IRepositoryGitOps& gitOps) noexcept

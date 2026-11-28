@@ -54,8 +54,7 @@ namespace gf::git::bo
         SpawnFailed,
         PipeIoError,
         ProtocolParseError,
-        Cancelled,
-        TimedOut
+        Cancelled
     };
 
     struct GitExecutionError
@@ -69,7 +68,6 @@ namespace gf::git::bo
     {
         std::filesystem::path discoveredInPath;
         std::filesystem::path directBinaryPath;
-        std::string versionString;
         bool isWindowsCmdShim = false;
     };
 } // namespace gf::git::bo

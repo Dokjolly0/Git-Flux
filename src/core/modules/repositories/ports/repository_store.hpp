@@ -15,7 +15,6 @@ namespace gf::repositories::ports
         enum class Kind
         {
             NotFound,
-            DuplicateId,
             DuplicatePath,
             StorageError
         };

@@ -42,11 +42,6 @@ namespace gf::git::bo
         bool workingTreeChanged{false};
         std::vector<std::filesystem::path> affectedPaths{};
 
-        [[nodiscard]] bool hasAnyChange() const noexcept
-        {
-            return headChanged || refsChanged || indexChanged || operationStateChanged || workingTreeChanged;
-        }
-
         [[nodiscard]] bool requiresWorkingTreeRefresh() const noexcept
         {
             return workingTreeChanged || indexChanged || headChanged || operationStateChanged;

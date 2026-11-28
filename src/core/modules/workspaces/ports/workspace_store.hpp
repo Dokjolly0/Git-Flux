@@ -15,7 +15,6 @@ namespace gf::workspaces::ports
         enum class Kind
         {
             NotFound,
-            DuplicateId,
             DuplicateName,
             StorageError
         };

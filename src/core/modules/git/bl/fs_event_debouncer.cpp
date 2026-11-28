@@ -118,16 +118,4 @@ namespace gf::git::bl
         std::lock_guard lock(m_mutex);
         m_pendingByRepo.clear();
     }
-
-    void FsEventDebouncer::setQuietPeriod(const Milliseconds ms) noexcept
-    {
-        std::lock_guard lock(m_mutex);
-        m_quietPeriod = ms;
-    }
-
-    void FsEventDebouncer::setMaxWindow(const Milliseconds ms) noexcept
-    {
-        std::lock_guard lock(m_mutex);
-        m_maxWindow = ms;
-    }
 } // namespace gf::git::bl

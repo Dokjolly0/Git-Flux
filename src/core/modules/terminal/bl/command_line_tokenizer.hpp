@@ -13,13 +13,11 @@ namespace gf::terminal::bl
         std::string raw;         // Original slice from input
         std::size_t startOffset = 0;
         std::size_t endOffset = 0; // Exclusive
-        bool isQuoted = false;
     };
 
     struct ParsedCommandSegment
     {
         std::vector<CommandToken> tokens;
-        std::size_t segmentStartOffset = 0;
         /// Index of the token currently under/adjacent to the cursor.
         /// Equals `tokens.size()` when the cursor is after trailing whitespace (new empty token).
         std::size_t activeTokenIndex = 0;

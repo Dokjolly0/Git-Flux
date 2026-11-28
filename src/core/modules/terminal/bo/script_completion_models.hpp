@@ -72,7 +72,6 @@ namespace gf::terminal::bo
     struct ScriptMetadata
     {
         ScriptKind kind = ScriptKind::Unknown;
-        std::string summary;
         std::vector<ScriptParamSpec> params;
     };
 } // namespace gf::terminal::bo

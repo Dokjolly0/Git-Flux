@@ -38,9 +38,6 @@ namespace gf::git::bo
     {
         bool success{false};
         std::string output{};
-        std::size_t transferredObjects{0};
-        std::vector<std::string> newBranches{};
-        std::vector<std::string> updatedBranches{};
     };
 
     enum class MergeStatus

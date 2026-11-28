@@ -410,7 +410,6 @@ namespace gf::terminal::bl
             {
                 const std::string_view block = content.substr(helpStart + 2, helpEnd - (helpStart + 2));
                 std::string currentParam;
-                bool inSynopsis = false;
 
                 std::size_t pos = 0;
                 while (pos < block.size())
@@ -424,29 +423,17 @@ namespace gf::terminal::bl
                     const std::string low = toLowerCopy(line);
                     if (low.starts_with(".parameter"))
                     {
-                        inSynopsis = false;
                         currentParam = toLowerCopy(trimSv(line.substr(10)));
-                    }
-                    else if (low.starts_with(".synopsis"))
-                    {
-                        currentParam.clear();
-                        inSynopsis = true;
                     }
                     else if (line.front() == '.')
                     {
                         currentParam.clear();
-                        inSynopsis = false;
                     }
                     else if (!currentParam.empty())
                     {
                         auto& doc = paramDocs[currentParam];
                         if (!doc.empty()) doc.push_back(' ');
                         doc.append(line);
-                    }
-                    else if (inSynopsis)
-                    {
-                        if (!meta.summary.empty()) meta.summary.push_back(' ');
-                        meta.summary.append(line);
                     }
                 }
             }

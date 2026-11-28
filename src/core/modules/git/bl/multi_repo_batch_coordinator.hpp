@@ -9,7 +9,6 @@
 #include "core/modules/workspaces/bl/workspace_service.hpp"
 
 #include <atomic>
-#include <chrono>
 #include <condition_variable>
 #include <functional>
 #include <memory>
@@ -86,9 +85,6 @@ namespace gf::git::bl
 
         bool cancelBatch(const std::string& operationId) const;
 
-        [[nodiscard]] std::size_t maxConcurrency() const noexcept { return m_maxConcurrency; }
-        void setMaxConcurrency(const std::size_t limit) noexcept { m_maxConcurrency = limit == 0 ? 1 : limit; }
-
     private:
         bo::BatchOperationReport runBatchLoop(const std::string& operationId,
                                               bo::BatchOperationType opType,
@@ -104,7 +100,6 @@ namespace gf::git::bl
         GitWorkingTreeService& m_workingTreeService;
         tasks::bl::BackgroundTaskRunner& m_taskRunner;
 
-        std::size_t m_maxConcurrency{4};
         std::atomic<uint64_t> m_nextOpId{1};
 
         /// Shared with every task posted by this coordinator. Tasks register themselves as running

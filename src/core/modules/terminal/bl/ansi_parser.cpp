@@ -246,7 +246,7 @@ namespace gf::terminal::bl
         {
             return kAnsi16Palette[static_cast<std::size_t>(index)];
         }
-        if (index >= 16 && index <= 231)
+        if (index <= 231)
         {
             const int cube = index - 16;
             const int rIdx = cube / 36;

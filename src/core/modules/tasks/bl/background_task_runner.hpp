@@ -48,7 +48,6 @@ namespace gf::tasks::bl
 
         void waitForAll();
         void shutdown();
-        [[nodiscard]] bool isShutdown() const noexcept { return m_shutdown.load(); }
 
     private:
         struct TaskItem

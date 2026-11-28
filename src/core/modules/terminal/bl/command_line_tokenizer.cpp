@@ -1,7 +1,6 @@
 #include "core/modules/terminal/bl/command_line_tokenizer.hpp"
 
 #include <algorithm>
-#include <cctype>
 
 namespace gf::terminal::bl
 {
@@ -81,7 +80,6 @@ namespace gf::terminal::bl
         }
 
         ParsedCommandSegment seg;
-        seg.segmentStartOffset = segmentStart;
 
         // 2. Tokenize prefix[segmentStart .. cursorPos)
         std::size_t i = segmentStart;
@@ -128,7 +126,6 @@ namespace gf::terminal::bl
                 if (c == '\'' || c == '"')
                 {
                     quote = c;
-                    tok.isQuoted = true;
                     ++i;
                     continue;
                 }

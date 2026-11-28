@@ -1,8 +1,6 @@
 #include "core/modules/git/bl/multi_repo_batch_coordinator.hpp"
 
-#include <algorithm>
 #include <chrono>
-#include <future>
 #include <ranges>
 #include <unordered_set>
 
@@ -21,8 +19,8 @@ namespace gf::git::bl
           , m_remoteMergeService(remoteMergeService)
           , m_workingTreeService(workingTreeService)
           , m_taskRunner(taskRunner)
-          , m_maxConcurrency(maxConcurrency == 0 ? 1 : maxConcurrency)
     {
+        (void)maxConcurrency;
     }
 
     MultiRepoBatchCoordinator::~MultiRepoBatchCoordinator()
@@ -152,7 +150,6 @@ namespace gf::git::bl
                                             const BatchProgressCallback& onProgress,
                                             tasks::ports::ITaskProgressSink* sink) const
     {
-        const auto overallStart = std::chrono::steady_clock::now();
         bo::BatchOperationReport report{
             .operationId = operationId,
             .operationType = opType,
@@ -160,8 +157,7 @@ namespace gf::git::bl
             .succeededCount = 0,
             .failedCount = 0,
             .skippedCount = 0,
-            .items = {},
-            .totalDurationMs = std::chrono::milliseconds(0)
+            .items = {}
         };
 
         if (targets.empty())
@@ -292,9 +288,6 @@ namespace gf::git::bl
                     pct, "Completato " + std::to_string(completed) + "/" + std::to_string(targets.size()));
             }
         }
-
-        const auto overallEnd = std::chrono::steady_clock::now();
-        report.totalDurationMs = std::chrono::duration_cast<std::chrono::milliseconds>(overallEnd - overallStart);
 
         return report;
     }

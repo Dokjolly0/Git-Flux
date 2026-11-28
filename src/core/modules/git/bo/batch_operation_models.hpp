@@ -78,7 +78,6 @@ namespace gf::git::bo
         std::size_t failedCount{0};
         std::size_t skippedCount{0};
         std::vector<RepoBatchItemResult> items{};
-        std::chrono::milliseconds totalDurationMs{0};
 
         [[nodiscard]] bool isAllSucceeded() const noexcept
         {

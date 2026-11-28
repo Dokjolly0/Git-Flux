@@ -12,8 +12,6 @@ namespace gf::core
     class StrongId
     {
     public:
-        using tag_type = Tag;
-
         StrongId() = default;
 
         explicit StrongId(std::string value) noexcept

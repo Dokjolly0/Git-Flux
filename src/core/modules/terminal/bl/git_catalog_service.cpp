@@ -508,7 +508,7 @@ namespace gf::terminal::bl
             std::string_view tok = output.substr(i, j - i);
             i = j;
 
-            if (tok == "--" || tok == "-" || !tok.starts_with("--"))
+            if (!tok.starts_with("--") || tok == "--")
             {
                 continue;
             }
@@ -666,20 +666,6 @@ namespace gf::terminal::bl
             }
         }
         return merged;
-    }
-
-    bool GitCatalogService::isKnownCommand(const std::string_view name) const
-    {
-        std::scoped_lock lock(m_mutex);
-        for (const auto& c : m_baseCommands)
-        {
-            if (c.name == name) return true;
-        }
-        for (const auto& a : m_aliases)
-        {
-            if (a.name == name) return true;
-        }
-        return false;
     }
 
     std::optional<std::vector<bo::GitOptionSpec>> GitCatalogService::cachedOptionsFor(const std::string_view subcommand) const

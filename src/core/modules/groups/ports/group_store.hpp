@@ -14,7 +14,6 @@ namespace gf::groups::ports
         enum class Kind
         {
             NotFound,
-            DuplicateId,
             DuplicateName,
             StorageError
         };

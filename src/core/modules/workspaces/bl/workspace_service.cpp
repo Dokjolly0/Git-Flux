@@ -1,7 +1,6 @@
 #include "core/modules/workspaces/bl/workspace_service.hpp"
 #include "core/shared/id_generator.hpp"
 
-#include <algorithm>
 #include <chrono>
 #include <unordered_set>
 

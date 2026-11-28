@@ -10,20 +10,10 @@ namespace gf::tasks::bl
         class TaskProgressSinkImpl final : public ports::ITaskProgressSink
         {
         public:
-            using ITaskProgressSink::reportProgress;
-
             TaskProgressSinkImpl(std::stop_token token, ProgressCallback callback)
                 : m_token(std::move(token))
                   , m_callback(std::move(callback))
             {
-            }
-
-            void reportProgress(const bo::TaskProgress& progress) override
-            {
-                if (m_callback)
-                {
-                    m_callback(progress);
-                }
             }
 
             void reportProgress(const int percentage, const std::string& message) override
@@ -32,9 +22,7 @@ namespace gf::tasks::bl
                 {
                     m_callback(bo::TaskProgress{
                         .percentage = percentage,
-                        .message = message,
-                        .currentStep = 0,
-                        .totalSteps = 0
+                        .message = message
                     });
                 }
             }
@@ -42,11 +30,6 @@ namespace gf::tasks::bl
             [[nodiscard]] bool isCancelled() const noexcept override
             {
                 return m_token.stop_requested();
-            }
-
-            [[nodiscard]] std::stop_token stopToken() const noexcept override
-            {
-                return m_token;
             }
 
         private:
