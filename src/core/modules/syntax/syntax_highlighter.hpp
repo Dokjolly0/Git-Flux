@@ -68,9 +68,5 @@ namespace gf::core::syntax
         [[nodiscard]] static std::string highlightCodeBlockHtml(std::string_view codeText, Language lang) noexcept;
 
         [[nodiscard]] static std::string escapeHtml(std::string_view text) noexcept;
-        [[nodiscard]] static std::string escapeHtmlWrapFriendly(std::string_view text, bool atLineStart) noexcept;
-        [[nodiscard]] static std::string escapeHtmlForPre(std::string_view text) noexcept;
-
-        [[nodiscard]] static std::string_view tokenColor(TokenType type) noexcept;
     };
 } // namespace gf::core::syntax

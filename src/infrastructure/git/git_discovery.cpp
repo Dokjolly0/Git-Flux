@@ -55,8 +55,7 @@ namespace gf::infra::git
         {
             return std::unexpected(GitExecutionError{
                 .kind = GitErrorKind::ExecutableNotFound,
-                .message = "Impossibile trovare git.exe nel PATH di sistema",
-                .osErrorCode = static_cast<int>(GetLastError())
+                .message = "Impossibile trovare git.exe nel PATH di sistema"
             });
         }
 

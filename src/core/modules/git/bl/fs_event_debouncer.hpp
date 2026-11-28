@@ -31,10 +31,6 @@ namespace gf::git::bl
         flushAll();
 
         [[nodiscard]] bool hasPending() const noexcept;
-        void clear();
-
-        [[nodiscard]] Milliseconds quietPeriod() const noexcept { return m_quietPeriod; }
-        [[nodiscard]] Milliseconds maxWindow() const noexcept { return m_maxWindow; }
 
     private:
         struct RepoPendingState

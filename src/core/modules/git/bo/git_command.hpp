@@ -53,7 +53,6 @@ namespace gf::git::bo
         WorkingDirectoryInvalid,
         SpawnFailed,
         PipeIoError,
-        ProtocolParseError,
         Cancelled
     };
 
@@ -61,7 +60,6 @@ namespace gf::git::bo
     {
         GitErrorKind kind = GitErrorKind::SpawnFailed;
         std::string message;
-        int osErrorCode = 0;
     };
 
     struct GitExecutableInfo

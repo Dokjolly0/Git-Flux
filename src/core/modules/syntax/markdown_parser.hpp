@@ -106,6 +106,8 @@ namespace gf::core::syntax
             const git::bo::FileDiff* diff) noexcept;
 
         [[nodiscard]] static std::string toGithubSlug(std::string_view headingText) noexcept;
+
+    private:
         [[nodiscard]] static std::string renderInlineHtml(std::string_view text) noexcept;
     };
 } // namespace gf::core::syntax

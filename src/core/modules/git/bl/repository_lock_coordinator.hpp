@@ -44,12 +44,6 @@ namespace gf::git::bl
             return std::unique_lock(*repoMutex);
         }
 
-        void clear()
-        {
-            std::scoped_lock lock(m_mapMutex);
-            m_locks.clear();
-        }
-
     private:
         RepositoryLockCoordinator() = default;
         ~RepositoryLockCoordinator() = default;

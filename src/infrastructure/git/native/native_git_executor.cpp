@@ -434,8 +434,7 @@ namespace gf::infra::git
         {
             return std::unexpected(GitExecutionError{
                 .kind = GitErrorKind::PipeIoError,
-                .message = "Creazione pipe overlapped fallita",
-                .osErrorCode = static_cast<int>(GetLastError())
+                .message = "Creazione pipe overlapped fallita"
             });
         }
 
@@ -534,8 +533,7 @@ namespace gf::infra::git
         {
             return std::unexpected(GitExecutionError{
                 .kind = GitErrorKind::SpawnFailed,
-                .message = "CreateProcessW fallita per git.exe",
-                .osErrorCode = static_cast<int>(GetLastError())
+                .message = "CreateProcessW fallita per git.exe"
             });
         }
 
@@ -652,8 +650,7 @@ namespace gf::infra::git
         {
             return std::unexpected(GitExecutionError{
                 .kind = GitErrorKind::PipeIoError,
-                .message = "pipe() fallita",
-                .osErrorCode = errno
+                .message = "pipe() fallita"
             });
         }
 
@@ -713,8 +710,7 @@ namespace gf::infra::git
             ::close(errPipe[0]);
             return std::unexpected(GitExecutionError{
                 .kind = GitErrorKind::SpawnFailed,
-                .message = "posix_spawn fallita",
-                .osErrorCode = spawnRc
+                .message = "posix_spawn fallita"
             });
         }
 

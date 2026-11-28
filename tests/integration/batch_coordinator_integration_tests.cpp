@@ -174,8 +174,7 @@ TEST_CASE (
         wsService,
         remoteMergeService,
         workingTreeService,
-        taskRunner,
-        2
+        taskRunner
     );
 
     SECTION("Executes asynchronous group fetch across all real repositories") {

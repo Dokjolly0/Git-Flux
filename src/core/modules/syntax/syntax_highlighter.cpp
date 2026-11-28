@@ -616,6 +616,124 @@ namespace gf::core::syntax
             return count >= 3;
         }
 
+        [[nodiscard]] std::string_view tokenColor(const TokenType type) noexcept
+        {
+            switch (type)
+            {
+            case TokenType::Keyword: return "#C678DD";
+            case TokenType::Type: return "#E5C07B";
+            case TokenType::Function: return "#61AFEF";
+            case TokenType::Variable: return "#E06C75";
+            case TokenType::String: return "#98C379";
+            case TokenType::Number: return "#D19A66";
+            case TokenType::Comment: return "#7F848E";
+            case TokenType::Preprocessor: return "#E06C75";
+            case TokenType::Property: return "#E5C07B";
+            case TokenType::Constant: return "#D19A66";
+            case TokenType::Operator: return "#56B6C2";
+            case TokenType::Punctuation: return "#ABB2BF";
+            case TokenType::MarkdownHeading: return "#79C0FF";
+            case TokenType::MarkdownMarker: return "#FF7B72";
+            case TokenType::MarkdownBold: return "#F0F6FC";
+            case TokenType::MarkdownItalic: return "#D2A8FF";
+            case TokenType::MarkdownCode: return "#A5D6FF";
+            case TokenType::MarkdownLink: return "#58A6FF";
+            case TokenType::MarkdownQuote: return "#8B949E";
+            case TokenType::PlainText:
+            case TokenType::Whitespace:
+            default: return "#ABB2BF";
+            }
+        }
+
+        [[nodiscard]] std::string escapeHtmlWrapFriendly(const std::string_view text, const bool atLineStart) noexcept
+        {
+            std::string out;
+            out.reserve(text.size() * 11 / 10);
+            std::size_t i = 0;
+            const std::size_t n = text.size();
+            while (i < n)
+            {
+                switch (const char c = text[i])
+                {
+                case '&': out.append("&amp;");
+                    ++i;
+                    break;
+                case '<': out.append("&lt;");
+                    ++i;
+                    break;
+                case '>': out.append("&gt;");
+                    ++i;
+                    break;
+                case '"': out.append("&quot;");
+                    ++i;
+                    break;
+                case ' ':
+                case '\t':
+                    {
+                        const bool isLeading = atLineStart && i == 0;
+                        std::size_t runEnd = i;
+                        std::size_t visualSpaces = 0;
+                        while (runEnd < n && (text[runEnd] == ' ' || text[runEnd] == '\t'))
+                        {
+                            visualSpaces += text[runEnd] == '\t' ? 4 : 1;
+                            ++runEnd;
+                        }
+                        if (isLeading)
+                        {
+                            for (std::size_t k = 0; k < visualSpaces; ++k)
+                            {
+                                out.append("&nbsp;");
+                            }
+                        }
+                        else if (visualSpaces == 1)
+                        {
+                            out.push_back(' ');
+                        }
+                        else
+                        {
+                            for (std::size_t k = 0; k + 1 < visualSpaces; ++k)
+                            {
+                                out.append("&nbsp;");
+                            }
+                            out.push_back(' ');
+                        }
+                        i = runEnd;
+                        break;
+                    }
+                default:
+                    out.push_back(c);
+                    ++i;
+                    break;
+                }
+            }
+            return out;
+        }
+
+        [[nodiscard]] std::string escapeHtmlForPre(const std::string_view text) noexcept
+        {
+            std::string out;
+            out.reserve(text.size() * 11 / 10);
+            for (const char c : text)
+            {
+                switch (c)
+                {
+                case '&': out.append("&amp;");
+                    break;
+                case '<': out.append("&lt;");
+                    break;
+                case '>': out.append("&gt;");
+                    break;
+                case '"': out.append("&quot;");
+                    break;
+                case '\t': out.append("    ");
+                    break;
+                default: out.push_back(c);
+                    break;
+                }
+            }
+            return out;
+        }
+
         std::string renderTokensToHtml(const std::vector<Token>& tokens) noexcept
         {
             std::string html;
@@ -629,7 +747,7 @@ namespace gf::core::syntax
                 const bool atLineStart = isFirstToken;
                 isFirstToken = false;
 
-                const std::string escaped = SyntaxHighlighter::escapeHtmlWrapFriendly(text, atLineStart);
+                const std::string escaped = escapeHtmlWrapFriendly(text, atLineStart);
 
                 if (type == TokenType::Whitespace || type == TokenType::PlainText)
                 {
@@ -637,7 +755,7 @@ namespace gf::core::syntax
                     continue;
                 }
 
-                const std::string_view color = SyntaxHighlighter::tokenColor(type);
+                const std::string_view color = tokenColor(type);
 
                 if (type == TokenType::Keyword ||
                     type == TokenType::MarkdownHeading ||
@@ -682,35 +800,6 @@ namespace gf::core::syntax
         }
     } // namespace
 
-    std::string_view SyntaxHighlighter::tokenColor(const TokenType type) noexcept
-    {
-        switch (type)
-        {
-        case TokenType::Keyword: return "#C678DD";
-        case TokenType::Type: return "#E5C07B";
-        case TokenType::Function: return "#61AFEF";
-        case TokenType::Variable: return "#E06C75";
-        case TokenType::String: return "#98C379";
-        case TokenType::Number: return "#D19A66";
-        case TokenType::Comment: return "#7F848E";
-        case TokenType::Preprocessor: return "#E06C75";
-        case TokenType::Property: return "#E5C07B";
-        case TokenType::Constant: return "#D19A66";
-        case TokenType::Operator: return "#56B6C2";
-        case TokenType::Punctuation: return "#ABB2BF";
-        case TokenType::MarkdownHeading: return "#79C0FF";
-        case TokenType::MarkdownMarker: return "#FF7B72";
-        case TokenType::MarkdownBold: return "#F0F6FC";
-        case TokenType::MarkdownItalic: return "#D2A8FF";
-        case TokenType::MarkdownCode: return "#A5D6FF";
-        case TokenType::MarkdownLink: return "#58A6FF";
-        case TokenType::MarkdownQuote: return "#8B949E";
-        case TokenType::PlainText:
-        case TokenType::Whitespace:
-        default: return "#ABB2BF";
-        }
-    }
-
     std::string SyntaxHighlighter::escapeHtml(const std::string_view text) noexcept
     {
         std::string out;
@@ -730,95 +819,6 @@ namespace gf::core::syntax
             case ' ': out.append("&nbsp;");
                 break;
             case '\t': out.append("&nbsp;&nbsp;&nbsp;&nbsp;");
-                break;
-            default: out.push_back(c);
-                break;
-            }
-        }
-        return out;
-    }
-
-    std::string SyntaxHighlighter::escapeHtmlWrapFriendly(const std::string_view text, const bool atLineStart) noexcept
-    {
-        std::string out;
-        out.reserve(text.size() * 11 / 10);
-        std::size_t i = 0;
-        const std::size_t n = text.size();
-        while (i < n)
-        {
-            switch (const char c = text[i])
-            {
-            case '&': out.append("&amp;");
-                ++i;
-                break;
-            case '<': out.append("&lt;");
-                ++i;
-                break;
-            case '>': out.append("&gt;");
-                ++i;
-                break;
-            case '"': out.append("&quot;");
-                ++i;
-                break;
-            case ' ':
-            case '\t':
-                {
-                    const bool isLeading = atLineStart && i == 0;
-                    std::size_t runEnd = i;
-                    std::size_t visualSpaces = 0;
-                    while (runEnd < n && (text[runEnd] == ' ' || text[runEnd] == '\t'))
-                    {
-                        visualSpaces += text[runEnd] == '\t' ? 4 : 1;
-                        ++runEnd;
-                    }
-                    if (isLeading)
-                    {
-                        for (std::size_t k = 0; k < visualSpaces; ++k)
-                        {
-                            out.append("&nbsp;");
-                        }
-                    }
-                    else if (visualSpaces == 1)
-                    {
-                        out.push_back(' ');
-                    }
-                    else
-                    {
-                        for (std::size_t k = 0; k + 1 < visualSpaces; ++k)
-                        {
-                            out.append("&nbsp;");
-                        }
-                        out.push_back(' ');
-                    }
-                    i = runEnd;
-                    break;
-                }
-            default:
-                out.push_back(c);
-                ++i;
-                break;
-            }
-        }
-        return out;
-    }
-
-    std::string SyntaxHighlighter::escapeHtmlForPre(const std::string_view text) noexcept
-    {
-        std::string out;
-        out.reserve(text.size() * 11 / 10);
-        for (const char c : text)
-        {
-            switch (c)
-            {
-            case '&': out.append("&amp;");
-                break;
-            case '<': out.append("&lt;");
-                break;
-            case '>': out.append("&gt;");
-                break;
-            case '"': out.append("&quot;");
-                break;
-            case '\t': out.append("    ");
                 break;
             default: out.push_back(c);
                 break;

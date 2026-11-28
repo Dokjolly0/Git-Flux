@@ -53,13 +53,13 @@ namespace gf::terminal::bl
         // --- Pure static parsers (unit-testable without spawning Git) ---
 
         [[nodiscard]] static std::vector<bo::GitCommandSpec> parseHelpAllOutput(std::string_view output);
-        [[nodiscard]] static std::vector<std::string> parseListCmdsOutput(std::string_view output);
         [[nodiscard]] static std::vector<bo::GitCommandSpec> parseAliasesOutput(std::string_view output);
         [[nodiscard]] static std::vector<bo::GitOptionSpec> parseSubcommandHelpOptions(std::string_view output);
         [[nodiscard]] static std::vector<bo::GitOptionSpec> parseCompletionHelperOptions(std::string_view output);
-        [[nodiscard]] static std::vector<bo::GitCommandSpec> builtinFallbackCommands();
 
     private:
+        [[nodiscard]] static std::vector<std::string> parseListCmdsOutput(std::string_view output);
+        [[nodiscard]] static std::vector<bo::GitCommandSpec> builtinFallbackCommands();
         gf::git::ports::IGitCommandExecutor* m_executor{nullptr};
         std::atomic<bool> m_discovered{false};
 

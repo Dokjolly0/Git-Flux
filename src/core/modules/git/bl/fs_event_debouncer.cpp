@@ -112,10 +112,4 @@ namespace gf::git::bl
         std::lock_guard lock(m_mutex);
         return !m_pendingByRepo.empty();
     }
-
-    void FsEventDebouncer::clear()
-    {
-        std::lock_guard lock(m_mutex);
-        m_pendingByRepo.clear();
-    }
 } // namespace gf::git::bl

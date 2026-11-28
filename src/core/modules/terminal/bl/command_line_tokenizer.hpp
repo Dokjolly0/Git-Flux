@@ -10,9 +10,7 @@ namespace gf::terminal::bl
     struct CommandToken
     {
         std::string value;       // Unquoted text
-        std::string raw;         // Original slice from input
         std::size_t startOffset = 0;
-        std::size_t endOffset = 0; // Exclusive
     };
 
     struct ParsedCommandSegment

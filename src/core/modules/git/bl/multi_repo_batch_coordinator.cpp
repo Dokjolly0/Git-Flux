@@ -11,8 +11,7 @@ namespace gf::git::bl
                                                          workspaces::bl::WorkspaceService& workspaceService,
                                                          GitRemoteMergeService& remoteMergeService,
                                                          GitWorkingTreeService& workingTreeService,
-                                                         tasks::bl::BackgroundTaskRunner& taskRunner,
-                                                         const std::size_t maxConcurrency)
+                                                         tasks::bl::BackgroundTaskRunner& taskRunner)
         : m_repoService(repoService)
           , m_groupService(groupService)
           , m_workspaceService(workspaceService)
@@ -20,7 +19,6 @@ namespace gf::git::bl
           , m_workingTreeService(workingTreeService)
           , m_taskRunner(taskRunner)
     {
-        (void)maxConcurrency;
     }
 
     MultiRepoBatchCoordinator::~MultiRepoBatchCoordinator()
@@ -226,24 +224,6 @@ namespace gf::git::bl
                     }
                     break;
                 }
-            case bo::BatchOperationType::Pull:
-                {
-                    if (const auto res = m_remoteMergeService.pullRemote(
-                            repoPath, bo::RemoteOperationOptions{.remoteName = remoteName});
-                        res)
-                    {
-                        itemResult.status = bo::RepoBatchItemStatus::Succeeded;
-                        itemResult.message = "Pull completato con successo";
-                        report.succeededCount++;
-                    }
-                    else
-                    {
-                        itemResult.status = bo::RepoBatchItemStatus::Failed;
-                        itemResult.message = res.error().message;
-                        report.failedCount++;
-                    }
-                    break;
-                }
             case bo::BatchOperationType::Status:
                 {
                     if (const auto res = m_workingTreeService.getWorkingTreeStatus(repoPath); res)
@@ -351,47 +331,6 @@ namespace gf::git::bl
     {
         const auto targets = resolveWorkspaceTargets(workspaceId);
         return executeBatchFetchAsync(targets, remoteName, onProgress, onCompleted);
-    }
-
-    std::string
-    MultiRepoBatchCoordinator::executeBatchPullAsync(const std::vector<bo::RepoBatchTarget>& targets,
-                                                     const std::string& remoteName,
-                                                     const BatchProgressCallback& onProgress,
-                                                     const BatchCompletionCallback& onCompleted)
-    {
-        const uint64_t idNum = m_nextOpId.fetch_add(1);
-        std::string opId = "batch-pull-" + std::to_string(idNum);
-
-        std::lock_guard opsLock(m_activeOpsMutex); // see m_opToTaskId
-        const std::string taskId = m_taskRunner.postTask(
-            opId,
-            guardTask([this, opId, targets, remoteName, onProgress, onCompleted](
-            tasks::ports::ITaskProgressSink& sink) -> std::expected<void, std::string>
-            {
-                const auto report =
-                    runBatchLoop(opId, bo::BatchOperationType::Pull, targets, remoteName, onProgress, &sink);
-
-                {
-                    std::lock_guard lock(m_activeOpsMutex);
-                    m_opToTaskId.erase(opId);
-                }
-
-                if (onCompleted)
-                {
-                    onCompleted(report);
-                }
-
-                if (report.hasFailures())
-                {
-                    return std::unexpected(std::to_string(report.failedCount) + " repository hanno riportato errori");
-                }
-                return {};
-            }),
-            tasks::bo::TaskPriority::Normal
-        );
-        m_opToTaskId[opId] = taskId;
-
-        return opId;
     }
 
     std::string

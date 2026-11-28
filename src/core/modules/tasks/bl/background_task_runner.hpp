@@ -40,16 +40,16 @@ namespace gf::tasks::bl
                              CompletionCallback onCompleted = nullptr);
 
         bool cancelTask(const std::string& taskId);
-        void cancelAll();
 
         [[nodiscard]] std::optional<bo::TaskReport> getTaskReport(const std::string& taskId) const;
         [[nodiscard]] std::size_t activeCount() const noexcept;
         [[nodiscard]] std::size_t queuedCount() const noexcept;
 
         void waitForAll();
-        void shutdown();
 
     private:
+        void cancelAll();
+        void shutdown();
         struct TaskItem
         {
             std::string taskId;

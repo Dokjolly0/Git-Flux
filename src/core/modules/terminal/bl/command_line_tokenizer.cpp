@@ -140,8 +140,6 @@ namespace gf::terminal::bl
                 ++i;
             }
 
-            tok.endOffset = i;
-            tok.raw = std::string(prefix.substr(tok.startOffset, tok.endOffset - tok.startOffset));
             seg.tokens.push_back(std::move(tok));
         }
 

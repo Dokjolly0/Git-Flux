@@ -17,6 +17,7 @@ namespace gf::git::bl
         isIgnored(const std::filesystem::path& repoRoot,
                   const std::filesystem::path& changedPath) noexcept;
 
+    private:
         [[nodiscard]] static std::filesystem::path
         toRelativePath(const std::filesystem::path& repoRoot,
                        const std::filesystem::path& targetPath) noexcept;

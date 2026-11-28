@@ -10,7 +10,6 @@ namespace gf::git::bo
     enum class BatchOperationType
     {
         Fetch,
-        Pull,
         Status
     };
 

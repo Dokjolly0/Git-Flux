@@ -30,8 +30,7 @@ namespace gf::git::bl
                                            workspaces::bl::WorkspaceService& workspaceService,
                                            GitRemoteMergeService& remoteMergeService,
                                            GitWorkingTreeService& workingTreeService,
-                                           tasks::bl::BackgroundTaskRunner& taskRunner,
-                                           std::size_t maxConcurrency = 4);
+                                           tasks::bl::BackgroundTaskRunner& taskRunner);
         /// Cancels this coordinator's batches and waits for the ones already running, so no
         /// background task can touch a destroyed coordinator (or its callbacks' owners).
         ~MultiRepoBatchCoordinator();
@@ -65,11 +64,6 @@ namespace gf::git::bl
                                                const std::string& remoteName = "origin",
                                                const BatchProgressCallback& onProgress = nullptr,
                                                const BatchCompletionCallback& onCompleted = nullptr);
-
-        std::string executeBatchPullAsync(const std::vector<bo::RepoBatchTarget>& targets,
-                                          const std::string& remoteName = "origin",
-                                          const BatchProgressCallback& onProgress = nullptr,
-                                          const BatchCompletionCallback& onCompleted = nullptr);
 
         std::string executeBatchStatusAsync(const std::vector<bo::RepoBatchTarget>& targets,
                                             const BatchProgressCallback& onProgress = nullptr,

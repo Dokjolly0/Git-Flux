@@ -60,6 +60,109 @@ namespace gf::terminal::bl
             return std::string(buf, 7);
         }
 
+        [[nodiscard]] std::string xterm256ToHex(const int index)
+        {
+            if (index < 0 || index > 255)
+            {
+                return "#E2E8F0";
+            }
+            if (index < 16)
+            {
+                return kAnsi16Palette[static_cast<std::size_t>(index)];
+            }
+            if (index <= 231)
+            {
+                const int cube = index - 16;
+                const int rIdx = cube / 36;
+                const int gIdx = (cube / 6) % 6;
+                const int bIdx = cube % 6;
+                constexpr std::array<int, 6> levels = {0, 95, 135, 175, 215, 255};
+                return rgbToHex(levels[static_cast<std::size_t>(rIdx)],
+                                levels[static_cast<std::size_t>(gIdx)],
+                                levels[static_cast<std::size_t>(bIdx)]);
+            }
+            const int gray = 8 + (index - 232) * 10;
+            return rgbToHex(gray, gray, gray);
+        }
+
+        [[nodiscard]] std::string escapeHtmlPreservingSpaces(const std::string_view text)
+        {
+            std::string out;
+            out.reserve(text.size() + 16);
+            bool prevWasSpace = true; // preserve leading spaces as &nbsp;
+            for (const char ch : text)
+            {
+                switch (ch)
+                {
+                case '&':
+                    out.append("&amp;");
+                    prevWasSpace = false;
+                    break;
+                case '<':
+                    out.append("&lt;");
+                    prevWasSpace = false;
+                    break;
+                case '>':
+                    out.append("&gt;");
+                    prevWasSpace = false;
+                    break;
+                case '"':
+                    out.append("&quot;");
+                    prevWasSpace = false;
+                    break;
+                case '\t':
+                    out.append("&nbsp;&nbsp;&nbsp;&nbsp;");
+                    prevWasSpace = true;
+                    break;
+                case ' ':
+                    if (prevWasSpace)
+                    {
+                        out.append("&nbsp;");
+                    }
+                    else
+                    {
+                        out.push_back(' ');
+                    }
+                    prevWasSpace = true;
+                    break;
+                default:
+                    out.push_back(ch);
+                    prevWasSpace = false;
+                    break;
+                }
+            }
+            return out;
+        }
+
+        [[nodiscard]] std::string resolveCarriageReturns(const std::string_view rawLine)
+        {
+            if (rawLine.find('\r') == std::string_view::npos)
+            {
+                return std::string(rawLine);
+            }
+
+            // Split on '\r' and keep the last non-empty overwrite (standard progress bar behavior)
+            std::string_view result;
+            std::size_t start = 0;
+            while (start <= rawLine.size())
+            {
+                const std::size_t cr = rawLine.find('\r', start);
+                const std::string_view seg = (cr == std::string_view::npos)
+                                                 ? rawLine.substr(start)
+                                                 : rawLine.substr(start, cr - start);
+                if (!seg.empty())
+                {
+                    result = seg;
+                }
+                if (cr == std::string_view::npos)
+                {
+                    break;
+                }
+                start = cr + 1;
+            }
+            return std::string(result);
+        }
+
         void applySgrParams(const std::vector<int>& params, bo::TerminalTextStyle& style)
         {
             if (params.empty())
@@ -133,7 +236,7 @@ namespace gf::terminal::bl
                     const bool isFg = (code == 38);
                     if (i + 2 < params.size() && params[i + 1] == 5)
                     {
-                        const std::string hex = AnsiParser::xterm256ToHex(params[i + 2]);
+                        const std::string hex = xterm256ToHex(params[i + 2]);
                         if (isFg) style.fgColor = hex;
                         else style.bgColor = hex;
                         i += 2;
@@ -191,7 +294,7 @@ namespace gf::terminal::bl
             {
                 return;
             }
-            const std::string escaped = AnsiParser::escapeHtmlPreservingSpaces(span.text);
+            const std::string escaped = escapeHtmlPreservingSpaces(span.text);
             const auto& st = span.style;
             const bool hasStyle = !st.fgColor.empty() || !st.bgColor.empty() ||
                                   st.bold || st.dim || st.italic || st.underline;
@@ -235,109 +338,6 @@ namespace gf::terminal::bl
             out.append("</span>");
         }
     } // namespace
-
-    std::string AnsiParser::xterm256ToHex(const int index)
-    {
-        if (index < 0 || index > 255)
-        {
-            return "#E2E8F0";
-        }
-        if (index < 16)
-        {
-            return kAnsi16Palette[static_cast<std::size_t>(index)];
-        }
-        if (index <= 231)
-        {
-            const int cube = index - 16;
-            const int rIdx = cube / 36;
-            const int gIdx = (cube / 6) % 6;
-            const int bIdx = cube % 6;
-            constexpr std::array<int, 6> levels = {0, 95, 135, 175, 215, 255};
-            return rgbToHex(levels[static_cast<std::size_t>(rIdx)],
-                            levels[static_cast<std::size_t>(gIdx)],
-                            levels[static_cast<std::size_t>(bIdx)]);
-        }
-        const int gray = 8 + (index - 232) * 10;
-        return rgbToHex(gray, gray, gray);
-    }
-
-    std::string AnsiParser::escapeHtmlPreservingSpaces(const std::string_view text)
-    {
-        std::string out;
-        out.reserve(text.size() + 16);
-        bool prevWasSpace = true; // preserve leading spaces as &nbsp;
-        for (const char ch : text)
-        {
-            switch (ch)
-            {
-            case '&':
-                out.append("&amp;");
-                prevWasSpace = false;
-                break;
-            case '<':
-                out.append("&lt;");
-                prevWasSpace = false;
-                break;
-            case '>':
-                out.append("&gt;");
-                prevWasSpace = false;
-                break;
-            case '"':
-                out.append("&quot;");
-                prevWasSpace = false;
-                break;
-            case '\t':
-                out.append("&nbsp;&nbsp;&nbsp;&nbsp;");
-                prevWasSpace = true;
-                break;
-            case ' ':
-                if (prevWasSpace)
-                {
-                    out.append("&nbsp;");
-                }
-                else
-                {
-                    out.push_back(' ');
-                }
-                prevWasSpace = true;
-                break;
-            default:
-                out.push_back(ch);
-                prevWasSpace = false;
-                break;
-            }
-        }
-        return out;
-    }
-
-    std::string AnsiParser::resolveCarriageReturns(const std::string_view rawLine)
-    {
-        if (rawLine.find('\r') == std::string_view::npos)
-        {
-            return std::string(rawLine);
-        }
-
-        // Split on '\r' and keep the last non-empty overwrite (standard progress bar behavior)
-        std::string_view result;
-        std::size_t start = 0;
-        while (start <= rawLine.size())
-        {
-            const std::size_t cr = rawLine.find('\r', start);
-            const std::string_view seg = (cr == std::string_view::npos)
-                                             ? rawLine.substr(start)
-                                             : rawLine.substr(start, cr - start);
-            if (!seg.empty())
-            {
-                result = seg;
-            }
-            if (cr == std::string_view::npos)
-            {
-                break;
-            }
-            start = cr + 1;
-        }
-        return std::string(result);
-    }
 
     bo::TerminalRenderedLine AnsiParser::parseLine(const std::string_view rawLine,
                                                    bo::TerminalTextStyle& carryStyle)
