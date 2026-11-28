@@ -1,4 +1,4 @@
-#include "desktop/viewmodels/diff_viewmodel.hpp"
+#include "desktop/viewmodels/diff_viewmodel_internal.hpp"
 #include "desktop/services/author_avatar_helper.hpp"
 #include "desktop/services/desktop_viewmodel_utils.hpp"
 #include "desktop/services/diff_image_provider.hpp"
@@ -6,21 +6,11 @@
 #include "core/shared/utf8_path.hpp"
 #include "core/modules/git/bl/git_diff_service.hpp"
 #include "core/modules/syntax/language_detector.hpp"
-#include "core/modules/syntax/markdown_parser.hpp"
 #include "core/modules/syntax/syntax_highlighter.hpp"
 
-#include <QDesktopServices>
-#include <QDir>
-#include <QFile>
-#include <QFileInfo>
-#include <QFontDatabase>
-#include <QHash>
-#include <QStandardPaths>
 #include <QStringList>
-#include <QUrl>
 #include <QVariantMap>
 #include <algorithm>
-#include <cmath>
 #include <filesystem>
 #include <memory>
 
@@ -30,72 +20,13 @@ namespace gf::desktop
     {
         constexpr std::size_t kMaxRenderedDiffLines = 5000;
         constexpr int kMaxVisualLineLength = 4096;
-
-        QString blockKindToString(gf::core::syntax::MarkdownBlockKind kind)
-        {
-            using K = gf::core::syntax::MarkdownBlockKind;
-            switch (kind)
-            {
-            case K::Heading: return QStringLiteral("heading");
-            case K::Paragraph: return QStringLiteral("paragraph");
-            case K::CodeBlock: return QStringLiteral("code");
-            case K::Blockquote: return QStringLiteral("blockquote");
-            case K::ListItem: return QStringLiteral("listItem");
-            case K::Table: return QStringLiteral("table");
-            case K::ThematicBreak: return QStringLiteral("thematicBreak");
-            case K::BadgeRow: return QStringLiteral("badgeRow");
-            case K::DeletedSnippet: return QStringLiteral("deletedSnippet");
-            }
-            return QStringLiteral("paragraph");
-        }
-
-        QString alertTypeToString(gf::core::syntax::MarkdownAlertType alert)
-        {
-            using A = gf::core::syntax::MarkdownAlertType;
-            switch (alert)
-            {
-            case A::Note: return QStringLiteral("note");
-            case A::Tip: return QStringLiteral("tip");
-            case A::Important: return QStringLiteral("important");
-            case A::Warning: return QStringLiteral("warning");
-            case A::Caution: return QStringLiteral("caution");
-            case A::None:
-            default: return QStringLiteral("none");
-            }
-        }
-
-        QString changeStatusToString(gf::core::syntax::MarkdownChangeStatus status)
-        {
-            using S = gf::core::syntax::MarkdownChangeStatus;
-            switch (status)
-            {
-            case S::Added: return QStringLiteral("added");
-            case S::Modified: return QStringLiteral("modified");
-            case S::Deleted: return QStringLiteral("deleted");
-            case S::Unchanged:
-            default: return QStringLiteral("unchanged");
-            }
-        }
-
-        std::string reconstructMarkdownFallbackFromDiff(const gf::git::bo::FileDiff& diff, bool& hasNewSideLines)
-        {
-            std::string out;
-            hasNewSideLines = false;
-            for (const auto& hunk : diff.hunks)
-            {
-                for (const auto& line : hunk.lines)
-                {
-                    if (line.kind == gf::git::bo::DiffLineKind::Context ||
-                        line.kind == gf::git::bo::DiffLineKind::Addition)
-                    {
-                        hasNewSideLines = true;
-                        out.append(line.content);
-                        out.push_back('\n');
-                    }
-                }
-            }
-            return out;
-        }
+        constexpr double kDiffRowHeight = 20.0;
+        constexpr double kDiffHeaderHeight = 28.0;
+        constexpr double kHunkCardPadding = 8.0;
+        constexpr double kHunkCardHeaderHeight = 30.0;
+        constexpr double kHunkCardColSpacing = 4.0;
+        constexpr double kHunkCardListSpacing = 12.0;
+        constexpr std::size_t kMaxHunkCardLines = 300;
 
         struct HighlightedDiffLine
         {
@@ -217,62 +148,227 @@ namespace gf::desktop
             }
             return lines.join(QLatin1Char('\n'));
         }
+        [[nodiscard]] int computeVisualLineLength(const std::string& content) noexcept
+        {
+            int visualLen = 0;
+            for (const char c : content)
+            {
+                visualLen += (c == '\t') ? (4 - (visualLen % 4)) : 1;
+                if (visualLen >= kMaxVisualLineLength) return kMaxVisualLineLength;
+            }
+            return visualLen;
+        }
+
+        [[nodiscard]] std::string highlightDiffLineHtml(
+            const gf::git::bo::DiffLine& line,
+            const gf::core::syntax::Language lang,
+            const bool isMd,
+            const std::vector<gf::core::syntax::MarkdownLineState>* newFileSeedStates,
+            gf::core::syntax::MarkdownLineState& oldMdState,
+            gf::core::syntax::MarkdownLineState& newMdState) noexcept
+        {
+            if (!isMd)
+            {
+                return gf::core::syntax::SyntaxHighlighter::highlightLine(line.content, lang);
+            }
+            if (line.kind == gf::git::bo::DiffLineKind::Deletion)
+            {
+                return gf::core::syntax::SyntaxHighlighter::highlightLine(line.content, lang, oldMdState);
+            }
+            if (newFileSeedStates != nullptr && line.newLineNumber.has_value() && *line.newLineNumber > 0)
+            {
+                const std::size_t idx = static_cast<std::size_t>(*line.newLineNumber - 1);
+                if (idx < newFileSeedStates->size()) newMdState = (*newFileSeedStates)[idx];
+            }
+            std::string html = gf::core::syntax::SyntaxHighlighter::highlightLine(line.content, lang, newMdState);
+            if (line.kind == gf::git::bo::DiffLineKind::Context) oldMdState = newMdState;
+            return html;
+        }
+
+        [[nodiscard]] QVariantMap buildHunkCardMap(const gf::git::bo::DiffHunk& hunk,
+                                                    const QString& hunkHeaderStr,
+                                                    const std::vector<HighlightedDiffLine>& preparedLines,
+                                                    const bool hasExistingHunks,
+                                                    double& hunkY,
+                                                    std::vector<OverviewSpan>& hunkOldSpans,
+                                                    std::vector<OverviewSpan>& hunkNewSpans)
+        {
+            QVariantMap hMap;
+            hMap[QStringLiteral("header")] = hunkHeaderStr;
+            hMap[QStringLiteral("oldStartLine")] = hunk.oldStartLine;
+            hMap[QStringLiteral("oldCount")] = hunk.oldCount;
+            hMap[QStringLiteral("newStartLine")] = hunk.newStartLine;
+            hMap[QStringLiteral("newCount")] = hunk.newCount;
+
+            QVariantList hLines;
+            hLines.reserve(static_cast<qsizetype>(preparedLines.size()));
+            if (hasExistingHunks) hunkY += kHunkCardListSpacing;
+            hunkY += kHunkCardPadding + kHunkCardHeaderHeight;
+
+            std::size_t hunkCardLineCount = 0;
+            for (const auto& prep : preparedLines)
+            {
+                const auto& line = *prep.raw;
+                QString kindStr = QStringLiteral("context");
+                QString bgCol = QStringLiteral("transparent");
+                QString fgCol = QStringLiteral("#E6EDF3");
+                if (line.kind == gf::git::bo::DiffLineKind::Addition)
+                {
+                    kindStr = QStringLiteral("addition");
+                    bgCol = QStringLiteral("#12261E");
+                    fgCol = QStringLiteral("#7EE787");
+                }
+                else if (line.kind == gf::git::bo::DiffLineKind::Deletion)
+                {
+                    kindStr = QStringLiteral("deletion");
+                    bgCol = QStringLiteral("#291518");
+                    fgCol = QStringLiteral("#FFA198");
+                }
+
+                if (hunkCardLineCount < kMaxHunkCardLines)
+                {
+                    hunkY += kHunkCardColSpacing;
+                    if (line.kind == gf::git::bo::DiffLineKind::Deletion)
+                    {
+                        appendOverviewSpan(hunkOldSpans, hunkY, hunkY + kDiffRowHeight, kHunkCardColSpacing + 0.01);
+                    }
+                    else if (line.kind == gf::git::bo::DiffLineKind::Addition)
+                    {
+                        appendOverviewSpan(hunkNewSpans, hunkY, hunkY + kDiffRowHeight, kHunkCardColSpacing + 0.01);
+                    }
+                    hunkY += kDiffRowHeight;
+                    ++hunkCardLineCount;
+                }
+
+                QVariantMap lMap;
+                lMap[QStringLiteral("kind")] = kindStr;
+                lMap[QStringLiteral("oldLineNumber")] = line.oldLineNumber.has_value()
+                    ? QString::number(*line.oldLineNumber) : QString();
+                lMap[QStringLiteral("newLineNumber")] = line.newLineNumber.has_value()
+                    ? QString::number(*line.newLineNumber) : QString();
+                lMap[QStringLiteral("content")] = prep.content;
+                lMap[QStringLiteral("richContent")] = prep.richContent;
+                lMap[QStringLiteral("bgColor")] = bgCol;
+                lMap[QStringLiteral("fgColor")] = fgCol;
+                hLines.append(lMap);
+            }
+            hunkY += kHunkCardPadding;
+            hMap[QStringLiteral("lines")] = hLines;
+            return hMap;
+        }
+
+        void appendHunkSplitRows(const QString& hunkHeaderStr,
+                                 const std::vector<HighlightedDiffLine>& preparedLines,
+                                 QVariantList& splitLines,
+                                 double& splitY,
+                                 std::vector<OverviewSpan>& splitOldSpans,
+                                 std::vector<OverviewSpan>& splitNewSpans)
+        {
+            QVariantMap headerRow;
+            headerRow[QStringLiteral("isHunkHeader")] = true;
+            headerRow[QStringLiteral("hunkHeader")] = hunkHeaderStr;
+            splitLines.append(headerRow);
+            splitY += kDiffHeaderHeight;
+
+            std::vector<const HighlightedDiffLine*> pendingDeletions;
+            std::vector<const HighlightedDiffLine*> pendingAdditions;
+
+            auto flushPending = [&]()
+            {
+                const std::size_t maxLen = std::max(pendingDeletions.size(), pendingAdditions.size());
+                for (std::size_t i = 0; i < maxLen; ++i)
+                {
+                    QVariantMap row;
+                    row[QStringLiteral("isHunkHeader")] = false;
+
+                    if (i < pendingDeletions.size())
+                    {
+                        const auto& del = *pendingDeletions[i];
+                        row[QStringLiteral("leftLine")] = del.raw->oldLineNumber.has_value()
+                            ? QString::number(*del.raw->oldLineNumber) : QString();
+                        row[QStringLiteral("leftContent")] = del.content;
+                        row[QStringLiteral("leftRichContent")] = del.richContent;
+                        row[QStringLiteral("leftKind")] = QStringLiteral("deletion");
+                        row[QStringLiteral("leftBgColor")] = QStringLiteral("#3B181E");
+                        row[QStringLiteral("leftFgColor")] = QStringLiteral("#FFA198");
+                        appendOverviewSpan(splitOldSpans, splitY, splitY + kDiffRowHeight);
+                    }
+                    else
+                    {
+                        row[QStringLiteral("leftLine")] = QString();
+                        row[QStringLiteral("leftContent")] = QString();
+                        row[QStringLiteral("leftRichContent")] = QString();
+                        row[QStringLiteral("leftKind")] = QStringLiteral("empty");
+                        row[QStringLiteral("leftBgColor")] = QStringLiteral("#0D1117");
+                        row[QStringLiteral("leftFgColor")] = QStringLiteral("#484F58");
+                    }
+
+                    if (i < pendingAdditions.size())
+                    {
+                        const auto& add = *pendingAdditions[i];
+                        row[QStringLiteral("rightLine")] = add.raw->newLineNumber.has_value()
+                            ? QString::number(*add.raw->newLineNumber) : QString();
+                        row[QStringLiteral("rightContent")] = add.content;
+                        row[QStringLiteral("rightRichContent")] = add.richContent;
+                        row[QStringLiteral("rightKind")] = QStringLiteral("addition");
+                        row[QStringLiteral("rightBgColor")] = QStringLiteral("#143220");
+                        row[QStringLiteral("rightFgColor")] = QStringLiteral("#7EE787");
+                        appendOverviewSpan(splitNewSpans, splitY, splitY + kDiffRowHeight);
+                    }
+                    else
+                    {
+                        row[QStringLiteral("rightLine")] = QString();
+                        row[QStringLiteral("rightContent")] = QString();
+                        row[QStringLiteral("rightRichContent")] = QString();
+                        row[QStringLiteral("rightKind")] = QStringLiteral("empty");
+                        row[QStringLiteral("rightBgColor")] = QStringLiteral("#0D1117");
+                        row[QStringLiteral("rightFgColor")] = QStringLiteral("#484F58");
+                    }
+
+                    splitLines.append(row);
+                    splitY += kDiffRowHeight;
+                }
+                pendingDeletions.clear();
+                pendingAdditions.clear();
+            };
+
+            for (const auto& prep : preparedLines)
+            {
+                const auto& line = *prep.raw;
+                if (line.kind == gf::git::bo::DiffLineKind::Deletion)
+                {
+                    pendingDeletions.push_back(&prep);
+                }
+                else if (line.kind == gf::git::bo::DiffLineKind::Addition)
+                {
+                    pendingAdditions.push_back(&prep);
+                }
+                else if (line.kind == gf::git::bo::DiffLineKind::Context)
+                {
+                    flushPending();
+                    QVariantMap row;
+                    row[QStringLiteral("isHunkHeader")] = false;
+                    row[QStringLiteral("leftLine")] = line.oldLineNumber.has_value()
+                        ? QString::number(*line.oldLineNumber) : QString();
+                    row[QStringLiteral("leftContent")] = prep.content;
+                    row[QStringLiteral("leftRichContent")] = prep.richContent;
+                    row[QStringLiteral("leftKind")] = QStringLiteral("context");
+                    row[QStringLiteral("leftBgColor")] = QStringLiteral("transparent");
+                    row[QStringLiteral("leftFgColor")] = QStringLiteral("#E6EDF3");
+                    row[QStringLiteral("rightLine")] = line.newLineNumber.has_value()
+                        ? QString::number(*line.newLineNumber) : QString();
+                    row[QStringLiteral("rightContent")] = prep.content;
+                    row[QStringLiteral("rightRichContent")] = prep.richContent;
+                    row[QStringLiteral("rightKind")] = QStringLiteral("context");
+                    row[QStringLiteral("rightBgColor")] = QStringLiteral("transparent");
+                    row[QStringLiteral("rightFgColor")] = QStringLiteral("#E6EDF3");
+                    splitLines.append(row);
+                    splitY += kDiffRowHeight;
+                }
+            }
+            flushPending();
+        }
     } // namespace
-
-    /// Diff read on the worker: the diff itself and, for Markdown files, the full file content
-    /// used by the rendered preview.
-    /// Everything the view shows for a diff, built off the GUI thread: syntax highlighting,
-    /// split/hunk rows, inline-model rows and, for Markdown, the rendered document.
-    struct DiffViewModel::PreparedDiff
-    {
-        bool prepared = false;
-        QString languageName;
-        QString languageIcon;
-        bool isMarkdown = false;
-        int maxLineLength = 0;
-        QVariantList hunks;
-        QVariantList splitLines;
-        QVariantList splitOverviewMarkers;
-        QVariantList inlineOverviewMarkers;
-        QVariantList hunkOverviewMarkers;
-        std::vector<gf::git::bo::DiffLine> modelLines;
-        std::vector<QString> modelRich;
-
-        bool hasMarkdownDocument = false; // the Markdown fields below replace the current ones
-        QVariantList markdownBlocks;
-        QVariantList markdownToc;
-        QString markdownSource;
-        QString markdownNotice;
-
-        std::optional<DiffFileInspection> inspection;
-    };
-
-    struct DiffViewModel::DiffFetch
-    {
-        bool skipped = false; // superseded before git ran
-        std::optional<std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>> diff;
-        std::optional<std::expected<std::string, gf::git::ports::GitOpsError>> markdownContent;
-        std::string deletedNotice;
-        std::optional<gf::git::bo::FileBlob> oldBlob;
-        std::optional<gf::git::bo::FileBlob> newBlob;
-        std::string inspectPath;
-        bool inspectedRichFile = false;
-        // The diff shown when the request started (same file/revision/scope/context), if any.
-        std::shared_ptr<const gf::git::bo::FileDiff> comparedWith;
-        bool unchanged = false;              // identical to comparedWith: nothing was prepared
-        std::optional<PreparedDiff> prepared;
-    };
-
-    /// Blame read and turned into view rows on the worker (highlighting included).
-    struct DiffViewModel::BlameFetch
-    {
-        bool skipped = false;
-        bool ok = false;
-        QVariantList lines;
-        int maxLineLength = 0;
-        QString languageName;
-        QString languageIcon;
-    };
 
     namespace
     {
@@ -342,60 +438,6 @@ namespace gf::desktop
     {
         releaseTemporaryFonts();
         DiffImageStore::instance().clear(m_instanceId);
-    }
-
-    void DiffViewModel::releaseTemporaryFonts()
-    {
-        if (m_oldFontId >= 0)
-        {
-            QFontDatabase::removeApplicationFont(m_oldFontId);
-            m_oldFontId = -1;
-        }
-        if (m_newFontId >= 0)
-        {
-            QFontDatabase::removeApplicationFont(m_newFontId);
-            m_newFontId = -1;
-        }
-        m_oldFontFamily.clear();
-        m_newFontFamily.clear();
-    }
-
-    void DiffViewModel::clearRichPreviewState()
-    {
-        releaseTemporaryFonts();
-        DiffImageStore::instance().clear(m_instanceId);
-        m_isSvgPreviewable = false;
-        m_fileKind.clear();
-        m_formatBadge.clear();
-        m_formatDescription.clear();
-        m_isImage = false;
-        m_hasVisualPreview = false;
-        m_oldImageUrl.clear();
-        m_newImageUrl.clear();
-        m_diffImageUrl.clear();
-        m_oldImageWidth = 0;
-        m_oldImageHeight = 0;
-        m_newImageWidth = 0;
-        m_newImageHeight = 0;
-        m_imageDiffPercent = 0.0;
-        m_hasOldBlob = false;
-        m_hasNewBlob = false;
-        m_oldFileSize = 0;
-        m_newFileSize = 0;
-        m_oldFileSizeText.clear();
-        m_newFileSizeText.clear();
-        m_fileSizeDeltaText.clear();
-        m_metadataRows.clear();
-        m_archiveEntries.clear();
-        m_archiveAddedCount = 0;
-        m_archiveRemovedCount = 0;
-        m_archiveModifiedCount = 0;
-        m_archiveUnchangedCount = 0;
-        m_hexRows.clear();
-        m_hexTruncated = false;
-        m_hexChangedRows = 0;
-        m_previewNotice.clear();
-        m_canRevealInFileManager = false;
     }
 
     void DiffViewModel::setLoading(bool loading)
@@ -496,96 +538,6 @@ namespace gf::desktop
         emit richPreviewRenderedChanged();
     }
 
-    void DiffViewModel::openPreviewExternally(const QString& side)
-    {
-        if (m_currentRepoPath.isEmpty() || m_filePath.isEmpty()) return;
-
-        const bool wantOld = (side.compare(QStringLiteral("old"), Qt::CaseInsensitive) == 0);
-        const std::string targetPath = wantOld
-                                           ? (m_oldPath.isEmpty() ? m_filePath.toStdString() : m_oldPath.toStdString())
-                                           : m_filePath.toStdString();
-        const auto repoFs = gf::core::utf8ToPath(m_currentRepoPath.toStdString());
-
-        // For the current working-tree file, open the actual file on disk directly.
-        if (!wantOld && m_currentRevision.isEmpty() &&
-            m_lastScope.compare(QStringLiteral("staged"), Qt::CaseInsensitive) != 0)
-        {
-            const auto fullPath = repoFs / gf::core::utf8ToPath(targetPath);
-            std::error_code ec;
-            if (std::filesystem::exists(fullPath, ec) && std::filesystem::is_regular_file(fullPath, ec))
-            {
-                const std::string utf8 = gf::core::pathToUtf8(fullPath);
-                QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromUtf8(utf8.data(), static_cast<qsizetype>(utf8.size()))));
-                return;
-            }
-        }
-
-        // Otherwise materialize the revision blob into a temp file on the worker and launch it.
-        std::string primaryRev;
-        std::string fallbackRev;
-        if (!m_currentRevision.isEmpty())
-        {
-            primaryRev = wantOld ? (m_currentRevision.toStdString() + "^") : m_currentRevision.toStdString();
-        }
-        else if (m_lastScope.compare(QStringLiteral("staged"), Qt::CaseInsensitive) == 0)
-        {
-            primaryRev = wantOld ? "HEAD" : ":0";
-        }
-        else
-        {
-            primaryRev = wantOld ? ":0" : "WORKTREE";
-            if (wantOld) fallbackRev = "HEAD";
-        }
-
-        auto& service = m_diffService;
-        const QString tag = wantOld ? QStringLiteral("before") : QStringLiteral("after");
-        m_readExecutor->run(this,
-                            [&service, repoFs, primaryRev, fallbackRev, targetPath, tag]() -> QString
-                            {
-                                constexpr std::size_t kMaxExternalOpenBytes = 64 * 1024 * 1024;
-                                auto res = service.getFileBlob(repoFs, primaryRev, targetPath, kMaxExternalOpenBytes);
-                                if (!res && !fallbackRev.empty())
-                                {
-                                    res = service.getFileBlob(repoFs, fallbackRev, targetPath, kMaxExternalOpenBytes);
-                                }
-                                if (!res || res->truncated) return {};
-
-                                const QString tempBase = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
-                                QDir dir(tempBase + QStringLiteral("/git-flux-preview"));
-                                if (!dir.exists()) (void)dir.mkpath(QStringLiteral("."));
-
-                                const QFileInfo fi(QString::fromUtf8(targetPath.data(), static_cast<qsizetype>(targetPath.size())));
-                                const QString safeName = fi.fileName().isEmpty() ? QStringLiteral("preview.bin") : fi.fileName();
-                                const QString outPath = dir.filePath(tag + QLatin1Char('_') + safeName);
-                                QFile f(outPath);
-                                if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return {};
-                                f.write(res->bytes.data(), static_cast<qint64>(res->bytes.size()));
-                                f.close();
-                                return outPath;
-                            },
-                            [](QString tempFilePath)
-                            {
-                                if (!tempFilePath.isEmpty())
-                                {
-                                    QDesktopServices::openUrl(QUrl::fromLocalFile(tempFilePath));
-                                }
-                            });
-    }
-
-    void DiffViewModel::revealInFileManager() const
-    {
-        if (m_currentRepoPath.isEmpty() || m_filePath.isEmpty()) return;
-        const auto fullPath = gf::core::utf8ToPath(m_currentRepoPath.toStdString()) /
-                              gf::core::utf8ToPath(m_filePath.toStdString());
-        const auto parentDir = fullPath.parent_path();
-        std::error_code ec;
-        if (std::filesystem::exists(parentDir, ec))
-        {
-            const std::string utf8 = gf::core::pathToUtf8(parentDir);
-            QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromUtf8(utf8.data(), static_cast<qsizetype>(utf8.size()))));
-        }
-    }
-
     bool DiffViewModel::reloadCurrentDiff()
     {
         if (m_currentRepoPath.isEmpty() || m_filePath.isEmpty())
@@ -675,155 +627,18 @@ namespace gf::desktop
         return {};
     }
 
-    void DiffViewModel::buildMarkdownDocument(const std::string& content, const gf::git::bo::FileDiff& diff,
-                                              PreparedDiff& out)
-    {
-        out.markdownSource = QString::fromStdString(content);
-        auto mdDoc = gf::core::syntax::MarkdownParser::parseWithDiff(content, &diff);
-
-        out.markdownBlocks.clear();
-        out.markdownBlocks.reserve(static_cast<qsizetype>(mdDoc.blocks.size()));
-        for (const auto& b : mdDoc.blocks)
-        {
-            QVariantMap map;
-            map[QStringLiteral("kind")] = blockKindToString(b.kind);
-            map[QStringLiteral("level")] = b.level;
-            map[QStringLiteral("indentLevel")] = b.indentLevel;
-            map[QStringLiteral("ordered")] = b.ordered;
-            map[QStringLiteral("isTask")] = b.isTask;
-            map[QStringLiteral("taskChecked")] = b.taskChecked;
-            map[QStringLiteral("centered")] = b.centered;
-            map[QStringLiteral("isDiagram")] = b.isDiagram;
-            map[QStringLiteral("listMarker")] = QString::fromStdString(b.listMarker);
-            map[QStringLiteral("alertType")] = alertTypeToString(b.alertType);
-            map[QStringLiteral("rawText")] = QString::fromStdString(b.rawText);
-            map[QStringLiteral("html")] = QString::fromStdString(b.html);
-            map[QStringLiteral("anchor")] = QString::fromStdString(b.anchor);
-            map[QStringLiteral("languageTag")] = QString::fromStdString(b.languageTag);
-
-            QStringList headers;
-            for (const auto& h : b.tableHeaders) headers.append(QString::fromStdString(h));
-            map[QStringLiteral("tableHeaders")] = headers;
-
-            QStringList aligns;
-            for (const auto& a : b.tableAlignments) aligns.append(QString::fromStdString(a));
-            map[QStringLiteral("tableAlignments")] = aligns;
-
-            QVariantList rows;
-            for (const auto& r : b.tableRows)
-            {
-                QStringList cells;
-                for (const auto& c : r) cells.append(QString::fromStdString(c));
-                rows.append(cells);
-            }
-            map[QStringLiteral("tableRows")] = rows;
-
-            QVariantList badges;
-            for (const auto& badge : b.badges)
-            {
-                QVariantMap bm;
-                bm[QStringLiteral("label")] = QString::fromStdString(badge.label);
-                bm[QStringLiteral("href")] = QString::fromStdString(badge.href);
-                bm[QStringLiteral("color")] = QString::fromStdString(badge.color);
-                badges.append(bm);
-            }
-            map[QStringLiteral("badges")] = badges;
-
-            map[QStringLiteral("startLine")] = b.startLine;
-            map[QStringLiteral("endLine")] = b.endLine;
-            map[QStringLiteral("changeStatus")] = changeStatusToString(b.changeStatus);
-            map[QStringLiteral("addedLineCount")] = b.addedLineCount;
-            map[QStringLiteral("deletedLineCount")] = b.deletedLineCount;
-
-            QStringList delList;
-            for (const auto& dl : b.deletedLines) delList.append(QString::fromStdString(dl));
-            map[QStringLiteral("deletedLinesText")] = delList.join(QLatin1Char('\n'));
-
-            out.markdownBlocks.append(map);
-        }
-
-        out.markdownToc.clear();
-        out.markdownToc.reserve(static_cast<qsizetype>(mdDoc.toc.size()));
-        for (const auto& t : mdDoc.toc)
-        {
-            QVariantMap tm;
-            tm[QStringLiteral("level")] = t.level;
-            tm[QStringLiteral("title")] = QString::fromStdString(t.title);
-            tm[QStringLiteral("anchor")] = QString::fromStdString(t.anchor);
-            tm[QStringLiteral("blockIndex")] = t.blockIndex;
-            tm[QStringLiteral("startLine")] = t.startLine;
-            out.markdownToc.append(tm);
-        }
-    }
-
-    void DiffViewModel::prepareMarkdown(
-        const std::expected<std::string, gf::git::ports::GitOpsError>& contentRes,
-        const std::string& deletedFallbackNotice,
-        const gf::git::bo::FileDiff& diff,
-        PreparedDiff& out,
-        std::vector<gf::core::syntax::MarkdownLineState>& outSeedStates)
-    {
-        outSeedStates.clear();
-        out.hasMarkdownDocument = true;
-
-        if (contentRes)
-        {
-            std::string content = *contentRes;
-            if (content.empty() && !diff.isDeletedFile && !diff.hunks.empty())
-            {
-                bool hasNewSideLines = false;
-                std::string reconstructed = reconstructMarkdownFallbackFromDiff(diff, hasNewSideLines);
-                if (hasNewSideLines)
-                {
-                    content = std::move(reconstructed);
-                }
-            }
-
-            if (diff.isDeletedFile && !deletedFallbackNotice.empty())
-            {
-                out.markdownNotice = QString::fromStdString(deletedFallbackNotice);
-            }
-
-            if (!diff.isDeletedFile)
-            {
-                outSeedStates = gf::core::syntax::SyntaxHighlighter::computeMarkdownLineStates(content);
-            }
-            buildMarkdownDocument(content, diff, out);
-            return;
-        }
-
-        // Fallback: build partial preview from hunk lines when full file cannot be read
-        bool hasNewSideLines = false;
-        std::string fallback = reconstructMarkdownFallbackFromDiff(diff, hasNewSideLines);
-        if (!fallback.empty())
-        {
-            buildMarkdownDocument(fallback, diff, out);
-        }
-        out.markdownNotice = QStringLiteral("Impossibile caricare il file completo (%1) — anteprima parziale.")
-            .arg(QString::fromStdString(contentRes.error().message));
-    }
-
     void DiffViewModel::prepareFileDiff(const gf::git::bo::FileDiff& diff,
                                         const std::vector<gf::core::syntax::MarkdownLineState>* newFileSeedStates,
                                         PreparedDiff& out,
                                         const std::function<bool()>& isCurrent)
     {
-        std::string pathForDetect = diff.displayPath();
-        auto langInfo = gf::core::syntax::LanguageDetector::detect(pathForDetect);
+        const auto langInfo = gf::core::syntax::LanguageDetector::detect(diff.displayPath());
         out.languageName = QString::fromStdString(langInfo.name);
         out.languageIcon = QString::fromStdString(langInfo.icon);
 
         const bool isMd = (langInfo.language == gf::core::syntax::Language::Markdown);
         out.isMarkdown = isMd;
         out.prepared = true;
-
-        constexpr double kDiffRowHeight = 20.0;
-        constexpr double kDiffHeaderHeight = 28.0;
-        constexpr double kHunkCardPadding = 8.0;
-        constexpr double kHunkCardHeaderHeight = 30.0;
-        constexpr double kHunkCardColSpacing = 4.0;
-        constexpr double kHunkCardListSpacing = 12.0;
-        constexpr std::size_t kMaxHunkCardLines = 300;
 
         std::size_t totalProcessedLines = 0;
         bool truncated = false;
@@ -838,18 +653,9 @@ namespace gf::desktop
 
         for (const auto& hunk : diff.hunks)
         {
-            if (isCurrent && !isCurrent())
-            {
-                out.prepared = false;
-                return;
-            }
-            if (totalProcessedLines >= kMaxRenderedDiffLines)
-            {
-                truncated = true;
-                break;
-            }
+            if (isCurrent && !isCurrent()) { out.prepared = false; return; }
+            if (totalProcessedLines >= kMaxRenderedDiffLines) { truncated = true; break; }
 
-            // Precompute highlighted strings once for all lines in this hunk (up to cap)
             std::vector<HighlightedDiffLine> preparedLines;
             preparedLines.reserve(std::min(hunk.lines.size(), kMaxRenderedDiffLines - totalProcessedLines));
 
@@ -872,61 +678,11 @@ namespace gf::desktop
                     out.prepared = false;
                     return;
                 }
-                if (totalProcessedLines >= kMaxRenderedDiffLines)
-                {
-                    truncated = true;
-                    break;
-                }
-                int visualLen = 0;
-                for (char c : line.content)
-                {
-                    if (c == '\t')
-                    {
-                        visualLen += 4 - (visualLen % 4);
-                    }
-                    else
-                    {
-                        visualLen += 1;
-                    }
-                    if (visualLen >= kMaxVisualLineLength)
-                    {
-                        visualLen = kMaxVisualLineLength;
-                        break;
-                    }
-                }
-                if (visualLen > out.maxLineLength)
-                {
-                    out.maxLineLength = visualLen;
-                }
+                if (totalProcessedLines >= kMaxRenderedDiffLines) { truncated = true; break; }
 
-                std::string highlightedHtml;
-                if (!isMd)
-                {
-                    highlightedHtml = gf::core::syntax::SyntaxHighlighter::highlightLine(
-                        line.content, langInfo.language);
-                }
-                else if (line.kind == gf::git::bo::DiffLineKind::Deletion)
-                {
-                    highlightedHtml = gf::core::syntax::SyntaxHighlighter::highlightLine(
-                        line.content, langInfo.language, oldMdState);
-                }
-                else
-                {
-                    if (newFileSeedStates != nullptr && line.newLineNumber.has_value() && *line.newLineNumber > 0)
-                    {
-                        const std::size_t idx = static_cast<std::size_t>(*line.newLineNumber - 1);
-                        if (idx < newFileSeedStates->size())
-                        {
-                            newMdState = (*newFileSeedStates)[idx];
-                        }
-                    }
-                    highlightedHtml = gf::core::syntax::SyntaxHighlighter::highlightLine(
-                        line.content, langInfo.language, newMdState);
-                    if (line.kind == gf::git::bo::DiffLineKind::Context)
-                    {
-                        oldMdState = newMdState;
-                    }
-                }
+                out.maxLineLength = std::max(out.maxLineLength, computeVisualLineLength(line.content));
+                const std::string highlightedHtml = highlightDiffLineHtml(
+                    line, langInfo.language, isMd, newFileSeedStates, oldMdState, newMdState);
 
                 preparedLines.push_back(HighlightedDiffLine{
                     .raw = &line,
@@ -937,202 +693,23 @@ namespace gf::desktop
             }
 
             const QString hunkHeaderStr = QString::fromStdString(hunk.header);
-
-            // 0. Inline model rows: the hunk header, then the lines (same highlighted text)
             out.modelLines.push_back(gf::git::bo::DiffLine{
                 .kind = gf::git::bo::DiffLineKind::Header,
                 .oldLineNumber = std::nullopt,
                 .newLineNumber = std::nullopt,
                 .content = hunk.header
             });
-            out.modelRich.push_back(QString::fromStdString(gf::core::syntax::SyntaxHighlighter::escapeHtml(hunk.header)));
+            out.modelRich.push_back(
+                QString::fromStdString(gf::core::syntax::SyntaxHighlighter::escapeHtml(hunk.header)));
             for (const auto& prep : preparedLines)
             {
                 out.modelLines.push_back(*prep.raw);
                 out.modelRich.push_back(prep.richContent);
             }
 
-            // 1. Build Hunk Entry
-            QVariantMap hMap;
-            hMap[QStringLiteral("header")] = hunkHeaderStr;
-            hMap[QStringLiteral("oldStartLine")] = hunk.oldStartLine;
-            hMap[QStringLiteral("oldCount")] = hunk.oldCount;
-            hMap[QStringLiteral("newStartLine")] = hunk.newStartLine;
-            hMap[QStringLiteral("newCount")] = hunk.newCount;
-
-            QVariantList hLines;
-            hLines.reserve(static_cast<qsizetype>(preparedLines.size()));
-            if (!out.hunks.isEmpty())
-            {
-                hunkY += kHunkCardListSpacing;
-            }
-            hunkY += kHunkCardPadding + kHunkCardHeaderHeight;
-            std::size_t hunkCardLineCount = 0;
-            for (const auto& prep : preparedLines)
-            {
-                const auto& line = *prep.raw;
-                QVariantMap lMap;
-                QString kindStr;
-                QString bgCol = QStringLiteral("transparent");
-                QString fgCol = QStringLiteral("#E6EDF3");
-
-                switch (line.kind)
-                {
-                case gf::git::bo::DiffLineKind::Addition:
-                    kindStr = QStringLiteral("addition");
-                    bgCol = QStringLiteral("#12261E");
-                    fgCol = QStringLiteral("#7EE787");
-                    break;
-                case gf::git::bo::DiffLineKind::Deletion:
-                    kindStr = QStringLiteral("deletion");
-                    bgCol = QStringLiteral("#291518");
-                    fgCol = QStringLiteral("#FFA198");
-                    break;
-                default:
-                    kindStr = QStringLiteral("context");
-                    break;
-                }
-
-                if (hunkCardLineCount < kMaxHunkCardLines)
-                {
-                    hunkY += kHunkCardColSpacing;
-                    if (line.kind == gf::git::bo::DiffLineKind::Deletion)
-                    {
-                        appendOverviewSpan(hunkOldSpans, hunkY, hunkY + kDiffRowHeight, kHunkCardColSpacing + 0.01);
-                    }
-                    else if (line.kind == gf::git::bo::DiffLineKind::Addition)
-                    {
-                        appendOverviewSpan(hunkNewSpans, hunkY, hunkY + kDiffRowHeight, kHunkCardColSpacing + 0.01);
-                    }
-                    hunkY += kDiffRowHeight;
-                    ++hunkCardLineCount;
-                }
-
-                lMap[QStringLiteral("kind")] = kindStr;
-                lMap[QStringLiteral("oldLineNumber")] = line.oldLineNumber.has_value()
-                                                            ? QString::number(*line.oldLineNumber)
-                                                            : QString();
-                lMap[QStringLiteral("newLineNumber")] = line.newLineNumber.has_value()
-                                                            ? QString::number(*line.newLineNumber)
-                                                            : QString();
-                lMap[QStringLiteral("content")] = prep.content;
-                lMap[QStringLiteral("richContent")] = prep.richContent;
-                lMap[QStringLiteral("bgColor")] = bgCol;
-                lMap[QStringLiteral("fgColor")] = fgCol;
-                hLines.append(lMap);
-            }
-            hunkY += kHunkCardPadding;
-            hMap[QStringLiteral("lines")] = hLines;
-            out.hunks.append(hMap);
-
-            // 2. Build Split Lines (side-by-side alignment) reusing preparedLines
-            QVariantMap headerRow;
-            headerRow[QStringLiteral("isHunkHeader")] = true;
-            headerRow[QStringLiteral("hunkHeader")] = hunkHeaderStr;
-            out.splitLines.append(headerRow);
-            splitY += kDiffHeaderHeight;
-
-            std::vector<const HighlightedDiffLine*> pendingDeletions;
-            std::vector<const HighlightedDiffLine*> pendingAdditions;
-
-            auto flushPending = [&]()
-            {
-                std::size_t maxLen = std::max(pendingDeletions.size(), pendingAdditions.size());
-                for (std::size_t i = 0; i < maxLen; ++i)
-                {
-                    QVariantMap row;
-                    row[QStringLiteral("isHunkHeader")] = false;
-
-                    if (i < pendingDeletions.size())
-                    {
-                        const auto& del = *pendingDeletions[i];
-                        row[QStringLiteral("leftLine")] = del.raw->oldLineNumber.has_value()
-                                                              ? QString::number(*del.raw->oldLineNumber)
-                                                              : QString();
-                        row[QStringLiteral("leftContent")] = del.content;
-                        row[QStringLiteral("leftRichContent")] = del.richContent;
-                        row[QStringLiteral("leftKind")] = QStringLiteral("deletion");
-                        row[QStringLiteral("leftBgColor")] = QStringLiteral("#3B181E");
-                        row[QStringLiteral("leftFgColor")] = QStringLiteral("#FFA198");
-                        appendOverviewSpan(splitOldSpans, splitY, splitY + kDiffRowHeight);
-                    }
-                    else
-                    {
-                        row[QStringLiteral("leftLine")] = QString();
-                        row[QStringLiteral("leftContent")] = QString();
-                        row[QStringLiteral("leftRichContent")] = QString();
-                        row[QStringLiteral("leftKind")] = QStringLiteral("empty");
-                        row[QStringLiteral("leftBgColor")] = QStringLiteral("#0D1117");
-                        row[QStringLiteral("leftFgColor")] = QStringLiteral("#484F58");
-                    }
-
-                    if (i < pendingAdditions.size())
-                    {
-                        const auto& add = *pendingAdditions[i];
-                        row[QStringLiteral("rightLine")] = add.raw->newLineNumber.has_value()
-                                                               ? QString::number(*add.raw->newLineNumber)
-                                                               : QString();
-                        row[QStringLiteral("rightContent")] = add.content;
-                        row[QStringLiteral("rightRichContent")] = add.richContent;
-                        row[QStringLiteral("rightKind")] = QStringLiteral("addition");
-                        row[QStringLiteral("rightBgColor")] = QStringLiteral("#143220");
-                        row[QStringLiteral("rightFgColor")] = QStringLiteral("#7EE787");
-                        appendOverviewSpan(splitNewSpans, splitY, splitY + kDiffRowHeight);
-                    }
-                    else
-                    {
-                        row[QStringLiteral("rightLine")] = QString();
-                        row[QStringLiteral("rightContent")] = QString();
-                        row[QStringLiteral("rightRichContent")] = QString();
-                        row[QStringLiteral("rightKind")] = QStringLiteral("empty");
-                        row[QStringLiteral("rightBgColor")] = QStringLiteral("#0D1117");
-                        row[QStringLiteral("rightFgColor")] = QStringLiteral("#484F58");
-                    }
-                    out.splitLines.append(row);
-                    splitY += kDiffRowHeight;
-                }
-                pendingDeletions.clear();
-                pendingAdditions.clear();
-            };
-
-            for (const auto& prep : preparedLines)
-            {
-                const auto& line = *prep.raw;
-                if (line.kind == gf::git::bo::DiffLineKind::Deletion)
-                {
-                    pendingDeletions.push_back(&prep);
-                }
-                else if (line.kind == gf::git::bo::DiffLineKind::Addition)
-                {
-                    pendingAdditions.push_back(&prep);
-                }
-                else if (line.kind == gf::git::bo::DiffLineKind::Context)
-                {
-                    flushPending();
-                    QVariantMap row;
-                    row[QStringLiteral("isHunkHeader")] = false;
-                    row[QStringLiteral("leftLine")] = line.oldLineNumber.has_value()
-                                                          ? QString::number(*line.oldLineNumber)
-                                                          : QString();
-                    row[QStringLiteral("leftContent")] = prep.content;
-                    row[QStringLiteral("leftRichContent")] = prep.richContent;
-                    row[QStringLiteral("leftKind")] = QStringLiteral("context");
-                    row[QStringLiteral("leftBgColor")] = QStringLiteral("transparent");
-                    row[QStringLiteral("leftFgColor")] = QStringLiteral("#E6EDF3");
-
-                    row[QStringLiteral("rightLine")] = line.newLineNumber.has_value()
-                                                           ? QString::number(*line.newLineNumber)
-                                                           : QString();
-                    row[QStringLiteral("rightContent")] = prep.content;
-                    row[QStringLiteral("rightRichContent")] = prep.richContent;
-                    row[QStringLiteral("rightKind")] = QStringLiteral("context");
-                    row[QStringLiteral("rightBgColor")] = QStringLiteral("transparent");
-                    row[QStringLiteral("rightFgColor")] = QStringLiteral("#E6EDF3");
-                    out.splitLines.append(row);
-                    splitY += kDiffRowHeight;
-                }
-            }
-            flushPending();
+            out.hunks.append(buildHunkCardMap(
+                hunk, hunkHeaderStr, preparedLines, !out.hunks.isEmpty(), hunkY, hunkOldSpans, hunkNewSpans));
+            appendHunkSplitRows(hunkHeaderStr, preparedLines, out.splitLines, splitY, splitOldSpans, splitNewSpans);
         }
 
         if (truncated)
@@ -1160,14 +737,8 @@ namespace gf::desktop
         for (const auto& line : out.modelLines)
         {
             const double rowH = (line.kind == gf::git::bo::DiffLineKind::Header) ? kDiffHeaderHeight : kDiffRowHeight;
-            if (line.kind == gf::git::bo::DiffLineKind::Deletion)
-            {
-                appendOverviewSpan(inlineOldSpans, inlineY, inlineY + rowH);
-            }
-            else if (line.kind == gf::git::bo::DiffLineKind::Addition)
-            {
-                appendOverviewSpan(inlineNewSpans, inlineY, inlineY + rowH);
-            }
+            if (line.kind == gf::git::bo::DiffLineKind::Deletion) appendOverviewSpan(inlineOldSpans, inlineY, inlineY + rowH);
+            else if (line.kind == gf::git::bo::DiffLineKind::Addition) appendOverviewSpan(inlineNewSpans, inlineY, inlineY + rowH);
             inlineY += rowH;
         }
 
@@ -1206,86 +777,11 @@ namespace gf::desktop
             m_markdownToc.clear();
             m_markdownSource.clear();
             m_markdownNotice.clear();
-            if (wasMarkdown)
-            {
-                emit markdownDocumentChanged();
-            }
+            if (wasMarkdown) emit markdownDocumentChanged();
         }
 
         const bool wasRichRendered = isRichPreviewRendered();
-        clearRichPreviewState();
-        if (prepared.inspection && prepared.inspection->valid)
-        {
-            auto& insp = *prepared.inspection;
-            m_fileKind = std::move(insp.fileKind);
-            m_formatBadge = std::move(insp.formatBadge);
-            m_formatDescription = std::move(insp.formatDescription);
-            m_isImage = insp.isImage;
-            m_hasVisualPreview = insp.hasVisualPreview;
-            m_isSvgPreviewable = insp.isSvg && insp.hasVisualPreview && !m_isBinary;
-
-            m_hasOldBlob = insp.hasOldBlob;
-            m_hasNewBlob = insp.hasNewBlob;
-            m_oldFileSize = insp.oldFileSize;
-            m_newFileSize = insp.newFileSize;
-            m_oldFileSizeText = m_hasOldBlob ? DiffFileInspector::formatByteSize(m_oldFileSize) : QString();
-            m_newFileSizeText = m_hasNewBlob ? DiffFileInspector::formatByteSize(m_newFileSize) : QString();
-            m_fileSizeDeltaText = DiffFileInspector::formatSizeDelta(m_oldFileSize, m_newFileSize, m_hasOldBlob, m_hasNewBlob);
-
-            m_oldImageWidth = insp.oldImageWidth;
-            m_oldImageHeight = insp.oldImageHeight;
-            m_newImageWidth = insp.newImageWidth;
-            m_newImageHeight = insp.newImageHeight;
-            m_imageDiffPercent = insp.imageDiffPercent;
-
-            if (m_hasVisualPreview)
-            {
-                const bool hasOldImg = !insp.oldImage.isNull();
-                const bool hasNewImg = !insp.newImage.isNull();
-                const bool hasDiffImg = !insp.diffImage.isNull();
-                const std::uint64_t gen = DiffImageStore::instance().setImages(
-                    m_instanceId, std::move(insp.oldImage), std::move(insp.newImage), std::move(insp.diffImage));
-                if (hasOldImg) m_oldImageUrl = DiffImageStore::buildUrl(m_instanceId, gen, QStringLiteral("old"));
-                if (hasNewImg) m_newImageUrl = DiffImageStore::buildUrl(m_instanceId, gen, QStringLiteral("new"));
-                if (hasDiffImg) m_diffImageUrl = DiffImageStore::buildUrl(m_instanceId, gen, QStringLiteral("diff"));
-            }
-
-            if (!insp.oldFontBytes.isEmpty())
-            {
-                m_oldFontId = QFontDatabase::addApplicationFontFromData(insp.oldFontBytes);
-                if (m_oldFontId >= 0)
-                {
-                    const auto families = QFontDatabase::applicationFontFamilies(m_oldFontId);
-                    if (!families.isEmpty()) m_oldFontFamily = families.first();
-                }
-            }
-            if (!insp.newFontBytes.isEmpty())
-            {
-                m_newFontId = QFontDatabase::addApplicationFontFromData(insp.newFontBytes);
-                if (m_newFontId >= 0)
-                {
-                    const auto families = QFontDatabase::applicationFontFamilies(m_newFontId);
-                    if (!families.isEmpty()) m_newFontFamily = families.first();
-                }
-            }
-
-            m_metadataRows = std::move(insp.metadataRows);
-            m_archiveEntries = std::move(insp.archiveEntries);
-            m_archiveAddedCount = insp.archiveAddedCount;
-            m_archiveRemovedCount = insp.archiveRemovedCount;
-            m_archiveModifiedCount = insp.archiveModifiedCount;
-            m_archiveUnchangedCount = insp.archiveUnchangedCount;
-            m_hexRows = std::move(insp.hexRows);
-            m_hexTruncated = insp.hexTruncated;
-            m_hexChangedRows = insp.hexChangedRows;
-            m_previewNotice = std::move(insp.notice);
-        }
-        else if (m_isBinary)
-        {
-            m_fileKind = QStringLiteral("binary");
-            m_formatBadge = QStringLiteral("BINARY");
-            m_formatDescription = QStringLiteral("File binario");
-        }
+        applyPreparedRichPreview(prepared);
 
         {
             std::error_code ec;

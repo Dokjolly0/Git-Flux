@@ -256,6 +256,7 @@ namespace gf::desktop
         void cancelPendingBlame();
         void releaseTemporaryFonts();
         void clearRichPreviewState();
+        void applyPreparedRichPreview(PreparedDiff& prepared);
 
         gf::git::bl::GitDiffService& m_diffService;
         std::uint64_t m_instanceId = 0;

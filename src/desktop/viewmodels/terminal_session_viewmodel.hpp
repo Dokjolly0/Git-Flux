@@ -207,6 +207,16 @@ namespace gf::desktop
         void appendStreamChunk(TerminalTabState& tab, int streamKind, const QByteArray& utf8Bytes);
         void flushPendingBuffers(TerminalTabState& tab);
         void requestSubcommandOptionsAsync(const QString& subcommand);
+        [[nodiscard]] int prepareExternalCommandHeader(TerminalTabState& tab, const QString& trimmed);
+        void launchExternalCommand(TerminalTabState& tab, int headerId, const QString& trimmed);
+        void handleProcessFinished(int tabId,
+                                   int headerId,
+                                   const QString& repoPath,
+                                   bool wasGit,
+                                   int exitCode,
+                                   qint64 durationMs,
+                                   bool cancelled,
+                                   const QString& newWorkingDir);
         [[nodiscard]] QString buildPromptPrefix(const TerminalTabState& tab) const;
         [[nodiscard]] QString formatRelativeDir(const QString& repoRoot, const QString& currentDir) const;
 

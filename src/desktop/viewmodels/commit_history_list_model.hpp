@@ -1,5 +1,7 @@
 #pragma once
 
+#include "desktop/viewmodels/commit_graph_layout_engine.hpp"
+
 #include <QAbstractListModel>
 #include <QNetworkAccessManager>
 #include <QSet>
@@ -123,22 +125,7 @@ namespace gf::desktop
         void totalCommitsCountChanged();
 
     private:
-        struct GraphItem
-        {
-            int lane = 0;
-            QString color;
-            QVariantList routes;
-            bool isOrphan = false;
-            bool isStash = false;
-            QString stashSelector;
-        };
-
-        struct InferredBranchInfo
-        {
-            QString name;
-            QString borderColor;
-            QString bgColor;
-        };
+        using GraphItem = CommitGraphNode;
 
         void indexAvatarsFromCommits();
         void resolveMissingAvatarsFromGitHub();

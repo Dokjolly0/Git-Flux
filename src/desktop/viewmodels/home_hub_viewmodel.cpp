@@ -340,6 +340,79 @@ namespace gf::desktop
             gf::git::bl::GitCloneService::extractRepositoryNameFromUrl(url.trimmed().toStdString()));
     }
 
+    namespace
+    {
+        [[nodiscard]] QString normalizeCloneParentPath(const QString& rawParent)
+        {
+            QString cleanParent = rawParent.trimmed();
+            if (const QUrl parentUrl(cleanParent); parentUrl.isLocalFile())
+            {
+                cleanParent = parentUrl.toLocalFile();
+            }
+            else if (cleanParent.startsWith(QLatin1String("file://")))
+            {
+                cleanParent = cleanParent.sliced(7);
+            }
+            while (cleanParent.length() > 1 &&
+                   (cleanParent.endsWith(QLatin1Char('/')) || cleanParent.endsWith(QLatin1Char('\\'))))
+            {
+                cleanParent.chop(1);
+            }
+            return cleanParent;
+        }
+
+        [[nodiscard]] QString formatCloneFailureMessage(const gf::git::ports::GitOpsError& error,
+                                                        const std::filesystem::path& targetPath,
+                                                        const gf::core::git::bl::RemoteAccessIssue issue,
+                                                        const QString& host,
+                                                        bool& outKnown)
+        {
+            using gf::core::git::bl::RemoteAccessIssue;
+            outKnown = issue != RemoteAccessIssue::Unknown &&
+                       issue != RemoteAccessIssue::None &&
+                       error.kind != gf::git::ports::GitOpsError::Kind::DestinationAlreadyExists;
+
+            if (outKnown)
+            {
+                switch (issue)
+                {
+                case RemoteAccessIssue::SshKeyRejected:
+                    return QStringLiteral("Clone non riuscito: la chiave SSH non è accettata da %1.").arg(host);
+                case RemoteAccessIssue::SshHostKeyUnknown:
+                    return QStringLiteral("Clone non riuscito: %1 non è tra gli host SSH conosciuti.").arg(host);
+                case RemoteAccessIssue::SshHostKeyChanged:
+                    return QStringLiteral("Clone non riuscito: l'impronta SSH di %1 è cambiata.").arg(host);
+                case RemoteAccessIssue::HostNotFound:
+                    return QStringLiteral("Clone non riuscito: server %1 non trovato.").arg(host);
+                case RemoteAccessIssue::ConnectionFailed:
+                    return QStringLiteral("Clone non riuscito: impossibile connettersi a %1.").arg(host);
+                case RemoteAccessIssue::HttpsAuthFailed:
+                    return QStringLiteral("Clone non riuscito: accesso HTTPS a %1 negato.").arg(host);
+                case RemoteAccessIssue::RepositoryNotFound:
+                    return QStringLiteral("Clone non riuscito: repository non trovato o non accessibile.");
+                default:
+                    break;
+                }
+            }
+
+            switch (error.kind)
+            {
+            case gf::git::ports::GitOpsError::Kind::DestinationAlreadyExists:
+                return QStringLiteral("La cartella di destinazione esiste già e non è vuota: %1")
+                    .arg(QString::fromStdString(targetPath.string()));
+            case gf::git::ports::GitOpsError::Kind::NetworkAuthenticationFailed:
+                return QStringLiteral("Autenticazione fallita o host non raggiungibile durante il clone:\n%1")
+                    .arg(QString::fromStdString(error.message));
+            case gf::git::ports::GitOpsError::Kind::RemoteNotFound:
+                return QStringLiteral("Repository remoto non trovato o URL non valido:\n%1")
+                    .arg(QString::fromStdString(error.message));
+            default:
+                return QStringLiteral("Errore durante la clonazione del repository:\n%1")
+                    .arg(QString::fromStdString(error.message));
+            }
+        }
+    } // namespace
+
     void HomeHubViewModel::cloneRepositoryAsync(const QString& remoteUrl,
                                                 const QString& destinationParentFolder,
                                                 const QString& directoryName,
@@ -351,62 +424,40 @@ namespace gf::desktop
             << "Dir:" << directoryName
             << "DisplayName:" << displayName;
 
-        if (!m_cloneService)
+        auto failEarly = [this](const QString& err)
         {
-            const QString err = QStringLiteral("Servizio di clonazione non disponibile");
-            qWarning() << "[HomeHubViewModel] Error:" << err;
             setLastError(err);
             setStatus(err);
             emit errorOccurred(err);
             emit cloneCompleted(false, err);
+        };
+
+        if (!m_cloneService)
+        {
+            const QString err = QStringLiteral("Servizio di clonazione non disponibile");
+            qWarning() << "[HomeHubViewModel] Error:" << err;
+            failEarly(err);
             return;
         }
 
         const QString cleanUrl = remoteUrl.trimmed();
         if (cleanUrl.isEmpty())
         {
-            const QString err = QStringLiteral("L'URL del repository remoto non può essere vuoto");
-            setLastError(err);
-            setStatus(err);
-            emit errorOccurred(err);
-            emit cloneCompleted(false, err);
+            failEarly(QStringLiteral("L'URL del repository remoto non può essere vuoto"));
             return;
         }
 
-        QString cleanParent = destinationParentFolder.trimmed();
-        const QUrl parentUrl(cleanParent);
-        if (parentUrl.isLocalFile())
-        {
-            cleanParent = parentUrl.toLocalFile();
-        }
-        else if (cleanParent.startsWith(QLatin1String("file://")))
-        {
-            cleanParent = cleanParent.sliced(7);
-        }
-        while (cleanParent.length() > 1 && (cleanParent.endsWith(QLatin1Char('/')) || cleanParent.endsWith(
-            QLatin1Char('\\'))))
-        {
-            cleanParent.chop(1);
-        }
-
+        const QString cleanParent = normalizeCloneParentPath(destinationParentFolder);
         if (cleanParent.isEmpty())
         {
-            const QString err = QStringLiteral("Specificare una cartella di destinazione locale valida");
-            setLastError(err);
-            setStatus(err);
-            emit errorOccurred(err);
-            emit cloneCompleted(false, err);
+            failEarly(QStringLiteral("Specificare una cartella di destinazione locale valida"));
             return;
         }
 
         QString finalDirName = directoryName.trimmed();
-        if (finalDirName.isEmpty())
-        {
-            finalDirName = extractRepoNameFromUrl(cleanUrl);
-        }
-
-        const std::filesystem::path targetPath = std::filesystem::path(cleanParent.toStdString()) / finalDirName.
-            toStdString();
+        if (finalDirName.isEmpty()) finalDirName = extractRepoNameFromUrl(cleanUrl);
+        const std::filesystem::path targetPath =
+            std::filesystem::path(cleanParent.toStdString()) / finalDirName.toStdString();
 
         m_isCloning = true;
         m_cloneProgressPercent = 0;
@@ -418,12 +469,8 @@ namespace gf::desktop
         setLastError(QString());
         setCloneDiagnostics(QString(), QString(), QString());
 
-        // Saved provider token for HTTPS URLs (resolved here, decrypted on the clone thread).
-        HttpsCredentialLoader credentialLoader;
-        if (m_httpsCredentialResolver)
-        {
-            credentialLoader = m_httpsCredentialResolver(cleanUrl);
-        }
+        HttpsCredentialLoader credentialLoader =
+            m_httpsCredentialResolver ? m_httpsCredentialResolver(cleanUrl) : HttpsCredentialLoader{};
 
         std::thread([this,
                 credentialLoader = std::move(credentialLoader),
@@ -431,147 +478,88 @@ namespace gf::desktop
                 targetPath,
                 dispNameStd = displayName.trimmed().toStdString(),
                 cleanParent]()
-            {
-                gf::git::bo::CloneRepositoryOptions opts{
-                    .remoteUrl = cleanUrlStd,
-                    .destinationPath = targetPath,
-                    .timeout = std::chrono::milliseconds{180'000},
-                    .progressCallback = [this](int percent, std::string_view statusText)
-                    {
-                        QMetaObject::invokeMethod(
-                            this, [this, percent, txt = QString::fromUtf8(
-                                statusText.data(), static_cast<qsizetype>(statusText.size()))]()
-                            {
-                                if (percent >= 0)
-                                {
-                                    m_cloneProgressPercent = percent;
-                                    emit cloneProgressPercentChanged(percent);
-                                }
-                                if (!txt.isEmpty())
-                                {
-                                    m_cloneStatusMessage = txt;
-                                    emit cloneStatusMessageChanged(m_cloneStatusMessage);
-                                    setStatus(m_cloneStatusMessage);
-                                }
-                            }, Qt::QueuedConnection);
-                    }
-                };
-
-                if (credentialLoader)
+        {
+            gf::git::bo::CloneRepositoryOptions opts{
+                .remoteUrl = cleanUrlStd,
+                .destinationPath = targetPath,
+                .timeout = std::chrono::milliseconds{180'000},
+                .progressCallback = [this](int percent, std::string_view statusText)
                 {
-                    if (auto credential = credentialLoader())
-                    {
-                        opts.httpsUsername = std::move(credential->username);
-                        opts.httpsToken = std::move(credential->password);
-                    }
-                }
-
-                std::optional<std::string> optDisp;
-                if (!dispNameStd.empty())
-                {
-                    optDisp = dispNameStd;
-                }
-
-                auto result = m_cloneService->cloneAndRegister(opts, optDisp);
-
-                QMetaObject::invokeMethod(this, [this, result, targetPath, cleanParent, cleanUrlStd]()
-                {
-                    m_isCloning = false;
-                    m_cloneProgressPercent = result ? 100 : 0;
-                    emit isCloningChanged(false);
-                    emit cloneProgressPercentChanged(m_cloneProgressPercent);
-
-                    if (!result)
-                    {
-                        const auto& rawLog = result.error().message;
-                        const auto issue = gf::core::git::bl::classifyRemoteAccessOutput(rawLog);
-                        const auto host = QString::fromStdString(gf::core::git::bl::extractRemoteHost(cleanUrlStd));
-                        QString errStr;
-                        switch (result.error().kind)
+                    QMetaObject::invokeMethod(
+                        this, [this, percent, txt = QString::fromUtf8(
+                            statusText.data(), static_cast<qsizetype>(statusText.size()))]()
                         {
-                        case gf::git::ports::GitOpsError::Kind::DestinationAlreadyExists:
-                            errStr = QStringLiteral("La cartella di destinazione esiste già e non è vuota: %1")
-                                .arg(QString::fromStdString(targetPath.string()));
-                            break;
-                        case gf::git::ports::GitOpsError::Kind::NetworkAuthenticationFailed:
-                            errStr = QStringLiteral(
-                                    "Autenticazione fallita o host non raggiungibile durante il clone:\n%1")
-                                .arg(QString::fromStdString(result.error().message));
-                            break;
-                        case gf::git::ports::GitOpsError::Kind::RemoteNotFound:
-                            errStr = QStringLiteral("Repository remoto non trovato o URL non valido:\n%1")
-                                .arg(QString::fromStdString(result.error().message));
-                            break;
-                        default:
-                            errStr = QStringLiteral("Errore durante la clonazione del repository:\n%1")
-                                .arg(QString::fromStdString(result.error().message));
-                            break;
-                        }
-
-                        // Recognised network problems get a plain-language message: the raw git
-                        // output stays available (copyable) next to the troubleshooting guide.
-                        using gf::core::git::bl::RemoteAccessIssue;
-                        const bool known = issue != RemoteAccessIssue::Unknown && issue != RemoteAccessIssue::None &&
-                            result.error().kind != gf::git::ports::GitOpsError::Kind::DestinationAlreadyExists;
-                        if (known)
-                        {
-                            switch (issue)
+                            if (percent >= 0)
                             {
-                            case RemoteAccessIssue::SshKeyRejected:
-                                errStr = QStringLiteral("Clone non riuscito: la chiave SSH non è accettata da %1.").arg(host);
-                                break;
-                            case RemoteAccessIssue::SshHostKeyUnknown:
-                                errStr = QStringLiteral("Clone non riuscito: %1 non è tra gli host SSH conosciuti.").arg(host);
-                                break;
-                            case RemoteAccessIssue::SshHostKeyChanged:
-                                errStr = QStringLiteral("Clone non riuscito: l'impronta SSH di %1 è cambiata.").arg(host);
-                                break;
-                            case RemoteAccessIssue::HostNotFound:
-                                errStr = QStringLiteral("Clone non riuscito: server %1 non trovato.").arg(host);
-                                break;
-                            case RemoteAccessIssue::ConnectionFailed:
-                                errStr = QStringLiteral("Clone non riuscito: impossibile connettersi a %1.").arg(host);
-                                break;
-                            case RemoteAccessIssue::HttpsAuthFailed:
-                                errStr = QStringLiteral("Clone non riuscito: accesso HTTPS a %1 negato.").arg(host);
-                                break;
-                            case RemoteAccessIssue::RepositoryNotFound:
-                                errStr = QStringLiteral("Clone non riuscito: repository non trovato o non accessibile.");
-                                break;
-                            default:
-                                break;
+                                m_cloneProgressPercent = percent;
+                                emit cloneProgressPercentChanged(percent);
                             }
-                        }
-                        setCloneDiagnostics(
-                            known ? QString::fromUtf8(gf::core::git::bl::remoteAccessIssueToString(issue).data()) : QString(),
-                            host, QString::fromStdString(rawLog).trimmed());
+                            if (!txt.isEmpty())
+                            {
+                                m_cloneStatusMessage = txt;
+                                emit cloneStatusMessageChanged(m_cloneStatusMessage);
+                                setStatus(m_cloneStatusMessage);
+                            }
+                        }, Qt::QueuedConnection);
+                }
+            };
 
-                        m_cloneStatusMessage = errStr;
-                        emit cloneStatusMessageChanged(errStr);
-                        setLastError(errStr);
-                        setStatus(errStr);
-                        emit errorOccurred(errStr);
-                        emit cloneCompleted(false, errStr);
-                    }
-                    else
-                    {
-                        const QString repoName = QString::fromStdString(result->displayName);
-                        const QString repoSavedPath = QString::fromStdString(result->localPath.string());
-                        const QString successMsg = QStringLiteral("Repository '%1' clonato con successo!").
-                            arg(repoName);
+            if (credentialLoader)
+            {
+                if (auto credential = credentialLoader())
+                {
+                    opts.httpsUsername = std::move(credential->username);
+                    opts.httpsToken = std::move(credential->password);
+                }
+            }
 
-                        m_cloneStatusMessage = successMsg;
-                        emit cloneStatusMessageChanged(successMsg);
-                        setStatus(successMsg);
-                        setLastError(QString());
+            std::optional<std::string> optDisp;
+            if (!dispNameStd.empty()) optDisp = dispNameStd;
+            auto result = m_cloneService->cloneAndRegister(opts, optDisp);
 
-                        emit repositoryAdded(repoName, repoSavedPath);
-                        emit cloneCompleted(true, successMsg);
-                        setLastCloneDestinationPath(cleanParent);
-                        refreshAll();
-                    }
-                }, Qt::QueuedConnection);
-            }).detach();
+            QMetaObject::invokeMethod(this, [this, result, targetPath, cleanParent, cleanUrlStd]()
+            {
+                m_isCloning = false;
+                m_cloneProgressPercent = result ? 100 : 0;
+                emit isCloningChanged(false);
+                emit cloneProgressPercentChanged(m_cloneProgressPercent);
+
+                if (!result)
+                {
+                    const auto& rawLog = result.error().message;
+                    const auto issue = gf::core::git::bl::classifyRemoteAccessOutput(rawLog);
+                    const auto host = QString::fromStdString(gf::core::git::bl::extractRemoteHost(cleanUrlStd));
+                    bool known = false;
+                    const QString errStr = formatCloneFailureMessage(result.error(), targetPath, issue, host, known);
+
+                    setCloneDiagnostics(
+                        known ? QString::fromUtf8(gf::core::git::bl::remoteAccessIssueToString(issue).data()) : QString(),
+                        host, QString::fromStdString(rawLog).trimmed());
+
+                    m_cloneStatusMessage = errStr;
+                    emit cloneStatusMessageChanged(errStr);
+                    setLastError(errStr);
+                    setStatus(errStr);
+                    emit errorOccurred(errStr);
+                    emit cloneCompleted(false, errStr);
+                    return;
+                }
+
+                const QString repoName = QString::fromStdString(result->displayName);
+                const QString repoSavedPath = QString::fromStdString(result->localPath.string());
+                const QString successMsg = QStringLiteral("Repository '%1' clonato con successo!").arg(repoName);
+
+                m_cloneStatusMessage = successMsg;
+                emit cloneStatusMessageChanged(successMsg);
+                setStatus(successMsg);
+                setLastError(QString());
+
+                emit repositoryAdded(repoName, repoSavedPath);
+                emit cloneCompleted(true, successMsg);
+                setLastCloneDestinationPath(cleanParent);
+                refreshAll();
+            }, Qt::QueuedConnection);
+        }).detach();
     }
 
     void HomeHubViewModel::setLastCloneDestinationPath(const QString& path)

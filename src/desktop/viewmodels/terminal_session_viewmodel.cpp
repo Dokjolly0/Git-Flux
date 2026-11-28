@@ -1,9 +1,8 @@
-#include "desktop/viewmodels/terminal_session_viewmodel.hpp"
+#include "desktop/viewmodels/terminal_session_internal.hpp"
 #include "desktop/services/desktop_viewmodel_utils.hpp"
 
 #include "core/modules/terminal/bl/ansi_parser.hpp"
 #include "core/modules/terminal/bl/command_line_tokenizer.hpp"
-#include "core/modules/terminal/bl/git_completion_engine.hpp"
 #include "core/shared/accent_palette.hpp"
 #include "core/shared/utf8_path.hpp"
 
@@ -17,52 +16,6 @@
 
 namespace gf::desktop
 {
-    struct TerminalSessionViewModel::TerminalTabState
-    {
-        int id = 0;
-        QString title;
-        QString repoRootPath;
-        QString currentWorkingDir;
-        QString previousWorkingDir;
-        QString branch;
-        QString shellId;
-        QString accentColor;
-        std::unique_ptr<TerminalOutputListModel> outputModel;
-        std::unique_ptr<TerminalOutputListModel> pagerModel;
-        QStringList history;
-        int historyCursor = -1; // -1 means not browsing history
-        QString historyDraft;
-        QString inputDraft;
-        int inputCursorPos = 0;
-
-        bool isRunning = false;
-        int activeCommandHeaderId = 0;
-        bool activeCommandWasGit = false;
-        bool activeCommandCanPage = false;
-        bool pagerActive = false;
-        bool closedPagerEarly = false;
-        QString pagerCommand;
-        std::shared_ptr<gf::terminal::ports::ITerminalProcessHandle> activeProcess;
-
-        std::string stdoutPending;
-        std::string stderrPending;
-        bool stdoutOverwriteLast = false;
-        bool stderrOverwriteLast = false;
-        gf::terminal::bo::TerminalTextStyle stdoutStyle{};
-        gf::terminal::bo::TerminalTextStyle stderrStyle{};
-    };
-
-    struct TerminalSessionViewModel::RepoTerminalBucket
-    {
-        QString repoId;
-        QString repoName;
-        QString repoPath;
-        QString branch;
-        std::vector<std::unique_ptr<TerminalTabState>> tabs;
-        int activeTabIndex = -1;
-        int nextTabNumber = 1;
-    };
-
     namespace
     {
         [[nodiscard]] std::string makeRepoKey(const QString& repoId, const QString& repoPath)
@@ -79,19 +32,6 @@ namespace gf::desktop
             }
             const double sec = static_cast<double>(ms.count()) / 1000.0;
             return QString::number(sec, 'f', sec < 10.0 ? 2 : 1) + QStringLiteral("s");
-        }
-
-        [[nodiscard]] std::string_view trimSv(std::string_view sv) noexcept
-        {
-            while (!sv.empty() && (sv.front() == ' ' || sv.front() == '\t' || sv.front() == '\r' || sv.front() == '\n'))
-            {
-                sv.remove_prefix(1);
-            }
-            while (!sv.empty() && (sv.back() == ' ' || sv.back() == '\t' || sv.back() == '\r' || sv.back() == '\n'))
-            {
-                sv.remove_suffix(1);
-            }
-            return sv;
         }
 
         [[nodiscard]] bool hasUnclosedQuote(const std::string_view input) noexcept
@@ -124,7 +64,7 @@ namespace gf::desktop
 
             auto segmentStartsWithGit = [](std::string_view segment) -> bool
             {
-                segment = trimSv(segment);
+                segment = trimTerminalSv(segment);
                 if (segment.empty()) return false;
                 std::size_t end = 0;
                 while (end < segment.size() &&
@@ -183,150 +123,6 @@ namespace gf::desktop
             }
             return segmentStartsWithGit(sv.substr(segStart));
         }
-
-        [[nodiscard]] gf::terminal::bo::RepoCompletionSnapshot collectRepoSnapshot(
-            gf::git::ports::IGitCommandExecutor* executor,
-            const std::filesystem::path& repoPath)
-        {
-            gf::terminal::bo::RepoCompletionSnapshot snap;
-            if (!executor || repoPath.empty() || !std::filesystem::exists(repoPath))
-            {
-                return snap;
-            }
-
-            auto runGit = [&](std::vector<std::string> args) -> std::string
-            {
-                gf::git::bo::GitCommand cmd;
-                cmd.args = std::move(args);
-                cmd.workingDirectory = repoPath;
-                cmd.timeout = std::chrono::milliseconds{3000};
-                if (const auto res = executor->execute(cmd); res && res->succeeded())
-                {
-                    return res->stdoutBytes;
-                }
-                return {};
-            };
-
-            auto forEachLine = [](const std::string_view text, const auto& fn)
-            {
-                std::size_t pos = 0;
-                while (pos < text.size())
-                {
-                    std::size_t nl = text.find('\n', pos);
-                    if (nl == std::string_view::npos) nl = text.size();
-                    std::string_view line = text.substr(pos, nl - pos);
-                    if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
-                    if (!line.empty()) fn(line);
-                    pos = (nl < text.size()) ? nl + 1 : nl;
-                }
-            };
-
-            // 1. Current branch
-            {
-                const std::string head = runGit({"symbolic-ref", "--short", "HEAD"});
-                snap.currentBranch = std::string(trimSv(head));
-            }
-
-            // 2. Local branches, remote branches, tags in a single git invocation
-            {
-                const std::string refs = runGit({
-                    "for-each-ref",
-                    "--format=%(refname:short)|%(refname)",
-                    "refs/heads",
-                    "refs/remotes",
-                    "refs/tags"
-                });
-                forEachLine(refs, [&](const std::string_view line)
-                {
-                    const std::size_t sep = line.find('|');
-                    if (sep == std::string_view::npos) return;
-                    const std::string_view shortName = line.substr(0, sep);
-                    const std::string_view fullName = line.substr(sep + 1);
-                    if (fullName.starts_with("refs/heads/"))
-                    {
-                        snap.localBranches.emplace_back(shortName);
-                    }
-                    else if (fullName.starts_with("refs/remotes/"))
-                    {
-                        if (!shortName.ends_with("/HEAD"))
-                        {
-                            snap.remoteBranches.emplace_back(shortName);
-                        }
-                    }
-                    else if (fullName.starts_with("refs/tags/"))
-                    {
-                        snap.tags.emplace_back(shortName);
-                    }
-                });
-            }
-
-            // 3. Remotes
-            {
-                const std::string remotes = runGit({"remote"});
-                forEachLine(remotes, [&](const std::string_view line)
-                {
-                    const auto t = trimSv(line);
-                    if (!t.empty()) snap.remotes.emplace_back(t);
-                });
-            }
-
-            // 4. Stashes
-            {
-                const std::string stashes = runGit({"stash", "list", "--format=%gd|%gs"});
-                forEachLine(stashes, [&](const std::string_view line)
-                {
-                    const std::size_t sep = line.find('|');
-                    if (sep == std::string_view::npos) return;
-                    snap.stashes.push_back(gf::terminal::bo::RepoStashHint{
-                        .selector = std::string(line.substr(0, sep)),
-                        .message = std::string(line.substr(sep + 1))
-                    });
-                });
-            }
-
-            // 5. Working tree modified & untracked files
-            {
-                const std::string status = runGit({"status", "--porcelain=v1", "-uall"});
-                forEachLine(status, [&](const std::string_view line)
-                {
-                    if (line.size() < 4) return;
-                    const std::string_view xy = line.substr(0, 2);
-                    std::string_view path = line.substr(3);
-                    if (const std::size_t arrow = path.find(" -> "); arrow != std::string_view::npos)
-                    {
-                        path = path.substr(arrow + 4);
-                    }
-                    if (path.size() >= 2 && path.front() == '"' && path.back() == '"')
-                    {
-                        path = path.substr(1, path.size() - 2);
-                    }
-                    if (xy == "??")
-                    {
-                        snap.untrackedFiles.emplace_back(path);
-                    }
-                    else
-                    {
-                        snap.modifiedFiles.emplace_back(path);
-                    }
-                });
-            }
-
-            // 6. Recent commits
-            {
-                const std::string logOut = runGit({"log", "-n", "15", "--format=%h|%s"});
-                forEachLine(logOut, [&](const std::string_view line)
-                {
-                    const std::size_t sep = line.find('|');
-                    if (sep == std::string_view::npos) return;
-                    snap.recentCommits.push_back(gf::terminal::bo::RepoCommitHint{
-                        .shortSha = std::string(line.substr(0, sep)),
-                        .summary = std::string(line.substr(sep + 1))
-                    });
-                });
-            }
-
-            return snap;
-        }
     } // namespace
 
     TerminalSessionViewModel::TerminalSessionViewModel(
@@ -366,28 +162,6 @@ namespace gf::desktop
             handle->wait();
         }
         m_bgPool.waitForDone();
-    }
-
-    void TerminalSessionViewModel::warmUpCatalog()
-    {
-        if (!m_catalogService) return;
-        const std::filesystem::path repoPath = gf::core::utf8ToPath(m_activeRepoPath.toStdString());
-        auto alive = m_alive;
-        auto* catalog = m_catalogService;
-
-        m_bgPool.start([this, alive, catalog, repoPath]()
-        {
-            catalog->discoverAllCommands(repoPath);
-            if (!alive->load(std::memory_order_acquire)) return;
-            QMetaObject::invokeMethod(this, [this, alive]()
-            {
-                if (!alive->load(std::memory_order_acquire)) return;
-                if (!m_lastCompletionInput.isEmpty())
-                {
-                    updateCompletions(m_lastCompletionInput, m_lastCompletionCursor, m_lastCompletionExplicit);
-                }
-            }, Qt::QueuedConnection);
-        });
     }
 
     TerminalSessionViewModel::RepoTerminalBucket* TerminalSessionViewModel::activeBucket() noexcept
@@ -527,130 +301,9 @@ namespace gf::desktop
         return (tab && tab->pagerModel) ? tab->pagerModel.get() : const_cast<TerminalOutputListModel*>(&m_emptyOutputModel);
     }
 
-    bool TerminalSessionViewModel::pagerActive() const noexcept
-    {
-        const auto* tab = activeTab();
-        return tab && tab->pagerActive;
-    }
-
-    QString TerminalSessionViewModel::pagerCommand() const
-    {
-        const auto* tab = activeTab();
-        return tab ? tab->pagerCommand : QString{};
-    }
-
-    int TerminalSessionViewModel::pagerLineCount() const noexcept
-    {
-        const auto* tab = activeTab();
-        return (tab && tab->pagerModel) ? tab->pagerModel->count() : 0;
-    }
-
-    bool TerminalSessionViewModel::hasLastPagerOutput() const noexcept
-    {
-        const auto* tab = activeTab();
-        return tab && tab->pagerModel && tab->pagerModel->count() > 0;
-    }
-
-    bool TerminalSessionViewModel::shouldPaginateCommand(const std::string_view commandLine)
-    {
-        std::vector<std::string> args;
-        if (!gf::terminal::bl::CommandLineTokenizer::trySplitSimpleArgs(commandLine, args) || args.size() < 2)
-        {
-            return false;
-        }
-
-        auto toLowerStr = [](const std::string_view sv)
-        {
-            std::string out;
-            out.reserve(sv.size());
-            for (const char c : sv)
-            {
-                out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-            }
-            return out;
-        };
-
-        const std::string cmd0 = toLowerStr(args[0]);
-        if (cmd0 != "git" && cmd0 != "git.exe")
-        {
-            return false;
-        }
-
-        bool explicitPaginate = false;
-        std::size_t subIdx = std::string::npos;
-        bool skipNext = false;
-        for (std::size_t i = 1; i < args.size(); ++i)
-        {
-            const std::string_view tok = args[i];
-            if (skipNext)
-            {
-                skipNext = false;
-                continue;
-            }
-            if (tok == "-P" || tok == "--no-pager")
-            {
-                return false;
-            }
-            if (tok == "-p" || tok == "--paginate")
-            {
-                explicitPaginate = true;
-                continue;
-            }
-            if (tok == "-C" || tok == "-c" || tok == "--git-dir" ||
-                tok == "--work-tree" || tok == "--namespace" || tok == "--config-env")
-            {
-                skipNext = true;
-                continue;
-            }
-            if (tok.starts_with('-'))
-            {
-                continue;
-            }
-            subIdx = i;
-            break;
-        }
-
-        if (explicitPaginate)
-        {
-            return true;
-        }
-        if (subIdx == std::string::npos)
-        {
-            return false;
-        }
-
-        const std::string_view sub = args[subIdx];
-        if (sub == "log" || sub == "diff" || sub == "show" || sub == "reflog" ||
-            sub == "shortlog" || sub == "blame" || sub == "whatchanged" ||
-            sub == "range-diff" || sub == "grep" || sub == "help")
-        {
-            return true;
-        }
-        if (sub == "stash" && subIdx + 1 < args.size())
-        {
-            const std::string_view action = args[subIdx + 1];
-            return action == "list" || action == "show";
-        }
-        if (sub == "branch" || sub == "tag")
-        {
-            // Paginate listing operations (skip mutating flags like -d/-D/-m/-M/-c/-C/-a/-s)
-            for (std::size_t i = subIdx + 1; i < args.size(); ++i)
-            {
-                const std::string_view a = args[i];
-                if (a == "-d" || a == "-D" || a == "--delete" || a == "-m" || a == "-M" ||
-                    a == "--move" || a == "-c" || a == "-C" || a == "--copy" || a == "-s")
-                {
-                    return false;
-                }
-            }
-            return true;
-        }
-        return false;
-    }
-
     bool TerminalSessionViewModel::isBuiltinCdCommand(const std::string_view commandLine) noexcept
     {
-        const std::string_view trimmed = trimSv(commandLine);
+        const std::string_view trimmed = trimTerminalSv(commandLine);
         if (trimmed.size() < 2)
         {
             return false;
@@ -1213,6 +866,242 @@ namespace gf::desktop
         emit outputAppended();
     }
 
+    int TerminalSessionViewModel::prepareExternalCommandHeader(TerminalTabState& tab, const QString& trimmed)
+    {
+        const QString lower = trimmed.toLower();
+        if (lower == QStringLiteral("clear") || lower == QStringLiteral("cls"))
+        {
+            clearActiveOutput();
+            return -1;
+        }
+        if (lower == QStringLiteral("exit") || lower == QStringLiteral("quit"))
+        {
+            closeTab(activeTabIndex());
+            return -1;
+        }
+
+        const int headerId = tab.outputModel->appendCommandHeader(buildPromptPrefix(tab), trimmed);
+        emit outputAppended();
+
+        if (lower == QStringLiteral("pwd"))
+        {
+            const QString p = QDir::toNativeSeparators(tab.currentWorkingDir);
+            tab.outputModel->appendLine(QStringLiteral("stdout"), p.toHtmlEscaped(), p);
+            tab.outputModel->finishCommandHeader(headerId, 0, QStringLiteral("0ms"), false);
+            emit outputAppended();
+            return -1;
+        }
+
+        if (isBuiltinCdCommand(trimmed.toStdString()))
+        {
+            handleBuiltinCd(tab, trimmed.mid(2).trimmed(), headerId);
+            return -1;
+        }
+
+        if (!m_processRunner)
+        {
+            const QString err = QStringLiteral("Runner terminale non configurato.");
+            tab.outputModel->appendLine(QStringLiteral("stderr"), err.toHtmlEscaped(), err);
+            tab.outputModel->finishCommandHeader(headerId, 1, QStringLiteral("0ms"), false);
+            emit outputAppended();
+            return -1;
+        }
+
+        return headerId;
+    }
+
+    void TerminalSessionViewModel::handleProcessFinished(const int tabId,
+                                                         const int headerId,
+                                                         const QString& repoPath,
+                                                         const bool wasGit,
+                                                         const int exitCode,
+                                                         const qint64 durationMs,
+                                                         const bool cancelled,
+                                                         const QString& newWorkingDir)
+    {
+        bool emitPagerUpdate = false;
+        bool shouldEmitOutputAppended = true;
+        bool workingDirChanged = false;
+        if (auto* t = findTabById(tabId))
+        {
+            flushPendingBuffers(*t);
+
+            if (!newWorkingDir.isEmpty())
+            {
+                const QFileInfo dirInfo(newWorkingDir);
+                if (dirInfo.exists() && dirInfo.isDir())
+                {
+                    const QString resolved = dirInfo.canonicalFilePath().isEmpty()
+                                                 ? QDir::cleanPath(newWorkingDir)
+                                                 : dirInfo.canonicalFilePath();
+#ifdef _WIN32
+                    constexpr Qt::CaseSensitivity kPathCs = Qt::CaseInsensitive;
+#else
+                    constexpr Qt::CaseSensitivity kPathCs = Qt::CaseSensitive;
+#endif
+                    if (QDir::cleanPath(t->currentWorkingDir).compare(resolved, kPathCs) != 0)
+                    {
+                        t->previousWorkingDir = t->currentWorkingDir;
+                        t->currentWorkingDir = resolved;
+                        workingDirChanged = true;
+                    }
+                }
+            }
+
+            const bool closedEarly = t->closedPagerEarly;
+            const bool effectiveCancelled = cancelled && !closedEarly;
+            const int effectiveExitCode = closedEarly ? 0 : exitCode;
+
+            if (t->activeCommandCanPage)
+            {
+                const int pagedCount = t->pagerModel->count();
+                if (!t->pagerActive && !closedEarly && pagedCount <= kTerminalPagerLineThreshold)
+                {
+                    // Short output (less -FRX behavior): print directly inline in terminal scrollback
+                    t->pagerModel->copyLinesTo(*t->outputModel);
+                    t->pagerModel->clear();
+                    t->pagerCommand.clear();
+                }
+                else if (pagedCount > 0)
+                {
+                    if (!closedEarly && !t->pagerActive)
+                    {
+                        t->pagerActive = true;
+                    }
+                    const QString summary = QStringLiteral("📄 Output nel pager (%1 righe) — usa \"Riapri pager\" nella barra in alto per consultarlo di nuovo")
+                                                .arg(pagedCount);
+                    t->outputModel->appendLine(QStringLiteral("system"), summary.toHtmlEscaped(), summary);
+                    shouldEmitOutputAppended = !t->pagerActive;
+                }
+                t->activeCommandCanPage = false;
+                emitPagerUpdate = true;
+            }
+
+            if (effectiveCancelled)
+            {
+                const QString msg = QStringLiteral("^C (comando interrotto)");
+                t->outputModel->appendLine(QStringLiteral("system"), msg.toHtmlEscaped(), msg);
+            }
+            t->outputModel->finishCommandHeader(
+                headerId, effectiveExitCode, formatDuration(std::chrono::milliseconds{durationMs}), effectiveCancelled);
+            t->isRunning = false;
+            t->activeProcess.reset();
+        }
+        emit tabsChanged();
+        if (workingDirChanged && activeTab() && activeTab()->id == tabId)
+        {
+            emit activeTabChanged();
+        }
+        emit runningStateChanged();
+        if (emitPagerUpdate)
+        {
+            emit pagerStateChanged();
+        }
+        if (shouldEmitOutputAppended)
+        {
+            emit outputAppended();
+        }
+
+        if (wasGit && !repoPath.isEmpty())
+        {
+            refreshRepoCompletionContext();
+            emit gitCommandFinished(repoPath, exitCode);
+        }
+    }
+
+    void TerminalSessionViewModel::launchExternalCommand(TerminalTabState& tab,
+                                                         const int headerId,
+                                                         const QString& trimmed)
+    {
+        const bool canPage = shouldPaginateCommand(trimmed.toStdString());
+
+        tab.isRunning = true;
+        tab.activeCommandHeaderId = headerId;
+        tab.activeCommandWasGit = looksLikeGitCommand(trimmed);
+        tab.activeCommandCanPage = canPage;
+        tab.closedPagerEarly = false;
+        if (canPage)
+        {
+            tab.pagerModel->clear();
+            tab.pagerCommand = trimmed;
+            tab.pagerActive = false;
+            emit pagerStateChanged();
+        }
+        tab.stdoutPending.clear();
+        tab.stderrPending.clear();
+        tab.stdoutOverwriteLast = false;
+        tab.stderrOverwriteLast = false;
+        tab.stdoutStyle = {};
+        tab.stderrStyle = {};
+
+        emit tabsChanged();
+        emit runningStateChanged();
+
+        gf::terminal::bo::TerminalExecutionRequest req;
+        req.commandLine = trimmed.toStdString();
+        req.workingDirectory = gf::core::utf8ToPath(tab.currentWorkingDir.toStdString());
+        req.shellKind = gf::terminal::bo::shellKindFromId(tab.shellId.toStdString());
+        req.forceGitColor = true;
+
+        const int tabId = tab.id;
+        const QString repoPath = tab.repoRootPath;
+        const bool wasGit = tab.activeCommandWasGit;
+        auto alive = m_alive;
+
+        gf::terminal::bo::TerminalExecutionCallbacks callbacks;
+        callbacks.onOutput = [this, alive, tabId](const gf::terminal::bo::TerminalOutputStream stream,
+                                                  const std::string_view chunk)
+        {
+            if (!alive->load(std::memory_order_acquire) || chunk.empty()) return;
+            QByteArray bytes(chunk.data(), static_cast<qsizetype>(chunk.size()));
+            const int streamInt = (stream == gf::terminal::bo::TerminalOutputStream::Stderr) ? 1 : 0;
+            QMetaObject::invokeMethod(this, [this, alive, tabId, streamInt, bytes = std::move(bytes)]()
+            {
+                if (!alive->load(std::memory_order_acquire)) return;
+                if (auto* t = findTabById(tabId))
+                {
+                    appendStreamChunk(*t, streamInt, bytes);
+                }
+            }, Qt::QueuedConnection);
+        };
+
+        callbacks.onFinished = [this, alive, tabId, headerId, repoPath, wasGit](
+                                   const gf::terminal::bo::TerminalCommandResult& res)
+        {
+            if (!alive->load(std::memory_order_acquire)) return;
+            const int exitCode = res.exitCode;
+            const qint64 durationMs = static_cast<qint64>(res.duration.count());
+            const bool cancelled = res.wasCancelled;
+            QString newWorkingDir;
+            if (!cancelled && res.finalWorkingDirectory && !res.finalWorkingDirectory->empty())
+            {
+                newWorkingDir = QString::fromStdString(gf::core::pathToUtf8(*res.finalWorkingDirectory));
+            }
+            QMetaObject::invokeMethod(this, [this, alive, tabId, headerId, repoPath, wasGit,
+                                             exitCode, durationMs, cancelled, newWorkingDir = std::move(newWorkingDir)]()
+            {
+                if (!alive->load(std::memory_order_acquire)) return;
+                handleProcessFinished(tabId, headerId, repoPath, wasGit, exitCode, durationMs, cancelled, newWorkingDir);
+            }, Qt::QueuedConnection);
+        };
+
+        auto started = m_processRunner->start(req, std::move(callbacks));
+        if (!started)
+        {
+            const QString err = QString::fromStdString(started.error());
+            tab.outputModel->appendLine(QStringLiteral("stderr"), err.toHtmlEscaped(), err);
+            tab.outputModel->finishCommandHeader(headerId, 1, QStringLiteral("0ms"), false);
+            tab.isRunning = false;
+            tab.activeCommandCanPage = false;
+            emit tabsChanged();
+            emit runningStateChanged();
+            emit outputAppended();
+            return;
+        }
+
+        tab.activeProcess = std::move(*started);
+    }
+
     void TerminalSessionViewModel::executeCommand(const QString& commandLine)
     {
         dismissCompletions();
@@ -1248,231 +1137,19 @@ namespace gf::desktop
             }
         }
 
-        // Built-in commands handled instantaneously in-process
-        const QString lower = trimmed.toLower();
-        if (lower == QStringLiteral("clear") || lower == QStringLiteral("cls"))
+        const int headerId = prepareExternalCommandHeader(*tab, trimmed);
+        if (headerId < 0)
         {
-            clearActiveOutput();
-            return;
-        }
-        if (lower == QStringLiteral("exit") || lower == QStringLiteral("quit"))
-        {
-            closeTab(activeTabIndex());
             return;
         }
 
-        const int headerId = tab->outputModel->appendCommandHeader(buildPromptPrefix(*tab), trimmed);
-        emit outputAppended();
-
-        if (lower == QStringLiteral("pwd"))
-        {
-            const QString p = QDir::toNativeSeparators(tab->currentWorkingDir);
-            tab->outputModel->appendLine(QStringLiteral("stdout"), p.toHtmlEscaped(), p);
-            tab->outputModel->finishCommandHeader(headerId, 0, QStringLiteral("0ms"), false);
-            emit outputAppended();
-            return;
-        }
-
-        if (isBuiltinCdCommand(trimmed.toStdString()))
-        {
-            const QString arg = trimmed.mid(2).trimmed();
-            handleBuiltinCd(*tab, arg, headerId);
-            return;
-        }
-
-        if (!m_processRunner)
-        {
-            const QString err = QStringLiteral("Runner terminale non configurato.");
-            tab->outputModel->appendLine(QStringLiteral("stderr"), err.toHtmlEscaped(), err);
-            tab->outputModel->finishCommandHeader(headerId, 1, QStringLiteral("0ms"), false);
-            emit outputAppended();
-            return;
-        }
-
-        constexpr int kPagerLineThreshold = 28;
-        const bool canPage = shouldPaginateCommand(trimmed.toStdString());
-
-        tab->isRunning = true;
-        tab->activeCommandHeaderId = headerId;
-        tab->activeCommandWasGit = looksLikeGitCommand(trimmed);
-        tab->activeCommandCanPage = canPage;
-        tab->closedPagerEarly = false;
-        if (canPage)
-        {
-            tab->pagerModel->clear();
-            tab->pagerCommand = trimmed;
-            if (tab->pagerActive)
-            {
-                tab->pagerActive = false;
-            }
-            emit pagerStateChanged();
-        }
-        tab->stdoutPending.clear();
-        tab->stderrPending.clear();
-        tab->stdoutOverwriteLast = false;
-        tab->stderrOverwriteLast = false;
-        tab->stdoutStyle = {};
-        tab->stderrStyle = {};
-
-        emit tabsChanged();
-        emit runningStateChanged();
-
-        gf::terminal::bo::TerminalExecutionRequest req;
-        req.commandLine = trimmed.toStdString();
-        req.workingDirectory = gf::core::utf8ToPath(tab->currentWorkingDir.toStdString());
-        req.shellKind = gf::terminal::bo::shellKindFromId(tab->shellId.toStdString());
-        req.forceGitColor = true;
-
-        const int tabId = tab->id;
-        const QString repoPath = tab->repoRootPath;
-        const bool wasGit = tab->activeCommandWasGit;
-        auto alive = m_alive;
-
-        gf::terminal::bo::TerminalExecutionCallbacks callbacks;
-        callbacks.onOutput = [this, alive, tabId](const gf::terminal::bo::TerminalOutputStream stream,
-                                                  const std::string_view chunk)
-        {
-            if (!alive->load(std::memory_order_acquire) || chunk.empty()) return;
-            QByteArray bytes(chunk.data(), static_cast<qsizetype>(chunk.size()));
-            const int streamInt = (stream == gf::terminal::bo::TerminalOutputStream::Stderr) ? 1 : 0;
-            QMetaObject::invokeMethod(this, [this, alive, tabId, streamInt, bytes = std::move(bytes)]()
-            {
-                if (!alive->load(std::memory_order_acquire)) return;
-                if (auto* t = findTabById(tabId))
-                {
-                    appendStreamChunk(*t, streamInt, bytes);
-                }
-            }, Qt::QueuedConnection);
-        };
-
-        callbacks.onFinished = [this, alive, tabId, headerId, repoPath, wasGit](
-                                   const gf::terminal::bo::TerminalCommandResult& res)
-        {
-            if (!alive->load(std::memory_order_acquire)) return;
-            const int exitCode = res.exitCode;
-            const auto duration = res.duration;
-            const bool cancelled = res.wasCancelled;
-            QString newWorkingDir;
-            if (!cancelled && res.finalWorkingDirectory && !res.finalWorkingDirectory->empty())
-            {
-                newWorkingDir = QString::fromStdString(gf::core::pathToUtf8(*res.finalWorkingDirectory));
-            }
-            QMetaObject::invokeMethod(this, [this, alive, tabId, headerId, repoPath, wasGit,
-                                             exitCode, duration, cancelled, newWorkingDir = std::move(newWorkingDir)]()
-            {
-                if (!alive->load(std::memory_order_acquire)) return;
-                bool emitPagerUpdate = false;
-                bool shouldEmitOutputAppended = true;
-                bool workingDirChanged = false;
-                if (auto* t = findTabById(tabId))
-                {
-                    flushPendingBuffers(*t);
-
-                    if (!newWorkingDir.isEmpty())
-                    {
-                        const QFileInfo dirInfo(newWorkingDir);
-                        if (dirInfo.exists() && dirInfo.isDir())
-                        {
-                            const QString resolved = dirInfo.canonicalFilePath().isEmpty()
-                                                         ? QDir::cleanPath(newWorkingDir)
-                                                         : dirInfo.canonicalFilePath();
-#ifdef _WIN32
-                            constexpr Qt::CaseSensitivity kPathCs = Qt::CaseInsensitive;
-#else
-                            constexpr Qt::CaseSensitivity kPathCs = Qt::CaseSensitive;
-#endif
-                            if (QDir::cleanPath(t->currentWorkingDir).compare(resolved, kPathCs) != 0)
-                            {
-                                t->previousWorkingDir = t->currentWorkingDir;
-                                t->currentWorkingDir = resolved;
-                                workingDirChanged = true;
-                            }
-                        }
-                    }
-
-                    const bool closedEarly = t->closedPagerEarly;
-                    const bool effectiveCancelled = cancelled && !closedEarly;
-                    const int effectiveExitCode = closedEarly ? 0 : exitCode;
-
-                    if (t->activeCommandCanPage)
-                    {
-                        const int pagedCount = t->pagerModel->count();
-                        if (!t->pagerActive && !closedEarly && pagedCount <= kPagerLineThreshold)
-                        {
-                            // Short output (less -FRX behavior): print directly inline in terminal scrollback
-                            t->pagerModel->copyLinesTo(*t->outputModel);
-                            t->pagerModel->clear();
-                            t->pagerCommand.clear();
-                        }
-                        else if (pagedCount > 0)
-                        {
-                            if (!closedEarly && !t->pagerActive)
-                            {
-                                t->pagerActive = true;
-                            }
-                            const QString summary = QStringLiteral("📄 Output nel pager (%1 righe) — usa \"Riapri pager\" nella barra in alto per consultarlo di nuovo")
-                                                        .arg(pagedCount);
-                            t->outputModel->appendLine(QStringLiteral("system"), summary.toHtmlEscaped(), summary);
-                            shouldEmitOutputAppended = !t->pagerActive;
-                        }
-                        t->activeCommandCanPage = false;
-                        emitPagerUpdate = true;
-                    }
-
-                    if (effectiveCancelled)
-                    {
-                        const QString msg = QStringLiteral("^C (comando interrotto)");
-                        t->outputModel->appendLine(QStringLiteral("system"), msg.toHtmlEscaped(), msg);
-                    }
-                    t->outputModel->finishCommandHeader(headerId, effectiveExitCode, formatDuration(duration), effectiveCancelled);
-                    t->isRunning = false;
-                    t->activeProcess.reset();
-                }
-                emit tabsChanged();
-                if (workingDirChanged && activeTab() && activeTab()->id == tabId)
-                {
-                    emit activeTabChanged();
-                }
-                emit runningStateChanged();
-                if (emitPagerUpdate)
-                {
-                    emit pagerStateChanged();
-                }
-                if (shouldEmitOutputAppended)
-                {
-                    emit outputAppended();
-                }
-
-                if (wasGit && !repoPath.isEmpty())
-                {
-                    refreshRepoCompletionContext();
-                    emit gitCommandFinished(repoPath, exitCode);
-                }
-            }, Qt::QueuedConnection);
-        };
-
-        auto started = m_processRunner->start(req, std::move(callbacks));
-        if (!started)
-        {
-            const QString err = QString::fromStdString(started.error());
-            tab->outputModel->appendLine(QStringLiteral("stderr"), err.toHtmlEscaped(), err);
-            tab->outputModel->finishCommandHeader(headerId, 1, QStringLiteral("0ms"), false);
-            tab->isRunning = false;
-            tab->activeCommandCanPage = false;
-            emit tabsChanged();
-            emit runningStateChanged();
-            emit outputAppended();
-            return;
-        }
-
-        tab->activeProcess = std::move(*started);
+        launchExternalCommand(*tab, headerId, trimmed);
     }
 
     void TerminalSessionViewModel::appendStreamChunk(TerminalTabState& tab,
                                                      const int streamKind,
                                                      const QByteArray& utf8Bytes)
     {
-        constexpr int kPagerLineThreshold = 28;
         const bool isStderr = (streamKind == 1);
         const bool routeToPager = (!isStderr && tab.activeCommandCanPage);
         if (routeToPager && tab.closedPagerEarly)
@@ -1549,7 +1226,7 @@ namespace gf::desktop
 
         if (routeToPager)
         {
-            if (!tab.pagerActive && tab.pagerModel->count() > kPagerLineThreshold)
+            if (!tab.pagerActive && tab.pagerModel->count() > kTerminalPagerLineThreshold)
             {
                 tab.pagerActive = true;
             }
@@ -1630,356 +1307,6 @@ namespace gf::desktop
         const auto* tab = activeTab();
         if (!tab || !tab->outputModel) return {};
         return tab->outputModel->allPlainText();
-    }
-
-    void TerminalSessionViewModel::closePager()
-    {
-        auto* tab = activeTab();
-        if (!tab || !tab->pagerActive) return;
-
-        tab->pagerActive = false;
-        if (tab->isRunning && tab->activeCommandCanPage && tab->activeProcess)
-        {
-            tab->closedPagerEarly = true;
-            tab->activeProcess->terminate();
-        }
-        emit pagerStateChanged();
-        emit focusInputRequested();
-    }
-
-    void TerminalSessionViewModel::reopenLastPager()
-    {
-        auto* tab = activeTab();
-        if (!tab || !tab->pagerModel || tab->pagerModel->count() == 0) return;
-        tab->pagerActive = true;
-        dismissCompletions();
-        emit pagerStateChanged();
-    }
-
-    QString TerminalSessionViewModel::copyPagerOutput() const
-    {
-        const auto* tab = activeTab();
-        if (!tab || !tab->pagerModel) return {};
-        return tab->pagerModel->allPlainText();
-    }
-
-    QString TerminalSessionViewModel::historyPrevious(const QString& currentInput)
-    {
-        auto* tab = activeTab();
-        if (!tab || tab->history.isEmpty()) return currentInput;
-
-        if (tab->historyCursor < 0)
-        {
-            tab->historyDraft = currentInput;
-            tab->historyCursor = static_cast<int>(tab->history.size()) - 1;
-        }
-        else if (tab->historyCursor > 0)
-        {
-            --tab->historyCursor;
-        }
-        const QString result = tab->history[tab->historyCursor];
-        tab->inputDraft = result;
-        tab->inputCursorPos = static_cast<int>(result.size());
-        return result;
-    }
-
-    QString TerminalSessionViewModel::historyNext()
-    {
-        auto* tab = activeTab();
-        if (!tab || tab->historyCursor < 0) return {};
-
-        if (tab->historyCursor + 1 < static_cast<int>(tab->history.size()))
-        {
-            ++tab->historyCursor;
-            const QString result = tab->history[tab->historyCursor];
-            tab->inputDraft = result;
-            tab->inputCursorPos = static_cast<int>(result.size());
-            return result;
-        }
-        tab->historyCursor = -1;
-        tab->inputDraft = tab->historyDraft;
-        tab->inputCursorPos = static_cast<int>(tab->historyDraft.size());
-        return tab->historyDraft;
-    }
-
-    void TerminalSessionViewModel::resetHistoryNavigation()
-    {
-        if (auto* tab = activeTab())
-        {
-            tab->historyCursor = -1;
-        }
-    }
-
-    void TerminalSessionViewModel::updateCompletions(const QString& inputText,
-                                                     const int cursorPos,
-                                                     const bool explicitTrigger)
-    {
-        ++m_completionGeneration;
-        m_lastCompletionInput = inputText;
-        m_lastCompletionCursor = cursorPos;
-        m_lastCompletionExplicit = explicitTrigger;
-
-        if (!m_catalogService)
-        {
-            dismissCompletions();
-            return;
-        }
-
-        const QString workDirStr = activeWorkingDir();
-        const std::filesystem::path workDir = gf::core::utf8ToPath(workDirStr.toStdString());
-
-        // Map QString UTF-16 cursorPos to UTF-8 byte offset accurately
-        const int clampedCursor = std::clamp(cursorPos, 0, static_cast<int>(inputText.size()));
-        const std::string utf8Before = inputText.left(clampedCursor).toStdString();
-        const std::string utf8Full = inputText.toStdString();
-        const std::size_t utf8Cursor = utf8Before.size();
-
-        gf::terminal::bo::RepoCompletionSnapshot emptySnap;
-        const gf::terminal::bo::RepoCompletionSnapshot* snapPtr = &emptySnap;
-        if (const auto it = m_repoSnapshots.find(m_activeRepoPath.toStdString());
-            it != m_repoSnapshots.end() && it->second)
-        {
-            snapPtr = it->second.get();
-        }
-
-        auto result = gf::terminal::bl::GitCompletionEngine::complete(
-            utf8Full, utf8Cursor, workDir, *m_catalogService, *snapPtr, explicitTrigger);
-
-        // Convert UTF-8 byte offsets back to UTF-16 QString indices
-        const int replaceStart16 = static_cast<int>(
-            QString::fromUtf8(utf8Full.data(), static_cast<qsizetype>(result.replaceStart)).size());
-        const int replaceEnd16 = static_cast<int>(
-            QString::fromUtf8(utf8Full.data(), static_cast<qsizetype>(result.replaceStart + result.replaceLength)).size());
-
-        m_replaceStart = replaceStart16;
-        m_replaceLength = std::max(0, replaceEnd16 - replaceStart16);
-
-        // Compute inline ghost text for top completion if cursor is at end of input and top item extends prefix
-        QString nextGhost;
-        if (!result.items.empty() && clampedCursor == static_cast<int>(inputText.size()))
-        {
-            const auto& top = result.items.front();
-            const QString insertQ = QString::fromStdString(top.insertText);
-            const QString prefixQ = QString::fromStdString(result.activePrefix);
-            if (insertQ.startsWith(prefixQ, Qt::CaseInsensitive) && insertQ.size() > prefixQ.size())
-            {
-                nextGhost = insertQ.mid(prefixQ.size());
-            }
-        }
-        m_ghostText = nextGhost;
-
-        const bool needsAsyncLoad = result.needsSubcommandOptionsLoad;
-        const QString subcmdToLoad = QString::fromStdString(result.activeSubcommand);
-
-        m_completionModel.setItems(std::move(result.items));
-        emit completionsChanged();
-
-        if (needsAsyncLoad && !subcmdToLoad.isEmpty())
-        {
-            requestSubcommandOptionsAsync(subcmdToLoad);
-        }
-    }
-
-    void TerminalSessionViewModel::requestSubcommandOptionsAsync(const QString& subcommand)
-    {
-        if (!m_catalogService || subcommand.isEmpty()) return;
-        const std::string subStd = subcommand.toStdString();
-        if (!m_loadingOptionsSubcommands.insert(subStd).second)
-        {
-            return; // already loading
-        }
-
-        auto alive = m_alive;
-        auto* catalog = m_catalogService;
-        const quint64 gen = m_completionGeneration;
-
-        m_bgPool.start([this, alive, catalog, subStd, gen]()
-        {
-            [[maybe_unused]] auto opts = catalog->loadOptionsFor(subStd);
-            if (!alive->load(std::memory_order_acquire)) return;
-            QMetaObject::invokeMethod(this, [this, alive, subStd, gen]()
-            {
-                if (!alive->load(std::memory_order_acquire)) return;
-                m_loadingOptionsSubcommands.erase(subStd);
-                // Re-run completions if the user is still typing the same or extended command
-                if (m_completionGeneration >= gen && !m_lastCompletionInput.isEmpty())
-                {
-                    updateCompletions(m_lastCompletionInput, m_lastCompletionCursor, m_lastCompletionExplicit);
-                }
-            }, Qt::QueuedConnection);
-        });
-    }
-
-    bool TerminalSessionViewModel::shouldEnterAcceptCompletion(const int selectedIndex,
-                                                               const bool userNavigated,
-                                                               const QString& inputText,
-                                                               const int /*cursorPos*/) const
-    {
-        if (m_completionModel.count() <= 0)
-        {
-            return false;
-        }
-        if (selectedIndex < 0 || selectedIndex >= m_completionModel.count())
-        {
-            return false;
-        }
-
-        // Explicit execute action row ("▶ Esegui senza parametri" / "▶ Esegui script"):
-        // pressing Enter executes the command immediately!
-        if (const auto* selectedItem = m_completionModel.itemAt(selectedIndex);
-            selectedItem && selectedItem->kind == gf::terminal::bo::CompletionItemKind::ExecuteAction)
-        {
-            return false;
-        }
-
-        // If the user explicitly moved selection inside the popup with Up/Down arrows, Enter accepts it.
-        if (userNavigated)
-        {
-            return true;
-        }
-
-        const int start = std::clamp(m_replaceStart, 0, static_cast<int>(inputText.size()));
-        const int len = std::clamp(m_replaceLength, 0, static_cast<int>(inputText.size()) - start);
-        const QString activePrefix = inputText.mid(start, len);
-
-        // Trailing space (empty active prefix, e.g. `git log ` after Tab): execute immediately on Enter.
-        if (activePrefix.isEmpty())
-        {
-            return false;
-        }
-
-        // If what the user typed already matches any suggested command/flag/ref/path exactly, execute immediately.
-        for (int i = 0; i < m_completionModel.count(); ++i)
-        {
-            const auto* item = m_completionModel.itemAt(i);
-            if (!item) continue;
-            const QString insertQ = QString::fromStdString(item->insertText);
-            const QString displayQ = QString::fromStdString(item->displayText);
-            if (activePrefix.compare(insertQ, Qt::CaseInsensitive) == 0 ||
-                activePrefix.compare(displayQ, Qt::CaseInsensitive) == 0)
-            {
-                return false;
-            }
-        }
-
-        // Incomplete prefix (e.g. `git ch`, `git commit --am`): Smart Enter completes the highlighted suggestion.
-        return true;
-    }
-
-    QVariantMap TerminalSessionViewModel::acceptCompletion(const int index,
-                                                           const QString& inputText,
-                                                           const int cursorPos)
-    {
-        QVariantMap out;
-        out[QStringLiteral("accepted")] = false;
-        out[QStringLiteral("executeNow")] = false;
-        out[QStringLiteral("text")] = inputText;
-        out[QStringLiteral("cursorPos")] = cursorPos;
-
-        const auto* item = m_completionModel.itemAt(index);
-        if (!item) return out;
-
-        // Clicking or accepting the explicit execute row runs the current command line immediately
-        if (item->kind == gf::terminal::bo::CompletionItemKind::ExecuteAction)
-        {
-            dismissCompletions();
-            out[QStringLiteral("accepted")] = true;
-            out[QStringLiteral("executeNow")] = true;
-            return out;
-        }
-
-        const int start = std::clamp(m_replaceStart, 0, static_cast<int>(inputText.size()));
-        const int len = std::clamp(m_replaceLength, 0, static_cast<int>(inputText.size()) - start);
-
-        QString replacement = QString::fromStdString(item->insertText);
-        const bool shouldAddSpace = item->appendSpace;
-        const bool alreadyHasTrailingSpace =
-            (start + len < inputText.size()) && inputText.at(start + len) == QLatin1Char(' ');
-
-        if (shouldAddSpace && !alreadyHasTrailingSpace)
-        {
-            replacement.append(QLatin1Char(' '));
-        }
-
-        const QString newText = inputText.left(start) + replacement + inputText.mid(start + len);
-        const int newCursor = start + static_cast<int>(replacement.size()) +
-                              ((shouldAddSpace && alreadyHasTrailingSpace) ? 1 : 0);
-
-        // Determine if we should immediately chain completions for the next stage
-        // (e.g. accepted "git" -> all git commands; accepted script -> "▶ Esegui" + script params;
-        //  accepted script param/value -> "▶ Esegui script" + remaining unused params!)
-        const bool isScriptFile =
-            (item->kind == gf::terminal::bo::CompletionItemKind::FilePath) &&
-            (item->categoryLabel == "ps1" || item->categoryLabel == "sh" ||
-             item->categoryLabel == "bat" || item->categoryLabel == "py");
-
-        const bool isScriptParamOrValue =
-            (item->kind == gf::terminal::bo::CompletionItemKind::GitFlag) &&
-            (item->categoryLabel == "param" || item->categoryLabel == "value");
-
-        const bool chainNext =
-            (item->kind == gf::terminal::bo::CompletionItemKind::ShellBuiltin && item->insertText == "git") ||
-            (item->kind == gf::terminal::bo::CompletionItemKind::GitCommand) ||
-            (item->kind == gf::terminal::bo::CompletionItemKind::GitSubcommand) ||
-            isScriptFile ||
-            isScriptParamOrValue ||
-            (item->kind == gf::terminal::bo::CompletionItemKind::FilePath &&
-             (item->insertText.ends_with('/') || item->insertText.ends_with('\\')));
-
-        out[QStringLiteral("accepted")] = true;
-        out[QStringLiteral("text")] = newText;
-        out[QStringLiteral("cursorPos")] = newCursor;
-
-        if (chainNext)
-        {
-            updateCompletions(newText, newCursor, false);
-        }
-        else
-        {
-            dismissCompletions();
-        }
-        return out;
-    }
-
-    void TerminalSessionViewModel::dismissCompletions()
-    {
-        const bool hadAny = (m_completionModel.count() > 0) || !m_ghostText.isEmpty();
-        m_completionModel.clear();
-        m_ghostText.clear();
-        m_replaceStart = 0;
-        m_replaceLength = 0;
-        if (hadAny)
-        {
-            emit completionsChanged();
-        }
-    }
-
-    void TerminalSessionViewModel::refreshRepoCompletionContext()
-    {
-        if (!m_gitExecutor || m_activeRepoPath.isEmpty()) return;
-
-        const QString repoPathQ = m_activeRepoPath;
-        const std::filesystem::path repoPath = gf::core::utf8ToPath(repoPathQ.toStdString());
-        auto alive = m_alive;
-        auto* executor = m_gitExecutor;
-
-        m_bgPool.start([this, alive, executor, repoPath, repoPathQ]()
-        {
-            auto snap = std::make_shared<gf::terminal::bo::RepoCompletionSnapshot>(
-                collectRepoSnapshot(executor, repoPath));
-            if (!alive->load(std::memory_order_acquire)) return;
-
-            QMetaObject::invokeMethod(this, [this, alive, repoPathQ, snap = std::move(snap)]() mutable
-            {
-                if (!alive->load(std::memory_order_acquire)) return;
-                const QString detectedBranch = QString::fromStdString(snap->currentBranch);
-                m_repoSnapshots[repoPathQ.toStdString()] = std::move(snap);
-                if (!detectedBranch.isEmpty())
-                {
-                    updateActiveBranch(repoPathQ, detectedBranch);
-                }
-            }, Qt::QueuedConnection);
-        });
     }
 
     bool TerminalSessionViewModel::waitForIdle(const int timeoutMs)

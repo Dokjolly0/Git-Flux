@@ -700,6 +700,157 @@ namespace gf::desktop
         return sign + formatByteSize(std::abs(diff));
     }
 
+    namespace
+    {
+        void assignDecodedImageSide(const bool hasBlob,
+                                    const bool truncated,
+                                    const std::string& bytes,
+                                    const std::string& ext,
+                                    QImage& outImg,
+                                    int& outW,
+                                    int& outH,
+                                    int& outDepth,
+                                    bool& outAlpha)
+        {
+            if (!hasBlob || truncated) return;
+            auto dec = tryDecodeImage(bytes, ext);
+            if (dec.image.isNull()) return;
+            outImg = std::move(dec.image);
+            outW = dec.width;
+            outH = dec.height;
+            outDepth = dec.depth;
+            outAlpha = dec.hasAlpha;
+        }
+
+        void inspectZipArchiveDiff(const std::string& oldBytes,
+                                   const std::string& newBytes,
+                                   DiffFileInspection& out)
+        {
+            const auto oldEntries = (out.hasOldBlob && !out.oldTruncated)
+                ? parseZipCentralDirectory(oldBytes)
+                : std::map<std::string, ZipEntryInfo>{};
+            const auto newEntries = (out.hasNewBlob && !out.newTruncated)
+                ? parseZipCentralDirectory(newBytes)
+                : std::map<std::string, ZipEntryInfo>{};
+
+            std::vector<std::string> allNames;
+            allNames.reserve(oldEntries.size() + newEntries.size());
+            for (const auto& [k, _] : oldEntries) allNames.push_back(k);
+            for (const auto& [k, _] : newEntries)
+            {
+                if (!oldEntries.contains(k)) allNames.push_back(k);
+            }
+            std::ranges::sort(allNames);
+
+            for (const auto& name : allNames)
+            {
+                const auto itOld = oldEntries.find(name);
+                const auto itNew = newEntries.find(name);
+                const bool inOld = itOld != oldEntries.end();
+                const bool inNew = itNew != newEntries.end();
+
+                QString status;
+                if (!inOld && inNew) { status = QStringLiteral("added"); ++out.archiveAddedCount; }
+                else if (inOld && !inNew) { status = QStringLiteral("removed"); ++out.archiveRemovedCount; }
+                else if (itOld->second.crc32 != itNew->second.crc32 ||
+                         itOld->second.uncompressedSize != itNew->second.uncompressedSize)
+                {
+                    status = QStringLiteral("modified");
+                    ++out.archiveModifiedCount;
+                }
+                else
+                {
+                    status = QStringLiteral("unchanged");
+                    ++out.archiveUnchangedCount;
+                }
+
+                QVariantMap e;
+                e[QStringLiteral("path")] = QString::fromUtf8(name.data(), static_cast<qsizetype>(name.size()));
+                e[QStringLiteral("status")] = status;
+                e[QStringLiteral("oldSize")] = inOld ? static_cast<qint64>(itOld->second.uncompressedSize) : -1;
+                e[QStringLiteral("newSize")] = inNew ? static_cast<qint64>(itNew->second.uncompressedSize) : -1;
+                e[QStringLiteral("oldSizeText")] = inOld
+                    ? DiffFileInspector::formatByteSize(static_cast<qint64>(itOld->second.uncompressedSize)) : QString();
+                e[QStringLiteral("newSizeText")] = inNew
+                    ? DiffFileInspector::formatByteSize(static_cast<qint64>(itNew->second.uncompressedSize)) : QString();
+                out.archiveEntries.append(e);
+            }
+
+            appendMetaRow(out.metadataRows, QStringLiteral("File nell'archivio"),
+                          out.hasOldBlob ? QString::number(oldEntries.size()) : QString(),
+                          out.hasNewBlob ? QString::number(newEntries.size()) : QString());
+        }
+
+        void appendDeepFormatMetadata(const FormatClassification& cls,
+                                      const std::string& ext,
+                                      const std::string& oldBytes,
+                                      const std::string& newBytes,
+                                      DiffFileInspection& out)
+        {
+            if (cls.kind == QLatin1String("pdf"))
+            {
+                const PdfInfo oldPdf = out.hasOldBlob ? inspectPdf(oldBytes) : PdfInfo{};
+                const PdfInfo newPdf = out.hasNewBlob ? inspectPdf(newBytes) : PdfInfo{};
+                appendMetaRow(out.metadataRows, QStringLiteral("Versione PDF"), oldPdf.version, newPdf.version);
+                appendMetaRow(out.metadataRows, QStringLiteral("Pagine (stima)"),
+                              oldPdf.pages > 0 ? QString::number(oldPdf.pages) : QString(),
+                              newPdf.pages > 0 ? QString::number(newPdf.pages) : QString());
+                appendMetaRow(out.metadataRows, QStringLiteral("Titolo"), oldPdf.title, newPdf.title);
+                appendMetaRow(out.metadataRows, QStringLiteral("Autore"), oldPdf.author, newPdf.author);
+                return;
+            }
+            if (cls.isZipBased)
+            {
+                inspectZipArchiveDiff(oldBytes, newBytes, out);
+                return;
+            }
+            if (cls.kind == QLatin1String("font") && (ext == "ttf" || ext == "otf" || ext == "ttc"))
+            {
+                if (out.hasOldBlob && !out.oldTruncated && !oldBytes.empty())
+                {
+                    out.oldFontBytes = QByteArray(oldBytes.data(), static_cast<qsizetype>(oldBytes.size()));
+                }
+                if (out.hasNewBlob && !out.newTruncated && !newBytes.empty())
+                {
+                    out.newFontBytes = QByteArray(newBytes.data(), static_cast<qsizetype>(newBytes.size()));
+                }
+                return;
+            }
+            if (cls.kind == QLatin1String("audio"))
+            {
+                const WavInfo oldWav = out.hasOldBlob ? inspectWav(oldBytes) : WavInfo{};
+                const WavInfo newWav = out.hasNewBlob ? inspectWav(newBytes) : WavInfo{};
+                if (!oldWav.valid && !newWav.valid) return;
+                auto fmtAudio = [](const WavInfo& w) -> QString
+                {
+                    return w.valid
+                        ? QStringLiteral("%1 Hz • %2 ch • %3-bit").arg(w.sampleRate).arg(w.channels).arg(w.bitsPerSample)
+                        : QString();
+                };
+                auto fmtDur = [](const WavInfo& w) -> QString
+                {
+                    return (w.valid && w.durationSec > 0.0) ? QStringLiteral("%1 s").arg(w.durationSec, 0, 'f', 2) : QString();
+                };
+                appendMetaRow(out.metadataRows, QStringLiteral("Stream audio"), fmtAudio(oldWav), fmtAudio(newWav));
+                appendMetaRow(out.metadataRows, QStringLiteral("Durata"), fmtDur(oldWav), fmtDur(newWav));
+                return;
+            }
+            if (cls.kind == QLatin1String("database"))
+            {
+                appendMetaRow(out.metadataRows, QStringLiteral("Struttura SQLite"),
+                              out.hasOldBlob ? inspectSqliteSummary(oldBytes) : QString(),
+                              out.hasNewBlob ? inspectSqliteSummary(newBytes) : QString());
+                return;
+            }
+            if (cls.kind == QLatin1String("executable"))
+            {
+                appendMetaRow(out.metadataRows, QStringLiteral("Target ELF"),
+                              out.hasOldBlob ? inspectElfSummary(oldBytes) : QString(),
+                              out.hasNewBlob ? inspectElfSummary(newBytes) : QString());
+            }
+        }
+    } // namespace
+
     DiffFileInspection DiffFileInspector::inspect(
         const std::string& filePath,
         const std::optional<gf::git::bo::FileBlob>& oldBlob,
@@ -708,10 +859,7 @@ namespace gf::desktop
         DiffFileInspection out;
         out.hasOldBlob = oldBlob.has_value();
         out.hasNewBlob = newBlob.has_value();
-        if (!out.hasOldBlob && !out.hasNewBlob)
-        {
-            return out;
-        }
+        if (!out.hasOldBlob && !out.hasNewBlob) return out;
 
         out.valid = true;
         const std::string emptyStr;
@@ -722,14 +870,8 @@ namespace gf::desktop
         out.oldTruncated = out.hasOldBlob && oldBlob->truncated;
         out.newTruncated = out.hasNewBlob && newBlob->truncated;
 
-        if (out.hasOldBlob && !out.oldTruncated)
-        {
-            out.oldSha256 = computeSha256Hex(oldBytes);
-        }
-        if (out.hasNewBlob && !out.newTruncated)
-        {
-            out.newSha256 = computeSha256Hex(newBytes);
-        }
+        if (out.hasOldBlob && !out.oldTruncated) out.oldSha256 = computeSha256Hex(oldBytes);
+        if (out.hasNewBlob && !out.newTruncated) out.newSha256 = computeSha256Hex(newBytes);
 
         const std::string ext = lowercaseExtension(filePath);
         const std::string& sample = !newBytes.empty() ? newBytes : oldBytes;
@@ -746,48 +888,23 @@ namespace gf::desktop
                          .arg(formatByteSize(static_cast<qint64>(kMaxBlobBytes)));
         }
 
-        // 1. Try image decoding (images, SVG, or PDF page 1 if Qt PDF image plugin is available)
-        const bool tryDecode = (cls.kind == QLatin1String("image") || cls.kind == QLatin1String("pdf"));
-        if (tryDecode)
+        if (cls.kind == QLatin1String("image") || cls.kind == QLatin1String("pdf"))
         {
-            if (out.hasOldBlob && !out.oldTruncated)
-            {
-                auto dec = tryDecodeImage(oldBytes, ext);
-                if (!dec.image.isNull())
-                {
-                    out.oldImage = std::move(dec.image);
-                    out.oldImageWidth = dec.width;
-                    out.oldImageHeight = dec.height;
-                    out.oldImageDepth = dec.depth;
-                    out.oldImageHasAlpha = dec.hasAlpha;
-                }
-            }
-            if (out.hasNewBlob && !out.newTruncated)
-            {
-                auto dec = tryDecodeImage(newBytes, ext);
-                if (!dec.image.isNull())
-                {
-                    out.newImage = std::move(dec.image);
-                    out.newImageWidth = dec.width;
-                    out.newImageHeight = dec.height;
-                    out.newImageDepth = dec.depth;
-                    out.newImageHasAlpha = dec.hasAlpha;
-                }
-            }
+            assignDecodedImageSide(out.hasOldBlob, out.oldTruncated, oldBytes, ext,
+                                   out.oldImage, out.oldImageWidth, out.oldImageHeight,
+                                   out.oldImageDepth, out.oldImageHasAlpha);
+            assignDecodedImageSide(out.hasNewBlob, out.newTruncated, newBytes, ext,
+                                   out.newImage, out.newImageWidth, out.newImageHeight,
+                                   out.newImageDepth, out.newImageHasAlpha);
 
             out.hasVisualPreview = !out.oldImage.isNull() || !out.newImage.isNull();
-            if (out.hasVisualPreview && cls.kind == QLatin1String("image"))
-            {
-                out.isImage = true;
-            }
+            if (out.hasVisualPreview && cls.kind == QLatin1String("image")) out.isImage = true;
             if (!out.oldImage.isNull() && !out.newImage.isNull())
             {
-                computePixelDiff(out.oldImage, out.newImage,
-                                 out.diffImage, out.imageDiffPercent);
+                computePixelDiff(out.oldImage, out.newImage, out.diffImage, out.imageDiffPercent);
             }
         }
 
-        // 2. General metadata rows
         appendMetaRow(out.metadataRows, QStringLiteral("Formato"),
                       out.hasOldBlob ? out.formatDescription : QString(),
                       out.hasNewBlob ? out.formatDescription : QString());
@@ -809,142 +926,18 @@ namespace gf::desktop
                               : QString());
         }
 
-        // 3. Format-specific deep inspection
-        if (cls.kind == QLatin1String("pdf"))
-        {
-            const PdfInfo oldPdf = out.hasOldBlob ? inspectPdf(oldBytes) : PdfInfo{};
-            const PdfInfo newPdf = out.hasNewBlob ? inspectPdf(newBytes) : PdfInfo{};
-            appendMetaRow(out.metadataRows, QStringLiteral("Versione PDF"), oldPdf.version, newPdf.version);
-            appendMetaRow(out.metadataRows, QStringLiteral("Pagine (stima)"),
-                          oldPdf.pages > 0 ? QString::number(oldPdf.pages) : QString(),
-                          newPdf.pages > 0 ? QString::number(newPdf.pages) : QString());
-            appendMetaRow(out.metadataRows, QStringLiteral("Titolo"), oldPdf.title, newPdf.title);
-            appendMetaRow(out.metadataRows, QStringLiteral("Autore"), oldPdf.author, newPdf.author);
-        }
-        else if (cls.isZipBased)
-        {
-            const auto oldEntries = (out.hasOldBlob && !out.oldTruncated)
-                                        ? parseZipCentralDirectory(oldBytes)
-                                        : std::map<std::string, ZipEntryInfo>{};
-            const auto newEntries = (out.hasNewBlob && !out.newTruncated)
-                                        ? parseZipCentralDirectory(newBytes)
-                                        : std::map<std::string, ZipEntryInfo>{};
-
-            std::vector<std::string> allNames;
-            allNames.reserve(oldEntries.size() + newEntries.size());
-            for (const auto& [k, _] : oldEntries) allNames.push_back(k);
-            for (const auto& [k, _] : newEntries)
-            {
-                if (!oldEntries.contains(k)) allNames.push_back(k);
-            }
-            std::sort(allNames.begin(), allNames.end());
-
-            for (const auto& name : allNames)
-            {
-                const auto itOld = oldEntries.find(name);
-                const auto itNew = newEntries.find(name);
-                const bool inOld = itOld != oldEntries.end();
-                const bool inNew = itNew != newEntries.end();
-
-                QString status;
-                if (!inOld && inNew)
-                {
-                    status = QStringLiteral("added");
-                    ++out.archiveAddedCount;
-                }
-                else if (inOld && !inNew)
-                {
-                    status = QStringLiteral("removed");
-                    ++out.archiveRemovedCount;
-                }
-                else if (itOld->second.crc32 != itNew->second.crc32 ||
-                         itOld->second.uncompressedSize != itNew->second.uncompressedSize)
-                {
-                    status = QStringLiteral("modified");
-                    ++out.archiveModifiedCount;
-                }
-                else
-                {
-                    status = QStringLiteral("unchanged");
-                    ++out.archiveUnchangedCount;
-                }
-
-                QVariantMap e;
-                e[QStringLiteral("path")] = QString::fromUtf8(name.data(), static_cast<qsizetype>(name.size()));
-                e[QStringLiteral("status")] = status;
-                e[QStringLiteral("oldSize")] = inOld ? static_cast<qint64>(itOld->second.uncompressedSize) : -1;
-                e[QStringLiteral("newSize")] = inNew ? static_cast<qint64>(itNew->second.uncompressedSize) : -1;
-                e[QStringLiteral("oldSizeText")] = inOld ? formatByteSize(static_cast<qint64>(itOld->second.uncompressedSize)) : QString();
-                e[QStringLiteral("newSizeText")] = inNew ? formatByteSize(static_cast<qint64>(itNew->second.uncompressedSize)) : QString();
-                out.archiveEntries.append(e);
-            }
-
-            appendMetaRow(out.metadataRows, QStringLiteral("File nell'archivio"),
-                          out.hasOldBlob ? QString::number(oldEntries.size()) : QString(),
-                          out.hasNewBlob ? QString::number(newEntries.size()) : QString());
-        }
-        else if (cls.kind == QLatin1String("font"))
-        {
-            if (ext == "ttf" || ext == "otf" || ext == "ttc")
-            {
-                if (out.hasOldBlob && !out.oldTruncated && !oldBytes.empty())
-                {
-                    out.oldFontBytes = QByteArray(oldBytes.data(), static_cast<qsizetype>(oldBytes.size()));
-                }
-                if (out.hasNewBlob && !out.newTruncated && !newBytes.empty())
-                {
-                    out.newFontBytes = QByteArray(newBytes.data(), static_cast<qsizetype>(newBytes.size()));
-                }
-            }
-        }
-        else if (cls.kind == QLatin1String("audio"))
-        {
-            const WavInfo oldWav = out.hasOldBlob ? inspectWav(oldBytes) : WavInfo{};
-            const WavInfo newWav = out.hasNewBlob ? inspectWav(newBytes) : WavInfo{};
-            if (oldWav.valid || newWav.valid)
-            {
-                auto fmtAudio = [](const WavInfo& w) -> QString
-                {
-                    if (!w.valid) return {};
-                    return QStringLiteral("%1 Hz • %2 ch • %3-bit")
-                           .arg(w.sampleRate)
-                           .arg(w.channels)
-                           .arg(w.bitsPerSample);
-                };
-                auto fmtDur = [](const WavInfo& w) -> QString
-                {
-                    if (!w.valid || w.durationSec <= 0.0) return {};
-                    return QStringLiteral("%1 s").arg(w.durationSec, 0, 'f', 2);
-                };
-                appendMetaRow(out.metadataRows, QStringLiteral("Stream audio"), fmtAudio(oldWav), fmtAudio(newWav));
-                appendMetaRow(out.metadataRows, QStringLiteral("Durata"), fmtDur(oldWav), fmtDur(newWav));
-            }
-        }
-        else if (cls.kind == QLatin1String("database"))
-        {
-            appendMetaRow(out.metadataRows, QStringLiteral("Struttura SQLite"),
-                          out.hasOldBlob ? inspectSqliteSummary(oldBytes) : QString(),
-                          out.hasNewBlob ? inspectSqliteSummary(newBytes) : QString());
-        }
-        else if (cls.kind == QLatin1String("executable"))
-        {
-            appendMetaRow(out.metadataRows, QStringLiteral("Target ELF"),
-                          out.hasOldBlob ? inspectElfSummary(oldBytes) : QString(),
-                          out.hasNewBlob ? inspectElfSummary(newBytes) : QString());
-        }
+        appendDeepFormatMetadata(cls, ext, oldBytes, newBytes, out);
 
         if (!out.oldSha256.isEmpty() || !out.newSha256.isEmpty())
         {
             appendMetaRow(out.metadataRows, QStringLiteral("SHA-256"),
-                          out.oldSha256.left(16),
-                          out.newSha256.left(16));
+                          out.oldSha256.left(16), out.newSha256.left(16));
         }
 
-        // 4. Build Hex dump / diff preview (skip for SVG text files since they have real text diff)
+        // Skip Hex dump for SVG text files since they have real text diff
         if (!out.isSvg)
         {
-            buildHexRows(oldBytes, out.hasOldBlob,
-                         newBytes, out.hasNewBlob,
+            buildHexRows(oldBytes, out.hasOldBlob, newBytes, out.hasNewBlob,
                          out.oldFileSize, out.newFileSize,
                          out.hexRows, out.hexTruncated, out.hexChangedRows);
         }

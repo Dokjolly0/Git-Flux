@@ -265,11 +265,14 @@ if (GF_BUILD_DESKTOP)
             src/desktop/viewmodels/group_list_model.cpp
             src/desktop/viewmodels/workspace_list_model.cpp
             src/desktop/viewmodels/diff_line_list_model.cpp
+            src/desktop/viewmodels/diff_rich_preview_builder.cpp
             src/desktop/viewmodels/diff_viewmodel.cpp
             src/desktop/viewmodels/commit_box_viewmodel.cpp
             src/desktop/viewmodels/working_tree_viewmodel.cpp
             src/desktop/viewmodels/branch_list_model.cpp
+            src/desktop/viewmodels/commit_graph_layout_engine.cpp
             src/desktop/viewmodels/commit_history_list_model.cpp
+            src/desktop/viewmodels/branch_manager_selection.cpp
             src/desktop/viewmodels/branch_manager_viewmodel.cpp
             src/desktop/viewmodels/stash_list_model.cpp
             src/desktop/viewmodels/stash_manager_viewmodel.cpp
@@ -287,6 +290,7 @@ if (GF_BUILD_DESKTOP)
             src/desktop/viewmodels/remote_repo_list_model.cpp
             src/desktop/viewmodels/git_profiles_viewmodel.cpp
             src/desktop/viewmodels/terminal_completion_list_model.cpp
+            src/desktop/viewmodels/terminal_completion_pager.cpp
             src/desktop/viewmodels/terminal_output_list_model.cpp
             src/desktop/viewmodels/terminal_session_viewmodel.cpp
             src/desktop/theme/theme_palette.cpp
