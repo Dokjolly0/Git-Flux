@@ -159,8 +159,6 @@ namespace gf::desktop
     Q_INVOKABLE bool isRepositoryInGroup(const QString& groupId, const QString& repoId) const;
     Q_INVOKABLE bool isRepositoryInWorkspace(const QString& workspaceId, const QString& repoId) const;
     Q_INVOKABLE bool isGroupInWorkspace(const QString& workspaceId, const QString& groupId) const;
-    Q_INVOKABLE QStringList getRepositoryIdsForGroup(const QString& groupId) const;
-    Q_INVOKABLE QStringList getRepositoryIdsForWorkspace(const QString& workspaceId) const;
     Q_INVOKABLE QVariantList getAvailableRepositoriesForGroup(const QString& groupId) const;
     Q_INVOKABLE QVariantList getAvailableRepositoriesForWorkspace(const QString& workspaceId) const;
     Q_INVOKABLE QVariantList getAvailableGroupsForRepository(const QString& repoId) const;

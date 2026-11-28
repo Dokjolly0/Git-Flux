@@ -2,13 +2,11 @@
 
 #include <QCommandLineOption>
 #include <QCommandLineParser>
-#include <QFileInfo>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QLibraryInfo>
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
-#include <QPalette>
 #include <QQmlApplicationEngine>
 #include <QQmlNetworkAccessManagerFactory>
 #include <QQuickStyle>

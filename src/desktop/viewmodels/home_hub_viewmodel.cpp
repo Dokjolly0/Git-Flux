@@ -10,7 +10,6 @@
 #include "core/modules/git/bl/remote_access_diagnostics.hpp"
 
 #include <thread>
-#include <iostream>
 #include <QUrl>
 #include <QSettings>
 #include <QDesktopServices>
@@ -349,10 +348,6 @@ namespace gf::desktop
                                                 const QString& directoryName,
                                                 const QString& displayName)
     {
-        std::cout << "[HomeHubViewModel] cloneRepositoryAsync requested: URL=" << remoteUrl.toStdString()
-            << " Parent=" << destinationParentFolder.toStdString()
-            << " Dir=" << directoryName.toStdString()
-            << " DisplayName=" << displayName.toStdString() << std::endl;
         qInfo() << "[HomeHubViewModel] cloneRepositoryAsync requested:"
             << "URL:" << remoteUrl
             << "Parent:" << destinationParentFolder
@@ -1217,38 +1212,6 @@ namespace gf::desktop
             }
         }
         return false;
-    }
-
-    QStringList HomeHubViewModel::getRepositoryIdsForGroup(const QString& groupId) const
-    {
-        QStringList result;
-        const auto gId = groupId.trimmed().toStdString();
-        if (gId.empty()) return result;
-
-        auto grpOpt = m_groupService.getGroup(gf::groups::bo::GroupId{gId});
-        if (!grpOpt || !grpOpt->has_value()) return result;
-
-        for (const auto& rId : (*grpOpt)->repositoryIds)
-        {
-            result.append(QString::fromStdString(rId.value()));
-        }
-        return result;
-    }
-
-    QStringList HomeHubViewModel::getRepositoryIdsForWorkspace(const QString& workspaceId) const
-    {
-        QStringList result;
-        const auto wsId = workspaceId.trimmed().toStdString();
-        if (wsId.empty()) return result;
-
-        auto reposExpected = m_workspaceService.resolveWorkspaceRepositories(gf::workspaces::bo::WorkspaceId{wsId});
-        if (!reposExpected) return result;
-
-        for (const auto& r : *reposExpected)
-        {
-            result.append(QString::fromStdString(r.id.value()));
-        }
-        return result;
     }
 
     QVariantList HomeHubViewModel::getAvailableRepositoriesForGroup(const QString& groupId) const

@@ -2,7 +2,6 @@
 
 #include <QObject>
 #include <QString>
-#include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>

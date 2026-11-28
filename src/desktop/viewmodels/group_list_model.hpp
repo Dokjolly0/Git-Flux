@@ -52,7 +52,6 @@ namespace gf::desktop
 
         void setGroups(const std::vector<gf::groups::bo::Group>& groups,
                        gf::repositories::bl::RepositoryService* repoService = nullptr);
-        [[nodiscard]] const std::vector<GroupItem>& items() const noexcept;
         [[nodiscard]] std::optional<GroupItem> findById(const QString& id) const;
 
     private:

@@ -589,11 +589,6 @@ namespace gf::desktop
         emit richPreviewRenderedChanged();
     }
 
-    void DiffViewModel::toggleRichPreviewRendered()
-    {
-        setRichPreviewRendered(!m_preferRichPreview);
-    }
-
     void DiffViewModel::openPreviewExternally(const QString& side)
     {
         if (m_currentRepoPath.isEmpty() || m_filePath.isEmpty()) return;
@@ -1091,11 +1086,6 @@ namespace gf::desktop
                     kindStr = QStringLiteral("deletion");
                     bgCol = QStringLiteral("#291518");
                     fgCol = QStringLiteral("#FFA198");
-                    break;
-                case gf::git::bo::DiffLineKind::Header:
-                    kindStr = QStringLiteral("header");
-                    bgCol = QStringLiteral("#161B22");
-                    fgCol = QStringLiteral("#7D8590");
                     break;
                 default:
                     kindStr = QStringLiteral("context");
@@ -1641,7 +1631,6 @@ namespace gf::desktop
         if (!result)
         {
             clear();
-            emit loadFailed(QString::fromStdString(result.error().message));
             return;
         }
 

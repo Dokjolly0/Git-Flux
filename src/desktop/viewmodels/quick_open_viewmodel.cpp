@@ -60,28 +60,6 @@ namespace gf::desktop
         recalculateContext();
     }
 
-    void QuickOpenViewModel::selectGroup(const QString& groupId, bool selected)
-    {
-        if (selected)
-        {
-            if (!m_selectedGroupIds.contains(groupId))
-            {
-                m_selectedGroupIds.append(groupId);
-            }
-        }
-        else
-        {
-            m_selectedGroupIds.removeAll(groupId);
-        }
-        emit selectionChanged();
-        recalculateContext();
-    }
-
-    bool QuickOpenViewModel::isGroupSelected(const QString& groupId) const
-    {
-        return m_selectedGroupIds.contains(groupId);
-    }
-
     void QuickOpenViewModel::clearSelection()
     {
         if (!m_selectedGroupIds.isEmpty())

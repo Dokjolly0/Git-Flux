@@ -91,7 +91,6 @@ namespace gf::desktop
         struct DecodedImage
         {
             QImage image;
-            QString format;
             int width = 0;
             int height = 0;
             int depth = 0;
@@ -153,15 +152,12 @@ namespace gf::desktop
             res.height = img.height();
             res.depth = img.depth();
             res.hasAlpha = img.hasAlphaChannel();
-            res.format = detectedFmt.isEmpty()
-                             ? QString::fromStdString(ext).toUpper()
-                             : QString::fromLatin1(detectedFmt);
             res.image = std::move(img);
             return res;
         }
 
         void computePixelDiff(const QImage& oldImg, const QImage& newImg,
-                              QImage& outDiff, double& outPercent, qint64& outChanged)
+                              QImage& outDiff, double& outPercent)
         {
             if (oldImg.isNull() || newImg.isNull()) return;
 
@@ -235,7 +231,6 @@ namespace gf::desktop
             }
 
             outDiff = std::move(diff);
-            outChanged = changed;
             outPercent = (total > 0) ? (100.0 * static_cast<double>(changed) / static_cast<double>(total)) : 0.0;
         }
 
@@ -244,7 +239,6 @@ namespace gf::desktop
         {
             std::uint32_t crc32 = 0;
             std::uint32_t uncompressedSize = 0;
-            std::uint32_t compressedSize = 0;
         };
 
         std::map<std::string, ZipEntryInfo> parseZipCentralDirectory(const std::string& bytes)
@@ -279,7 +273,6 @@ namespace gf::desktop
                 if (readLE32(bytes, cur) != 0x02014b50u) break;
 
                 const std::uint32_t crc = readLE32(bytes, cur + 16);
-                const std::uint32_t compSize = readLE32(bytes, cur + 20);
                 const std::uint32_t uncompSize = readLE32(bytes, cur + 24);
                 const std::uint16_t nameLen = readLE16(bytes, cur + 28);
                 const std::uint16_t extraLen = readLE16(bytes, cur + 30);
@@ -292,8 +285,7 @@ namespace gf::desktop
                 {
                     entries[std::move(name)] = ZipEntryInfo{
                         .crc32 = crc,
-                        .uncompressedSize = uncompSize,
-                        .compressedSize = compSize
+                        .uncompressedSize = uncompSize
                     };
                 }
                 cur = nameStart + nameLen + extraLen + commentLen;
@@ -768,7 +760,6 @@ namespace gf::desktop
                     out.oldImageHeight = dec.height;
                     out.oldImageDepth = dec.depth;
                     out.oldImageHasAlpha = dec.hasAlpha;
-                    out.oldImageFormat = dec.format;
                 }
             }
             if (out.hasNewBlob && !out.newTruncated)
@@ -781,7 +772,6 @@ namespace gf::desktop
                     out.newImageHeight = dec.height;
                     out.newImageDepth = dec.depth;
                     out.newImageHasAlpha = dec.hasAlpha;
-                    out.newImageFormat = dec.format;
                 }
             }
 
@@ -793,7 +783,7 @@ namespace gf::desktop
             if (!out.oldImage.isNull() && !out.newImage.isNull())
             {
                 computePixelDiff(out.oldImage, out.newImage,
-                                 out.diffImage, out.imageDiffPercent, out.changedPixelsCount);
+                                 out.diffImage, out.imageDiffPercent);
             }
         }
 

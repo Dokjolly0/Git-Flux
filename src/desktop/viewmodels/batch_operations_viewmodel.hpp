@@ -54,7 +54,6 @@ namespace gf::desktop
     Q_INVOKABLE void fetchGroup(const QString& groupId, const QString& remoteName = "origin");
     Q_INVOKABLE void fetchWorkspace(const QString& workspaceId, const QString& remoteName = "origin");
     Q_INVOKABLE void fetchRepositories(const QStringList& repoIds, const QString& remoteName = "origin");
-    Q_INVOKABLE void pullRepositories(const QStringList& repoIds, const QString& remoteName = "origin");
     Q_INVOKABLE void checkStatusRepositories(const QStringList& repoIds);
     Q_INVOKABLE bool cancelCurrentOperation();
 

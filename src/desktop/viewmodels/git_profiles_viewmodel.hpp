@@ -31,11 +31,9 @@ namespace gf::desktop::viewmodels
         Q_PROPERTY(QString activeProfileId READ activeProfileId WRITE selectProfile NOTIFY activeProfileChanged)
         Q_PROPERTY(QString activeProfileDisplayName READ activeProfileDisplayName NOTIFY activeProfileChanged)
         Q_PROPERTY(QString activeProfileHost READ activeProfileHost NOTIFY activeProfileChanged)
-        Q_PROPERTY(QString activeProfileType READ activeProfileType NOTIFY activeProfileChanged)
         Q_PROPERTY(QString activeProfileIconSource READ activeProfileIconSource NOTIFY activeProfileChanged)
         Q_PROPERTY(QString activeProfileUsername READ activeProfileUsername NOTIFY activeProfileChanged)
         Q_PROPERTY(bool activeProfileHasSsh READ activeProfileHasSsh NOTIFY activeProfileChanged)
-        Q_PROPERTY(QString activeProfileSshKeyPath READ activeProfileSshKeyPath NOTIFY activeProfileChanged)
         Q_PROPERTY(bool activeProfileHasToken READ activeProfileHasToken NOTIFY activeProfileChanged)
         Q_PROPERTY(
             QString selectedProtocol READ selectedProtocol WRITE setSelectedProtocol NOTIFY selectedProtocolChanged)
@@ -67,11 +65,9 @@ namespace gf::desktop::viewmodels
         [[nodiscard]] QString activeProfileId() const noexcept { return m_activeProfileId; }
         [[nodiscard]] QString activeProfileDisplayName() const;
         [[nodiscard]] QString activeProfileHost() const;
-        [[nodiscard]] QString activeProfileType() const;
         [[nodiscard]] QString activeProfileIconSource() const;
         [[nodiscard]] QString activeProfileUsername() const;
         [[nodiscard]] bool activeProfileHasSsh() const;
-        [[nodiscard]] QString activeProfileSshKeyPath() const;
         [[nodiscard]] bool activeProfileHasToken() const;
 
         [[nodiscard]] QString selectedProtocol() const noexcept { return m_selectedProtocol; }

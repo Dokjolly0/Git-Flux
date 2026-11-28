@@ -49,7 +49,6 @@ namespace gf::desktop
         Q_PROPERTY(QVariantList inlineOverviewMarkers READ inlineOverviewMarkers NOTIFY diffLoaded)
         Q_PROPERTY(QVariantList hunkOverviewMarkers READ hunkOverviewMarkers NOTIFY diffLoaded)
         Q_PROPERTY(QVariantList blameLines READ blameLines NOTIFY blameLoaded)
-        Q_PROPERTY(bool isBlameLoading READ isBlameLoading NOTIFY blameLoaded)
         // A diff requested by loadDiff / loadCommitFileDiff is being read (the previous one stays
         // visible meanwhile).
         Q_PROPERTY(bool isLoading READ isLoading NOTIFY isLoadingChanged)
@@ -136,7 +135,6 @@ namespace gf::desktop
         [[nodiscard]] QVariantList inlineOverviewMarkers() const noexcept { return m_inlineOverviewMarkers; }
         [[nodiscard]] QVariantList hunkOverviewMarkers() const noexcept { return m_hunkOverviewMarkers; }
         [[nodiscard]] QVariantList blameLines() const noexcept { return m_blameLines; }
-        [[nodiscard]] bool isBlameLoading() const noexcept { return m_isBlameLoading; }
         [[nodiscard]] bool isLoading() const noexcept { return m_isLoading; }
         [[nodiscard]] QString loadingFilePath() const noexcept { return m_loadingFilePath; }
 
@@ -201,10 +199,8 @@ namespace gf::desktop
     Q_INVOKABLE void toggleMarkdownRendered();
     Q_INVOKABLE void setShowMarkdownRichDiff(bool show);
     Q_INVOKABLE void setRichPreviewRendered(bool rendered);
-    Q_INVOKABLE void toggleRichPreviewRendered();
     Q_INVOKABLE void openPreviewExternally(const QString& side = QStringLiteral("new"));
     Q_INVOKABLE void revealInFileManager() const;
-    Q_INVOKABLE bool reloadCurrentDiff();
     Q_INVOKABLE void copyToClipboard(const QString& text) const;
     Q_INVOKABLE QString extractSelectedText(const QString& target,
                                             int startRow, int startCol,
@@ -212,7 +208,7 @@ namespace gf::desktop
                                             int hunkIndex = -1) const;
 
         // Asynchronous, "latest wins": git runs on a background thread, only the result of the
-        // most recent request is applied (diffLoaded / blameLoaded), failures emit loadFailed.
+        // most recent request is applied (diffLoaded / blameLoaded).
         // They return whether a request was started.
         Q_INVOKABLE bool loadDiff(const QString& repoPath, const QString& filePath, const QString& scope);
         Q_INVOKABLE bool loadCommitFileDiff(const QString& repoPath, const QString& commitSha, const QString& filePath);
@@ -238,7 +234,6 @@ namespace gf::desktop
         void richPreviewRenderedChanged();
         void isLoadingChanged();
         void loadingFilePathChanged();
-        void loadFailed(const QString& errorMessage);
 
     private:
         struct PreparedDiff;
@@ -262,6 +257,7 @@ namespace gf::desktop
                                           PreparedDiff& out);
 
         // GUI thread.
+        bool reloadCurrentDiff();
         // Applies a diff read on the worker: dedup, prepared rows, blame.
         void applyFetchedDiff(const QString& repoPath, const QString& filePath, const QString& revision,
                               const QString& scope, int contextLines, DiffFetch& fetch);

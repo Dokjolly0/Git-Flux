@@ -60,7 +60,6 @@ namespace gf::desktop
         Q_PROPERTY(QVariantList tabs READ tabs NOTIFY tabsChanged)
         Q_PROPERTY(QVariantList tabClusters READ tabClusters NOTIFY tabsChanged)
         Q_PROPERTY(int activeTabIndex READ activeTabIndex WRITE setActiveTabIndex NOTIFY activeTabChanged)
-        Q_PROPERTY(QString activeRepoId READ activeRepoId NOTIFY activeTabChanged)
         Q_PROPERTY(QString activeRepoName READ activeRepoName NOTIFY activeTabChanged)
         Q_PROPERTY(QString activeRepoPath READ activeRepoPath NOTIFY activeTabChanged)
         Q_PROPERTY(bool hasOpenTabs READ hasOpenTabs NOTIFY tabsChanged)
@@ -124,7 +123,6 @@ namespace gf::desktop
         [[nodiscard]] int activeTabIndex() const noexcept { return m_activeTabIndex; }
         void setActiveTabIndex(int index);
 
-        [[nodiscard]] QString activeRepoId() const;
         [[nodiscard]] QString activeRepoName() const;
         [[nodiscard]] QString activeRepoPath() const;
         [[nodiscard]] bool hasOpenTabs() const noexcept { return !m_tabs.empty(); }
@@ -157,12 +155,11 @@ namespace gf::desktop
         /// queued or running.
         bool waitForIdle(int timeoutMs = 10000);
 
-        // Rebase (asynchronous: outcome via rebaseSucceeded / rebaseConflictDetected / rebaseFailed)
+        // Rebase (asynchronous: outcome via rebaseSucceeded)
     Q_INVOKABLE bool startRebase(const QString& upstream, const QString& onto = {});
     Q_INVOKABLE bool continueRebase();
     Q_INVOKABLE bool skipRebase();
     Q_INVOKABLE bool abortRebase();
-    Q_INVOKABLE void checkRebaseStatus();
 
         // Conflict Resolver
     Q_INVOKABLE bool openConflictResolver(const QString& relativePath);
@@ -175,10 +172,10 @@ namespace gf::desktop
         void terminalChanged();
         void rebaseStatusChanged();
         void rebaseSucceeded(const QString& message);
-        void rebaseConflictDetected();
-        void rebaseFailed(const QString& message);
 
     private:
+        [[nodiscard]] QString activeRepoId() const;
+        void checkRebaseStatus();
         [[nodiscard]] QVariantMap buildTabVariantMap(const SessionTabItem& item, int tabIndex) const;
         void populateTabGroups(SessionTabItem& item) const;
         void rebuildAllTabGroups();
@@ -188,7 +185,7 @@ namespace gf::desktop
         void onFsDebouncedBatch(const gf::git::bo::FsDebouncedBatch& batch);
         void onWorkingTreeRefreshed(const QString& repoPath);
         // Runs a rebase step (`work(repoPath)`) on the git executor, then refreshes the tab and
-        // reports the outcome (rebaseSucceeded / rebaseConflictDetected when `reportOutcome`).
+        // reports the outcome (rebaseSucceeded when `reportOutcome`).
         template <typename Work>
         bool runRebaseStep(Work work, bool reportOutcome);
 

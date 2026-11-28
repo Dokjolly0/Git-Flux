@@ -48,9 +48,7 @@ namespace gf::desktop
 
         Q_PROPERTY(QString branchName READ branchName NOTIFY statusChanged)
         Q_PROPERTY(int aheadCount READ aheadCount NOTIFY statusChanged)
-        Q_PROPERTY(int behindCount READ behindCount NOTIFY statusChanged)
         Q_PROPERTY(bool isDetached READ isDetached NOTIFY statusChanged)
-        Q_PROPERTY(bool isUnborn READ isUnborn NOTIFY statusChanged)
         Q_PROPERTY(bool isBusy READ isBusy NOTIFY isBusyChanged)
 
     public:
@@ -79,9 +77,7 @@ namespace gf::desktop
         [[nodiscard]] QString branchName() const noexcept { return m_branchName; }
         [[nodiscard]] QString headOid() const noexcept { return m_headOid; }
         [[nodiscard]] int aheadCount() const noexcept { return m_aheadCount; }
-        [[nodiscard]] int behindCount() const noexcept { return m_behindCount; }
         [[nodiscard]] bool isDetached() const noexcept { return m_isDetached; }
-        [[nodiscard]] bool isUnborn() const noexcept { return m_isUnborn; }
         [[nodiscard]] bool isBusy() const noexcept { return m_isBusy; }
 
         // Asynchronous: these return whether the request was accepted. The new state arrives
@@ -98,8 +94,6 @@ namespace gf::desktop
         /// Test helper: processes events until no refresh or operation is pending.
         bool waitForIdle(int timeoutMs = 10000);
 
-        [[nodiscard]] Q_INVOKABLE QVariantList getStagedFiles() const;
-        [[nodiscard]] Q_INVOKABLE QVariantList getUnstagedFiles() const;
         [[nodiscard]] Q_INVOKABLE QVariantList getAllWorkingFiles() const;
 
         signals :
@@ -114,6 +108,8 @@ namespace gf::desktop
     private:
         using Mutation = std::function<std::string()>; // returns an error message, empty on success
 
+        [[nodiscard]] QVariantList getStagedFiles() const;
+        [[nodiscard]] QVariantList getUnstagedFiles() const;
         void clearState();
         void startRefresh();
         void applyStatus(const QString& repoPath, const gf::git::bo::RepoWorkingTreeStatus& status);
@@ -137,9 +133,7 @@ namespace gf::desktop
         QString m_branchName;
         QString m_headOid;
         int m_aheadCount = 0;
-        int m_behindCount = 0;
         bool m_isDetached = false;
-        bool m_isUnborn = false;
         bool m_isBusy = false;
 
         QString m_lastRepoPath;

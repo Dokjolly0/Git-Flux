@@ -242,11 +242,6 @@ namespace gf::desktop
         endResetModel();
     }
 
-    const std::vector<WorkspaceItem>& WorkspaceListModel::items() const noexcept
-    {
-        return m_items;
-    }
-
     std::optional<WorkspaceItem> WorkspaceListModel::findById(const QString& id) const
     {
         for (const auto& item : m_items)

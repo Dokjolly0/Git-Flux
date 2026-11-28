@@ -117,7 +117,6 @@ namespace gf::desktop
                             {
                                 m_lastErrorMessage = QString::fromStdString(result.error().message);
                                 emit lastErrorMessageChanged();
-                                emit commitFailed(m_lastErrorMessage);
                                 return;
                             }
 

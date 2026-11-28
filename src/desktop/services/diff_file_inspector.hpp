@@ -41,14 +41,11 @@ namespace gf::desktop
         int oldImageHeight = 0;
         int oldImageDepth = 0;
         bool oldImageHasAlpha = false;
-        QString oldImageFormat;
         int newImageWidth = 0;
         int newImageHeight = 0;
         int newImageDepth = 0;
         bool newImageHasAlpha = false;
-        QString newImageFormat;
         double imageDiffPercent = 0.0;
-        qint64 changedPixelsCount = 0;
 
         // Raw font data to be registered with QFontDatabase on the GUI thread when fileKind == "font"
         QByteArray oldFontBytes;

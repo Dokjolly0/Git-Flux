@@ -39,7 +39,6 @@ namespace gf::desktop
         [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
 
         void setBranches(std::vector<git::bo::GitBranch> branches);
-        [[nodiscard]] const std::vector<git::bo::GitBranch>& branches() const noexcept { return m_branches; }
 
     private:
         std::vector<git::bo::GitBranch> m_branches;

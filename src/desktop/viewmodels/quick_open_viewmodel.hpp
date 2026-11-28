@@ -3,7 +3,6 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
-#include <QSet>
 #include <QVariantList>
 
 namespace gf::groups::bl
@@ -45,8 +44,6 @@ namespace gf::desktop
         [[nodiscard]] int deduplicatedCount() const noexcept;
 
     Q_INVOKABLE void toggleGroup(const QString& groupId);
-    Q_INVOKABLE void selectGroup(const QString& groupId, bool selected);
-    Q_INVOKABLE bool isGroupSelected(const QString& groupId) const;
     Q_INVOKABLE void clearSelection();
     Q_INVOKABLE void selectAllGroups();
 

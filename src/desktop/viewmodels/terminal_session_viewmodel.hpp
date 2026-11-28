@@ -79,8 +79,6 @@ namespace gf::desktop
         Q_PROPERTY(int completionCount READ completionCount NOTIFY completionsChanged)
         Q_PROPERTY(bool hasCompletions READ hasCompletions NOTIFY completionsChanged)
         Q_PROPERTY(int completionReplaceStart READ completionReplaceStart NOTIFY completionsChanged)
-        Q_PROPERTY(int completionReplaceLength READ completionReplaceLength NOTIFY completionsChanged)
-        Q_PROPERTY(int discoveredCommandCount READ discoveredCommandCount NOTIFY catalogReadyChanged)
 
     public:
         TerminalSessionViewModel(gf::terminal::ports::ITerminalProcessRunner* processRunner,
@@ -138,11 +136,8 @@ namespace gf::desktop
         [[nodiscard]] int completionCount() const noexcept { return m_completionModel.count(); }
         [[nodiscard]] bool hasCompletions() const noexcept { return m_completionModel.count() > 0; }
         [[nodiscard]] int completionReplaceStart() const noexcept { return m_replaceStart; }
-        [[nodiscard]] int completionReplaceLength() const noexcept { return m_replaceLength; }
-        [[nodiscard]] int discoveredCommandCount() const;
 
         Q_INVOKABLE void toggleVisible();
-        Q_INVOKABLE void openAndFocus();
         Q_INVOKABLE void setActiveRepository(const QString& repoId,
                                              const QString& repoName,
                                              const QString& repoPath,
@@ -159,7 +154,6 @@ namespace gf::desktop
         Q_INVOKABLE void setActiveInputDraft(const QString& text, int cursorPos = -1);
 
         Q_INVOKABLE void executeCommand(const QString& commandLine);
-        Q_INVOKABLE void sendStdinLine(const QString& text);
         Q_INVOKABLE void interruptRunningCommand();
         Q_INVOKABLE void clearActiveOutput();
         Q_INVOKABLE QString copyActiveOutput() const;
@@ -169,7 +163,6 @@ namespace gf::desktop
 
         Q_INVOKABLE QString historyPrevious(const QString& currentInput);
         Q_INVOKABLE QString historyNext();
-        Q_INVOKABLE void resetHistoryNavigation();
 
         Q_INVOKABLE void updateCompletions(const QString& inputText, int cursorPos, bool explicitTrigger = false);
         Q_INVOKABLE bool shouldEnterAcceptCompletion(int selectedIndex,
@@ -178,7 +171,6 @@ namespace gf::desktop
                                                      int cursorPos) const;
         Q_INVOKABLE QVariantMap acceptCompletion(int index, const QString& inputText, int cursorPos);
         Q_INVOKABLE void dismissCompletions();
-        Q_INVOKABLE void refreshRepoCompletionContext();
 
         /// Test helper: waits for background catalog/context tasks and running commands to settle.
         bool waitForIdle(int timeoutMs = 5000);
@@ -209,6 +201,9 @@ namespace gf::desktop
         [[nodiscard]] TerminalTabState* findTabById(int tabId) noexcept;
 
         void ensureInitialTabForActiveRepo();
+        void sendStdinLine(const QString& text);
+        void resetHistoryNavigation();
+        void refreshRepoCompletionContext();
         void handleBuiltinCd(TerminalTabState& tab, const QString& targetArg, int headerId);
         void appendStreamChunk(TerminalTabState& tab, int streamKind, const QByteArray& utf8Bytes);
         void flushPendingBuffers(TerminalTabState& tab);

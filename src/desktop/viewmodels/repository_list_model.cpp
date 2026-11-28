@@ -153,11 +153,6 @@ namespace gf::desktop
         endResetModel();
     }
 
-    const std::vector<RepositoryItem>& RepositoryListModel::items() const noexcept
-    {
-        return m_items;
-    }
-
     std::optional<RepositoryItem> RepositoryListModel::findById(const QString& id) const
     {
         for (const auto& item : m_items)

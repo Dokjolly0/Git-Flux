@@ -407,12 +407,6 @@ namespace gf::desktop::viewmodels
         return p ? QString::fromStdString(p->host) : QStringLiteral("");
     }
 
-    QString GitProfilesViewModel::activeProfileType() const
-    {
-        const auto* p = findProfile(m_activeProfileId);
-        return p ? QString::fromStdString(core::git::bo::gitProviderTypeToString(p->providerType)) : QStringLiteral("");
-    }
-
     QString GitProfilesViewModel::activeProfileIconSource() const
     {
         if (m_activeProfileId == QStringLiteral("url")) return providerIconUrl(QStringLiteral("url"));
@@ -432,12 +426,6 @@ namespace gf::desktop::viewmodels
     {
         const auto* p = findProfile(m_activeProfileId);
         return p ? p->hasSshKey : false;
-    }
-
-    QString GitProfilesViewModel::activeProfileSshKeyPath() const
-    {
-        const auto* p = findProfile(m_activeProfileId);
-        return p ? QString::fromStdString(p->sshKeyPath) : QStringLiteral("");
     }
 
     bool GitProfilesViewModel::activeProfileHasToken() const

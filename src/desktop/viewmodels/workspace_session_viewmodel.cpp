@@ -901,7 +901,6 @@ namespace gf::desktop
                               --m_pendingOperations;
                               if (!res)
                               {
-                                  emit rebaseFailed(QString::fromStdString(res.error().message));
                                   return;
                               }
                               if (path == activeRepoPath())
@@ -910,16 +909,9 @@ namespace gf::desktop
                               }
                               if constexpr (requires { res->status; })
                               {
-                                  if (reportOutcome)
+                                  if (reportOutcome && res->status != gf::git::bo::RebaseStatus::Conflict)
                                   {
-                                      if (res->status == gf::git::bo::RebaseStatus::Conflict)
-                                      {
-                                          emit rebaseConflictDetected();
-                                      }
-                                      else
-                                      {
-                                          emit rebaseSucceeded(QString::fromStdString(res->message));
-                                      }
+                                      emit rebaseSucceeded(QString::fromStdString(res->message));
                                   }
                               }
                           });

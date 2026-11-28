@@ -36,7 +36,6 @@ namespace gf::desktop::services
 
         /// Overrides the ssh executable (tests).
         void setProgram(const QString& program) { m_program = program; }
-        void setTimeoutMs(int ms) { m_timeoutMs = ms; }
 
     signals:
         void probeFinished(const QString& tag, gf::core::git::bl::RemoteAccessIssue issue,

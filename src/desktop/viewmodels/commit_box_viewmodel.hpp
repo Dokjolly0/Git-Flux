@@ -69,7 +69,6 @@ namespace gf::desktop
         void lastErrorMessageChanged();
 
         void commitSucceeded(const QString& commitSha, const QString& summary);
-        void commitFailed(const QString& errorMessage);
 
     private:
         gf::git::bl::GitStagingService& m_stagingService;

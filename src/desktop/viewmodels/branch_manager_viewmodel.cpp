@@ -1741,12 +1741,11 @@ namespace gf::desktop
 
         auto* service = m_rebaseService;
         const auto repoPath = m_repoPath;
-        const QString switchedTo; // the current branch
         const QString okMessage = QStringLiteral("Rebase su %1 completato con successo").arg(targetBranch);
         runOperation(
             QStringLiteral("Rebase su %1 in corso...").arg(targetBranch),
             [service, repoPath, opts]() { return service->startRebase(repoPath, opts); },
-            [this, switchedTo, okMessage](int id, bool sameRepo, auto res)
+            [this, okMessage](int id, bool sameRepo, auto res)
             {
                 if (!res)
                 {
@@ -1767,7 +1766,7 @@ namespace gf::desktop
                 {
                     m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
                     refresh();
-                    emit branchSwitched(switchedTo.isEmpty() ? m_currentBranch : switchedTo);
+                    emit branchSwitched(m_currentBranch);
                 }
                 completeOperation(id, true, okMessage);
             });

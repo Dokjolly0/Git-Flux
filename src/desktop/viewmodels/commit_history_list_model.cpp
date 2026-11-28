@@ -624,8 +624,6 @@ namespace gf::desktop
             return (idx < m_graphItems.size()) ? m_graphItems[idx].routes : QVariantList{};
         case IsMergeRole:
             return !isStashCommit(c) && c.parents.size() > 1;
-        case IsWipRole:
-            return c.sha == "WIP";
         case IsOrphanRole:
             return (idx < m_graphItems.size()) ? m_graphItems[idx].isOrphan : false;
         case IsStashRole:
@@ -674,7 +672,6 @@ namespace gf::desktop
             {GraphColorRole, "graphColor"},
             {GraphRoutesRole, "graphRoutes"},
             {IsMergeRole, "isMerge"},
-            {IsWipRole, "isWip"},
             {IsOrphanRole, "isOrphan"},
             {IsStashRole, "isStash"},
             {StashSelectorRole, "stashSelector"},
@@ -743,7 +740,6 @@ namespace gf::desktop
             map[QStringLiteral("stashSelector")] = extractStashSelector(c.refDecorations);
         }
         map[QStringLiteral("isMerge")] = (!isStash && c.parents.size() > 1);
-        map[QStringLiteral("isWip")] = (c.sha == "WIP");
         map[QStringLiteral("branchCommitCount")] = branchCommitCountForCommit(c);
         if (const auto* info = inferredBranchForCommit(c))
         {
@@ -2332,10 +2328,6 @@ namespace gf::desktop
                                             : QStringLiteral("file modificati"))
                                    .toStdString();
             emit dataChanged(index(0, 0), index(0, 0), {SubjectRole});
-            return;
-        }
-        if (m_hasWip == hasWip && m_wipCount == changedFilesCount)
-        {
             return;
         }
         beginResetModel();

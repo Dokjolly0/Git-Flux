@@ -32,11 +32,6 @@ namespace gf::desktop
         case Qt::DisplayRole:
             return QString::fromStdString(item.path);
 
-        case OriginalPathRole:
-            return item.originalPath.empty()
-                       ? QString{}
-                       : QString::fromStdString(item.originalPath);
-
         case KindRole:
             switch (item.kind)
             {
@@ -80,7 +75,6 @@ namespace gf::desktop
     {
         return {
             {PathRole, "path"},
-            {OriginalPathRole, "originalPath"},
             {KindRole, "kind"},
             {StatusCodeRole, "statusCode"},
             {BadgeColorRole, "badgeColor"}

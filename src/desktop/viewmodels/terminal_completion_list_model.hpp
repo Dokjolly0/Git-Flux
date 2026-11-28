@@ -22,14 +22,12 @@ namespace gf::desktop
     public:
         enum Roles
         {
-            InsertTextRole = Qt::UserRole + 1,
-            DisplayTextRole,
+            DisplayTextRole = Qt::UserRole + 1,
             DetailRole,
             CategoryLabelRole,
             KindRole,
             MatchStartRole,
-            MatchLengthRole,
-            AppendSpaceRole
+            MatchLengthRole
         };
 
         explicit TerminalCompletionListModel(QObject* parent = nullptr);

@@ -99,11 +99,6 @@ namespace gf::desktop
         endResetModel();
     }
 
-    const std::vector<GroupItem>& GroupListModel::items() const noexcept
-    {
-        return m_items;
-    }
-
     std::optional<GroupItem> GroupListModel::findById(const QString& id) const
     {
         for (const auto& item : m_items)

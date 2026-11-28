@@ -42,8 +42,6 @@ namespace gf::desktop
         void setStashes(std::vector<gf::git::bo::GitStashItem> stashes);
         void clear();
 
-        [[nodiscard]] const std::vector<gf::git::bo::GitStashItem>& stashes() const noexcept { return m_stashes; }
-
         signals :
 
         void countChanged();

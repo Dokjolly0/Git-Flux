@@ -31,8 +31,6 @@ namespace gf::desktop
             return static_cast<qlonglong>(hunk.hunkIndex);
         case StartLineRole:
             return static_cast<qlonglong>(hunk.startLine);
-        case BaseContentRole:
-            return QString::fromStdString(hunk.baseContent);
         case OursContentRole:
             return QString::fromStdString(hunk.oursContent);
         case TheirsContentRole:
@@ -59,7 +57,6 @@ namespace gf::desktop
         return {
             {HunkIndexRole, "hunkIndex"},
             {StartLineRole, "startLine"},
-            {BaseContentRole, "baseContent"},
             {OursContentRole, "oursContent"},
             {TheirsContentRole, "theirsContent"},
             {ChosenSideRole, "chosenSide"},

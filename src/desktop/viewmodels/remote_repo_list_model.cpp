@@ -99,21 +99,8 @@ namespace gf::desktop::viewmodels
 
     void RemoteRepoListModel::setRepositories(std::vector<core::git::bo::RemoteRepositoryItem> repos)
     {
-        beginResetModel();
         m_allRepos = std::move(repos);
-        m_filteredIndices.clear();
-        m_filteredIndices.reserve(m_allRepos.size());
-        for (size_t i = 0; i < m_allRepos.size(); ++i)
-        {
-            m_filteredIndices.push_back(i);
-        }
-        endResetModel();
-        emit countChanged();
-
-        if (!m_searchFilter.isEmpty())
-        {
-            applyFilter();
-        }
+        applyFilter();
     }
 
     void RemoteRepoListModel::clear()

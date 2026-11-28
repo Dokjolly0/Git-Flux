@@ -791,12 +791,6 @@ namespace gf::desktop
         return out;
     }
 
-    int TerminalSessionViewModel::discoveredCommandCount() const
-    {
-        if (!m_catalogService) return 0;
-        return static_cast<int>(m_catalogService->allCommands().size());
-    }
-
     void TerminalSessionViewModel::toggleVisible()
     {
         setIsVisible(!m_isVisible);
@@ -804,19 +798,6 @@ namespace gf::desktop
         {
             emit focusInputRequested();
         }
-    }
-
-    void TerminalSessionViewModel::openAndFocus()
-    {
-        if (!m_isVisible)
-        {
-            setIsVisible(true);
-        }
-        else
-        {
-            ensureInitialTabForActiveRepo();
-        }
-        emit focusInputRequested();
     }
 
     void TerminalSessionViewModel::setActiveRepository(const QString& repoId,

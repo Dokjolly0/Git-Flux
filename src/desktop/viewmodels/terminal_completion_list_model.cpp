@@ -23,8 +23,6 @@ namespace gf::desktop
         const auto& item = m_items[static_cast<std::size_t>(index.row())];
         switch (role)
         {
-        case InsertTextRole:
-            return QString::fromStdString(item.insertText);
         case DisplayTextRole:
             return QString::fromStdString(item.displayText);
         case DetailRole:
@@ -40,8 +38,6 @@ namespace gf::desktop
             return static_cast<int>(item.matchStart);
         case MatchLengthRole:
             return static_cast<int>(item.matchLength);
-        case AppendSpaceRole:
-            return item.appendSpace;
         default:
             return {};
         }
@@ -50,14 +46,12 @@ namespace gf::desktop
     QHash<int, QByteArray> TerminalCompletionListModel::roleNames() const
     {
         return {
-            {InsertTextRole, "insertText"},
             {DisplayTextRole, "displayText"},
             {DetailRole, "detail"},
             {CategoryLabelRole, "categoryLabel"},
             {KindRole, "kind"},
             {MatchStartRole, "matchStart"},
-            {MatchLengthRole, "matchLength"},
-            {AppendSpaceRole, "appendSpace"}
+            {MatchLengthRole, "matchLength"}
         };
     }
 

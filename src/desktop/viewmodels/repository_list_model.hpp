@@ -47,7 +47,6 @@ namespace gf::desktop
         [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
 
         void setRepositories(const std::vector<gf::repositories::bo::Repository>& repositories);
-        [[nodiscard]] const std::vector<RepositoryItem>& items() const noexcept;
         [[nodiscard]] std::optional<RepositoryItem> findById(const QString& id) const;
 
         void updateStatus(const QString& id, const QString& status, bool isMissing);

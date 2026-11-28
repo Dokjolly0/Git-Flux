@@ -2,7 +2,6 @@
 
 #include <QAbstractListModel>
 #include <QString>
-#include <string>
 #include <vector>
 
 #ifndef Q_MOC_RUN

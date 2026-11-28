@@ -60,9 +60,7 @@ namespace gf::desktop
         m_branchName.clear();
         m_headOid.clear();
         m_aheadCount = 0;
-        m_behindCount = 0;
         m_isDetached = false;
-        m_isUnborn = false;
         m_lastRepoPath.clear();
         m_lastStatus = {};
         m_hasLastStatus = false;
@@ -165,9 +163,7 @@ namespace gf::desktop
         m_branchName = QString::fromStdString(status.branch.headName);
         m_headOid = QString::fromStdString(status.branch.oid);
         m_aheadCount = status.branch.ahead;
-        m_behindCount = status.branch.behind;
         m_isDetached = status.branch.detached;
-        m_isUnborn = status.branch.unborn;
 
         m_lastRepoPath = repoPath;
         m_lastStatus = status;

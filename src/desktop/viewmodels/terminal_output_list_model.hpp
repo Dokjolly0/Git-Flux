@@ -51,12 +51,10 @@ namespace gf::desktop
         [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
 
         [[nodiscard]] int count() const noexcept { return static_cast<int>(m_entries.size()); }
-        [[nodiscard]] bool isTruncated() const noexcept { return m_truncated; }
 
         /// Attaches a QML TextEdit's QQuickTextDocument for native multi-line text selection & copy.
         /// Automatically detaches any previously attached model from the same document.
         Q_INVOKABLE void attachTextDocument(QQuickTextDocument* quickDoc);
-        Q_INVOKABLE void detachTextDocument();
 
         /// Appends a command header row and returns its unique monotonic entry id.
         int appendCommandHeader(const QString& promptPrefix, const QString& commandText);
@@ -81,6 +79,7 @@ namespace gf::desktop
         void countChanged();
 
     private:
+        void detachTextDocument();
         void trimIfNeeded();
         void syncFullDocument();
         void appendEntryToDocument(const TerminalOutputEntry& entry, bool isFirstBlock);

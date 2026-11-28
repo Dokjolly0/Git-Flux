@@ -22,7 +22,6 @@ namespace gf::desktop
         enum Roles
         {
             PathRole = Qt::UserRole + 1,
-            OriginalPathRole,
             KindRole,
             StatusCodeRole,
             BadgeColorRole

@@ -57,7 +57,6 @@ namespace gf::desktop
             GraphColorRole,
             GraphRoutesRole,
             IsMergeRole,
-            IsWipRole,
             IsOrphanRole,
             IsStashRole,
             StashSelectorRole,
@@ -76,8 +75,6 @@ namespace gf::desktop
 
         void setCommits(std::vector<git::bo::GitCommitLogItem> commits, bool isFullDag = true);
         void setWip(bool hasWip, int changedFilesCount = 0);
-        [[nodiscard]] bool hasWip() const noexcept { return m_hasWip; }
-        [[nodiscard]] const std::vector<git::bo::GitCommitLogItem>& commits() const noexcept { return m_commits; }
 
         [[nodiscard]] int maxLanes() const noexcept { return m_maxLanes; }
         [[nodiscard]] QString searchFilter() const noexcept { return m_searchFilter; }

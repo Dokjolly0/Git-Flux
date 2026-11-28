@@ -25,7 +25,6 @@ namespace gf::desktop
         {
             HunkIndexRole = Qt::UserRole + 1,
             StartLineRole,
-            BaseContentRole,
             OursContentRole,
             TheirsContentRole,
             ChosenSideRole,

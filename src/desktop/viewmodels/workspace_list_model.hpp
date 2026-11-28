@@ -76,7 +76,6 @@ namespace gf::desktop
         void setWorkspaces(const std::vector<gf::workspaces::bo::Workspace>& workspaces,
                            gf::workspaces::bl::WorkspaceService& workspaceService,
                            gf::groups::bl::GroupService* groupService = nullptr);
-        [[nodiscard]] const std::vector<WorkspaceItem>& items() const noexcept;
         [[nodiscard]] std::optional<WorkspaceItem> findById(const QString& id) const;
 
     private:

@@ -2,7 +2,6 @@
 
 #include <QObject>
 #include <QString>
-#include <filesystem>
 #include <memory>
 
 #include "desktop/viewmodels/conflict_hunk_list_model.hpp"

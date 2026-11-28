@@ -128,7 +128,7 @@ namespace gf::desktop
         [[nodiscard]] QString multiSelectRangeBase() const noexcept { return m_multiSelectRangeBase; }
         [[nodiscard]] QString multiSelectRangeHead() const noexcept { return m_multiSelectRangeHead; }
         [[nodiscard]] QString multiSelectViewMode() const noexcept { return m_multiSelectViewMode; }
-        Q_INVOKABLE void setMultiSelectViewMode(const QString& mode);
+        void setMultiSelectViewMode(const QString& mode);
         [[nodiscard]] bool isLoadingMultiCommitFiles() const noexcept { return m_isLoadingMultiCommitFiles; }
         [[nodiscard]] int multiSelectRevision() const noexcept { return m_multiSelectRevision; }
 
@@ -189,8 +189,6 @@ namespace gf::desktop
     Q_INVOKABLE void clearMultiSelection();
     [[nodiscard]] Q_INVOKABLE bool isShaSelected(const QString& sha) const;
     [[nodiscard]] Q_INVOKABLE bool isShaEffectivelySelected(const QString& sha) const;
-    /// Asynchronous, latest wins: results arrive with multiCommitFilesLoaded(summary).
-    Q_INVOKABLE void requestMultiCommitFiles();
 
     /// Asynchronous: the filtered history is applied (and fileHistoryPathChanged emitted) when
     /// `git log --follow` completes; a newer request or clearFileHistory() supersedes it.
@@ -259,6 +257,7 @@ namespace gf::desktop
         void setStatusMessage(const QString& message);
         void recomputeMultiSelectionState(bool triggerReload);
         void resetMultiSelectionState();
+        void requestMultiCommitFiles();
         // Marks operation `id` as the running network operation `kind` (see remoteOperation).
         void beginRemoteOperation(int id, const QString& kind);
         void endRemoteOperation(int id);
