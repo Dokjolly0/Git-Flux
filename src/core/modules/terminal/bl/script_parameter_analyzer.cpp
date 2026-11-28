@@ -390,97 +390,85 @@ namespace gf::terminal::bl
         return tbo::ScriptKind::Unknown;
     }
 
-    tbo::ScriptMetadata ScriptParameterAnalyzer::parsePowerShell(const std::string_view content)
+    namespace
     {
-        tbo::ScriptMetadata meta;
-        meta.kind = tbo::ScriptKind::PowerShell;
-
-        // 1. Parse comment-based help `<# ... .SYNOPSIS ... .PARAMETER Name ... #>`
-        std::unordered_map<std::string, std::string> paramDocs;
-        if (const std::size_t helpStart = content.find("<#"); helpStart != std::string_view::npos)
+        [[nodiscard]] std::unordered_map<std::string, std::string> parsePowerShellHelpDocs(const std::string_view content)
         {
-            if (const std::size_t helpEnd = content.find("#>", helpStart + 2); helpEnd != std::string_view::npos)
+            std::unordered_map<std::string, std::string> paramDocs;
+            const std::size_t helpStart = content.find("<#");
+            if (helpStart == std::string_view::npos) return paramDocs;
+            const std::size_t helpEnd = content.find("#>", helpStart + 2);
+            if (helpEnd == std::string_view::npos) return paramDocs;
+
+            const std::string_view block = content.substr(helpStart + 2, helpEnd - (helpStart + 2));
+            std::string currentParam;
+            std::size_t pos = 0;
+            while (pos < block.size())
             {
-                const std::string_view block = content.substr(helpStart + 2, helpEnd - (helpStart + 2));
-                std::string currentParam;
+                std::size_t nl = block.find('\n', pos);
+                if (nl == std::string_view::npos) nl = block.size();
+                const std::string_view line = trimSv(block.substr(pos, nl - pos));
+                pos = (nl < block.size()) ? nl + 1 : nl;
 
-                std::size_t pos = 0;
-                while (pos < block.size())
+                if (line.empty()) continue;
+                const std::string low = toLowerCopy(line);
+                if (low.starts_with(".parameter"))
                 {
-                    std::size_t nl = block.find('\n', pos);
-                    if (nl == std::string_view::npos) nl = block.size();
-                    const std::string_view line = trimSv(block.substr(pos, nl - pos));
-                    pos = (nl < block.size()) ? nl + 1 : nl;
-
-                    if (line.empty()) continue;
-                    const std::string low = toLowerCopy(line);
-                    if (low.starts_with(".parameter"))
-                    {
-                        currentParam = toLowerCopy(trimSv(line.substr(10)));
-                    }
-                    else if (line.front() == '.')
-                    {
-                        currentParam.clear();
-                    }
-                    else if (!currentParam.empty())
-                    {
-                        auto& doc = paramDocs[currentParam];
-                        if (!doc.empty()) doc.push_back(' ');
-                        doc.append(line);
-                    }
+                    currentParam = toLowerCopy(trimSv(line.substr(10)));
+                }
+                else if (line.front() == '.')
+                {
+                    currentParam.clear();
+                }
+                else if (!currentParam.empty())
+                {
+                    auto& doc = paramDocs[currentParam];
+                    if (!doc.empty()) doc.push_back(' ');
+                    doc.append(line);
                 }
             }
+            return paramDocs;
         }
 
-        // 2. Locate top-level `param(...)` block (ignoring comment blocks)
-        std::size_t searchPos = 0;
-        if (const std::size_t helpStart = content.find("<#"); helpStart != std::string_view::npos)
+        [[nodiscard]] std::string_view extractPowerShellParamBody(const std::string_view content)
         {
-            if (const std::size_t helpEnd = content.find("#>", helpStart + 2); helpEnd != std::string_view::npos)
+            std::size_t searchPos = 0;
+            if (const std::size_t helpStart = content.find("<#"); helpStart != std::string_view::npos)
             {
-                searchPos = helpEnd + 2;
-            }
-        }
-
-        const std::string lowerContent = toLowerCopy(content);
-        std::size_t paramOpen = std::string_view::npos;
-        while (searchPos < lowerContent.size())
-        {
-            const std::size_t found = lowerContent.find("param", searchPos);
-            if (found == std::string::npos) break;
-            const bool wordStart = (found == 0 || !isIdentChar(lowerContent[found - 1]));
-            if (wordStart)
-            {
-                std::size_t p = found + 5;
-                while (p < content.size() && (content[p] == ' ' || content[p] == '\t' || content[p] == '\r' || content[p] == '\n'))
+                if (const std::size_t helpEnd = content.find("#>", helpStart + 2); helpEnd != std::string_view::npos)
                 {
-                    ++p;
-                }
-                if (p < content.size() && content[p] == '(')
-                {
-                    paramOpen = p;
-                    break;
+                    searchPos = helpEnd + 2;
                 }
             }
-            searchPos = found + 5;
+
+            const std::string lowerContent = toLowerCopy(content);
+            while (searchPos < lowerContent.size())
+            {
+                const std::size_t found = lowerContent.find("param", searchPos);
+                if (found == std::string::npos) break;
+                if (found == 0 || !isIdentChar(lowerContent[found - 1]))
+                {
+                    std::size_t p = found + 5;
+                    while (p < content.size() &&
+                           (content[p] == ' ' || content[p] == '\t' || content[p] == '\r' || content[p] == '\n'))
+                    {
+                        ++p;
+                    }
+                    if (p < content.size() && content[p] == '(')
+                    {
+                        const std::size_t paramClose = findMatchingClose(content, p, '(', ')');
+                        if (paramClose == std::string_view::npos) return {};
+                        return content.substr(p + 1, paramClose - (p + 1));
+                    }
+                }
+                searchPos = found + 5;
+            }
+            return {};
         }
 
-        if (paramOpen == std::string_view::npos)
+        [[nodiscard]] std::vector<std::string_view> splitTopLevelParamDecls(const std::string_view paramBody)
         {
-            return meta;
-        }
-
-        const std::size_t paramClose = findMatchingClose(content, paramOpen, '(', ')');
-        if (paramClose == std::string_view::npos)
-        {
-            return meta;
-        }
-
-        const std::string_view paramBody = content.substr(paramOpen + 1, paramClose - (paramOpen + 1));
-
-        // 3. Split param(...) on top-level commas (ignoring commas inside (...) / [...] / quotes / #comments)
-        std::vector<std::string_view> decls;
-        {
+            std::vector<std::string_view> decls;
             int parenDepth = 0;
             int bracketDepth = 0;
             char quote = '\0';
@@ -513,91 +501,70 @@ namespace gf::terminal::bl
                     start = i + 1;
                 }
             }
-            if (start < paramBody.size())
-            {
-                decls.push_back(paramBody.substr(start));
-            }
+            if (start < paramBody.size()) decls.push_back(paramBody.substr(start));
+            return decls;
         }
 
-        std::unordered_map<std::string, std::size_t> indexByFlag;
-
-        for (const std::string_view rawDecl : decls)
+        [[nodiscard]] std::size_t findTopLevelDollarVar(const std::string_view rawDecl)
         {
-            // Find the `$ParamName` identifier
-            std::size_t dollarPos = std::string_view::npos;
+            int parenDepth = 0;
+            int bracketDepth = 0;
+            char quote = '\0';
+            for (std::size_t i = 0; i < rawDecl.size(); ++i)
             {
-                int parenDepth = 0;
-                int bracketDepth = 0;
-                char quote = '\0';
-                for (std::size_t i = 0; i < rawDecl.size(); ++i)
+                const char c = rawDecl[i];
+                if (quote != '\0') { if (c == quote) quote = '\0'; continue; }
+                if (c == '#')
                 {
-                    const char c = rawDecl[i];
-                    if (quote != '\0')
-                    {
-                        if (c == quote) quote = '\0';
-                        continue;
-                    }
-                    if (c == '#')
-                    {
-                        const std::size_t nl = rawDecl.find('\n', i);
-                        if (nl == std::string_view::npos) break;
-                        i = nl;
-                        continue;
-                    }
-                    if (c == '"' || c == '\'') { quote = c; continue; }
-                    if (c == '(') ++parenDepth;
-                    else if (c == ')') --parenDepth;
-                    else if (c == '[') ++bracketDepth;
-                    else if (c == ']') --bracketDepth;
-                    else if (c == '$' && parenDepth == 0 && bracketDepth == 0)
-                    {
-                        dollarPos = i;
-                        break;
-                    }
+                    const std::size_t nl = rawDecl.find('\n', i);
+                    if (nl == std::string_view::npos) break;
+                    i = nl;
+                    continue;
                 }
+                if (c == '"' || c == '\'') { quote = c; continue; }
+                if (c == '(') ++parenDepth;
+                else if (c == ')') --parenDepth;
+                else if (c == '[') ++bracketDepth;
+                else if (c == ']') --bracketDepth;
+                else if (c == '$' && parenDepth == 0 && bracketDepth == 0) return i;
             }
-            if (dollarPos == std::string_view::npos) continue;
+            return std::string_view::npos;
+        }
+
+        void parsePowerShellParamDecl(const std::string_view rawDecl,
+                                      const std::unordered_map<std::string, std::string>& paramDocs,
+                                      std::vector<tbo::ScriptParamSpec>& params,
+                                      std::unordered_map<std::string, std::size_t>& indexByFlag)
+        {
+            const std::size_t dollarPos = findTopLevelDollarVar(rawDecl);
+            if (dollarPos == std::string_view::npos) return;
 
             std::size_t nameEnd = dollarPos + 1;
-            while (nameEnd < rawDecl.size() && (std::isalnum(static_cast<unsigned char>(rawDecl[nameEnd])) || rawDecl[nameEnd] == '_'))
+            while (nameEnd < rawDecl.size() &&
+                   (std::isalnum(static_cast<unsigned char>(rawDecl[nameEnd])) || rawDecl[nameEnd] == '_'))
             {
                 ++nameEnd;
             }
             const std::string_view varName = rawDecl.substr(dollarPos + 1, nameEnd - (dollarPos + 1));
-            if (varName.empty()) continue;
+            if (varName.empty()) return;
 
             tbo::ScriptParamSpec spec;
             spec.name = "-" + std::string(varName);
             spec.takesValue = true;
 
-            // Inspect attributes & type annotations before `$varName`
             const std::string_view attrs = rawDecl.substr(0, dollarPos);
             const std::string attrsLower = toLowerCopy(attrs);
-
             if (attrsLower.find("[switch]") != std::string::npos ||
                 attrsLower.find("[switchparameter]") != std::string::npos)
             {
                 spec.takesValue = false;
             }
-            else if (attrsLower.find("[string]") != std::string::npos)
-            {
-                spec.valueHint = "<string>";
-            }
-            else if (attrsLower.find("[int]") != std::string::npos ||
-                     attrsLower.find("[int32]") != std::string::npos)
-            {
+            else if (attrsLower.find("[string]") != std::string::npos) spec.valueHint = "<string>";
+            else if (attrsLower.find("[int]") != std::string::npos || attrsLower.find("[int32]") != std::string::npos)
                 spec.valueHint = "<int>";
-            }
-            else if (attrsLower.find("[bool]") != std::string::npos)
-            {
-                spec.valueHint = "<bool>";
-            }
-            else if (attrsLower.find("[string[]]") != std::string::npos)
-            {
-                spec.valueHint = "<string[]>";
-            }
+            else if (attrsLower.find("[bool]") != std::string::npos) spec.valueHint = "<bool>";
+            else if (attrsLower.find("[string[]]") != std::string::npos) spec.valueHint = "<string[]>";
 
-            // Extract [Alias("a", "b")]
             if (const std::size_t aliasPos = attrsLower.find("alias("); aliasPos != std::string::npos)
             {
                 if (const std::size_t closeP = findMatchingClose(attrs, aliasPos + 5, '(', ')');
@@ -609,8 +576,6 @@ namespace gf::terminal::bl
                     }
                 }
             }
-
-            // Extract [ValidateSet("Debug", "Release")]
             if (const std::size_t vsPos = attrsLower.find("validateset("); vsPos != std::string::npos)
             {
                 if (const std::size_t closeP = findMatchingClose(attrs, vsPos + 11, '(', ')');
@@ -619,14 +584,10 @@ namespace gf::terminal::bl
                     spec.allowedValues = extractQuotedStrings(attrs.substr(vsPos + 12, closeP - (vsPos + 12)));
                 }
             }
-
-            // Look up description from `.PARAMETER <Name>`
             if (const auto it = paramDocs.find(toLowerCopy(varName)); it != paramDocs.end())
             {
                 spec.description = it->second;
             }
-
-            // Fallback: inline `# comment` or default value (`= ...`) after `$varName`
             if (spec.description.empty() && nameEnd < rawDecl.size())
             {
                 const std::string_view tail = rawDecl.substr(nameEnd);
@@ -640,19 +601,155 @@ namespace gf::terminal::bl
                 {
                     std::string_view defVal = trimSv(tail.substr(eqPos + 1));
                     if (const std::size_t nl = defVal.find('\n'); nl != std::string_view::npos)
-                    {
                         defVal = trimSv(defVal.substr(0, nl));
-                    }
-                    if (!defVal.empty() && defVal.size() <= 48)
+                    if (!defVal.empty() && defVal.size() <= 48) spec.description = "Default: " + unquoteSimple(defVal);
+                }
+            }
+            mergeScriptParam(params, indexByFlag, std::move(spec));
+        }
+
+        void parsePosixCaseArmLine(const std::string_view line,
+                                   const std::string_view armPreview,
+                                   std::vector<tbo::ScriptParamSpec>& params,
+                                   std::unordered_map<std::string, std::size_t>& indexByFlag)
+        {
+            if (line.empty() || line.front() != '-' || line.starts_with("---")) return;
+            const std::size_t closeParen = line.find(')');
+            if (closeParen == std::string_view::npos || closeParen > 64) return;
+
+            const std::string_view pattern = trimSv(line.substr(0, closeParen));
+            std::vector<std::string> flags;
+            std::size_t p = 0;
+            while (p < pattern.size())
+            {
+                const std::size_t bar = pattern.find('|', p);
+                const std::string_view tok = trimSv(
+                    bar == std::string_view::npos ? pattern.substr(p) : pattern.substr(p, bar - p));
+                if (tok.size() < 2 || tok.front() != '-' || tok == "--") return;
+                for (std::size_t k = 1; k < tok.size(); ++k)
+                {
+                    if (!isFlagChar(tok[k])) return;
+                }
+                flags.emplace_back(tok);
+                if (bar == std::string_view::npos) break;
+                p = bar + 1;
+            }
+            if (flags.empty()) return;
+
+            const std::size_t armEnd = armPreview.find(";;");
+            const std::string_view armBody = (armEnd == std::string_view::npos) ? armPreview : armPreview.substr(0, armEnd);
+            const bool takesVal = (armBody.find("shift 2") != std::string_view::npos) ||
+                                  (armBody.find("$2") != std::string_view::npos) ||
+                                  (armBody.find("${2") != std::string_view::npos);
+
+            std::string canonical = flags.front();
+            for (const auto& f : flags)
+            {
+                if (f.starts_with("--") && !canonical.starts_with("--")) canonical = f;
+            }
+
+            tbo::ScriptParamSpec spec;
+            spec.name = canonical;
+            for (const auto& f : flags) if (f != canonical) spec.aliases.push_back(f);
+            spec.takesValue = takesVal;
+            mergeScriptParam(params, indexByFlag, std::move(spec));
+        }
+
+        [[nodiscard]] std::string extractPythonKwString(const std::string_view callBody, const std::string_view kw)
+        {
+            std::size_t p = 0;
+            while (p < callBody.size())
+            {
+                const std::size_t found = callBody.find(kw, p);
+                if (found == std::string_view::npos) break;
+                const bool okStart = (found == 0 || !isIdentChar(callBody[found - 1]));
+                p = found + kw.size();
+                if (!okStart) continue;
+                while (p < callBody.size() && std::isspace(static_cast<unsigned char>(callBody[p]))) ++p;
+                if (p < callBody.size() && callBody[p] == '=')
+                {
+                    ++p;
+                    while (p < callBody.size() && std::isspace(static_cast<unsigned char>(callBody[p]))) ++p;
+                    if (p < callBody.size() && (callBody[p] == 'f' || callBody[p] == 'r') &&
+                        p + 1 < callBody.size() && (callBody[p + 1] == '"' || callBody[p + 1] == '\''))
                     {
-                        spec.description = "Default: " + unquoteSimple(defVal);
+                        ++p;
+                    }
+                    if (p < callBody.size() && (callBody[p] == '"' || callBody[p] == '\''))
+                    {
+                        return readQuotedLiteral(callBody, p);
                     }
                 }
             }
-
-            mergeScriptParam(meta.params, indexByFlag, std::move(spec));
+            return {};
         }
 
+        void parsePythonArgCall(const std::string_view callBody,
+                                std::vector<tbo::ScriptParamSpec>& params,
+                                std::unordered_map<std::string, std::size_t>& indexByFlag)
+        {
+            std::vector<std::string> flags;
+            std::size_t i = 0;
+            while (i < callBody.size())
+            {
+                while (i < callBody.size() && (std::isspace(static_cast<unsigned char>(callBody[i])) || callBody[i] == ','))
+                    ++i;
+                if (i >= callBody.size() || (callBody[i] != '"' && callBody[i] != '\'')) break;
+
+                std::string s = readQuotedLiteral(callBody, i);
+                if (s.size() >= 2 && s.front() == '-') flags.push_back(std::move(s));
+            }
+            if (flags.empty()) return;
+
+            std::string canonical = flags.front();
+            for (const auto& f : flags)
+            {
+                if (f.starts_with("--") && !canonical.starts_with("--")) canonical = f;
+            }
+
+            tbo::ScriptParamSpec spec;
+            spec.name = canonical;
+            for (const auto& f : flags) if (f != canonical) spec.aliases.push_back(f);
+            spec.takesValue =
+                callBody.find("store_true") == std::string_view::npos &&
+                callBody.find("store_false") == std::string_view::npos &&
+                callBody.find("action='count'") == std::string_view::npos &&
+                callBody.find("action=\"count\"") == std::string_view::npos &&
+                callBody.find("is_flag=True") == std::string_view::npos;
+            spec.description = extractPythonKwString(callBody, "help");
+            if (const std::string mv = extractPythonKwString(callBody, "metavar"); !mv.empty())
+            {
+                spec.valueHint = "<" + mv + ">";
+            }
+            if (const std::size_t chPos = callBody.find("choices"); chPos != std::string_view::npos)
+            {
+                if (const std::size_t br = callBody.find('[', chPos); br != std::string_view::npos)
+                {
+                    if (const std::size_t brEnd = findMatchingClose(callBody, br, '[', ']');
+                        brEnd != std::string_view::npos)
+                    {
+                        spec.allowedValues = extractQuotedStrings(callBody.substr(br + 1, brEnd - (br + 1)));
+                    }
+                }
+            }
+            mergeScriptParam(params, indexByFlag, std::move(spec));
+        }
+    } // namespace
+
+    tbo::ScriptMetadata ScriptParameterAnalyzer::parsePowerShell(const std::string_view content)
+    {
+        tbo::ScriptMetadata meta;
+        meta.kind = tbo::ScriptKind::PowerShell;
+
+        const auto paramDocs = parsePowerShellHelpDocs(content);
+        const std::string_view paramBody = extractPowerShellParamBody(content);
+        if (paramBody.empty()) return meta;
+
+        std::unordered_map<std::string, std::size_t> indexByFlag;
+        for (const std::string_view rawDecl : splitTopLevelParamDecls(paramBody))
+        {
+            parsePowerShellParamDecl(rawDecl, paramDocs, meta.params, indexByFlag);
+        }
         return meta;
     }
 
@@ -660,125 +757,54 @@ namespace gf::terminal::bl
     {
         tbo::ScriptMetadata meta;
         meta.kind = tbo::ScriptKind::PosixShell;
-
         std::unordered_map<std::string, std::size_t> indexByFlag;
 
-        // Pass 1: Extract documented options & descriptions from comments and usage/help heredocs
+        std::size_t pos = 0;
+        while (pos < content.size())
         {
-            std::size_t pos = 0;
-            while (pos < content.size())
-            {
-                std::size_t nl = content.find('\n', pos);
-                if (nl == std::string_view::npos) nl = content.size();
-                const std::string_view line = content.substr(pos, nl - pos);
-                pos = (nl < content.size()) ? nl + 1 : nl;
-                parseHelpStyleOptionLine(line, false, meta.params, indexByFlag);
-            }
+            std::size_t nl = content.find('\n', pos);
+            if (nl == std::string_view::npos) nl = content.size();
+            const std::string_view line = content.substr(pos, nl - pos);
+            const std::size_t nextPos = (nl < content.size()) ? nl + 1 : nl;
+            pos = nextPos;
+            parseHelpStyleOptionLine(line, false, meta.params, indexByFlag);
         }
 
-        // Pass 2: Extract flags from `case` arms (`-q|--qt)`, `--clean)`, `-t|--target)`)
+        pos = 0;
+        while (pos < content.size())
         {
-            std::size_t pos = 0;
-            while (pos < content.size())
-            {
-                std::size_t nl = content.find('\n', pos);
-                if (nl == std::string_view::npos) nl = content.size();
-                const std::string_view line = trimSv(content.substr(pos, nl - pos));
-                const std::size_t nextPos = (nl < content.size()) ? nl + 1 : nl;
-                pos = nextPos;
-
-                if (line.empty() || line.front() != '-' || line.starts_with("---")) continue;
-                const std::size_t closeParen = line.find(')');
-                if (closeParen == std::string_view::npos || closeParen > 64) continue;
-
-                const std::string_view pattern = trimSv(line.substr(0, closeParen));
-                std::vector<std::string> flags;
-                std::size_t p = 0;
-                bool valid = true;
-                while (p < pattern.size())
-                {
-                    const std::size_t bar = pattern.find('|', p);
-                    const std::string_view tok = trimSv(
-                        bar == std::string_view::npos ? pattern.substr(p) : pattern.substr(p, bar - p));
-                    if (tok.size() >= 2 && tok.front() == '-' && tok != "--")
-                    {
-                        bool allOk = true;
-                        for (std::size_t k = 1; k < tok.size(); ++k)
-                        {
-                            if (!isFlagChar(tok[k]) && tok[k] != '*') { allOk = false; break; }
-                        }
-                        if (allOk && tok.find('*') == std::string_view::npos)
-                        {
-                            flags.emplace_back(tok);
-                        }
-                        else
-                        {
-                            valid = false;
-                        }
-                    }
-                    else
-                    {
-                        valid = false;
-                    }
-                    if (bar == std::string_view::npos) break;
-                    p = bar + 1;
-                }
-
-                if (!valid || flags.empty()) continue;
-
-                // Peek next few lines to detect `shift 2` or `$2` (takesValue)
-                const std::string_view armPreview = content.substr(
-                    nextPos, std::min<std::size_t>(200, content.size() - nextPos));
-                const std::size_t armEnd = armPreview.find(";;");
-                const std::string_view armBody = (armEnd == std::string_view::npos) ? armPreview : armPreview.substr(0, armEnd);
-                const bool takesVal = (armBody.find("shift 2") != std::string_view::npos) ||
-                                      (armBody.find("$2") != std::string_view::npos) ||
-                                      (armBody.find("${2") != std::string_view::npos);
-
-                std::string canonical = flags.front();
-                for (const auto& f : flags)
-                {
-                    if (f.starts_with("--") && !canonical.starts_with("--")) canonical = f;
-                }
-
-                tbo::ScriptParamSpec spec;
-                spec.name = canonical;
-                for (const auto& f : flags)
-                {
-                    if (f != canonical) spec.aliases.push_back(f);
-                }
-                spec.takesValue = takesVal;
-                mergeScriptParam(meta.params, indexByFlag, std::move(spec));
-            }
+            std::size_t nl = content.find('\n', pos);
+            if (nl == std::string_view::npos) nl = content.size();
+            const std::string_view line = trimSv(content.substr(pos, nl - pos));
+            const std::size_t nextPos = (nl < content.size()) ? nl + 1 : nl;
+            pos = nextPos;
+            const std::string_view armPreview = content.substr(
+                nextPos, std::min<std::size_t>(200, content.size() - nextPos));
+            parsePosixCaseArmLine(line, armPreview, meta.params, indexByFlag);
         }
 
-        // Pass 3: Extract short flags from `getopts "abc:d:"`
+        pos = 0;
+        while (pos < content.size())
         {
-            std::size_t pos = 0;
-            while (pos < content.size())
+            const std::size_t g = content.find("getopts", pos);
+            if (g == std::string_view::npos) break;
+            pos = g + 7;
+            if (g > 0 && isIdentChar(content[g - 1])) continue;
+            const std::size_t nl = content.find('\n', pos);
+            const std::string_view rest = content.substr(pos, nl == std::string_view::npos ? std::string_view::npos : nl - pos);
+            const auto quoted = extractQuotedStrings(rest);
+            if (quoted.empty()) continue;
+
+            const std::string& optSpec = quoted.front();
+            for (std::size_t i = 0; i < optSpec.size(); ++i)
             {
-                const std::size_t g = content.find("getopts", pos);
-                if (g == std::string_view::npos) break;
-                pos = g + 7;
-                if (g > 0 && isIdentChar(content[g - 1])) continue;
-                const std::size_t nl = content.find('\n', pos);
-                const std::string_view rest = content.substr(pos, nl == std::string_view::npos ? std::string_view::npos : nl - pos);
-                const auto quoted = extractQuotedStrings(rest);
-                if (!quoted.empty())
+                const char ch = optSpec[i];
+                if (ch != ':' && std::isalnum(static_cast<unsigned char>(ch)))
                 {
-                    const std::string& optSpec = quoted.front();
-                    for (std::size_t i = 0; i < optSpec.size(); ++i)
-                    {
-                        const char ch = optSpec[i];
-                        if (ch == ':') continue;
-                        if (std::isalnum(static_cast<unsigned char>(ch)))
-                        {
-                            tbo::ScriptParamSpec spec;
-                            spec.name = std::string("-") + ch;
-                            spec.takesValue = (i + 1 < optSpec.size() && optSpec[i + 1] == ':');
-                            mergeScriptParam(meta.params, indexByFlag, std::move(spec));
-                        }
-                    }
+                    tbo::ScriptParamSpec spec;
+                    spec.name = std::string("-") + ch;
+                    spec.takesValue = (i + 1 < optSpec.size() && optSpec[i + 1] == ':');
+                    mergeScriptParam(meta.params, indexByFlag, std::move(spec));
                 }
             }
         }
@@ -801,10 +827,8 @@ namespace gf::terminal::bl
             const std::string_view rawLine = content.substr(pos, nl - pos);
             pos = (nl < content.size()) ? nl + 1 : nl;
 
-            // 1. Documented usage lines (`echo   /clean   Clean build`, `REM   --release   ...`)
             parseHelpStyleOptionLine(rawLine, true, meta.params, indexByFlag);
 
-            // 2. Conditional argument checks (`if /i "%~1"=="--clean"`, `if "%1"=="/h"`)
             const std::string low = toLowerCopy(trimSv(rawLine));
             if (low.starts_with("if ") || low.starts_with("if\t"))
             {
@@ -814,19 +838,14 @@ namespace gf::terminal::bl
                     std::size_t end = 0;
                     if (!rhs.empty() && rhs.front() == '"')
                     {
-                        const std::size_t q2 = rhs.find('"', 1);
-                        if (q2 != std::string_view::npos)
+                        if (const std::size_t q2 = rhs.find('"', 1); q2 != std::string_view::npos)
                         {
                             rhs = rhs.substr(1, q2 - 1);
-                            end = rhs.size();
                         }
                     }
                     else
                     {
-                        while (end < rhs.size() && rhs[end] != ' ' && rhs[end] != '\t' && rhs[end] != '(')
-                        {
-                            ++end;
-                        }
+                        while (end < rhs.size() && rhs[end] != ' ' && rhs[end] != '\t' && rhs[end] != '(') ++end;
                         rhs = rhs.substr(0, end);
                     }
 
@@ -855,118 +874,7 @@ namespace gf::terminal::bl
     {
         tbo::ScriptMetadata meta;
         meta.kind = tbo::ScriptKind::Python;
-
         std::unordered_map<std::string, std::size_t> indexByFlag;
-
-        auto parseArgCall = [&](const std::string_view callBody)
-        {
-            // Collect leading string literals (the flag names: "-f", "--file") before first keyword arg `=`
-            std::vector<std::string> flags;
-            std::size_t i = 0;
-            while (i < callBody.size())
-            {
-                while (i < callBody.size() && (std::isspace(static_cast<unsigned char>(callBody[i])) || callBody[i] == ','))
-                {
-                    ++i;
-                }
-                if (i >= callBody.size()) break;
-                if (callBody[i] == '"' || callBody[i] == '\'')
-                {
-                    const char q = callBody[i++];
-                    std::string s;
-                    while (i < callBody.size())
-                    {
-                        if (callBody[i] == '\\' && i + 1 < callBody.size()) { s.push_back(callBody[i + 1]); i += 2; continue; }
-                        if (callBody[i] == q) { ++i; break; }
-                        s.push_back(callBody[i++]);
-                    }
-                    if (s.size() >= 2 && s.front() == '-')
-                    {
-                        flags.push_back(std::move(s));
-                    }
-                }
-                else
-                {
-                    break; // reached keyword arguments like help=..., action=...
-                }
-            }
-
-            if (flags.empty()) return;
-
-            std::string canonical = flags.front();
-            for (const auto& f : flags)
-            {
-                if (f.starts_with("--") && !canonical.starts_with("--")) canonical = f;
-            }
-
-            tbo::ScriptParamSpec spec;
-            spec.name = canonical;
-            for (const auto& f : flags)
-            {
-                if (f != canonical) spec.aliases.push_back(f);
-            }
-            spec.takesValue = true;
-
-            // Detect action="store_true" / "store_false" / "count" / is_flag=True
-            if (callBody.find("store_true") != std::string_view::npos ||
-                callBody.find("store_false") != std::string_view::npos ||
-                callBody.find("action='count'") != std::string_view::npos ||
-                callBody.find("action=\"count\"") != std::string_view::npos ||
-                callBody.find("is_flag=True") != std::string_view::npos)
-            {
-                spec.takesValue = false;
-            }
-
-            // Extract help="..." or help='...'
-            auto extractKwString = [&](const std::string_view kw) -> std::string
-            {
-                std::size_t p = 0;
-                while (p < callBody.size())
-                {
-                    const std::size_t found = callBody.find(kw, p);
-                    if (found == std::string_view::npos) break;
-                    const bool okStart = (found == 0 || !isIdentChar(callBody[found - 1]));
-                    p = found + kw.size();
-                    if (!okStart) continue;
-                    while (p < callBody.size() && std::isspace(static_cast<unsigned char>(callBody[p]))) ++p;
-                    if (p < callBody.size() && callBody[p] == '=')
-                    {
-                        ++p;
-                        while (p < callBody.size() && std::isspace(static_cast<unsigned char>(callBody[p]))) ++p;
-                        if (p < callBody.size() && (callBody[p] == 'f' || callBody[p] == 'r') &&
-                            p + 1 < callBody.size() && (callBody[p + 1] == '"' || callBody[p + 1] == '\''))
-                        {
-                            ++p;
-                        }
-                        if (p < callBody.size() && (callBody[p] == '"' || callBody[p] == '\''))
-                        {
-                            return readQuotedLiteral(callBody, p);
-                        }
-                    }
-                }
-                return {};
-            };
-
-            spec.description = extractKwString("help");
-            if (const std::string mv = extractKwString("metavar"); !mv.empty())
-            {
-                spec.valueHint = "<" + mv + ">";
-            }
-
-            // Extract choices=[...]
-            if (const std::size_t chPos = callBody.find("choices"); chPos != std::string_view::npos)
-            {
-                if (const std::size_t br = callBody.find('[', chPos); br != std::string_view::npos)
-                {
-                    if (const std::size_t brEnd = findMatchingClose(callBody, br, '[', ']'); brEnd != std::string_view::npos)
-                    {
-                        spec.allowedValues = extractQuotedStrings(callBody.substr(br + 1, brEnd - (br + 1)));
-                    }
-                }
-            }
-
-            mergeScriptParam(meta.params, indexByFlag, std::move(spec));
-        };
 
         for (const std::string_view marker : {std::string_view("add_argument("), std::string_view("click.option(")})
         {
@@ -978,7 +886,7 @@ namespace gf::terminal::bl
                 const std::size_t openParen = found + marker.size() - 1;
                 const std::size_t closeParen = findMatchingClose(content, openParen, '(', ')');
                 if (closeParen == std::string_view::npos) break;
-                parseArgCall(content.substr(openParen + 1, closeParen - (openParen + 1)));
+                parsePythonArgCall(content.substr(openParen + 1, closeParen - (openParen + 1)), meta.params, indexByFlag);
                 pos = closeParen + 1;
             }
         }

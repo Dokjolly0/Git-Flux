@@ -151,7 +151,7 @@ namespace gf::infra::terminal
         }
 
         void appendDirectGitArgs(std::vector<std::string>& outArgs,
-                                 std::vector<std::string>& directGitArgs,
+                                 const std::vector<std::string>& directGitArgs,
                                  const bool forceGitColor)
         {
             outArgs.emplace_back("-c");
@@ -161,9 +161,9 @@ namespace gf::infra::terminal
                 outArgs.emplace_back("-c");
                 outArgs.emplace_back("color.ui=always");
             }
-            for (auto& a : directGitArgs)
+            for (const auto& a : directGitArgs)
             {
-                outArgs.push_back(std::move(a));
+                outArgs.push_back(a);
             }
         }
 
@@ -587,69 +587,32 @@ namespace gf::infra::terminal
 #endif
             return shells;
         }
-    } // namespace
-
-    NativeTerminalProcessRunner::NativeTerminalProcessRunner(std::filesystem::path gitExecutablePath)
-        : m_gitExecutablePath(std::move(gitExecutablePath))
-        , m_availableShells(detectShells(m_gitExecutablePath))
-    {
-    }
-
-    std::vector<tbo::TerminalShellInfo> NativeTerminalProcessRunner::availableShells() const
-    {
-        return m_availableShells;
-    }
-
-    std::expected<std::shared_ptr<gf::terminal::ports::ITerminalProcessHandle>, std::string>
-    NativeTerminalProcessRunner::start(const tbo::TerminalExecutionRequest& request,
-                                       tbo::TerminalExecutionCallbacks callbacks)
-    {
-        if (request.commandLine.empty())
-        {
-            return std::unexpected(std::string("Comando vuoto."));
-        }
-
-        std::error_code ec;
-        if (request.workingDirectory.empty() || !std::filesystem::exists(request.workingDirectory, ec))
-        {
-            return std::unexpected(std::string("Directory di lavoro non valida: ") +
-                                   gf::core::pathToUtf8(request.workingDirectory));
-        }
-
-        std::vector<std::string> directGitArgs;
-        const bool useDirectGit = isDirectGitInvocation(request.commandLine, directGitArgs) &&
-                                  !m_gitExecutablePath.empty();
-
-        std::filesystem::path cwdFilePath;
-        std::vector<std::pair<std::string, std::string>> extraEnv = request.extraEnvironment;
-        if (!useDirectGit)
-        {
-            cwdFilePath = makeCwdTempFilePath();
-            if (!cwdFilePath.empty())
-            {
-                extraEnv.emplace_back("GF_CWD_FILE", gf::core::pathToUtf8(cwdFilePath));
-            }
-        }
-
 #ifdef _WIN32
-        std::wstring applicationPath;
-        std::wstring cmdLine;
-
-        if (useDirectGit)
+        void buildWindowsCommandLine(const tbo::TerminalExecutionRequest& request,
+                                     const std::vector<tbo::TerminalShellInfo>& availableShells,
+                                     const std::filesystem::path& gitExecutablePath,
+                                     const bool useDirectGit,
+                                     const std::vector<std::string>& directGitArgs,
+                                     const std::filesystem::path& cwdFilePath,
+                                     std::wstring& applicationPath,
+                                     std::wstring& cmdLine,
+                                     std::string& errorMessage)
         {
-            std::vector<std::string> finalArgs;
-            finalArgs.reserve(directGitArgs.size() + 4);
-            appendDirectGitArgs(finalArgs, directGitArgs, request.forceGitColor);
+            if (useDirectGit)
+            {
+                std::vector<std::string> finalArgs;
+                finalArgs.reserve(directGitArgs.size() + 4);
+                appendDirectGitArgs(finalArgs, directGitArgs, request.forceGitColor);
+                applicationPath = gitExecutablePath.wstring();
+                cmdLine = process::buildWindowsCommandLine(gitExecutablePath, finalArgs);
+                return;
+            }
 
-            applicationPath = m_gitExecutablePath.wstring();
-            cmdLine = process::buildWindowsCommandLine(m_gitExecutablePath, finalArgs);
-        }
-        else
-        {
-            const auto* shell = pickShell(m_availableShells, request.shellKind);
+            const auto* shell = pickShell(availableShells, request.shellKind);
             if (!shell)
             {
-                return std::unexpected(std::string("Nessuna shell disponibile sul sistema."));
+                errorMessage = "Nessuna shell disponibile sul sistema.";
+                return;
             }
             applicationPath = shell->executablePath.wstring();
             process::appendQuotedWindowsArg(cmdLine, applicationPath);
@@ -697,7 +660,7 @@ namespace gf::infra::terminal
                 cmdLine.append(L" -c ");
                 process::appendQuotedWindowsArg(cmdLine, process::utf8ToWide(bashScript));
             }
-            else // CMD
+            else
             {
                 cmdLine.append(L" /d /s /c \"chcp 65001>nul & ");
                 cmdLine.append(process::utf8ToWide(request.commandLine));
@@ -709,192 +672,246 @@ namespace gf::infra::terminal
             }
         }
 
-        SECURITY_ATTRIBUTES sa{};
-        sa.nLength = sizeof(SECURITY_ATTRIBUTES);
-        sa.bInheritHandle = TRUE;
-
-        HANDLE stdinRead = nullptr, stdinWrite = nullptr;
-        HANDLE stdoutRead = nullptr, stdoutWrite = nullptr;
-        HANDLE stderrRead = nullptr, stderrWrite = nullptr;
-
-        auto cleanupPipes = [&]()
+        [[nodiscard]] std::expected<std::shared_ptr<gf::terminal::ports::ITerminalProcessHandle>, std::string>
+        startWindowsProcess(const tbo::TerminalExecutionRequest& request,
+                            const std::vector<tbo::TerminalShellInfo>& availableShells,
+                            const std::filesystem::path& gitExecutablePath,
+                            const bool useDirectGit,
+                            const std::vector<std::string>& directGitArgs,
+                            const std::vector<std::pair<std::string, std::string>>& extraEnv,
+                            std::filesystem::path cwdFilePath,
+                            tbo::TerminalExecutionCallbacks callbacks)
         {
-            if (stdinRead) CloseHandle(stdinRead);
-            if (stdinWrite) CloseHandle(stdinWrite);
-            if (stdoutRead) CloseHandle(stdoutRead);
-            if (stdoutWrite) CloseHandle(stdoutWrite);
-            if (stderrRead) CloseHandle(stderrRead);
-            if (stderrWrite) CloseHandle(stderrWrite);
-        };
+            std::wstring applicationPath;
+            std::wstring cmdLine;
+            std::string cmdErr;
+            buildWindowsCommandLine(request, availableShells, gitExecutablePath,
+                                    useDirectGit, directGitArgs, cwdFilePath,
+                                    applicationPath, cmdLine, cmdErr);
+            if (!cmdErr.empty()) return std::unexpected(std::move(cmdErr));
 
-        if (!CreatePipe(&stdinRead, &stdinWrite, &sa, 0) ||
-            !CreatePipe(&stdoutRead, &stdoutWrite, &sa, 0) ||
-            !CreatePipe(&stderrRead, &stderrWrite, &sa, 0))
-        {
-            cleanupPipes();
-            return std::unexpected(std::string("Impossibile creare le pipe di I/O del terminale."));
-        }
+            SECURITY_ATTRIBUTES sa{};
+            sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+            sa.bInheritHandle = TRUE;
 
-        SetHandleInformation(stdinWrite, HANDLE_FLAG_INHERIT, 0);
-        SetHandleInformation(stdoutRead, HANDLE_FLAG_INHERIT, 0);
-        SetHandleInformation(stderrRead, HANDLE_FLAG_INHERIT, 0);
-
-        HANDLE job = CreateJobObjectW(nullptr, nullptr);
-        if (job)
-        {
-            JOBOBJECT_EXTENDED_LIMIT_INFORMATION info{};
-            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-            SetInformationJobObject(job, JobObjectExtendedLimitInformation, &info, sizeof(info));
-        }
-
-        STARTUPINFOW si{};
-        si.cb = sizeof(STARTUPINFOW);
-        si.dwFlags = STARTF_USESTDHANDLES;
-        si.hStdInput = stdinRead;
-        si.hStdOutput = stdoutWrite;
-        si.hStdError = stderrWrite;
-
-        PROCESS_INFORMATION pi{};
-        std::wstring envBlock = process::buildWindowsEnvironmentBlock(withTerminalEnvDefaults(extraEnv));
-        std::wstring workDirW = request.workingDirectory.wstring();
-
-        const BOOL created = CreateProcessW(
-            applicationPath.empty() ? nullptr : applicationPath.c_str(),
-            cmdLine.data(),
-            nullptr,
-            nullptr,
-            TRUE,
-            CREATE_NO_WINDOW | CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT,
-            envBlock.data(),
-            workDirW.c_str(),
-            &si,
-            &pi);
-
-        // Parent no longer needs child ends of the pipes
-        CloseHandle(stdinRead);
-        CloseHandle(stdoutWrite);
-        CloseHandle(stderrWrite);
-
-        if (!created)
-        {
-            const DWORD err = GetLastError();
-            CloseHandle(stdinWrite);
-            CloseHandle(stdoutRead);
-            CloseHandle(stderrRead);
-            if (job) CloseHandle(job);
-            if (!cwdFilePath.empty()) std::filesystem::remove(cwdFilePath, ec);
-            return std::unexpected(std::string("Impossibile avviare il processo (Win32 error ") +
-                                   std::to_string(err) + ").");
-        }
-
-        if (job)
-        {
-            AssignProcessToJobObject(job, pi.hProcess);
-        }
-        ResumeThread(pi.hThread);
-        CloseHandle(pi.hThread);
-
-        return std::make_shared<Win32TerminalProcessHandle>(
-            pi.hProcess, job, stdinWrite, stdoutRead, stderrRead, std::move(callbacks), std::move(cwdFilePath));
-#else
-        std::vector<std::string> argvStorage;
-        std::string exePath;
-
-        if (useDirectGit)
-        {
-            exePath = gf::core::pathToUtf8(m_gitExecutablePath);
-            argvStorage.push_back(exePath);
-            appendDirectGitArgs(argvStorage, directGitArgs, request.forceGitColor);
-        }
-        else
-        {
-            const auto* shell = pickShell(m_availableShells, request.shellKind);
-            if (!shell)
+            HANDLE stdinRead = nullptr, stdinWrite = nullptr;
+            HANDLE stdoutRead = nullptr, stdoutWrite = nullptr;
+            HANDLE stderrRead = nullptr, stderrWrite = nullptr;
+            auto cleanupPipes = [&]()
             {
-                return std::unexpected(std::string("Nessuna shell POSIX disponibile."));
+                for (HANDLE h : {stdinRead, stdinWrite, stdoutRead, stdoutWrite, stderrRead, stderrWrite})
+                {
+                    if (h) CloseHandle(h);
+                }
+            };
+
+            if (!CreatePipe(&stdinRead, &stdinWrite, &sa, 0) ||
+                !CreatePipe(&stdoutRead, &stdoutWrite, &sa, 0) ||
+                !CreatePipe(&stderrRead, &stderrWrite, &sa, 0))
+            {
+                cleanupPipes();
+                return std::unexpected(std::string("Impossibile creare le pipe di I/O del terminale."));
             }
-            exePath = gf::core::pathToUtf8(shell->executablePath);
-            argvStorage.push_back(exePath);
-            argvStorage.emplace_back("-c");
-            if (!cwdFilePath.empty())
+
+            SetHandleInformation(stdinWrite, HANDLE_FLAG_INHERIT, 0);
+            SetHandleInformation(stdoutRead, HANDLE_FLAG_INHERIT, 0);
+            SetHandleInformation(stderrRead, HANDLE_FLAG_INHERIT, 0);
+
+            HANDLE job = CreateJobObjectW(nullptr, nullptr);
+            if (job)
             {
-                argvStorage.push_back(
-                    "__gf_save_cwd() { pwd -P > \"$GF_CWD_FILE\" 2>/dev/null || pwd > \"$GF_CWD_FILE\" 2>/dev/null; }; "
-                    "trap __gf_save_cwd EXIT\n" +
-                    request.commandLine);
+                JOBOBJECT_EXTENDED_LIMIT_INFORMATION info{};
+                info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                SetInformationJobObject(job, JobObjectExtendedLimitInformation, &info, sizeof(info));
+            }
+
+            STARTUPINFOW si{};
+            si.cb = sizeof(STARTUPINFOW);
+            si.dwFlags = STARTF_USESTDHANDLES;
+            si.hStdInput = stdinRead;
+            si.hStdOutput = stdoutWrite;
+            si.hStdError = stderrWrite;
+
+            PROCESS_INFORMATION pi{};
+            std::wstring envBlock = process::buildWindowsEnvironmentBlock(withTerminalEnvDefaults(extraEnv));
+            std::wstring workDirW = request.workingDirectory.wstring();
+
+            const BOOL created = CreateProcessW(
+                applicationPath.empty() ? nullptr : applicationPath.c_str(), cmdLine.data(),
+                nullptr, nullptr, TRUE, CREATE_NO_WINDOW | CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT,
+                envBlock.data(), workDirW.c_str(), &si, &pi);
+
+            CloseHandle(stdinRead);
+            CloseHandle(stdoutWrite);
+            CloseHandle(stderrWrite);
+
+            if (!created)
+            {
+                const DWORD err = GetLastError();
+                CloseHandle(stdinWrite);
+                CloseHandle(stdoutRead);
+                CloseHandle(stderrRead);
+                if (job) CloseHandle(job);
+                std::error_code ec;
+                if (!cwdFilePath.empty()) std::filesystem::remove(cwdFilePath, ec);
+                return std::unexpected(std::string("Impossibile avviare il processo (Win32 error ") +
+                                       std::to_string(err) + ").");
+            }
+
+            if (job) AssignProcessToJobObject(job, pi.hProcess);
+            ResumeThread(pi.hThread);
+            CloseHandle(pi.hThread);
+
+            return std::make_shared<Win32TerminalProcessHandle>(
+                pi.hProcess, job, stdinWrite, stdoutRead, stderrRead, std::move(callbacks), std::move(cwdFilePath));
+        }
+#else
+        [[nodiscard]] std::expected<std::shared_ptr<gf::terminal::ports::ITerminalProcessHandle>, std::string>
+        startPosixProcess(const tbo::TerminalExecutionRequest& request,
+                          const std::vector<tbo::TerminalShellInfo>& availableShells,
+                          const std::filesystem::path& gitExecutablePath,
+                          const bool useDirectGit,
+                          const std::vector<std::string>& directGitArgs,
+                          const std::vector<std::pair<std::string, std::string>>& extraEnv,
+                          std::filesystem::path cwdFilePath,
+                          tbo::TerminalExecutionCallbacks callbacks)
+        {
+            std::vector<std::string> argvStorage;
+            std::string exePath;
+            if (useDirectGit)
+            {
+                exePath = gf::core::pathToUtf8(gitExecutablePath);
+                argvStorage.push_back(exePath);
+                appendDirectGitArgs(argvStorage, directGitArgs, request.forceGitColor);
             }
             else
             {
-                argvStorage.push_back(request.commandLine);
+                const auto* shell = pickShell(availableShells, request.shellKind);
+                if (!shell)
+                {
+                    return std::unexpected(std::string("Nessuna shell POSIX disponibile."));
+                }
+                exePath = gf::core::pathToUtf8(shell->executablePath);
+                argvStorage.push_back(exePath);
+                argvStorage.emplace_back("-c");
+                argvStorage.push_back(cwdFilePath.empty()
+                    ? request.commandLine
+                    : "__gf_save_cwd() { pwd -P > \"$GF_CWD_FILE\" 2>/dev/null || pwd > \"$GF_CWD_FILE\" 2>/dev/null; }; "
+                      "trap __gf_save_cwd EXIT\n" + request.commandLine);
             }
-        }
 
-        int stdinPipe[2] = {-1, -1};
-        int stdoutPipe[2] = {-1, -1};
-        int stderrPipe[2] = {-1, -1};
-        if (::pipe(stdinPipe) != 0 || ::pipe(stdoutPipe) != 0 || ::pipe(stderrPipe) != 0)
-        {
-            for (int fd : {stdinPipe[0], stdinPipe[1], stdoutPipe[0], stdoutPipe[1], stderrPipe[0], stderrPipe[1]})
+            int stdinPipe[2] = {-1, -1};
+            int stdoutPipe[2] = {-1, -1};
+            int stderrPipe[2] = {-1, -1};
+            std::error_code ec;
+            if (::pipe(stdinPipe) != 0 || ::pipe(stdoutPipe) != 0 || ::pipe(stderrPipe) != 0)
             {
-                if (fd >= 0) ::close(fd);
+                for (const int fd : {stdinPipe[0], stdinPipe[1], stdoutPipe[0], stdoutPipe[1], stderrPipe[0], stderrPipe[1]})
+                {
+                    if (fd >= 0) ::close(fd);
+                }
+                if (!cwdFilePath.empty()) std::filesystem::remove(cwdFilePath, ec);
+                return std::unexpected(std::string("Impossibile creare pipe POSIX."));
             }
-            if (!cwdFilePath.empty()) std::filesystem::remove(cwdFilePath, ec);
-            return std::unexpected(std::string("Impossibile creare pipe POSIX."));
-        }
 
-        const auto envStorage = process::buildPosixEnvironment(withTerminalEnvDefaults(extraEnv));
-        std::vector<char*> argvPtrs;
-        argvPtrs.reserve(argvStorage.size() + 1);
-        for (auto& s : argvStorage) argvPtrs.push_back(s.data());
-        argvPtrs.push_back(nullptr);
+            const auto envStorage = process::buildPosixEnvironment(withTerminalEnvDefaults(extraEnv));
+            std::vector<char*> argvPtrs;
+            argvPtrs.reserve(argvStorage.size() + 1);
+            for (auto& s : argvStorage) argvPtrs.push_back(s.data());
+            argvPtrs.push_back(nullptr);
 
-        std::vector<char*> envPtrs;
-        envPtrs.reserve(envStorage.size() + 1);
-        for (const auto& s : envStorage) envPtrs.push_back(const_cast<char*>(s.c_str()));
-        envPtrs.push_back(nullptr);
+            std::vector<char*> envPtrs;
+            envPtrs.reserve(envStorage.size() + 1);
+            for (const auto& s : envStorage) envPtrs.push_back(const_cast<char*>(s.c_str()));
+            envPtrs.push_back(nullptr);
 
-        const std::string workDirUtf8 = gf::core::pathToUtf8(request.workingDirectory);
-
-        const pid_t pid = ::fork();
-        if (pid < 0)
-        {
-            for (int fd : {stdinPipe[0], stdinPipe[1], stdoutPipe[0], stdoutPipe[1], stderrPipe[0], stderrPipe[1]})
+            const std::string workDirUtf8 = gf::core::pathToUtf8(request.workingDirectory);
+            const pid_t pid = ::fork();
+            if (pid < 0)
             {
-                ::close(fd);
+                for (const int fd : {stdinPipe[0], stdinPipe[1], stdoutPipe[0], stdoutPipe[1], stderrPipe[0], stderrPipe[1]})
+                {
+                    ::close(fd);
+                }
+                if (!cwdFilePath.empty()) std::filesystem::remove(cwdFilePath, ec);
+                return std::unexpected(std::string("fork() fallita."));
             }
-            if (!cwdFilePath.empty()) std::filesystem::remove(cwdFilePath, ec);
-            return std::unexpected(std::string("fork() fallita."));
-        }
 
-        if (pid == 0)
-        {
-            ::setpgid(0, 0);
-            ::dup2(stdinPipe[0], STDIN_FILENO);
-            ::dup2(stdoutPipe[1], STDOUT_FILENO);
-            ::dup2(stderrPipe[1], STDERR_FILENO);
+            if (pid == 0)
+            {
+                ::setpgid(0, 0);
+                ::dup2(stdinPipe[0], STDIN_FILENO);
+                ::dup2(stdoutPipe[1], STDOUT_FILENO);
+                ::dup2(stderrPipe[1], STDERR_FILENO);
+
+                for (const int fd : {stdinPipe[0], stdinPipe[1], stdoutPipe[0], stdoutPipe[1], stderrPipe[0], stderrPipe[1]})
+                {
+                    ::close(fd);
+                }
+
+                if (::chdir(workDirUtf8.c_str()) != 0) _exit(126);
+                ::execve(exePath.c_str(), argvPtrs.data(), envPtrs.data());
+                _exit(127);
+            }
 
             ::close(stdinPipe[0]);
-            ::close(stdinPipe[1]);
-            ::close(stdoutPipe[0]);
             ::close(stdoutPipe[1]);
-            ::close(stderrPipe[0]);
             ::close(stderrPipe[1]);
 
-            if (::chdir(workDirUtf8.c_str()) != 0)
-            {
-                _exit(126);
-            }
+            return std::make_shared<PosixTerminalProcessHandle>(
+                pid, stdinPipe[1], stdoutPipe[0], stderrPipe[0], std::move(callbacks), std::move(cwdFilePath));
+        }
+#endif
+    } // namespace
 
-            ::execve(exePath.c_str(), argvPtrs.data(), envPtrs.data());
-            _exit(127);
+    NativeTerminalProcessRunner::NativeTerminalProcessRunner(std::filesystem::path gitExecutablePath)
+        : m_gitExecutablePath(std::move(gitExecutablePath))
+        , m_availableShells(detectShells(m_gitExecutablePath))
+    {
+    }
+
+    std::vector<tbo::TerminalShellInfo> NativeTerminalProcessRunner::availableShells() const
+    {
+        return m_availableShells;
+    }
+
+    std::expected<std::shared_ptr<gf::terminal::ports::ITerminalProcessHandle>, std::string>
+    NativeTerminalProcessRunner::start(const tbo::TerminalExecutionRequest& request,
+                                       tbo::TerminalExecutionCallbacks callbacks)
+    {
+        if (request.commandLine.empty())
+        {
+            return std::unexpected(std::string("Comando vuoto."));
         }
 
-        ::close(stdinPipe[0]);
-        ::close(stdoutPipe[1]);
-        ::close(stderrPipe[1]);
+        std::error_code ec;
+        if (request.workingDirectory.empty() || !std::filesystem::exists(request.workingDirectory, ec))
+        {
+            return std::unexpected(std::string("Directory di lavoro non valida: ") +
+                                   gf::core::pathToUtf8(request.workingDirectory));
+        }
 
-        return std::make_shared<PosixTerminalProcessHandle>(
-            pid, stdinPipe[1], stdoutPipe[0], stderrPipe[0], std::move(callbacks), std::move(cwdFilePath));
+        std::vector<std::string> directGitArgs;
+        const bool useDirectGit = isDirectGitInvocation(request.commandLine, directGitArgs) &&
+                                  !m_gitExecutablePath.empty();
+
+        std::filesystem::path cwdFilePath;
+        std::vector<std::pair<std::string, std::string>> extraEnv = request.extraEnvironment;
+        if (!useDirectGit)
+        {
+            cwdFilePath = makeCwdTempFilePath();
+            if (!cwdFilePath.empty())
+            {
+                extraEnv.emplace_back("GF_CWD_FILE", gf::core::pathToUtf8(cwdFilePath));
+            }
+        }
+
+#ifdef _WIN32
+        return startWindowsProcess(request, m_availableShells, m_gitExecutablePath, useDirectGit, directGitArgs,
+                                   extraEnv, std::move(cwdFilePath), std::move(callbacks));
+#else
+        return startPosixProcess(request, m_availableShells, m_gitExecutablePath, useDirectGit, directGitArgs,
+                                 extraEnv, std::move(cwdFilePath), std::move(callbacks));
 #endif
     }
 } // namespace gf::infra::terminal

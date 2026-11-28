@@ -887,6 +887,453 @@ namespace gf::core::syntax
         return out;
     }
 
+    namespace
+    {
+        [[nodiscard]] std::string_view stripFourSpaceIndent(const std::string_view line) noexcept
+        {
+            if (line.starts_with('\t')) return line.substr(1);
+            std::size_t s = 0;
+            while (s < 4 && s < line.size() && line[s] == ' ') ++s;
+            return line.substr(s);
+        }
+
+        [[nodiscard]] MarkdownBlock parseFencedCodeBlock(const std::vector<LineSlice>& lines,
+                                                         std::size_t& idx,
+                                                         const FenceOpenInfo& fence) noexcept
+        {
+            const std::size_t n = lines.size();
+            const int startLine = lines[idx].lineNumber;
+            std::string rawCode;
+            ++idx;
+            while (idx < n && !isFenceClose(lines[idx].text, fence.fenceChar, fence.fenceLen))
+            {
+                if (!rawCode.empty()) rawCode.push_back('\n');
+                rawCode.append(lines[idx].text);
+                ++idx;
+            }
+            const int endLine = idx < n ? lines[idx].lineNumber : lines.back().lineNumber;
+            if (idx < n) ++idx;
+
+            const Language detectedLang = LanguageDetector::fromCodeFenceInfo(fence.langTag);
+            const std::string lowerTag = toLowerCopy(fence.langTag);
+
+            MarkdownBlock b;
+            b.kind = MarkdownBlockKind::CodeBlock;
+            b.centered = false;
+            b.isDiagram = (lowerTag == "mermaid" || lowerTag == "plantuml" || lowerTag == "dot");
+            b.languageTag = fence.langTag.empty() ? "text" : fence.langTag;
+            b.detectedLanguage = detectedLang;
+            b.rawText = rawCode;
+            b.html = SyntaxHighlighter::highlightCodeBlockHtml(rawCode, detectedLang);
+            b.startLine = startLine;
+            b.endLine = endLine;
+            return b;
+        }
+
+        [[nodiscard]] MarkdownBlock parseIndentedCodeBlock(const std::vector<LineSlice>& lines,
+                                                           std::size_t& idx) noexcept
+        {
+            const std::size_t n = lines.size();
+            const int startLine = lines[idx].lineNumber;
+            int endLine = startLine;
+            std::string rawCode;
+
+            while (idx < n)
+            {
+                const std::string_view rawLine = lines[idx].text;
+                if (trimSpaces(rawLine).empty())
+                {
+                    std::size_t peek = idx + 1;
+                    while (peek < n && trimSpaces(lines[peek].text).empty()) ++peek;
+                    const bool peekIsNestedList = peek < n && tryExtractListItem(lines[peek].text).has_value();
+                    if (peek < n && !peekIsNestedList &&
+                        (lines[peek].text.starts_with("    ") || lines[peek].text.starts_with('\t')))
+                    {
+                        rawCode.push_back('\n');
+                        ++idx;
+                        continue;
+                    }
+                    break;
+                }
+                if (!rawLine.starts_with("    ") && !rawLine.starts_with('\t')) break;
+                if (!rawCode.empty()) rawCode.push_back('\n');
+                rawCode.append(stripFourSpaceIndent(rawLine));
+                endLine = lines[idx].lineNumber;
+                ++idx;
+            }
+
+            MarkdownBlock b;
+            b.kind = MarkdownBlockKind::CodeBlock;
+            b.centered = false;
+            b.isDiagram = false;
+            b.languageTag = "text";
+            b.detectedLanguage = Language::Unknown;
+            b.rawText = rawCode;
+            b.html = SyntaxHighlighter::highlightCodeBlockHtml(rawCode, Language::Unknown);
+            b.startLine = startLine;
+            b.endLine = endLine;
+            return b;
+        }
+
+        using InlineHtmlFn = std::string (*)(std::string_view) noexcept;
+
+        void appendHeadingBlock(const LineSlice& line,
+                                const HeadingInfo& heading,
+                                const bool centeredBlock,
+                                const InlineHtmlFn renderInline,
+                                std::unordered_map<std::string, int>& slugCounts,
+                                MarkdownDocument& doc) noexcept
+        {
+            auto plainTitle = std::string(trimSpaces(stripMarkupToPlainText(heading.title)));
+            std::string baseSlug = MarkdownParser::toGithubSlug(heading.title);
+            if (baseSlug.empty()) baseSlug = "section";
+
+            int& count = slugCounts[baseSlug];
+            std::string uniqueSlug = count == 0 ? baseSlug : baseSlug + "-" + std::to_string(count);
+            ++count;
+
+            MarkdownBlock b;
+            b.kind = MarkdownBlockKind::Heading;
+            b.level = heading.level;
+            b.centered = centeredBlock;
+            b.rawText = plainTitle;
+            b.html = renderInline(heading.title);
+            b.anchor = uniqueSlug;
+            b.startLine = line.lineNumber;
+            b.endLine = line.lineNumber;
+
+            const auto blockIndex = static_cast<int>(doc.blocks.size());
+            doc.blocks.push_back(std::move(b));
+            doc.toc.push_back(MarkdownTocEntry{
+                .level = heading.level,
+                .title = std::move(plainTitle),
+                .anchor = std::move(uniqueSlug),
+                .blockIndex = blockIndex,
+                .startLine = line.lineNumber
+            });
+        }
+
+        [[nodiscard]] MarkdownBlock parseBadgeRowBlock(const std::vector<LineSlice>& lines,
+                                                       std::size_t& idx,
+                                                       std::vector<MarkdownBadge> initialBadges,
+                                                       const bool centeredBlock) noexcept
+        {
+            const std::size_t n = lines.size();
+            const int startLine = lines[idx].lineNumber;
+            int endLine = startLine;
+            ++idx;
+            while (idx < n)
+            {
+                const std::string_view nextTrim = trimSpaces(lines[idx].text);
+                if (nextTrim.empty()) break;
+                auto nextBadges = tryParseBadgeLine(nextTrim);
+                if (!nextBadges) break;
+                initialBadges.insert(initialBadges.end(),
+                                     std::make_move_iterator(nextBadges->begin()),
+                                     std::make_move_iterator(nextBadges->end()));
+                endLine = lines[idx].lineNumber;
+                ++idx;
+            }
+            MarkdownBlock b;
+            b.kind = MarkdownBlockKind::BadgeRow;
+            b.centered = centeredBlock;
+            b.badges = std::move(initialBadges);
+            b.startLine = startLine;
+            b.endLine = endLine;
+            return b;
+        }
+
+        [[nodiscard]] MarkdownAlertType matchBlockquoteAlertPrefix(std::string_view& inner, bool& matched) noexcept
+        {
+            struct AlertDef
+            {
+                std::string_view tag;
+                MarkdownAlertType type;
+            };
+            constexpr AlertDef kAlerts[] = {
+                {.tag = "[!NOTE]", .type = MarkdownAlertType::Note},
+                {.tag = "[!TIP]", .type = MarkdownAlertType::Tip},
+                {.tag = "[!IMPORTANT]", .type = MarkdownAlertType::Important},
+                {.tag = "[!WARNING]", .type = MarkdownAlertType::Warning},
+                {.tag = "[!CAUTION]", .type = MarkdownAlertType::Caution}
+            };
+            matched = false;
+            for (const auto& [tag, type] : kAlerts)
+            {
+                if (inner.starts_with(tag))
+                {
+                    inner = trimSpaces(inner.substr(tag.size()));
+                    matched = true;
+                    return type;
+                }
+            }
+            return MarkdownAlertType::None;
+        }
+
+        [[nodiscard]] MarkdownBlock parseBlockquoteBlock(const std::vector<LineSlice>& lines,
+                                                         std::size_t& idx,
+                                                         const bool centeredBlock,
+                                                         const InlineHtmlFn renderInline) noexcept
+        {
+            const std::size_t n = lines.size();
+            const int startLine = lines[idx].lineNumber;
+            int endLine = startLine;
+            MarkdownAlertType alertType = MarkdownAlertType::None;
+            std::string bodyText;
+
+            bool firstLine = true;
+            while (idx < n)
+            {
+                const std::string_view qt = trimSpaces(lines[idx].text);
+                if (qt.empty() || qt[0] != '>') break;
+                endLine = lines[idx].lineNumber;
+
+                std::size_t skip = 1;
+                if (skip < qt.size() && qt[skip] == ' ') ++skip;
+                std::string_view inner = trimSpaces(qt.substr(skip));
+
+                if (firstLine)
+                {
+                    firstLine = false;
+                    bool matchedAlert = false;
+                    alertType = matchBlockquoteAlertPrefix(inner, matchedAlert);
+                    if (matchedAlert && inner.empty())
+                    {
+                        ++idx;
+                        continue;
+                    }
+                }
+
+                if (!inner.empty())
+                {
+                    if (!bodyText.empty()) bodyText.push_back(' ');
+                    bodyText.append(inner);
+                }
+                else if (!bodyText.empty())
+                {
+                    bodyText.append("\n");
+                }
+                ++idx;
+            }
+
+            MarkdownBlock b;
+            b.kind = MarkdownBlockKind::Blockquote;
+            b.centered = centeredBlock;
+            b.alertType = alertType;
+            b.rawText = bodyText;
+            b.html = renderInline(bodyText);
+            b.startLine = startLine;
+            b.endLine = endLine;
+            return b;
+        }
+
+        [[nodiscard]] MarkdownBlock parseTableBlock(const std::vector<LineSlice>& lines,
+                                                    std::size_t& idx,
+                                                    std::vector<std::string> alignments,
+                                                    const InlineHtmlFn renderInline) noexcept
+        {
+            const std::size_t n = lines.size();
+            const int startLine = lines[idx].lineNumber;
+            int endLine = lines[idx + 1].lineNumber;
+
+            const auto rawHeaders = splitTableCells(lines[idx].text);
+            const std::size_t colCount = std::max(rawHeaders.size(), alignments.size());
+            alignments.resize(colCount, "left");
+
+            std::vector<std::string> headersHtml;
+            headersHtml.reserve(colCount);
+            for (std::size_t c = 0; c < colCount; ++c)
+            {
+                headersHtml.push_back(c < rawHeaders.size() ? renderInline(rawHeaders[c]) : "");
+            }
+
+            idx += 2;
+            std::vector<std::vector<std::string>> rowsHtml;
+            while (idx < n)
+            {
+                const std::string_view rowTrim = trimSpaces(lines[idx].text);
+                if (rowTrim.empty() || rowTrim.find('|') == std::string_view::npos) break;
+                if (rowTrim[0] == '>' || isThematicBreak(rowTrim)) break;
+
+                const auto cells = splitTableCells(rowTrim);
+                std::vector<std::string> rowOut;
+                rowOut.reserve(colCount);
+                for (std::size_t c = 0; c < colCount; ++c)
+                {
+                    rowOut.push_back(c < cells.size() ? renderInline(cells[c]) : "");
+                }
+                rowsHtml.push_back(std::move(rowOut));
+                endLine = lines[idx].lineNumber;
+                ++idx;
+            }
+
+            MarkdownBlock b;
+            b.kind = MarkdownBlockKind::Table;
+            b.tableHeaders = std::move(headersHtml);
+            b.tableAlignments = std::move(alignments);
+            b.tableRows = std::move(rowsHtml);
+            b.startLine = startLine;
+            b.endLine = endLine;
+            return b;
+        }
+
+        [[nodiscard]] MarkdownBlock parseListItemBlock(const std::vector<LineSlice>& lines,
+                                                       std::size_t& idx,
+                                                       ListItemInfo listItem,
+                                                       const InlineHtmlFn renderInline) noexcept
+        {
+            const std::size_t n = lines.size();
+            const int startLine = lines[idx].lineNumber;
+            int endLine = startLine;
+            std::string combinedText(listItem.text);
+            ++idx;
+
+            while (idx < n)
+            {
+                const std::string_view nextRaw = lines[idx].text;
+                const std::string_view nextTrim = trimSpaces(nextRaw);
+                if (nextTrim.empty()) break;
+                if (tryExtractListItem(nextRaw) || tryExtractHeading(nextRaw) ||
+                    tryExtractFenceOpen(nextRaw) || isThematicBreak(nextRaw) || nextTrim[0] == '>')
+                {
+                    break;
+                }
+                if (!combinedText.empty()) combinedText.push_back(' ');
+                combinedText.append(nextTrim);
+                endLine = lines[idx].lineNumber;
+                ++idx;
+            }
+
+            MarkdownBlock b;
+            b.kind = MarkdownBlockKind::ListItem;
+            b.indentLevel = listItem.indentLevel;
+            b.ordered = listItem.ordered;
+            b.listMarker = std::move(listItem.marker);
+            b.isTask = listItem.isTask;
+            b.taskChecked = listItem.taskChecked;
+            b.rawText = combinedText;
+            b.html = renderInline(combinedText);
+            b.startLine = startLine;
+            b.endLine = endLine;
+            return b;
+        }
+
+        [[nodiscard]] MarkdownBlock parseParagraphBlock(const std::vector<LineSlice>& lines,
+                                                        std::size_t& idx,
+                                                        const bool centeredBlock,
+                                                        const InlineHtmlFn renderInline) noexcept
+        {
+            const std::size_t n = lines.size();
+            const int startLine = lines[idx].lineNumber;
+            int endLine = startLine;
+            std::string paraText(trimSpaces(lines[idx].text));
+            ++idx;
+
+            while (idx < n)
+            {
+                const std::string_view nextRaw = lines[idx].text;
+                const std::string_view nextTrim = trimSpaces(nextRaw);
+                if (nextTrim.empty()) break;
+
+                bool dummyCenter = centeredBlock;
+                if (std::string tmpSum; isHtmlWrapperOnlyLine(nextTrim, dummyCenter, tmpSum) || !tmpSum.empty())
+                {
+                    break;
+                }
+                if (tryExtractHeading(nextRaw) || tryExtractFenceOpen(nextRaw) ||
+                    isThematicBreak(nextRaw) || nextTrim[0] == '>' ||
+                    tryParseBadgeLine(nextTrim) || tryExtractListItem(nextRaw))
+                {
+                    break;
+                }
+                if (idx + 1 < n && nextTrim.find('|') != std::string_view::npos &&
+                    tryParseTableSeparator(lines[idx + 1].text))
+                {
+                    break;
+                }
+
+                if (!paraText.empty())
+                {
+                    if (paraText.ends_with("  ") || paraText.ends_with("<br/>") || paraText.ends_with("<br>"))
+                    {
+                        paraText.append("<br/>");
+                    }
+                    else
+                    {
+                        paraText.push_back(' ');
+                    }
+                }
+                paraText.append(nextTrim);
+                endLine = lines[idx].lineNumber;
+                ++idx;
+            }
+
+            MarkdownBlock b;
+            b.kind = MarkdownBlockKind::Paragraph;
+            b.centered = centeredBlock;
+            b.rawText = paraText;
+            b.html = renderInline(paraText);
+            b.startLine = startLine;
+            b.endLine = endLine;
+            return b;
+        }
+
+        [[nodiscard]] MarkdownBlock makeDeletedSnippetBlock(std::vector<std::string> deletedLines,
+                                                            const int lineNumber) noexcept
+        {
+            MarkdownBlock delSnippet;
+            delSnippet.kind = MarkdownBlockKind::DeletedSnippet;
+            delSnippet.changeStatus = MarkdownChangeStatus::Deleted;
+            delSnippet.deletedLineCount = static_cast<int>(deletedLines.size());
+            delSnippet.deletedLines = std::move(deletedLines);
+            delSnippet.startLine = lineNumber;
+            delSnippet.endLine = lineNumber;
+            return delSnippet;
+        }
+
+        void collectDiffChanges(const git::bo::FileDiff& diff,
+                                std::set<int>& addedLines,
+                                std::map<int, std::vector<std::string>>& deletionsBeforeNewLine,
+                                std::vector<std::string>& trailingDeletions) noexcept
+        {
+            for (const auto& hunk : diff.hunks)
+            {
+                std::vector<std::string> pendingDels;
+                for (const auto& line : hunk.lines)
+                {
+                    if (line.kind == git::bo::DiffLineKind::Deletion)
+                    {
+                        pendingDels.push_back(line.content);
+                    }
+                    else if (line.kind == git::bo::DiffLineKind::Addition)
+                    {
+                        if (line.newLineNumber.has_value())
+                        {
+                            addedLines.insert(*line.newLineNumber);
+                            if (!pendingDels.empty())
+                            {
+                                auto& vec = deletionsBeforeNewLine[*line.newLineNumber];
+                                vec.insert(vec.end(), pendingDels.begin(), pendingDels.end());
+                                pendingDels.clear();
+                            }
+                        }
+                    }
+                    else if (line.kind == git::bo::DiffLineKind::Context &&
+                             !pendingDels.empty() && line.newLineNumber.has_value())
+                    {
+                        auto& vec = deletionsBeforeNewLine[*line.newLineNumber];
+                        vec.insert(vec.end(), pendingDels.begin(), pendingDels.end());
+                        pendingDels.clear();
+                    }
+                }
+                if (!pendingDels.empty())
+                {
+                    trailingDeletions.insert(trailingDeletions.end(), pendingDels.begin(), pendingDels.end());
+                }
+            }
+        }
+    } // namespace
+
     MarkdownDocument MarkdownParser::parse(const std::string_view markdownText) noexcept
     {
         MarkdownDocument doc;
@@ -913,19 +1360,14 @@ namespace gf::core::syntax
                 continue;
             }
 
-            // Skip multi-line HTML comments
             if (trimmed.starts_with("<!--") && trimmed.find("-->") == std::string_view::npos)
             {
                 ++idx;
-                while (idx < n && lines[idx].text.find("-->") == std::string_view::npos)
-                {
-                    ++idx;
-                }
+                while (idx < n && lines[idx].text.find("-->") == std::string_view::npos) ++idx;
                 if (idx < n) ++idx;
                 continue;
             }
 
-            // Wrapper HTML tags (<div align="center">, </div>, <br/>, <details>, etc.)
             std::string summaryInner;
             if (isHtmlWrapperOnlyLine(trimmed, centeredBlock, summaryInner))
             {
@@ -946,137 +1388,25 @@ namespace gf::core::syntax
                 continue;
             }
 
-            // 1. Fenced code block (``` or ~~~)
-            if (auto fence = tryExtractFenceOpen(text))
+            if (const auto fence = tryExtractFenceOpen(text))
             {
-                const int startLine = lineNumber;
-                std::string rawCode;
-                ++idx;
-                while (idx < n && !isFenceClose(lines[idx].text, fence->fenceChar, fence->fenceLen))
-                {
-                    if (!rawCode.empty()) rawCode.push_back('\n');
-                    rawCode.append(lines[idx].text);
-                    ++idx;
-                }
-                const int endLine = idx < n ? lines[idx].lineNumber : lines.back().lineNumber;
-                if (idx < n) ++idx;
-
-                const Language detectedLang = LanguageDetector::fromCodeFenceInfo(fence->langTag);
-                const std::string lowerTag = toLowerCopy(fence->langTag);
-                const bool isDiagram = lowerTag == "mermaid" || lowerTag == "plantuml" || lowerTag == "dot";
-
-                MarkdownBlock b;
-                b.kind = MarkdownBlockKind::CodeBlock;
-                b.centered = false;
-                b.isDiagram = isDiagram;
-                b.languageTag = fence->langTag.empty() ? "text" : std::move(fence->langTag);
-                b.detectedLanguage = detectedLang;
-                b.rawText = rawCode;
-                b.html = SyntaxHighlighter::highlightCodeBlockHtml(rawCode, detectedLang);
-                b.startLine = startLine;
-                b.endLine = endLine;
-                doc.blocks.push_back(std::move(b));
+                doc.blocks.push_back(parseFencedCodeBlock(lines, idx, *fence));
                 continue;
             }
 
-            // 1b. CommonMark Indented Code Block (4 spaces or tab, outside <div align="center"> and nested list items)
-            if (!centeredBlock && (text.starts_with("    ") || text.starts_with('\t')))
+            if (!centeredBlock && (text.starts_with("    ") || text.starts_with('\t')) && !tryExtractListItem(text))
             {
-                if (!tryExtractListItem(text))
-                {
-                    auto stripFourSpaceIndent = [](const std::string_view line) -> std::string_view
-                    {
-                        if (line.starts_with('\t')) return line.substr(1);
-                        std::size_t s = 0;
-                        while (s < 4 && s < line.size() && line[s] == ' ') ++s;
-                        return line.substr(s);
-                    };
-
-                    const int startLine = lineNumber;
-                    int endLine = lineNumber;
-                    std::string rawCode;
-
-                    while (idx < n)
-                    {
-                        const std::string_view rawLine = lines[idx].text;
-                        if (const std::string_view lineTrim = trimSpaces(rawLine); lineTrim.empty())
-                        {
-                            std::size_t peek = idx + 1;
-                            while (peek < n && trimSpaces(lines[peek].text).empty())
-                            {
-                                ++peek;
-                            }
-                            const bool peekIsNestedList =
-                                peek < n && tryExtractListItem(lines[peek].text).has_value();
-                            if (peek < n && !peekIsNestedList &&
-                                (lines[peek].text.starts_with("    ") || lines[peek].text.starts_with('\t')))
-                            {
-                                rawCode.push_back('\n');
-                                ++idx;
-                                continue;
-                            }
-                            break;
-                        }
-                        if (!rawLine.starts_with("    ") && !rawLine.starts_with('\t'))
-                        {
-                            break;
-                        }
-                        if (!rawCode.empty()) rawCode.push_back('\n');
-                        rawCode.append(stripFourSpaceIndent(rawLine));
-                        endLine = lines[idx].lineNumber;
-                        ++idx;
-                    }
-
-                    MarkdownBlock b;
-                    b.kind = MarkdownBlockKind::CodeBlock;
-                    b.centered = false;
-                    b.isDiagram = false;
-                    b.languageTag = "text";
-                    b.detectedLanguage = Language::Unknown;
-                    b.rawText = rawCode;
-                    b.html = SyntaxHighlighter::highlightCodeBlockHtml(rawCode, Language::Unknown);
-                    b.startLine = startLine;
-                    b.endLine = endLine;
-                    doc.blocks.push_back(std::move(b));
-                    continue;
-                }
+                doc.blocks.push_back(parseIndentedCodeBlock(lines, idx));
+                continue;
             }
 
-            // 2. ATX Heading (# Title)
             if (const auto heading = tryExtractHeading(text))
             {
-                auto plainTitle = std::string(trimSpaces(stripMarkupToPlainText(heading->title)));
-                std::string baseSlug = toGithubSlug(heading->title);
-                if (baseSlug.empty()) baseSlug = "section";
-
-                int& count = slugCounts[baseSlug];
-                std::string uniqueSlug = count == 0 ? baseSlug : baseSlug + "-" + std::to_string(count);
-                ++count;
-
-                MarkdownBlock b;
-                b.kind = MarkdownBlockKind::Heading;
-                b.level = heading->level;
-                b.centered = centeredBlock;
-                b.rawText = plainTitle;
-                b.html = renderInlineHtml(heading->title);
-                b.anchor = uniqueSlug;
-                b.startLine = lineNumber;
-                b.endLine = lineNumber;
-
-                const auto blockIndex = static_cast<int>(doc.blocks.size());
-                doc.blocks.push_back(std::move(b));
-                doc.toc.push_back(MarkdownTocEntry{
-                    .level = heading->level,
-                    .title = std::move(plainTitle),
-                    .anchor = std::move(uniqueSlug),
-                    .blockIndex = blockIndex,
-                    .startLine = lineNumber
-                });
+                appendHeadingBlock(lines[idx], *heading, centeredBlock, &MarkdownParser::renderInlineHtml, slugCounts, doc);
                 ++idx;
                 continue;
             }
 
-            // 3. Thematic break (---, ***, ___)
             if (isThematicBreak(text))
             {
                 MarkdownBlock b;
@@ -1088,269 +1418,34 @@ namespace gf::core::syntax
                 continue;
             }
 
-            // 4. Consecutive badge row ([![alt](img)](url) ...)
             if (auto badges = tryParseBadgeLine(trimmed))
             {
-                const int startLine = lineNumber;
-                int endLine = lineNumber;
-                ++idx;
-                while (idx < n)
-                {
-                    const std::string_view nextTrim = trimSpaces(lines[idx].text);
-                    if (nextTrim.empty()) break;
-                    auto nextBadges = tryParseBadgeLine(nextTrim);
-                    if (!nextBadges) break;
-                    badges->insert(badges->end(),
-                                   std::make_move_iterator(nextBadges->begin()),
-                                   std::make_move_iterator(nextBadges->end()));
-                    endLine = lines[idx].lineNumber;
-                    ++idx;
-                }
-                MarkdownBlock b;
-                b.kind = MarkdownBlockKind::BadgeRow;
-                b.centered = centeredBlock;
-                b.badges = std::move(*badges);
-                b.startLine = startLine;
-                b.endLine = endLine;
-                doc.blocks.push_back(std::move(b));
+                doc.blocks.push_back(parseBadgeRowBlock(lines, idx, std::move(*badges), centeredBlock));
                 continue;
             }
 
-            // 5. Blockquote & GitHub Callout Alerts (> ...)
             if (trimmed[0] == '>')
             {
-                const int startLine = lineNumber;
-                int endLine = lineNumber;
-                MarkdownAlertType alertType = MarkdownAlertType::None;
-                std::string bodyText;
-
-                bool firstLine = true;
-                while (idx < n)
-                {
-                    const std::string_view qt = trimSpaces(lines[idx].text);
-                    if (qt.empty() || qt[0] != '>') break;
-                    endLine = lines[idx].lineNumber;
-
-                    std::size_t skip = 1;
-                    if (skip < qt.size() && qt[skip] == ' ') ++skip;
-                    std::string_view inner = trimSpaces(qt.substr(skip));
-
-                    if (firstLine)
-                    {
-                        firstLine = false;
-                        struct AlertDef
-                        {
-                            std::string_view tag;
-                            MarkdownAlertType type;
-                        };
-                        constexpr AlertDef kAlerts[] = {
-                            {.tag = "[!NOTE]", .type = MarkdownAlertType::Note},
-                            {.tag = "[!TIP]", .type = MarkdownAlertType::Tip},
-                            {.tag = "[!IMPORTANT]", .type = MarkdownAlertType::Important},
-                            {.tag = "[!WARNING]", .type = MarkdownAlertType::Warning},
-                            {.tag = "[!CAUTION]", .type = MarkdownAlertType::Caution}
-                        };
-                        bool matchedAlert = false;
-                        for (const auto& [tag, type] : kAlerts)
-                        {
-                            if (inner.starts_with(tag))
-                            {
-                                alertType = type;
-                                inner = trimSpaces(inner.substr(tag.size()));
-                                matchedAlert = true;
-                                break;
-                            }
-                        }
-                        if (matchedAlert && inner.empty())
-                        {
-                            ++idx;
-                            continue;
-                        }
-                    }
-
-                    if (!inner.empty())
-                    {
-                        if (!bodyText.empty()) bodyText.push_back(' ');
-                        bodyText.append(inner);
-                    }
-                    else if (!bodyText.empty())
-                    {
-                        bodyText.append("\n");
-                    }
-                    ++idx;
-                }
-
-                MarkdownBlock b;
-                b.kind = MarkdownBlockKind::Blockquote;
-                b.centered = centeredBlock;
-                b.alertType = alertType;
-                b.rawText = bodyText;
-                b.html = renderInlineHtml(bodyText);
-                b.startLine = startLine;
-                b.endLine = endLine;
-                doc.blocks.push_back(std::move(b));
+                doc.blocks.push_back(parseBlockquoteBlock(lines, idx, centeredBlock, &MarkdownParser::renderInlineHtml));
                 continue;
             }
 
-            // 6. GFM Pipe Table (header row + separator row)
             if (idx + 1 < n && trimmed.find('|') != std::string_view::npos)
             {
                 if (auto alignments = tryParseTableSeparator(lines[idx + 1].text))
                 {
-                    const int startLine = lineNumber;
-                    int endLine = lines[idx + 1].lineNumber;
-
-                    const auto rawHeaders = splitTableCells(text);
-                    const std::size_t colCount = std::max(rawHeaders.size(), alignments->size());
-                    alignments->resize(colCount, "left");
-
-                    std::vector<std::string> headersHtml;
-                    headersHtml.reserve(colCount);
-                    for (std::size_t c = 0; c < colCount; ++c)
-                    {
-                        headersHtml.push_back(c < rawHeaders.size() ? renderInlineHtml(rawHeaders[c]) : "");
-                    }
-
-                    idx += 2;
-                    std::vector<std::vector<std::string>> rowsHtml;
-                    while (idx < n)
-                    {
-                        const std::string_view rowTrim = trimSpaces(lines[idx].text);
-                        if (rowTrim.empty() || rowTrim.find('|') == std::string_view::npos) break;
-                        if (rowTrim[0] == '>' || isThematicBreak(rowTrim)) break;
-
-                        const auto cells = splitTableCells(rowTrim);
-                        std::vector<std::string> rowOut;
-                        rowOut.reserve(colCount);
-                        for (std::size_t c = 0; c < colCount; ++c)
-                        {
-                            rowOut.push_back(c < cells.size() ? renderInlineHtml(cells[c]) : "");
-                        }
-                        rowsHtml.push_back(std::move(rowOut));
-                        endLine = lines[idx].lineNumber;
-                        ++idx;
-                    }
-
-                    MarkdownBlock b;
-                    b.kind = MarkdownBlockKind::Table;
-                    b.tableHeaders = std::move(headersHtml);
-                    b.tableAlignments = std::move(*alignments);
-                    b.tableRows = std::move(rowsHtml);
-                    b.startLine = startLine;
-                    b.endLine = endLine;
-                    doc.blocks.push_back(std::move(b));
+                    doc.blocks.push_back(parseTableBlock(lines, idx, std::move(*alignments), &MarkdownParser::renderInlineHtml));
                     continue;
                 }
             }
 
-            // 7. List Item (-, *, +, 1.)
             if (auto listItem = tryExtractListItem(text))
             {
-                const int startLine = lineNumber;
-                int endLine = lineNumber;
-                std::string combinedText(listItem->text);
-                ++idx;
-
-                // Gather lazy continuation lines indented without starting a new block
-                while (idx < n)
-                {
-                    const std::string_view nextRaw = lines[idx].text;
-                    const std::string_view nextTrim = trimSpaces(nextRaw);
-                    if (nextTrim.empty()) break;
-
-                    if (tryExtractListItem(nextRaw)) break;
-
-                    if (tryExtractHeading(nextRaw) ||
-                        tryExtractFenceOpen(nextRaw) ||
-                        isThematicBreak(nextRaw) || nextTrim[0] == '>')
-                    {
-                        break;
-                    }
-
-                    if (!combinedText.empty()) combinedText.push_back(' ');
-                    combinedText.append(nextTrim);
-                    endLine = lines[idx].lineNumber;
-                    ++idx;
-                }
-
-                MarkdownBlock b;
-                b.kind = MarkdownBlockKind::ListItem;
-                b.indentLevel = listItem->indentLevel;
-                b.ordered = listItem->ordered;
-                b.listMarker = std::move(listItem->marker);
-                b.isTask = listItem->isTask;
-                b.taskChecked = listItem->taskChecked;
-                b.rawText = combinedText;
-                b.html = renderInlineHtml(combinedText);
-                b.startLine = startLine;
-                b.endLine = endLine;
-                doc.blocks.push_back(std::move(b));
+                doc.blocks.push_back(parseListItemBlock(lines, idx, std::move(*listItem), &MarkdownParser::renderInlineHtml));
                 continue;
             }
 
-            // 8. Paragraph (gather contiguous non-blank lines that do not open another block)
-            {
-                const int startLine = lineNumber;
-                int endLine = lineNumber;
-                std::string paraText(trimmed);
-                ++idx;
-
-                while (idx < n)
-                {
-                    const std::string_view nextRaw = lines[idx].text;
-                    const std::string_view nextTrim = trimSpaces(nextRaw);
-                    if (nextTrim.empty()) break;
-
-                    bool dummyCenter = centeredBlock;
-                    if (std::string tmpSum; isHtmlWrapperOnlyLine(nextTrim, dummyCenter, tmpSum) || !tmpSum.empty())
-                    {
-                        break;
-                    }
-
-                    if (tryExtractHeading(nextRaw) ||
-                        tryExtractFenceOpen(nextRaw) ||
-                        isThematicBreak(nextRaw) ||
-                        nextTrim[0] == '>' ||
-                        tryParseBadgeLine(nextTrim) ||
-                        tryExtractListItem(nextRaw))
-                    {
-                        break;
-                    }
-
-                    if (idx + 1 < n && nextTrim.find('|') != std::string_view::npos)
-                    {
-                        if (tryParseTableSeparator(lines[idx + 1].text))
-                        {
-                            break;
-                        }
-                    }
-
-                    if (!paraText.empty())
-                    {
-                        // Preserve explicit trailing two-space / <br/> break if present
-                        if (paraText.ends_with("  ") || paraText.ends_with("<br/>") || paraText.ends_with("<br>"))
-                        {
-                            paraText.append("<br/>");
-                        }
-                        else
-                        {
-                            paraText.push_back(' ');
-                        }
-                    }
-                    paraText.append(nextTrim);
-                    endLine = lines[idx].lineNumber;
-                    ++idx;
-                }
-
-                MarkdownBlock b;
-                b.kind = MarkdownBlockKind::Paragraph;
-                b.centered = centeredBlock;
-                b.rawText = paraText;
-                b.html = renderInlineHtml(paraText);
-                b.startLine = startLine;
-                b.endLine = endLine;
-                doc.blocks.push_back(std::move(b));
-            }
+            doc.blocks.push_back(parseParagraphBlock(lines, idx, centeredBlock, &MarkdownParser::renderInlineHtml));
         }
 
         return doc;
@@ -1378,56 +1473,17 @@ namespace gf::core::syntax
         std::set<int> addedLines;
         std::map<int, std::vector<std::string>> deletionsBeforeNewLine;
         std::vector<std::string> trailingDeletions;
-
-        for (const auto& hunk : diff->hunks)
-        {
-            std::vector<std::string> pendingDels;
-            for (const auto& line : hunk.lines)
-            {
-                if (line.kind == git::bo::DiffLineKind::Deletion)
-                {
-                    pendingDels.push_back(line.content);
-                }
-                else if (line.kind == git::bo::DiffLineKind::Addition)
-                {
-                    if (line.newLineNumber.has_value())
-                    {
-                        addedLines.insert(*line.newLineNumber);
-                        if (!pendingDels.empty())
-                        {
-                            auto& vec = deletionsBeforeNewLine[*line.newLineNumber];
-                            vec.insert(vec.end(), pendingDels.begin(), pendingDels.end());
-                            pendingDels.clear();
-                        }
-                    }
-                }
-                else if (line.kind == git::bo::DiffLineKind::Context)
-                {
-                    if (!pendingDels.empty() && line.newLineNumber.has_value())
-                    {
-                        auto& vec = deletionsBeforeNewLine[*line.newLineNumber];
-                        vec.insert(vec.end(), pendingDels.begin(), pendingDels.end());
-                        pendingDels.clear();
-                    }
-                }
-            }
-            if (!pendingDels.empty())
-            {
-                trailingDeletions.insert(trailingDeletions.end(), pendingDels.begin(), pendingDels.end());
-            }
-        }
+        collectDiffChanges(*diff, addedLines, deletionsBeforeNewLine, trailingDeletions);
 
         std::vector<MarkdownBlock> finalBlocks;
         finalBlocks.reserve(doc.blocks.size() + 4);
         std::unordered_map<int, int> oldToNewBlockIndex;
-
         auto delIt = deletionsBeforeNewLine.begin();
 
         for (std::size_t bIdx = 0; bIdx < doc.blocks.size(); ++bIdx)
         {
             MarkdownBlock block = doc.blocks[bIdx];
 
-            // Emit pure deletion blocks strictly preceding this block (outside added replacements)
             std::vector<std::string> pureBeforeDels;
             while (delIt != deletionsBeforeNewLine.end() && delIt->first < block.startLine)
             {
@@ -1436,27 +1492,15 @@ namespace gf::core::syntax
             }
             if (!pureBeforeDels.empty())
             {
-                MarkdownBlock delSnippet;
-                delSnippet.kind = MarkdownBlockKind::DeletedSnippet;
-                delSnippet.changeStatus = MarkdownChangeStatus::Deleted;
-                delSnippet.deletedLineCount = static_cast<int>(pureBeforeDels.size());
-                delSnippet.deletedLines = std::move(pureBeforeDels);
-                delSnippet.startLine = block.startLine;
-                delSnippet.endLine = block.startLine;
-                finalBlocks.push_back(std::move(delSnippet));
+                finalBlocks.push_back(makeDeletedSnippetBlock(std::move(pureBeforeDels), block.startLine));
             }
 
-            // Count added lines within [startLine, endLine]
             int addedInBlock = 0;
             for (int lineNum = block.startLine; lineNum <= block.endLine; ++lineNum)
             {
-                if (addedLines.contains(lineNum))
-                {
-                    ++addedInBlock;
-                }
+                if (addedLines.contains(lineNum)) ++addedInBlock;
             }
 
-            // Gather deletions attached to lines within [startLine, endLine]
             std::vector<std::string> blockDels;
             while (delIt != deletionsBeforeNewLine.end() && delIt->first <= block.endLine)
             {
@@ -1478,22 +1522,13 @@ namespace gf::core::syntax
             }
             else if (!blockDels.empty())
             {
-                // Deletion immediately at the start/inside an unchanged block
-                MarkdownBlock delSnippet;
-                delSnippet.kind = MarkdownBlockKind::DeletedSnippet;
-                delSnippet.changeStatus = MarkdownChangeStatus::Deleted;
-                delSnippet.deletedLineCount = static_cast<int>(blockDels.size());
-                delSnippet.deletedLines = std::move(blockDels);
-                delSnippet.startLine = block.startLine;
-                delSnippet.endLine = block.startLine;
-                finalBlocks.push_back(std::move(delSnippet));
+                finalBlocks.push_back(makeDeletedSnippetBlock(std::move(blockDels), block.startLine));
             }
 
             oldToNewBlockIndex[static_cast<int>(bIdx)] = static_cast<int>(finalBlocks.size());
             finalBlocks.push_back(std::move(block));
         }
 
-        // Any remaining deletions after the last block
         std::vector<std::string> eofDels;
         while (delIt != deletionsBeforeNewLine.end())
         {
@@ -1503,14 +1538,8 @@ namespace gf::core::syntax
         eofDels.insert(eofDels.end(), trailingDeletions.begin(), trailingDeletions.end());
         if (!eofDels.empty())
         {
-            MarkdownBlock delSnippet;
-            delSnippet.kind = MarkdownBlockKind::DeletedSnippet;
-            delSnippet.changeStatus = MarkdownChangeStatus::Deleted;
-            delSnippet.deletedLineCount = static_cast<int>(eofDels.size());
-            delSnippet.deletedLines = std::move(eofDels);
-            delSnippet.startLine = doc.blocks.empty() ? 1 : doc.blocks.back().endLine + 1;
-            delSnippet.endLine = delSnippet.startLine;
-            finalBlocks.push_back(std::move(delSnippet));
+            const int trailingLine = doc.blocks.empty() ? 1 : doc.blocks.back().endLine + 1;
+            finalBlocks.push_back(makeDeletedSnippetBlock(std::move(eofDels), trailingLine));
         }
 
         for (auto& tocEntry : doc.toc)

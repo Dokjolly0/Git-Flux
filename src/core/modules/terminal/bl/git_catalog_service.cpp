@@ -217,6 +217,24 @@ namespace gf::terminal::bl
 
     std::vector<bo::GitCommandSpec> GitCatalogService::parseHelpAllOutput(const std::string_view output)
     {
+        struct SectionPrefix
+        {
+            std::string_view prefix;
+            bo::GitCommandCategory category;
+        };
+        static constexpr SectionPrefix kSectionMap[] = {
+            {"main porcelain", bo::GitCommandCategory::MainPorcelain},
+            {"ancillary commands / manipulators", bo::GitCommandCategory::AncillaryManipulator},
+            {"ancillary commands / interrogators", bo::GitCommandCategory::AncillaryInterrogator},
+            {"interacting with others", bo::GitCommandCategory::InteractingWithOthers},
+            {"low-level commands / manipulators", bo::GitCommandCategory::LowLevelManipulator},
+            {"low-level commands / interrogators", bo::GitCommandCategory::LowLevelInterrogator},
+            {"low-level commands / syncing", bo::GitCommandCategory::LowLevelSync},
+            {"low-level commands / internal helpers", bo::GitCommandCategory::LowLevelHelper},
+            {"external commands", bo::GitCommandCategory::External},
+            {"command aliases", bo::GitCommandCategory::Alias}
+        };
+
         std::vector<bo::GitCommandSpec> result;
         std::optional<bo::GitCommandCategory> currentCategory;
         bool skipSection = false;
@@ -230,58 +248,25 @@ namespace gf::terminal::bl
             if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
             pos = (nl < output.size()) ? nl + 1 : nl;
 
-            if (line.empty())
-            {
-                continue;
-            }
+            if (line.empty()) continue;
 
             // Section headers start at column 0 (no leading space)
             if (line.front() != ' ' && line.front() != '\t')
             {
                 const std::string lower = toLowerCopy(trimView(line));
                 skipSection = false;
-                if (lower.starts_with("main porcelain"))
+                bool matched = false;
+                for (const auto& [prefix, cat] : kSectionMap)
                 {
-                    currentCategory = bo::GitCommandCategory::MainPorcelain;
+                    if (lower.starts_with(prefix))
+                    {
+                        currentCategory = cat;
+                        matched = true;
+                        break;
+                    }
                 }
-                else if (lower.starts_with("ancillary commands / manipulators"))
-                {
-                    currentCategory = bo::GitCommandCategory::AncillaryManipulator;
-                }
-                else if (lower.starts_with("ancillary commands / interrogators"))
-                {
-                    currentCategory = bo::GitCommandCategory::AncillaryInterrogator;
-                }
-                else if (lower.starts_with("interacting with others"))
-                {
-                    currentCategory = bo::GitCommandCategory::InteractingWithOthers;
-                }
-                else if (lower.starts_with("low-level commands / manipulators"))
-                {
-                    currentCategory = bo::GitCommandCategory::LowLevelManipulator;
-                }
-                else if (lower.starts_with("low-level commands / interrogators"))
-                {
-                    currentCategory = bo::GitCommandCategory::LowLevelInterrogator;
-                }
-                else if (lower.starts_with("low-level commands / syncing"))
-                {
-                    currentCategory = bo::GitCommandCategory::LowLevelSync;
-                }
-                else if (lower.starts_with("low-level commands / internal helpers"))
-                {
-                    currentCategory = bo::GitCommandCategory::LowLevelHelper;
-                }
-                else if (lower.starts_with("external commands"))
-                {
-                    currentCategory = bo::GitCommandCategory::External;
-                }
-                else if (lower.starts_with("command aliases"))
-                {
-                    currentCategory = bo::GitCommandCategory::Alias;
-                }
-                else if (lower.starts_with("user-facing") || lower.starts_with("developer-facing") ||
-                         lower.starts_with("guides") || lower.starts_with("see 'git help"))
+                if (!matched && (lower.starts_with("user-facing") || lower.starts_with("developer-facing") ||
+                                 lower.starts_with("guides") || lower.starts_with("see 'git help")))
                 {
                     currentCategory.reset();
                     skipSection = true;
@@ -289,33 +274,17 @@ namespace gf::terminal::bl
                 continue;
             }
 
-            if (skipSection || !currentCategory.has_value())
-            {
-                continue;
-            }
+            if (skipSection || !currentCategory.has_value()) continue;
 
             const std::string_view trimmed = trimView(line);
             if (trimmed.empty()) continue;
 
-            // Format: "   add                     Add file contents to the index"
-            // External commands may have only the name without description: "   lfs"
             std::size_t nameEnd = 0;
-            while (nameEnd < trimmed.size() && trimmed[nameEnd] != ' ' && trimmed[nameEnd] != '\t')
-            {
-                ++nameEnd;
-            }
+            while (nameEnd < trimmed.size() && trimmed[nameEnd] != ' ' && trimmed[nameEnd] != '\t') ++nameEnd;
             const std::string_view name = trimmed.substr(0, nameEnd);
-            if (!isValidCommandName(name))
-            {
-                continue;
-            }
+            if (!isValidCommandName(name)) continue;
 
-            std::string_view desc;
-            if (nameEnd < trimmed.size())
-            {
-                desc = trimView(trimmed.substr(nameEnd));
-            }
-
+            const std::string_view desc = nameEnd < trimmed.size() ? trimView(trimmed.substr(nameEnd)) : std::string_view{};
             result.push_back(bo::GitCommandSpec{
                 .name = std::string(name),
                 .description = std::string(desc),
@@ -763,208 +732,146 @@ namespace gf::terminal::bl
     std::vector<bo::GitCommandSpec> GitCatalogService::subSubcommandsFor(const std::string_view subcommand)
     {
         using C = bo::GitCommandCategory;
-        if (subcommand == "stash")
+        struct SubEntry
         {
-            return {
-                {"push", "Save local modifications to a new stash entry", C::MainPorcelain},
-                {"pop", "Remove a single stashed state and apply it to working tree", C::MainPorcelain},
-                {"apply", "Apply stashed state without removing it from stash list", C::MainPorcelain},
-                {"list", "List the stash entries that you currently have", C::MainPorcelain},
-                {"show", "Show the changes recorded in the stash entry as a diff", C::MainPorcelain},
-                {"drop", "Remove a single stash entry from the list", C::MainPorcelain},
-                {"clear", "Remove all the stash entries", C::MainPorcelain},
-                {"branch", "Create and check out a new branch from a stash entry", C::MainPorcelain},
-                {"create", "Create a stash entry without storing it in ref namespace", C::AncillaryManipulator},
-                {"store", "Store a given stash created via create in the stash ref", C::AncillaryManipulator},
-                {"save", "Deprecated: use stash push instead", C::AncillaryManipulator}
-            };
-        }
-        if (subcommand == "remote")
+            std::string_view parent;
+            const char* name;
+            const char* desc;
+            C category;
+        };
+        static constexpr SubEntry kTable[] = {
+            {"stash", "push", "Save local modifications to a new stash entry", C::MainPorcelain},
+            {"stash", "pop", "Remove a single stashed state and apply it to working tree", C::MainPorcelain},
+            {"stash", "apply", "Apply stashed state without removing it from stash list", C::MainPorcelain},
+            {"stash", "list", "List the stash entries that you currently have", C::MainPorcelain},
+            {"stash", "show", "Show the changes recorded in the stash entry as a diff", C::MainPorcelain},
+            {"stash", "drop", "Remove a single stash entry from the list", C::MainPorcelain},
+            {"stash", "clear", "Remove all the stash entries", C::MainPorcelain},
+            {"stash", "branch", "Create and check out a new branch from a stash entry", C::MainPorcelain},
+            {"stash", "create", "Create a stash entry without storing it in ref namespace", C::AncillaryManipulator},
+            {"stash", "store", "Store a given stash created via create in the stash ref", C::AncillaryManipulator},
+            {"stash", "save", "Deprecated: use stash push instead", C::AncillaryManipulator},
+            {"remote", "add", "Add a remote named <name> for the repository at <url>", C::MainPorcelain},
+            {"remote", "rename", "Rename the remote named <old> to <new>", C::MainPorcelain},
+            {"remote", "remove", "Remove the remote named <name>", C::MainPorcelain},
+            {"remote", "rm", "Alias for remote remove", C::MainPorcelain},
+            {"remote", "get-url", "Retrieve the URLs for a remote", C::MainPorcelain},
+            {"remote", "set-url", "Change URLs for the remote", C::MainPorcelain},
+            {"remote", "show", "Give some information about the remote <name>", C::MainPorcelain},
+            {"remote", "prune", "Delete stale references associated with <name>", C::MainPorcelain},
+            {"remote", "update", "Fetch updates for remotes or remote groups", C::MainPorcelain},
+            {"remote", "set-head", "Set or delete the default branch for the named remote", C::AncillaryManipulator},
+            {"remote", "set-branches", "Change the list of branches tracked by the named remote", C::AncillaryManipulator},
+            {"worktree", "add", "Create a new working tree linked to this repository", C::MainPorcelain},
+            {"worktree", "list", "List details of each working tree", C::MainPorcelain},
+            {"worktree", "remove", "Remove a working tree", C::MainPorcelain},
+            {"worktree", "move", "Move a working tree to a new location", C::MainPorcelain},
+            {"worktree", "prune", "Prune working tree information in $GIT_DIR/worktrees", C::MainPorcelain},
+            {"worktree", "lock", "Prevent a working tree from being pruned or moved", C::AncillaryManipulator},
+            {"worktree", "unlock", "Unlock a working tree so it can be pruned or moved", C::AncillaryManipulator},
+            {"worktree", "repair", "Repair working tree administrative files", C::AncillaryManipulator},
+            {"submodule", "add", "Add the given repository as a submodule", C::MainPorcelain},
+            {"submodule", "status", "Show the status of the submodules", C::MainPorcelain},
+            {"submodule", "init", "Initialize the submodules recorded in the index", C::MainPorcelain},
+            {"submodule", "deinit", "Unregister the given submodules", C::MainPorcelain},
+            {"submodule", "update", "Update the registered submodules to match expected commits", C::MainPorcelain},
+            {"submodule", "foreach", "Evaluate an arbitrary shell command in each checked out submodule", C::MainPorcelain},
+            {"submodule", "sync", "Synchronize submodules' remote URL configuration", C::MainPorcelain},
+            {"submodule", "summary", "Show commit summary between given commit and working tree", C::AncillaryInterrogator},
+            {"submodule", "set-branch", "Set the default remote tracking branch for the submodule", C::AncillaryManipulator},
+            {"submodule", "set-url", "Set the URL of the specified submodule", C::AncillaryManipulator},
+            {"submodule", "absorbgitdirs", "Embed git directory of submodule into superproject", C::AncillaryManipulator},
+            {"bisect", "start", "Start a bisect session", C::MainPorcelain},
+            {"bisect", "bad", "Mark current or given commit as bad", C::MainPorcelain},
+            {"bisect", "good", "Mark current or given commit as good", C::MainPorcelain},
+            {"bisect", "new", "Mark commit as having the new behavior", C::MainPorcelain},
+            {"bisect", "old", "Mark commit as having the old behavior", C::MainPorcelain},
+            {"bisect", "skip", "Skip the current commit during bisect", C::MainPorcelain},
+            {"bisect", "reset", "Finish bisect and return to original HEAD", C::MainPorcelain},
+            {"bisect", "run", "Automatically bisect using a script or command", C::MainPorcelain},
+            {"bisect", "log", "Show the bisect log so far", C::AncillaryInterrogator},
+            {"bisect", "replay", "Replay a saved bisect log file", C::AncillaryManipulator},
+            {"bisect", "terms", "Show the terms currently used for old/new states", C::AncillaryInterrogator},
+            {"bisect", "visualize", "Show remaining suspects in gitk/git log", C::AncillaryInterrogator},
+            {"bisect", "view", "Alias for bisect visualize", C::AncillaryInterrogator},
+            {"notes", "list", "List the notes object for a given object", C::MainPorcelain},
+            {"notes", "add", "Add notes for a given object", C::MainPorcelain},
+            {"notes", "append", "Append to the notes of an existing object", C::MainPorcelain},
+            {"notes", "edit", "Edit the notes for a given object", C::MainPorcelain},
+            {"notes", "show", "Show the notes for a given object", C::MainPorcelain},
+            {"notes", "copy", "Copy the notes for the first object onto the second", C::MainPorcelain},
+            {"notes", "merge", "Merge the given notes ref into the current notes ref", C::MainPorcelain},
+            {"notes", "remove", "Remove the notes for given objects", C::MainPorcelain},
+            {"notes", "prune", "Remove all notes for non-existent/unreachable objects", C::AncillaryManipulator},
+            {"notes", "get-ref", "Print the current notes ref", C::AncillaryInterrogator},
+            {"reflog", "show", "Show the log of the reference provided in the command-line", C::MainPorcelain},
+            {"reflog", "list", "List all refs which have a corresponding reflog", C::MainPorcelain},
+            {"reflog", "expire", "Prune older reflog entries", C::AncillaryManipulator},
+            {"reflog", "delete", "Delete single entries from the reflog", C::AncillaryManipulator},
+            {"reflog", "exists", "Check whether a ref has a reflog", C::AncillaryInterrogator},
+            {"reflog", "drop", "Remove the reflog for the specified references", C::AncillaryManipulator},
+            {"sparse-checkout", "list", "Describe the directories or patterns in the sparse-checkout file", C::MainPorcelain},
+            {"sparse-checkout", "init", "Enable sparse-checkout (deprecated in favor of set)", C::MainPorcelain},
+            {"sparse-checkout", "set", "Enable sparse-checkout and write patterns", C::MainPorcelain},
+            {"sparse-checkout", "add", "Add patterns to the sparse-checkout file", C::MainPorcelain},
+            {"sparse-checkout", "reapply", "Reapply the sparsity pattern rules to paths in working tree", C::MainPorcelain},
+            {"sparse-checkout", "disable", "Disable sparse-checkout and restore full working directory", C::MainPorcelain},
+            {"sparse-checkout", "check-rules", "Check whether sparsity rules match one or more paths", C::AncillaryInterrogator},
+            {"maintenance", "run", "Run one or more maintenance tasks", C::MainPorcelain},
+            {"maintenance", "start", "Start running maintenance on the current repository", C::MainPorcelain},
+            {"maintenance", "stop", "Halt the background maintenance schedule", C::MainPorcelain},
+            {"maintenance", "register", "Add the current repository to maintenance.repo config", C::MainPorcelain},
+            {"maintenance", "unregister", "Remove the current repository from maintenance.repo config", C::MainPorcelain},
+            {"bundle", "create", "Create a bundle file from specified refs", C::MainPorcelain},
+            {"bundle", "verify", "Check that a bundle file is valid and can be applied", C::MainPorcelain},
+            {"bundle", "list-heads", "List the references defined in the bundle", C::MainPorcelain},
+            {"bundle", "unbundle", "Pass objects in the bundle to git index-pack", C::MainPorcelain},
+            {"config", "list", "List all variables set in config file along with values", C::MainPorcelain},
+            {"config", "get", "Get value for a given key", C::MainPorcelain},
+            {"config", "set", "Set a configuration value", C::MainPorcelain},
+            {"config", "unset", "Remove a configuration key", C::MainPorcelain},
+            {"config", "edit", "Open an editor to modify the specified config file", C::MainPorcelain},
+            {"config", "rename-section", "Rename the given section to a new name", C::AncillaryManipulator},
+            {"config", "remove-section", "Remove the given section from the configuration file", C::AncillaryManipulator},
+            {"rerere", "status", "Print paths with conflicts whose merge resolution will be recorded", C::MainPorcelain},
+            {"rerere", "diff", "Display diffs for the current state of the resolution", C::MainPorcelain},
+            {"rerere", "remaining", "Print paths with conflicts that have not been resolved", C::MainPorcelain},
+            {"rerere", "forget", "Reset the conflict resolutions which rerere has recorded", C::MainPorcelain},
+            {"rerere", "clear", "Reset the metadata used by rerere", C::AncillaryManipulator},
+            {"rerere", "gc", "Prune records of conflicted merges that occurred a long time ago", C::AncillaryManipulator},
+            {"lfs", "track", "View or add Git LFS paths to Git Attributes", C::External},
+            {"lfs", "untrack", "Remove Git LFS paths from Git Attributes", C::External},
+            {"lfs", "status", "Show the status of Git LFS files in the working tree", C::External},
+            {"lfs", "ls-files", "Show information about Git LFS files in the index and working tree", C::External},
+            {"lfs", "pull", "Fetch Git LFS changes from the remote & checkout any required files", C::External},
+            {"lfs", "push", "Push queued large files to the Git LFS endpoint", C::External},
+            {"lfs", "fetch", "Download Git LFS files from a remote", C::External},
+            {"lfs", "checkout", "Update working copy with file content if available", C::External},
+            {"lfs", "prune", "Delete old LFS files from local storage", C::External},
+            {"lfs", "migrate", "Migrate history to or from Git LFS", C::External},
+            {"lfs", "install", "Install Git LFS configuration", C::External},
+            {"lfs", "env", "Display the Git LFS environment", C::External},
+            {"lfs", "version", "Report the version number", C::External},
+            {"commit-graph", "write", "Write a commit-graph file based on commits in packfiles", C::LowLevelManipulator},
+            {"commit-graph", "verify", "Read the commit-graph file and verify its contents", C::LowLevelInterrogator},
+            {"multi-pack-index", "write", "Write a new MIDX file", C::LowLevelManipulator},
+            {"multi-pack-index", "verify", "Verify the contents of the MIDX file", C::LowLevelInterrogator},
+            {"multi-pack-index", "expire", "Delete packfiles with no objects referenced by MIDX", C::LowLevelManipulator},
+            {"multi-pack-index", "repack", "Create a new packfile containing objects in small packfiles", C::LowLevelManipulator},
+            {"credential", "fill", "Request credentials from configured credential helpers", C::LowLevelHelper},
+            {"credential", "approve", "Store credentials with configured credential helpers", C::LowLevelHelper},
+            {"credential", "reject", "Erase matching credentials from credential helpers", C::LowLevelHelper}
+        };
+
+        std::vector<bo::GitCommandSpec> out;
+        for (const auto& entry : kTable)
         {
-            return {
-                {"add", "Add a remote named <name> for the repository at <url>", C::MainPorcelain},
-                {"rename", "Rename the remote named <old> to <new>", C::MainPorcelain},
-                {"remove", "Remove the remote named <name>", C::MainPorcelain},
-                {"rm", "Alias for remote remove", C::MainPorcelain},
-                {"get-url", "Retrieve the URLs for a remote", C::MainPorcelain},
-                {"set-url", "Change URLs for the remote", C::MainPorcelain},
-                {"show", "Give some information about the remote <name>", C::MainPorcelain},
-                {"prune", "Delete stale references associated with <name>", C::MainPorcelain},
-                {"update", "Fetch updates for remotes or remote groups", C::MainPorcelain},
-                {"set-head", "Set or delete the default branch for the named remote", C::AncillaryManipulator},
-                {"set-branches", "Change the list of branches tracked by the named remote", C::AncillaryManipulator}
-            };
+            if (entry.parent == subcommand)
+            {
+                out.push_back({entry.name, entry.desc, entry.category});
+            }
         }
-        if (subcommand == "worktree")
-        {
-            return {
-                {"add", "Create a new working tree linked to this repository", C::MainPorcelain},
-                {"list", "List details of each working tree", C::MainPorcelain},
-                {"remove", "Remove a working tree", C::MainPorcelain},
-                {"move", "Move a working tree to a new location", C::MainPorcelain},
-                {"prune", "Prune working tree information in $GIT_DIR/worktrees", C::MainPorcelain},
-                {"lock", "Prevent a working tree from being pruned or moved", C::AncillaryManipulator},
-                {"unlock", "Unlock a working tree so it can be pruned or moved", C::AncillaryManipulator},
-                {"repair", "Repair working tree administrative files", C::AncillaryManipulator}
-            };
-        }
-        if (subcommand == "submodule")
-        {
-            return {
-                {"add", "Add the given repository as a submodule", C::MainPorcelain},
-                {"status", "Show the status of the submodules", C::MainPorcelain},
-                {"init", "Initialize the submodules recorded in the index", C::MainPorcelain},
-                {"deinit", "Unregister the given submodules", C::MainPorcelain},
-                {"update", "Update the registered submodules to match expected commits", C::MainPorcelain},
-                {"foreach", "Evaluate an arbitrary shell command in each checked out submodule", C::MainPorcelain},
-                {"sync", "Synchronize submodules' remote URL configuration", C::MainPorcelain},
-                {"summary", "Show commit summary between given commit and working tree", C::AncillaryInterrogator},
-                {"set-branch", "Set the default remote tracking branch for the submodule", C::AncillaryManipulator},
-                {"set-url", "Set the URL of the specified submodule", C::AncillaryManipulator},
-                {"absorbgitdirs", "Embed git directory of submodule into superproject", C::AncillaryManipulator}
-            };
-        }
-        if (subcommand == "bisect")
-        {
-            return {
-                {"start", "Start a bisect session", C::MainPorcelain},
-                {"bad", "Mark current or given commit as bad", C::MainPorcelain},
-                {"good", "Mark current or given commit as good", C::MainPorcelain},
-                {"new", "Mark commit as having the new behavior", C::MainPorcelain},
-                {"old", "Mark commit as having the old behavior", C::MainPorcelain},
-                {"skip", "Skip the current commit during bisect", C::MainPorcelain},
-                {"reset", "Finish bisect and return to original HEAD", C::MainPorcelain},
-                {"run", "Automatically bisect using a script or command", C::MainPorcelain},
-                {"log", "Show the bisect log so far", C::AncillaryInterrogator},
-                {"replay", "Replay a saved bisect log file", C::AncillaryManipulator},
-                {"terms", "Show the terms currently used for old/new states", C::AncillaryInterrogator},
-                {"visualize", "Show remaining suspects in gitk/git log", C::AncillaryInterrogator},
-                {"view", "Alias for bisect visualize", C::AncillaryInterrogator}
-            };
-        }
-        if (subcommand == "notes")
-        {
-            return {
-                {"list", "List the notes object for a given object", C::MainPorcelain},
-                {"add", "Add notes for a given object", C::MainPorcelain},
-                {"append", "Append to the notes of an existing object", C::MainPorcelain},
-                {"edit", "Edit the notes for a given object", C::MainPorcelain},
-                {"show", "Show the notes for a given object", C::MainPorcelain},
-                {"copy", "Copy the notes for the first object onto the second", C::MainPorcelain},
-                {"merge", "Merge the given notes ref into the current notes ref", C::MainPorcelain},
-                {"remove", "Remove the notes for given objects", C::MainPorcelain},
-                {"prune", "Remove all notes for non-existent/unreachable objects", C::AncillaryManipulator},
-                {"get-ref", "Print the current notes ref", C::AncillaryInterrogator}
-            };
-        }
-        if (subcommand == "reflog")
-        {
-            return {
-                {"show", "Show the log of the reference provided in the command-line", C::MainPorcelain},
-                {"list", "List all refs which have a corresponding reflog", C::MainPorcelain},
-                {"expire", "Prune older reflog entries", C::AncillaryManipulator},
-                {"delete", "Delete single entries from the reflog", C::AncillaryManipulator},
-                {"exists", "Check whether a ref has a reflog", C::AncillaryInterrogator},
-                {"drop", "Remove the reflog for the specified references", C::AncillaryManipulator}
-            };
-        }
-        if (subcommand == "sparse-checkout")
-        {
-            return {
-                {"list", "Describe the directories or patterns in the sparse-checkout file", C::MainPorcelain},
-                {"init", "Enable sparse-checkout (deprecated in favor of set)", C::MainPorcelain},
-                {"set", "Enable sparse-checkout and write patterns", C::MainPorcelain},
-                {"add", "Add patterns to the sparse-checkout file", C::MainPorcelain},
-                {"reapply", "Reapply the sparsity pattern rules to paths in working tree", C::MainPorcelain},
-                {"disable", "Disable sparse-checkout and restore full working directory", C::MainPorcelain},
-                {"check-rules", "Check whether sparsity rules match one or more paths", C::AncillaryInterrogator}
-            };
-        }
-        if (subcommand == "maintenance")
-        {
-            return {
-                {"run", "Run one or more maintenance tasks", C::MainPorcelain},
-                {"start", "Start running maintenance on the current repository", C::MainPorcelain},
-                {"stop", "Halt the background maintenance schedule", C::MainPorcelain},
-                {"register", "Add the current repository to maintenance.repo config", C::MainPorcelain},
-                {"unregister", "Remove the current repository from maintenance.repo config", C::MainPorcelain}
-            };
-        }
-        if (subcommand == "bundle")
-        {
-            return {
-                {"create", "Create a bundle file from specified refs", C::MainPorcelain},
-                {"verify", "Check that a bundle file is valid and can be applied", C::MainPorcelain},
-                {"list-heads", "List the references defined in the bundle", C::MainPorcelain},
-                {"unbundle", "Pass objects in the bundle to git index-pack", C::MainPorcelain}
-            };
-        }
-        if (subcommand == "config")
-        {
-            return {
-                {"list", "List all variables set in config file along with values", C::MainPorcelain},
-                {"get", "Get value for a given key", C::MainPorcelain},
-                {"set", "Set a configuration value", C::MainPorcelain},
-                {"unset", "Remove a configuration key", C::MainPorcelain},
-                {"edit", "Open an editor to modify the specified config file", C::MainPorcelain},
-                {"rename-section", "Rename the given section to a new name", C::AncillaryManipulator},
-                {"remove-section", "Remove the given section from the configuration file", C::AncillaryManipulator}
-            };
-        }
-        if (subcommand == "rerere")
-        {
-            return {
-                {"status", "Print paths with conflicts whose merge resolution will be recorded", C::MainPorcelain},
-                {"diff", "Display diffs for the current state of the resolution", C::MainPorcelain},
-                {"remaining", "Print paths with conflicts that have not been resolved", C::MainPorcelain},
-                {"forget", "Reset the conflict resolutions which rerere has recorded", C::MainPorcelain},
-                {"clear", "Reset the metadata used by rerere", C::AncillaryManipulator},
-                {"gc", "Prune records of conflicted merges that occurred a long time ago", C::AncillaryManipulator}
-            };
-        }
-        if (subcommand == "lfs")
-        {
-            return {
-                {"track", "View or add Git LFS paths to Git Attributes", C::External},
-                {"untrack", "Remove Git LFS paths from Git Attributes", C::External},
-                {"status", "Show the status of Git LFS files in the working tree", C::External},
-                {"ls-files", "Show information about Git LFS files in the index and working tree", C::External},
-                {"pull", "Fetch Git LFS changes from the remote & checkout any required files", C::External},
-                {"push", "Push queued large files to the Git LFS endpoint", C::External},
-                {"fetch", "Download Git LFS files from a remote", C::External},
-                {"checkout", "Update working copy with file content if available", C::External},
-                {"prune", "Delete old LFS files from local storage", C::External},
-                {"migrate", "Migrate history to or from Git LFS", C::External},
-                {"install", "Install Git LFS configuration", C::External},
-                {"env", "Display the Git LFS environment", C::External},
-                {"version", "Report the version number", C::External}
-            };
-        }
-        if (subcommand == "commit-graph")
-        {
-            return {
-                {"write", "Write a commit-graph file based on commits in packfiles", C::LowLevelManipulator},
-                {"verify", "Read the commit-graph file and verify its contents", C::LowLevelInterrogator}
-            };
-        }
-        if (subcommand == "multi-pack-index")
-        {
-            return {
-                {"write", "Write a new MIDX file", C::LowLevelManipulator},
-                {"verify", "Verify the contents of the MIDX file", C::LowLevelInterrogator},
-                {"expire", "Delete packfiles with no objects referenced by MIDX", C::LowLevelManipulator},
-                {"repack", "Create a new packfile containing objects in small packfiles", C::LowLevelManipulator}
-            };
-        }
-        if (subcommand == "credential")
-        {
-            return {
-                {"fill", "Request credentials from configured credential helpers", C::LowLevelHelper},
-                {"approve", "Store credentials with configured credential helpers", C::LowLevelHelper},
-                {"reject", "Erase matching credentials from credential helpers", C::LowLevelHelper}
-            };
-        }
-        return {};
+        return out;
     }
 
     std::vector<bo::GitCommandSpec> GitCatalogService::builtinFallbackCommands()

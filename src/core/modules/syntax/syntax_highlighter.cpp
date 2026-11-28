@@ -553,21 +553,13 @@ namespace gf::core::syntax
         return core::escapeHtmlStrictSpaces(text);
     }
 
-    std::vector<Token> SyntaxHighlighter::tokenizeMarkdownLine(const std::string_view line,
-                                                               MarkdownLineState& state) noexcept
+    namespace
     {
-        std::vector<Token> tokens;
-        if (line.empty())
-        {
-            return tokens;
-        }
-
-        // Count leading indentation
-        const auto [wsEnd, wsColumns] = detail::scanLeadingIndent(line);
-        const std::string_view trimmed = line.substr(wsEnd);
-
-        // 1. Inside an open fenced code block
-        if (state.inCodeFence)
+        void tokenizeMarkdownFenceBody(const std::string_view line,
+                                       const std::size_t wsEnd,
+                                       const std::string_view trimmed,
+                                       MarkdownLineState& state,
+                                       std::vector<Token>& tokens) noexcept
         {
             if (const auto closeFence = detail::matchFenceClose(line, state.fenceChar, state.fenceLength))
             {
@@ -589,12 +581,13 @@ namespace gf::core::syntax
                 state.inCodeFence = false;
                 state.fenceLength = 0;
                 state.fenceLanguage = Language::Unknown;
-                return tokens;
+                return;
             }
 
             if (state.fenceLanguage != Language::Unknown)
             {
-                return tokenize(line, state.fenceLanguage);
+                tokens = SyntaxHighlighter::tokenize(line, state.fenceLanguage);
+                return;
             }
 
             // Plain code fence / tree diagram / ASCII art -> keep UTF-8 plain text completely intact
@@ -606,10 +599,363 @@ namespace gf::core::syntax
             {
                 tokens.push_back({.type = TokenType::PlainText, .text = std::string(trimmed)});
             }
+        }
+
+        void tokenizeMarkdownBlockquote(const std::string_view trimmed, std::vector<Token>& tokens) noexcept
+        {
+            std::size_t qIdx = 0;
+            while (qIdx < trimmed.size() && trimmed[qIdx] == '>')
+            {
+                tokens.push_back({.type = TokenType::MarkdownMarker, .text = ">"});
+                ++qIdx;
+                if (qIdx < trimmed.size() && trimmed[qIdx] == ' ')
+                {
+                    tokens.push_back({.type = TokenType::Whitespace, .text = " "});
+                    ++qIdx;
+                }
+            }
+            std::string_view qRest = trimmed.substr(qIdx);
+            for (const std::string_view alert : {"[!NOTE]", "[!TIP]", "[!IMPORTANT]", "[!WARNING]", "[!CAUTION]"})
+            {
+                if (qRest.starts_with(alert))
+                {
+                    tokens.push_back({.type = TokenType::Preprocessor, .text = std::string(alert)});
+                    qRest.remove_prefix(alert.size());
+                    break;
+                }
+            }
+            appendMarkdownInlineTokens(tokens, qRest, TokenType::MarkdownQuote, false);
+        }
+
+        void tokenizeMarkdownListMarkerAndBody(const std::string_view trimmed,
+                                               const std::size_t markerEnd,
+                                               const bool allowTaskCheckbox,
+                                               std::vector<Token>& tokens) noexcept
+        {
+            tokens.push_back({.type = TokenType::MarkdownMarker, .text = std::string(trimmed.substr(0, markerEnd))});
+            std::size_t afterMarker = markerEnd;
+            while (afterMarker < trimmed.size() && (trimmed[afterMarker] == ' ' || trimmed[afterMarker] == '\t'))
+            {
+                ++afterMarker;
+            }
+            tokens.push_back({
+                .type = TokenType::Whitespace,
+                .text = std::string(trimmed.substr(markerEnd, afterMarker - markerEnd))
+            });
+            std::string_view itemRest = trimmed.substr(afterMarker);
+            if (allowTaskCheckbox && itemRest.size() >= 4 && itemRest[0] == '[' && itemRest[2] == ']' &&
+                (itemRest[1] == ' ' || itemRest[1] == 'x' || itemRest[1] == 'X') &&
+                (itemRest[3] == ' ' || itemRest[3] == '\t'))
+            {
+                tokens.push_back({.type = TokenType::Preprocessor, .text = std::string(itemRest.substr(0, 3))});
+                itemRest.remove_prefix(3);
+            }
+            appendMarkdownInlineTokens(tokens, itemRest, TokenType::PlainText, false);
+        }
+
+        [[nodiscard]] std::vector<Token> tokenizePlainTextUtf8(const std::string_view line) noexcept
+        {
+            std::vector<Token> tokens;
+            const std::size_t n = line.size();
+            std::size_t i = 0;
+            while (i < n)
+            {
+                if (line[i] == ' ' || line[i] == '\t' || line[i] == '\r' || line[i] == '\n')
+                {
+                    const std::size_t start = i;
+                    while (i < n && (line[i] == ' ' || line[i] == '\t' || line[i] == '\r' || line[i] == '\n')) ++i;
+                    tokens.push_back({.type = TokenType::Whitespace, .text = std::string(line.substr(start, i - start))});
+                }
+                else
+                {
+                    const std::size_t start = i;
+                    while (i < n && line[i] != ' ' && line[i] != '\t' && line[i] != '\r' && line[i] != '\n')
+                    {
+                        const auto uc = static_cast<unsigned char>(line[i]);
+                        i = uc >= 0x80 ? std::min(n, i + utf8SequenceLength(uc)) : (i + 1);
+                    }
+                    tokens.push_back({.type = TokenType::PlainText, .text = std::string(line.substr(start, i - start))});
+                }
+            }
             return tokens;
         }
 
-        // 2. Check opening fenced code block (``` or ~~~ with 0-3 leading spaces)
+        [[nodiscard]] bool isLineCommentStart(const std::string_view line,
+                                              const std::size_t i,
+                                              const Language lang) noexcept
+        {
+            const char c = line[i];
+            const std::size_t n = line.size();
+            if (c == '/' && i + 1 < n && line[i + 1] == '/') return true;
+            if (c == '#' && (lang == Language::Python || lang == Language::Shell ||
+                             lang == Language::Ruby || lang == Language::Yaml ||
+                             lang == Language::Docker || lang == Language::CMake ||
+                             lang == Language::Makefile || lang == Language::Git))
+            {
+                return true;
+            }
+            return c == '-' && i + 1 < n && line[i + 1] == '-' && lang == Language::Sql;
+        }
+
+        [[nodiscard]] bool tryConsumeInlineComment(const std::string_view line,
+                                                   std::size_t& i,
+                                                   std::vector<Token>& tokens,
+                                                   bool& reachedLineEnd) noexcept
+        {
+            const std::size_t n = line.size();
+            const char c = line[i];
+            if (c == '/' && i + 1 < n && line[i + 1] == '*')
+            {
+                if (auto endPos = line.find("*/", i + 2); endPos != std::string_view::npos)
+                {
+                    endPos += 2;
+                    tokens.push_back({.type = TokenType::Comment, .text = std::string(line.substr(i, endPos - i))});
+                    i = endPos;
+                    return true;
+                }
+                tokens.push_back({.type = TokenType::Comment, .text = std::string(line.substr(i))});
+                reachedLineEnd = true;
+                return true;
+            }
+            if (c == '<' && line.substr(i).starts_with("<!--"))
+            {
+                if (auto endPos = line.find("-->", i + 4); endPos != std::string_view::npos)
+                {
+                    endPos += 3;
+                    tokens.push_back({.type = TokenType::Comment, .text = std::string(line.substr(i, endPos - i))});
+                    i = endPos;
+                    return true;
+                }
+                tokens.push_back({.type = TokenType::Comment, .text = std::string(line.substr(i))});
+                reachedLineEnd = true;
+                return true;
+            }
+            return false;
+        }
+
+        [[nodiscard]] bool tryConsumePreprocessorOrMarkupDelimiter(const std::string_view line,
+                                                                 std::size_t& i,
+                                                                 const bool isMarkup,
+                                                                 const Language lang,
+                                                                 std::vector<Token>& tokens,
+                                                                 char& prevNonWhitespaceChar) noexcept
+        {
+            const std::size_t n = line.size();
+            const char c = line[i];
+            if (isMarkup && c == '<' && (line.substr(i).starts_with("<?") || line.substr(i).starts_with("<!")) &&
+                !line.substr(i).starts_with("<!--"))
+            {
+                if (auto endPos = line.find('>', i); endPos != std::string_view::npos)
+                {
+                    ++endPos;
+                    tokens.push_back({.type = TokenType::Preprocessor, .text = std::string(line.substr(i, endPos - i))});
+                    i = endPos;
+                    prevNonWhitespaceChar = '>';
+                    return true;
+                }
+            }
+            if (isMarkup)
+            {
+                if (c == '<' && i + 1 < n && line[i + 1] == '/')
+                {
+                    tokens.push_back({.type = TokenType::Punctuation, .text = "</"});
+                    i += 2;
+                    prevNonWhitespaceChar = '/';
+                    return true;
+                }
+                if (c == '/' && i + 1 < n && line[i + 1] == '>')
+                {
+                    tokens.push_back({.type = TokenType::Punctuation, .text = "/>"});
+                    i += 2;
+                    prevNonWhitespaceChar = '>';
+                    return true;
+                }
+            }
+            const bool isCppDirective = c == '#' && (lang == Language::Cpp || lang == Language::C || lang == Language::CSharp);
+            const bool isDecorator = c == '@' && (lang == Language::Python || lang == Language::Java ||
+                                                  lang == Language::TypeScript || lang == Language::Kotlin);
+            if (isCppDirective || isDecorator)
+            {
+                const std::size_t start = i++;
+                while (i < n && isIdentChar(line[i])) ++i;
+                tokens.push_back({.type = TokenType::Preprocessor, .text = std::string(line.substr(start, i - start))});
+                prevNonWhitespaceChar = c;
+                return true;
+            }
+            return false;
+        }
+
+        [[nodiscard]] std::size_t scanStringLiteralEnd(const std::string_view line, const std::size_t start) noexcept
+        {
+            const char quote = line[start];
+            std::size_t i = start + 1;
+            const std::size_t n = line.size();
+            while (i < n)
+            {
+                if (line[i] == '\\' && i + 1 < n) i += 2;
+                else if (line[i] == quote) { ++i; break; }
+                else ++i;
+            }
+            return i;
+        }
+
+        [[nodiscard]] std::size_t scanNumericLiteralEnd(const std::string_view line, const std::size_t start) noexcept
+        {
+            std::size_t i = start;
+            const std::size_t n = line.size();
+            const char c = line[i];
+            if (c == '0' && i + 1 < n &&
+                (line[i + 1] == 'x' || line[i + 1] == 'X' || line[i + 1] == 'b' || line[i + 1] == 'B'))
+            {
+                i += 2;
+                while (i < n && (asciiIsXDigit(line[i]) || line[i] == '_')) ++i;
+                return i;
+            }
+            bool hasDot = c == '.';
+            while (i < n && (asciiIsDigit(line[i]) || (!hasDot && line[i] == '.') || line[i] == '_'))
+            {
+                if (line[i] == '.') hasDot = true;
+                ++i;
+            }
+            if (i < n && (line[i] == 'e' || line[i] == 'E'))
+            {
+                ++i;
+                if (i < n && (line[i] == '+' || line[i] == '-')) ++i;
+                while (i < n && asciiIsDigit(line[i])) ++i;
+            }
+            while (i < n && (line[i] == 'f' || line[i] == 'F' || line[i] == 'u' ||
+                             line[i] == 'U' || line[i] == 'l' || line[i] == 'L'))
+            {
+                ++i;
+            }
+            return i;
+        }
+
+        void lookupLanguageKeywordAndType(const std::string& ident,
+                                          const Language lang,
+                                          bool& isKeyword,
+                                          bool& isBuiltinType) noexcept
+        {
+            isKeyword = false;
+            isBuiltinType = false;
+            switch (lang)
+            {
+            case Language::Cpp:
+            case Language::C:
+                isKeyword = kCppKeywords.contains(ident);
+                isBuiltinType = kCppBuiltinTypes.contains(ident);
+                break;
+            case Language::JavaScript:
+            case Language::TypeScript:
+                isKeyword = kJsTsKeywords.contains(ident);
+                break;
+            case Language::Python:
+                isKeyword = kPythonKeywords.contains(ident);
+                break;
+            case Language::Rust:
+                isKeyword = kRustKeywords.contains(ident);
+                isBuiltinType = kRustBuiltinTypes.contains(ident);
+                break;
+            case Language::Go:
+                isKeyword = kGoKeywords.contains(ident);
+                isBuiltinType = kGoBuiltinTypes.contains(ident);
+                break;
+            case Language::Java:
+            case Language::CSharp:
+            case Language::Kotlin:
+            case Language::Swift:
+                isKeyword = kJavaCSharpKeywords.contains(ident);
+                break;
+            case Language::Qml:
+                isKeyword = kQmlKeywords.contains(ident) || kJsTsKeywords.contains(ident);
+                isBuiltinType = kQmlElements.contains(ident);
+                break;
+            case Language::Sql:
+                {
+                    std::string lowerIdent;
+                    lowerIdent.reserve(ident.size());
+                    for (const char ch : ident) lowerIdent.push_back(asciiToLower(ch));
+                    isKeyword = kSqlKeywords.contains(lowerIdent);
+                    break;
+                }
+            case Language::Shell:
+            case Language::PowerShell:
+                isKeyword = kShellKeywords.contains(ident);
+                break;
+            case Language::CMake:
+                isKeyword = kCMakeKeywords.contains(ident);
+                break;
+            default:
+                isKeyword = kCppKeywords.contains(ident) || kJsTsKeywords.contains(ident) ||
+                            kPythonKeywords.contains(ident);
+                break;
+            }
+        }
+
+        [[nodiscard]] TokenType classifyIdentifierToken(const std::string& ident,
+                                                        const std::string_view line,
+                                                        const std::size_t start,
+                                                        const char nextChar,
+                                                        const bool isMarkup,
+                                                        const Language lang,
+                                                        const char prevNonWhitespaceChar,
+                                                        const std::string& prevIdentifier,
+                                                        const TokenType prevTokenType) noexcept
+        {
+            if (isMarkup)
+            {
+                return (prevNonWhitespaceChar == '<' || prevNonWhitespaceChar == '/' ||
+                        (nextChar != '=' && isPascalCase(ident)))
+                    ? TokenType::Type
+                    : TokenType::Property;
+            }
+
+            const bool isProperty = prevNonWhitespaceChar == '.' ||
+                (prevNonWhitespaceChar == '>' && start >= 2 && line.substr(start - 2, 2) == "->");
+
+            bool isKeyword = false;
+            bool isBuiltinType = false;
+            lookupLanguageKeywordAndType(ident, lang, isKeyword, isBuiltinType);
+
+            const bool isTypeDeclTarget = prevIdentifier == "class" || prevIdentifier == "struct" ||
+                prevIdentifier == "enum" || prevIdentifier == "interface" ||
+                prevIdentifier == "type" || prevIdentifier == "extends" ||
+                prevIdentifier == "implements";
+            const bool isVarLike = ident.starts_with('$') || ident.starts_with("m_") ||
+                ident.starts_with("s_") || (ident.starts_with('_') && ident.size() > 1) ||
+                prevTokenType == TokenType::Type || prevIdentifier == "let" ||
+                prevIdentifier == "const" || prevIdentifier == "var" ||
+                prevIdentifier == "auto" || prevIdentifier == "val";
+
+            if (isBuiltinType ||
+                (!isKeyword && (isTypeDeclTarget || (!isProperty && nextChar != '(' && isPascalCase(ident)))))
+            {
+                return TokenType::Type;
+            }
+            if (isKeyword) return TokenType::Keyword;
+            if (nextChar == '(') return TokenType::Function;
+            if (isProperty) return TokenType::Property;
+            if (isAllCapsConstant(ident)) return TokenType::Constant;
+            if (isVarLike) return TokenType::Variable;
+            return TokenType::PlainText;
+        }
+    } // namespace
+
+    std::vector<Token> SyntaxHighlighter::tokenizeMarkdownLine(const std::string_view line,
+                                                               MarkdownLineState& state) noexcept
+    {
+        std::vector<Token> tokens;
+        if (line.empty()) return tokens;
+
+        const auto [wsEnd, wsColumns] = detail::scanLeadingIndent(line);
+        const std::string_view trimmed = line.substr(wsEnd);
+
+        if (state.inCodeFence)
+        {
+            tokenizeMarkdownFenceBody(line, wsEnd, trimmed, state, tokens);
+            return tokens;
+        }
+
         if (const auto openFence = detail::matchFenceOpen(line))
         {
             if (openFence->wsEnd > 0)
@@ -628,95 +974,36 @@ namespace gf::core::syntax
             return tokens;
         }
 
-        // Emit leading whitespace if any
         if (wsEnd > 0)
         {
             tokens.push_back({.type = TokenType::Whitespace, .text = std::string(line.substr(0, wsEnd))});
         }
-        if (trimmed.empty())
-        {
-            return tokens;
-        }
+        if (trimmed.empty()) return tokens;
 
-        // 3. ATX Heading (# Title)
         if (wsColumns <= 3)
         {
             if (const auto hashCount = detail::matchAtxHeadingHashes(trimmed))
             {
-                tokens.push_back({
-                    .type = TokenType::MarkdownMarker,
-                    .text = std::string(trimmed.substr(0, *hashCount))
-                });
+                tokens.push_back({.type = TokenType::MarkdownMarker, .text = std::string(trimmed.substr(0, *hashCount))});
                 appendMarkdownInlineTokens(tokens, trimmed.substr(*hashCount), TokenType::MarkdownHeading, false);
+                return tokens;
+            }
+            if (detail::isThematicBreakLine(trimmed))
+            {
+                tokens.push_back({.type = TokenType::Comment, .text = std::string(trimmed)});
+                return tokens;
+            }
+            if (trimmed[0] == '>')
+            {
+                tokenizeMarkdownBlockquote(trimmed, tokens);
                 return tokens;
             }
         }
 
-        // 4. Thematic Break (---, ***, ___)
-        if (wsColumns <= 3 && detail::isThematicBreakLine(trimmed))
-        {
-            tokens.push_back({.type = TokenType::Comment, .text = std::string(trimmed)});
-            return tokens;
-        }
-
-        // 5. Blockquote (> ...)
-        if (wsColumns <= 3 && trimmed[0] == '>')
-        {
-            std::size_t qIdx = 0;
-            while (qIdx < trimmed.size() && (trimmed[qIdx] == '>' || trimmed[qIdx] == ' '))
-            {
-                if (trimmed[qIdx] == '>')
-                {
-                    tokens.push_back({.type = TokenType::MarkdownMarker, .text = ">"});
-                    ++qIdx;
-                    if (qIdx < trimmed.size() && trimmed[qIdx] == ' ')
-                    {
-                        tokens.push_back({.type = TokenType::Whitespace, .text = " "});
-                        ++qIdx;
-                    }
-                }
-                else
-                {
-                    break;
-                }
-            }
-            std::string_view qRest = trimmed.substr(qIdx);
-            for (const std::string_view alert : {"[!NOTE]", "[!TIP]", "[!IMPORTANT]", "[!WARNING]", "[!CAUTION]"})
-            {
-                if (qRest.starts_with(alert))
-                {
-                    tokens.push_back({.type = TokenType::Preprocessor, .text = std::string(alert)});
-                    qRest.remove_prefix(alert.size());
-                    break;
-                }
-            }
-            appendMarkdownInlineTokens(tokens, qRest, TokenType::MarkdownQuote, false);
-            return tokens;
-        }
-
-        // 6. Unordered or Ordered List Item (- ..., * ..., + ..., 1. ...)
         if (trimmed.size() >= 2 && (trimmed[0] == '-' || trimmed[0] == '*' || trimmed[0] == '+') &&
             (trimmed[1] == ' ' || trimmed[1] == '\t'))
         {
-            tokens.push_back({.type = TokenType::MarkdownMarker, .text = std::string(trimmed.substr(0, 1))});
-            std::size_t afterMarker = 1;
-            while (afterMarker < trimmed.size() && (trimmed[afterMarker] == ' ' || trimmed[afterMarker] == '\t'))
-            {
-                ++afterMarker;
-            }
-            tokens.push_back({
-                .type = TokenType::Whitespace,
-                .text = std::string(trimmed.substr(1, afterMarker - 1))
-            });
-            std::string_view itemRest = trimmed.substr(afterMarker);
-            if (itemRest.size() >= 4 && itemRest[0] == '[' && itemRest[2] == ']' &&
-                (itemRest[1] == ' ' || itemRest[1] == 'x' || itemRest[1] == 'X') &&
-                (itemRest[3] == ' ' || itemRest[3] == '\t'))
-            {
-                tokens.push_back({.type = TokenType::Preprocessor, .text = std::string(itemRest.substr(0, 3))});
-                itemRest.remove_prefix(3);
-            }
-            appendMarkdownInlineTokens(tokens, itemRest, TokenType::PlainText, false);
+            tokenizeMarkdownListMarkerAndBody(trimmed, 1, true, tokens);
             return tokens;
         }
 
@@ -727,23 +1014,12 @@ namespace gf::core::syntax
             if (d < trimmed.size() && (trimmed[d] == '.' || trimmed[d] == ')') &&
                 d + 1 < trimmed.size() && (trimmed[d + 1] == ' ' || trimmed[d + 1] == '\t'))
             {
-                tokens.push_back({.type = TokenType::MarkdownMarker, .text = std::string(trimmed.substr(0, d + 1))});
-                std::size_t afterMarker = d + 1;
-                while (afterMarker < trimmed.size() && (trimmed[afterMarker] == ' ' || trimmed[afterMarker] == '\t'))
-                {
-                    ++afterMarker;
-                }
-                tokens.push_back({
-                    .type = TokenType::Whitespace,
-                    .text = std::string(trimmed.substr(d + 1, afterMarker - (d + 1)))
-                });
-                appendMarkdownInlineTokens(tokens, trimmed.substr(afterMarker), TokenType::PlainText, false);
+                tokenizeMarkdownListMarkerAndBody(trimmed, d + 1, false, tokens);
                 return tokens;
             }
         }
 
-        // 7. Table row or regular Markdown prose
-        const bool isTableRow = !trimmed.empty() && trimmed[0] == '|';
+        const bool isTableRow = trimmed[0] == '|';
         appendMarkdownInlineTokens(tokens, trimmed, TokenType::PlainText, isTableRow);
         return tokens;
     }
@@ -755,73 +1031,31 @@ namespace gf::core::syntax
             MarkdownLineState localState{};
             return tokenizeMarkdownLine(line, localState);
         }
+        if (lang == Language::Unknown)
+        {
+            return tokenizePlainTextUtf8(line);
+        }
 
         std::vector<Token> tokens;
         const std::size_t n = line.size();
-        std::size_t i = 0;
-
-        // Plain Text (Unknown language, e.g. .txt or plain code blocks): preserve UTF-8 cleanly without C++ highlighting
-        if (lang == Language::Unknown)
-        {
-            while (i < n)
-            {
-                if (line[i] == ' ' || line[i] == '\t' || line[i] == '\r' || line[i] == '\n')
-                {
-                    const std::size_t start = i;
-                    while (i < n && (line[i] == ' ' || line[i] == '\t' || line[i] == '\r' || line[i] == '\n'))
-                    {
-                        ++i;
-                    }
-                    tokens.push_back({
-                        .type = TokenType::Whitespace,
-                        .text = std::string(line.substr(start, i - start))
-                    });
-                }
-                else
-                {
-                    const std::size_t start = i;
-                    while (i < n && line[i] != ' ' && line[i] != '\t' && line[i] != '\r' && line[i] != '\n')
-                    {
-                        if (const auto uc = static_cast<unsigned char>(line[i]); uc >= 0x80)
-                        {
-                            i = std::min(n, i + utf8SequenceLength(uc));
-                        }
-                        else
-                        {
-                            ++i;
-                        }
-                    }
-                    tokens.push_back({
-                        .type = TokenType::PlainText,
-                        .text = std::string(line.substr(start, i - start))
-                    });
-                }
-            }
-            return tokens;
-        }
-
+        const bool isMarkup = lang == Language::Xml || lang == Language::Xaml || lang == Language::Html;
         char prevNonWhitespaceChar = '\0';
         std::string prevIdentifier;
         TokenType prevTokenType = TokenType::PlainText;
-        const bool isMarkup = lang == Language::Xml || lang == Language::Xaml || lang == Language::Html;
 
+        std::size_t i = 0;
         while (i < n)
         {
             const char c = line[i];
 
-            // 1. Whitespace
             if (asciiIsSpace(c))
             {
                 const std::size_t start = i;
-                while (i < n && asciiIsSpace(line[i]))
-                {
-                    ++i;
-                }
+                while (i < n && asciiIsSpace(line[i])) ++i;
                 tokens.push_back({.type = TokenType::Whitespace, .text = std::string(line.substr(start, i - start))});
                 continue;
             }
 
-            // Text content between tags for markup (e.g. <Label>Hello World</Label>)
             if (isMarkup && prevNonWhitespaceChar == '>' && c != '<')
             {
                 std::size_t endPos = line.find('<', i);
@@ -832,311 +1066,57 @@ namespace gf::core::syntax
                 continue;
             }
 
-            // 2. Line Comments
-            const bool isLineComment =
-                (c == '/' && i + 1 < n && line[i + 1] == '/') ||
-                (c == '#' && (lang == Language::Python || lang == Language::Shell ||
-                    lang == Language::Ruby || lang == Language::Yaml ||
-                    lang == Language::Docker || lang == Language::CMake ||
-                    lang == Language::Makefile || lang == Language::Git)) ||
-                (c == '-' && i + 1 < n && line[i + 1] == '-' && lang == Language::Sql);
-
-            if (isLineComment)
+            if (isLineCommentStart(line, i, lang))
             {
                 tokens.push_back({.type = TokenType::Comment, .text = std::string(line.substr(i))});
                 break;
             }
 
-            // 3. Block Comments on same line /* ... */ or <!-- ... -->
-            if (c == '/' && i + 1 < n && line[i + 1] == '*')
+            bool reachedLineEnd = false;
+            if (tryConsumeInlineComment(line, i, tokens, reachedLineEnd))
             {
-                if (auto endPos = line.find("*/", i + 2); endPos != std::string_view::npos)
-                {
-                    endPos += 2;
-                    tokens.push_back({.type = TokenType::Comment, .text = std::string(line.substr(i, endPos - i))});
-                    i = endPos;
-                    continue;
-                }
-                tokens.push_back({.type = TokenType::Comment, .text = std::string(line.substr(i))});
-                break;
-            }
-            if (c == '<' && line.substr(i).starts_with("<!--"))
-            {
-                if (auto endPos = line.find("-->", i + 4); endPos != std::string_view::npos)
-                {
-                    endPos += 3;
-                    tokens.push_back({.type = TokenType::Comment, .text = std::string(line.substr(i, endPos - i))});
-                    i = endPos;
-                    continue;
-                }
-                tokens.push_back({.type = TokenType::Comment, .text = std::string(line.substr(i))});
-                break;
-            }
-
-            // 4. Preprocessor / Decorator / Directive (#include, @decorator, <?xml ... ?>, <!DOCTYPE ...>)
-            if (isMarkup && c == '<' && (line.substr(i).starts_with("<?") || line.substr(i).starts_with("<!")) &&
-                !line.substr(i).starts_with("<!--"))
-            {
-                if (auto endPos = line.find('>', i); endPos != std::string_view::npos)
-                {
-                    ++endPos;
-                    tokens.push_back({
-                        .type = TokenType::Preprocessor,
-                        .text = std::string(line.substr(i, endPos - i))
-                    });
-                    i = endPos;
-                    prevNonWhitespaceChar = '>';
-                    continue;
-                }
-            }
-            if (isMarkup)
-            {
-                if (c == '<' && i + 1 < n && line[i + 1] == '/')
-                {
-                    tokens.push_back({.type = TokenType::Punctuation, .text = "</"});
-                    i += 2;
-                    prevNonWhitespaceChar = '/';
-                    continue;
-                }
-                if (c == '/' && i + 1 < n && line[i + 1] == '>')
-                {
-                    tokens.push_back({.type = TokenType::Punctuation, .text = "/>"});
-                    i += 2;
-                    prevNonWhitespaceChar = '>';
-                    continue;
-                }
-            }
-            if (c == '#' && (lang == Language::Cpp || lang == Language::C || lang == Language::CSharp))
-            {
-                const std::size_t start = i++;
-                while (i < n && isIdentChar(line[i]))
-                {
-                    ++i;
-                }
-                tokens.push_back({
-                    .type = TokenType::Preprocessor,
-                    .text = std::string(line.substr(start, i - start))
-                });
-                prevNonWhitespaceChar = '#';
-                continue;
-            }
-            if (c == '@' && (lang == Language::Python || lang == Language::Java ||
-                lang == Language::TypeScript || lang == Language::Kotlin))
-            {
-                const std::size_t start = i++;
-                while (i < n && isIdentChar(line[i]))
-                {
-                    ++i;
-                }
-                tokens.push_back({
-                    .type = TokenType::Preprocessor,
-                    .text = std::string(line.substr(start, i - start))
-                });
-                prevNonWhitespaceChar = '@';
+                if (reachedLineEnd) break;
                 continue;
             }
 
-            // 5. Strings: "...", '...', `...`
+            if (tryConsumePreprocessorOrMarkupDelimiter(line, i, isMarkup, lang, tokens, prevNonWhitespaceChar))
+            {
+                continue;
+            }
+
             if (c == '"' || c == '\'' || c == '`')
             {
-                const char quote = c;
-                const std::size_t start = i++;
-                while (i < n)
-                {
-                    if (line[i] == '\\' && i + 1 < n)
-                    {
-                        i += 2;
-                    }
-                    else if (line[i] == quote)
-                    {
-                        ++i;
-                        break;
-                    }
-                    else
-                    {
-                        ++i;
-                    }
-                }
+                const std::size_t start = i;
+                i = scanStringLiteralEnd(line, start);
                 tokens.push_back({.type = TokenType::String, .text = std::string(line.substr(start, i - start))});
-                prevNonWhitespaceChar = quote;
+                prevNonWhitespaceChar = c;
                 continue;
             }
 
-            // 6. Numbers: 123, 0xFF, 0b1010, 3.14159f
             if (asciiIsDigit(c) || (c == '.' && i + 1 < n && asciiIsDigit(line[i + 1])))
             {
                 const std::size_t start = i;
-                if (c == '0' && i + 1 < n && (line[i + 1] == 'x' || line[i + 1] == 'X' ||
-                    line[i + 1] == 'b' || line[i + 1] == 'B'))
-                {
-                    i += 2;
-                    while (i < n && (asciiIsXDigit(line[i]) || line[i] == '_'))
-                    {
-                        ++i;
-                    }
-                }
-                else
-                {
-                    bool hasDot = c == '.';
-                    while (i < n && (asciiIsDigit(line[i]) || (!hasDot && line[i] == '.') || line[i] == '_'))
-                    {
-                        if (line[i] == '.') hasDot = true;
-                        ++i;
-                    }
-                    if (i < n && (line[i] == 'e' || line[i] == 'E'))
-                    {
-                        ++i;
-                        if (i < n && (line[i] == '+' || line[i] == '-')) ++i;
-                        while (i < n && asciiIsDigit(line[i])) ++i;
-                    }
-                    while (i < n && (line[i] == 'f' || line[i] == 'F' || line[i] == 'u' ||
-                        line[i] == 'U' || line[i] == 'l' || line[i] == 'L'))
-                    {
-                        ++i;
-                    }
-                }
+                i = scanNumericLiteralEnd(line, start);
                 tokens.push_back({.type = TokenType::Number, .text = std::string(line.substr(start, i - start))});
                 prevNonWhitespaceChar = '0';
                 continue;
             }
 
-            // 7. Identifiers (Keywords, Types, Functions, Properties, Classes, Enums)
             if (isIdentStart(c) || (isMarkup && (c == ':' || isIdentChar(c))))
             {
                 const std::size_t start = i;
-                while (i < n && (isIdentChar(line[i]) || (isMarkup && (line[i] == ':' || line[i] == '-' || line[i] ==
-                    '.'))))
+                while (i < n && (isIdentChar(line[i]) || (isMarkup && (line[i] == ':' || line[i] == '-' || line[i] == '.'))))
                 {
                     ++i;
                 }
                 const auto ident = std::string(line.substr(start, i - start));
-
                 std::size_t nextIdx = i;
-                while (nextIdx < n && asciiIsSpace(line[nextIdx]))
-                {
-                    ++nextIdx;
-                }
+                while (nextIdx < n && asciiIsSpace(line[nextIdx])) ++nextIdx;
                 const char nextChar = nextIdx < n ? line[nextIdx] : '\0';
 
-                TokenType type = TokenType::PlainText;
-
-                if (isMarkup)
-                {
-                    if (prevNonWhitespaceChar == '<' || prevNonWhitespaceChar == '/' ||
-                        (nextChar != '=' && isPascalCase(ident)))
-                    {
-                        type = TokenType::Type;
-                    }
-                    else
-                    {
-                        type = TokenType::Property;
-                    }
-                }
-                else
-                {
-                    const bool isProperty = prevNonWhitespaceChar == '.' ||
-                        (prevNonWhitespaceChar == '>' && start >= 2 && line.substr(start - 2, 2) == "->");
-
-                    bool isKeyword = false;
-                    bool isBuiltinType = false;
-
-                    switch (lang)
-                    {
-                    case Language::Cpp:
-                    case Language::C:
-                        isKeyword = kCppKeywords.contains(ident);
-                        isBuiltinType = kCppBuiltinTypes.contains(ident);
-                        break;
-                    case Language::JavaScript:
-                    case Language::TypeScript:
-                        isKeyword = kJsTsKeywords.contains(ident);
-                        break;
-                    case Language::Python:
-                        isKeyword = kPythonKeywords.contains(ident);
-                        break;
-                    case Language::Rust:
-                        isKeyword = kRustKeywords.contains(ident);
-                        isBuiltinType = kRustBuiltinTypes.contains(ident);
-                        break;
-                    case Language::Go:
-                        isKeyword = kGoKeywords.contains(ident);
-                        isBuiltinType = kGoBuiltinTypes.contains(ident);
-                        break;
-                    case Language::Java:
-                    case Language::CSharp:
-                    case Language::Kotlin:
-                    case Language::Swift:
-                        isKeyword = kJavaCSharpKeywords.contains(ident);
-                        break;
-                    case Language::Qml:
-                        isKeyword = kQmlKeywords.contains(ident) || kJsTsKeywords.contains(ident);
-                        if (kQmlElements.contains(ident))
-                        {
-                            isBuiltinType = true;
-                        }
-                        break;
-                    case Language::Sql:
-                        {
-                            std::string lowerIdent;
-                            lowerIdent.reserve(ident.size());
-                            for (const char ch : ident) lowerIdent.push_back(asciiToLower(ch));
-                            isKeyword = kSqlKeywords.contains(lowerIdent);
-                            break;
-                        }
-                    case Language::Shell:
-                    case Language::PowerShell:
-                        isKeyword = kShellKeywords.contains(ident);
-                        break;
-                    case Language::CMake:
-                        isKeyword = kCMakeKeywords.contains(ident);
-                        break;
-                    default:
-                        isKeyword = kCppKeywords.contains(ident) || kJsTsKeywords.contains(ident) || kPythonKeywords.
-                            contains(ident);
-                        break;
-                    }
-
-                    const bool isTypeDeclTarget = prevIdentifier == "class" || prevIdentifier == "struct" ||
-                        prevIdentifier == "enum" || prevIdentifier == "interface" ||
-                        prevIdentifier == "type" || prevIdentifier == "extends" ||
-                        prevIdentifier == "implements";
-                    const bool isVarLike = ident.starts_with('$') || ident.starts_with("m_") ||
-                        ident.starts_with("s_") || (ident.starts_with('_') && ident.size() > 1) ||
-                        prevTokenType == TokenType::Type || prevIdentifier == "let" ||
-                        prevIdentifier == "const" || prevIdentifier == "var" ||
-                        prevIdentifier == "auto" || prevIdentifier == "val";
-
-                    if (isBuiltinType ||
-                        (!isKeyword && (isTypeDeclTarget || (!isProperty && nextChar != '(' && isPascalCase(ident)))))
-                    {
-                        type = TokenType::Type;
-                    }
-                    else if (isKeyword)
-                    {
-                        type = TokenType::Keyword;
-                    }
-                    else if (nextChar == '(')
-                    {
-                        type = TokenType::Function;
-                    }
-                    else if (isProperty)
-                    {
-                        type = TokenType::Property;
-                    }
-                    else if (isAllCapsConstant(ident))
-                    {
-                        type = TokenType::Constant;
-                    }
-                    else if (isVarLike)
-                    {
-                        type = TokenType::Variable;
-                    }
-                    else
-                    {
-                        type = TokenType::PlainText;
-                    }
-                }
-
+                const TokenType type = classifyIdentifierToken(
+                    ident, line, start, nextChar, isMarkup, lang,
+                    prevNonWhitespaceChar, prevIdentifier, prevTokenType);
                 tokens.push_back({.type = type, .text = ident});
                 prevTokenType = type;
                 prevIdentifier = ident;
@@ -1144,7 +1124,6 @@ namespace gf::core::syntax
                 continue;
             }
 
-            // 8. UTF-8 Multi-Byte Text (box-drawing characters, accented letters, emojis, etc.)
             // Keep complete UTF-8 sequences together in a single PlainText token so multi-byte
             // characters are never sliced across separate HTML <span> elements.
             if (static_cast<unsigned char>(c) >= 0x80)
@@ -1152,8 +1131,7 @@ namespace gf::core::syntax
                 const std::size_t start = i;
                 while (i < n && static_cast<unsigned char>(line[i]) >= 0x80)
                 {
-                    const std::size_t seqLen = utf8SequenceLength(static_cast<unsigned char>(line[i]));
-                    i = std::min(n, i + seqLen);
+                    i = std::min(n, i + utf8SequenceLength(static_cast<unsigned char>(line[i])));
                 }
                 tokens.push_back({.type = TokenType::PlainText, .text = std::string(line.substr(start, i - start))});
                 prevTokenType = TokenType::PlainText;
@@ -1161,20 +1139,12 @@ namespace gf::core::syntax
                 continue;
             }
 
-            // 9. Operators and Punctuation (ASCII)
-            TokenType opType = TokenType::Operator;
-            if (c == ';' || c == ',' || c == '(' || c == ')' || c == '{' || c == '}' || c == '[' || c == ']' ||
-                (isMarkup && (c == '<' || c == '>')))
-            {
-                opType = TokenType::Punctuation;
-            }
-
+            const bool isPunc = c == ';' || c == ',' || c == '(' || c == ')' || c == '{' || c == '}' ||
+                                c == '[' || c == ']' || (isMarkup && (c == '<' || c == '>'));
+            const TokenType opType = isPunc ? TokenType::Punctuation : TokenType::Operator;
             tokens.push_back({.type = opType, .text = std::string(1, c)});
             prevTokenType = opType;
-            if (c == ';' || c == '{' || c == '}')
-            {
-                prevIdentifier.clear();
-            }
+            if (c == ';' || c == '{' || c == '}') prevIdentifier.clear();
             prevNonWhitespaceChar = c;
             ++i;
         }

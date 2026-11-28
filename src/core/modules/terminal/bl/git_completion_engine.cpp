@@ -678,31 +678,14 @@ namespace gf::terminal::bl
                 }
             }
         }
-    } // namespace
 
-    bo::CompletionResult GitCompletionEngine::complete(const std::string_view inputLine,
-                                                       const std::size_t cursorPos,
-                                                       const std::filesystem::path& workingDir,
-                                                       const GitCatalogService& catalog,
-                                                       const bo::RepoCompletionSnapshot& repoSnapshot,
-                                                       const bool explicitTrigger,
-                                                       const bo::TargetOs targetOs)
-    {
-        const auto seg = CommandLineTokenizer::parseActiveSegment(inputLine, cursorPos);
+        using ActiveSegment = decltype(CommandLineTokenizer::parseActiveSegment(std::string_view{}, 0));
 
-        bo::CompletionResult result;
-        result.replaceStart = seg.activeReplaceStart;
-        result.replaceLength = seg.activeReplaceLength;
-        result.activePrefix = seg.activePrefix;
-
-        // Stage 0: First token of segment (e.g. `g`, `gi`, `cd`)
-        if (seg.activeTokenIndex == 0)
+        void completeInitialCommandToken(const ActiveSegment& seg,
+                                         const std::filesystem::path& workingDir,
+                                         const bo::TargetOs targetOs,
+                                         bo::CompletionResult& result)
         {
-            if (seg.activePrefix.empty() && !explicitTrigger)
-            {
-                return result;
-            }
-
             struct BuiltinSpec
             {
                 const char* name;
@@ -738,22 +721,18 @@ namespace gf::terminal::bl
                 }
             }
 
-            // Also complete local directories & files at position 0 (e.g. `sc` -> `scripts/`, `.\sc` -> `.\scripts\`)
             addFilesystemCompletions(workingDir, seg.activePrefix, false, result.items, seen, 500, targetOs);
-
             sortCompletionItems(result.items);
-            return result;
         }
 
-        const std::string cmd0 = toLower(seg.tokens[0].value);
-
-        // Non-git commands: detect local script invocations (direct or via interpreter) for parameter completion,
-        // plus filesystem path completion for `cd` and general commands.
-        if (cmd0 != "git")
+        void completeNonGitCommandArgs(const ActiveSegment& seg,
+                                       const std::string& cmd0,
+                                       const std::filesystem::path& workingDir,
+                                       const bool explicitTrigger,
+                                       const bo::TargetOs targetOs,
+                                       bo::CompletionResult& result)
         {
             std::unordered_set<std::string> seen;
-
-            // Detect target script file (either tokens[0] directly, or first script file token after an interpreter)
             std::filesystem::path scriptPath;
             std::size_t scriptTokenIdx = std::string::npos;
 
@@ -778,7 +757,6 @@ namespace gf::terminal::bl
 
             bool inParameterizedScript = false;
             bool prevExpectsValue = false;
-
             if (!scriptPath.empty())
             {
                 const auto meta = ScriptParameterAnalyzer::analyzeFileCached(scriptPath);
@@ -787,8 +765,8 @@ namespace gf::terminal::bl
                     inParameterizedScript = true;
                     const bool hasExistingArgs = (seg.activeTokenIndex > scriptTokenIdx + 1);
                     const std::string_view prevTok = hasExistingArgs
-                                                         ? std::string_view(seg.tokens[seg.activeTokenIndex - 1].value)
-                                                         : std::string_view{};
+                        ? std::string_view(seg.tokens[seg.activeTokenIndex - 1].value)
+                        : std::string_view{};
 
                     std::unordered_set<std::string> usedCanonicalLower;
                     for (std::size_t i = scriptTokenIdx + 1; i < seg.activeTokenIndex; ++i)
@@ -809,27 +787,20 @@ namespace gf::terminal::bl
                                              (seg.activePrefix.find('/') != std::string::npos ||
                                               seg.activePrefix.find('\\') != std::string::npos ||
                                               seg.activePrefix.front() == '.');
-
-            // Inside a parameterized script, only suggest filesystem entries when filling a parameter value
-            // or explicitly typing a path — never pollute parameter lists with unrelated root files on Tab!
             const bool isCdFirstArg = (cmd0 == "cd" && seg.activeTokenIndex == 1);
             const bool shouldSuggestFs = inParameterizedScript
-                                             ? (!onlyFlagPrefix &&
-                                                ((prevExpectsValue && result.items.empty() &&
-                                                  (explicitTrigger || !seg.activePrefix.empty())) ||
-                                                 looksLikePathPrefix))
-                                             : (!onlyFlagPrefix &&
-                                                (isCdFirstArg ||
-                                                 (cmd0 != "cd" && (explicitTrigger || !seg.activePrefix.empty()))));
+                ? (!onlyFlagPrefix &&
+                   ((prevExpectsValue && result.items.empty() &&
+                     (explicitTrigger || !seg.activePrefix.empty())) ||
+                    looksLikePathPrefix))
+                : (!onlyFlagPrefix &&
+                   (isCdFirstArg ||
+                    (cmd0 != "cd" && (explicitTrigger || !seg.activePrefix.empty()))));
 
             if (shouldSuggestFs)
             {
                 addFilesystemCompletions(workingDir, seg.activePrefix, cmd0 == "cd", result.items, seen, 500, targetOs);
 
-                // When the user has already typed an existing directory (e.g. `cd scripts` or `cd scripts/`)
-                // or existing file and other suggestions are shown (subfolders or sibling matches), place an
-                // explicit execute row at index 0 — just like parameterized scripts — so Enter runs the command
-                // immediately instead of auto-completing into the first subfolder/sibling.
                 if (!inParameterizedScript && !seg.activePrefix.empty() && !result.items.empty())
                 {
                     const bool isExistingDir = !resolvePathByKind(workingDir, seg.activePrefix, true).empty();
@@ -840,8 +811,8 @@ namespace gf::terminal::bl
                             .insertText = "",
                             .displayText = "▶ Esegui comando",
                             .detail = (cmd0 == "cd")
-                                          ? ("Premi Invio per aprire \"" + seg.activePrefix + "\"")
-                                          : ("Premi Invio per eseguire con \"" + seg.activePrefix + "\""),
+                                ? ("Premi Invio per aprire \"" + seg.activePrefix + "\"")
+                                : ("Premi Invio per eseguire con \"" + seg.activePrefix + "\""),
                             .categoryLabel = "run",
                             .kind = bo::CompletionItemKind::ExecuteAction,
                             .matchStart = 0,
@@ -854,34 +825,159 @@ namespace gf::terminal::bl
             }
 
             sortCompletionItems(result.items);
+        }
+
+        void completeContextualGitArguments(const ActiveSegment& seg,
+                                          const std::string& subcommand,
+                                          const std::vector<std::string>& positionalArgs,
+                                          const std::filesystem::path& workingDir,
+                                          const bo::RepoCompletionSnapshot& repoSnapshot,
+                                          const bool explicitTrigger,
+                                          std::unordered_set<std::string>& seen,
+                                          bo::CompletionResult& result)
+        {
+            const auto subSubs = GitCatalogService::subSubcommandsFor(subcommand);
+            if (positionalArgs.empty() && !subSubs.empty())
+            {
+                addCommandListCompletions(subSubs, seg.activePrefix, bo::CompletionItemKind::GitSubcommand, result.items);
+                for (const auto& it : result.items) seen.insert(it.displayText);
+            }
+
+            if (subcommand == "stash" && !positionalArgs.empty())
+            {
+                const std::string_view action = positionalArgs[0];
+                if (action == "pop" || action == "apply" || action == "drop" ||
+                    action == "show" || action == "branch")
+                {
+                    addStashCompletions(repoSnapshot, seg.activePrefix, result.items, seen);
+                }
+                return;
+            }
+            if (subcommand == "remote" && !positionalArgs.empty())
+            {
+                const std::string_view action = positionalArgs[0];
+                if (action == "remove" || action == "rm" || action == "rename" || action == "show" ||
+                    action == "prune" || action == "get-url" || action == "set-url" || action == "update" ||
+                    action == "set-head" || action == "set-branches")
+                {
+                    addRemoteCompletions(repoSnapshot, seg.activePrefix, result.items, seen);
+                }
+                return;
+            }
+            if (isRemoteCommand(subcommand))
+            {
+                if (positionalArgs.empty())
+                {
+                    addRemoteCompletions(repoSnapshot, seg.activePrefix, result.items, seen);
+                }
+                else
+                {
+                    addBranchAndRefCompletions(repoSnapshot, seg.activePrefix, result.items, seen,
+                                               subcommand != "push", true);
+                }
+                return;
+            }
+            if (subcommand == "add")
+            {
+                if ((seg.activePrefix.empty() || seg.activePrefix == ".") && seen.insert(".").second)
+                {
+                    result.items.push_back(bo::CompletionItem{
+                        .insertText = ".",
+                        .displayText = ".",
+                        .detail = "Aggiungi tutte le modifiche nella directory corrente",
+                        .categoryLabel = "path",
+                        .kind = bo::CompletionItemKind::FilePath,
+                        .matchStart = 0,
+                        .matchLength = seg.activePrefix.size(),
+                        .appendSpace = true,
+                        .score = 620
+                    });
+                }
+                addWorkingTreeFileCompletions(repoSnapshot, seg.activePrefix, true, result.items, seen);
+                addFilesystemCompletions(workingDir, seg.activePrefix, false, result.items, seen, 400);
+                return;
+            }
+            if (subcommand == "restore" || subcommand == "rm" || subcommand == "mv" || subcommand == "blame")
+            {
+                addWorkingTreeFileCompletions(repoSnapshot, seg.activePrefix, false, result.items, seen);
+                addFilesystemCompletions(workingDir, seg.activePrefix, false, result.items, seen, 400);
+                return;
+            }
+            if (isBranchRefCommand(subcommand))
+            {
+                addBranchAndRefCompletions(repoSnapshot, seg.activePrefix, result.items, seen,
+                                           true, subcommand != "switch");
+                if (isFileCommand(subcommand))
+                {
+                    addWorkingTreeFileCompletions(repoSnapshot, seg.activePrefix, false, result.items, seen);
+                }
+                return;
+            }
+            if (subcommand == "worktree" && !positionalArgs.empty() && positionalArgs[0] == "add")
+            {
+                if (positionalArgs.size() == 1)
+                {
+                    addFilesystemCompletions(workingDir, seg.activePrefix, true, result.items, seen, 500);
+                }
+                else
+                {
+                    addBranchAndRefCompletions(repoSnapshot, seg.activePrefix, result.items, seen, true, true);
+                }
+                return;
+            }
+            if (explicitTrigger && seg.activePrefix.empty())
+            {
+                // When explicitly pressing Ctrl+Space after any other git command, offer files
+                // (subcommand flags are appended uniformly below).
+                addFilesystemCompletions(workingDir, "", false, result.items, seen, 300);
+            }
+        }
+    } // namespace
+
+    bo::CompletionResult GitCompletionEngine::complete(const std::string_view inputLine,
+                                                       const std::size_t cursorPos,
+                                                       const std::filesystem::path& workingDir,
+                                                       const GitCatalogService& catalog,
+                                                       const bo::RepoCompletionSnapshot& repoSnapshot,
+                                                       const bool explicitTrigger,
+                                                       const bo::TargetOs targetOs)
+    {
+        const auto seg = CommandLineTokenizer::parseActiveSegment(inputLine, cursorPos);
+
+        bo::CompletionResult result;
+        result.replaceStart = seg.activeReplaceStart;
+        result.replaceLength = seg.activeReplaceLength;
+        result.activePrefix = seg.activePrefix;
+
+        if (seg.activeTokenIndex == 0)
+        {
+            if (seg.activePrefix.empty() && !explicitTrigger) return result;
+            completeInitialCommandToken(seg, workingDir, targetOs, result);
             return result;
         }
 
-        // We are inside a `git ...` command!
-        // Walk tokens[1 .. activeTokenIndex) to skip global git options and find the subcommand.
+        const std::string cmd0 = toLower(seg.tokens[0].value);
+        if (cmd0 != "git")
+        {
+            completeNonGitCommandArgs(seg, cmd0, workingDir, explicitTrigger, targetOs, result);
+            return result;
+        }
+
         std::size_t subcommandIndex = std::string::npos;
         bool expectingGlobalOptionValue = false;
         for (std::size_t i = 1; i < seg.activeTokenIndex; ++i)
         {
             const std::string_view tok = seg.tokens[i].value;
-            if (expectingGlobalOptionValue)
-            {
-                expectingGlobalOptionValue = false;
-                continue;
-            }
+            if (expectingGlobalOptionValue) { expectingGlobalOptionValue = false; continue; }
             if (tok.starts_with('-'))
             {
-                if (globalOptionTakesSeparateArg(tok))
-                {
-                    expectingGlobalOptionValue = true;
-                }
+                if (globalOptionTakesSeparateArg(tok)) expectingGlobalOptionValue = true;
                 continue;
             }
             subcommandIndex = i;
             break;
         }
 
-        // If right after `-C `, complete directory paths
         if (expectingGlobalOptionValue)
         {
             if (seg.activeTokenIndex > 0 && seg.tokens[seg.activeTokenIndex - 1].value == "-C")
@@ -892,7 +988,6 @@ namespace gf::terminal::bl
             return result;
         }
 
-        // Stage 1: No subcommand yet -> complete global git options or ALL Git commands & aliases
         if (subcommandIndex == std::string::npos)
         {
             if (!seg.activePrefix.empty() && seg.activePrefix.front() == '-')
@@ -904,34 +999,23 @@ namespace gf::terminal::bl
                 addCommandListCompletions(catalog.allCommands(), seg.activePrefix,
                                           bo::CompletionItemKind::GitCommand, result.items);
             }
-
             sortCompletionItems(result.items);
             return result;
         }
 
-        // Stage 2: Subcommand is known!
         const std::string subcommand = seg.tokens[subcommandIndex].value;
         result.activeSubcommand = subcommand;
 
-        // Inspect arguments between subcommand and activeTokenIndex
         bool seenDoubleDash = false;
         std::vector<std::string> positionalArgs;
         for (std::size_t i = subcommandIndex + 1; i < seg.activeTokenIndex; ++i)
         {
             const std::string_view tok = seg.tokens[i].value;
-            if (tok == "--")
-            {
-                seenDoubleDash = true;
-                continue;
-            }
-            if (!seenDoubleDash && tok.starts_with('-'))
-            {
-                continue;
-            }
+            if (tok == "--") { seenDoubleDash = true; continue; }
+            if (!seenDoubleDash && tok.starts_with('-')) continue;
             positionalArgs.emplace_back(tok);
         }
 
-        // 2a. Flag completion (`git <cmd> -...`)
         if (!seenDoubleDash && !seg.activePrefix.empty() && seg.activePrefix.front() == '-')
         {
             if (const auto opts = catalog.cachedOptionsFor(subcommand); opts.has_value())
@@ -942,12 +1026,10 @@ namespace gf::terminal::bl
             {
                 result.needsSubcommandOptionsLoad = true;
             }
-
             sortCompletionItems(result.items);
             return result;
         }
 
-        // 2b. `git help <command>` -> complete all Git commands!
         if (subcommand == "help" && positionalArgs.empty())
         {
             addCommandListCompletions(catalog.allCommands(), seg.activePrefix,
@@ -957,8 +1039,6 @@ namespace gf::terminal::bl
         }
 
         std::unordered_set<std::string> seen;
-
-        // 2c. After `--` pathspec separator -> always suggest working tree / filesystem files
         if (seenDoubleDash)
         {
             addWorkingTreeFileCompletions(repoSnapshot, seg.activePrefix, subcommand == "add", result.items, seen);
@@ -966,120 +1046,20 @@ namespace gf::terminal::bl
         }
         else
         {
-            // 2d. Sub-subcommands on first positional arg (e.g. `git stash `, `git remote `, `git worktree `)
-            const auto subSubs = GitCatalogService::subSubcommandsFor(subcommand);
-            if (positionalArgs.empty() && !subSubs.empty())
-            {
-                addCommandListCompletions(subSubs, seg.activePrefix,
-                                          bo::CompletionItemKind::GitSubcommand, result.items);
-                for (const auto& it : result.items)
-                {
-                    seen.insert(it.displayText);
-                }
-            }
-
-            // 2e. Context-aware repository entities
-            if (subcommand == "stash" && !positionalArgs.empty())
-            {
-                const std::string_view action = positionalArgs[0];
-                if (action == "pop" || action == "apply" || action == "drop" ||
-                    action == "show" || action == "branch")
-                {
-                    addStashCompletions(repoSnapshot, seg.activePrefix, result.items, seen);
-                }
-            }
-            else if (subcommand == "remote" && !positionalArgs.empty())
-            {
-                const std::string_view action = positionalArgs[0];
-                if (action == "remove" || action == "rm" || action == "rename" || action == "show" ||
-                    action == "prune" || action == "get-url" || action == "set-url" || action == "update" ||
-                    action == "set-head" || action == "set-branches")
-                {
-                    addRemoteCompletions(repoSnapshot, seg.activePrefix, result.items, seen);
-                }
-            }
-            else if (isRemoteCommand(subcommand))
-            {
-                if (positionalArgs.empty())
-                {
-                    addRemoteCompletions(repoSnapshot, seg.activePrefix, result.items, seen);
-                }
-                else
-                {
-                    addBranchAndRefCompletions(repoSnapshot, seg.activePrefix, result.items, seen,
-                                               subcommand != "push", true);
-                }
-            }
-            else if (subcommand == "add")
-            {
-                if (seg.activePrefix.empty() || seg.activePrefix == ".")
-                {
-                    if (seen.insert(".").second)
-                    {
-                        result.items.push_back(bo::CompletionItem{
-                            .insertText = ".",
-                            .displayText = ".",
-                            .detail = "Aggiungi tutte le modifiche nella directory corrente",
-                            .categoryLabel = "path",
-                            .kind = bo::CompletionItemKind::FilePath,
-                            .matchStart = 0,
-                            .matchLength = seg.activePrefix.size(),
-                            .appendSpace = true,
-                            .score = 620
-                        });
-                    }
-                }
-                addWorkingTreeFileCompletions(repoSnapshot, seg.activePrefix, true, result.items, seen);
-                addFilesystemCompletions(workingDir, seg.activePrefix, false, result.items, seen, 400);
-            }
-            else if (subcommand == "restore" || subcommand == "rm" || subcommand == "mv" || subcommand == "blame")
-            {
-                addWorkingTreeFileCompletions(repoSnapshot, seg.activePrefix, false, result.items, seen);
-                addFilesystemCompletions(workingDir, seg.activePrefix, false, result.items, seen, 400);
-            }
-            else if (isBranchRefCommand(subcommand))
-            {
-                addBranchAndRefCompletions(repoSnapshot, seg.activePrefix, result.items, seen,
-                                           true, subcommand != "switch");
-                if (isFileCommand(subcommand))
-                {
-                    addWorkingTreeFileCompletions(repoSnapshot, seg.activePrefix, false, result.items, seen);
-                }
-            }
-            else if (subcommand == "worktree" && !positionalArgs.empty() && positionalArgs[0] == "add")
-            {
-                if (positionalArgs.size() == 1)
-                {
-                    addFilesystemCompletions(workingDir, seg.activePrefix, true, result.items, seen, 500);
-                }
-                else
-                {
-                    addBranchAndRefCompletions(repoSnapshot, seg.activePrefix, result.items, seen, true, true);
-                }
-            }
-            else if (explicitTrigger && seg.activePrefix.empty())
-            {
-                // When explicitly pressing Ctrl+Space after any other git command, offer files
-                // (subcommand flags are appended uniformly below).
-                addFilesystemCompletions(workingDir, "", false, result.items, seen, 300);
-            }
+            completeContextualGitArguments(seg, subcommand, positionalArgs, workingDir, repoSnapshot,
+                                           explicitTrigger, seen, result);
         }
 
-        // If the user explicitly pressed Ctrl+Space after `git <cmd> ` with empty prefix, also include flags below contextual items
         if (explicitTrigger && !seenDoubleDash && seg.activePrefix.empty())
         {
             if (const auto opts = catalog.cachedOptionsFor(subcommand); opts.has_value())
             {
-                // Append flags (avoid duplicates)
                 std::vector<bo::CompletionItem> flagItems;
                 addOptionCompletions(*opts, "", flagItems);
                 for (auto& fi : flagItems)
                 {
-                    fi.score -= 200; // keep contextual items (branches/sub-subcommands) above flags
-                    if (seen.insert(fi.displayText).second)
-                    {
-                        result.items.push_back(std::move(fi));
-                    }
+                    fi.score -= 200;
+                    if (seen.insert(fi.displayText).second) result.items.push_back(std::move(fi));
                 }
             }
             else
@@ -1089,7 +1069,6 @@ namespace gf::terminal::bl
         }
 
         sortCompletionItems(result.items);
-
         return result;
     }
 } // namespace gf::terminal::bl

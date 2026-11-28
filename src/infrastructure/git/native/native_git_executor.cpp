@@ -247,12 +247,355 @@ namespace gf::infra::git
                 gitEnvOverrides(noOptionalLocks),
                 {L"GIT_TERMINAL_PROMPT", L"GCM_INTERACTIVE", L"GIT_OPTIONAL_LOCKS", L"GIT_EDITOR", L"LC_ALL"});
         }
+
+        [[nodiscard]] std::wstring appendExtraEnvironment(std::wstring envBlock,
+                                                          const std::vector<std::pair<std::string, std::string>>& extra)
+        {
+            if (extra.empty()) return envBlock;
+            if (!envBlock.empty()) envBlock.pop_back();
+            for (const auto& [name, value] : extra)
+            {
+                envBlock.append(process::utf8ToWide(name));
+                envBlock.push_back(L'=');
+                envBlock.append(process::utf8ToWide(value));
+                envBlock.push_back(L'\0');
+            }
+            envBlock.push_back(L'\0');
+            return envBlock;
+        }
+
+        void drainWin32AsyncPipes(const HANDLE procHandle,
+                                  const OverlappedPipePair& stdoutPipe,
+                                  const OverlappedPipePair& stderrPipe,
+                                  AsyncPipeChannel& outCh,
+                                  AsyncPipeChannel& errCh,
+                                  const std::chrono::steady_clock::time_point deadline,
+                                  gf::git::bo::GitProcessResult& result)
+        {
+            outCh.pumpReads();
+            errCh.pumpReads();
+
+            bool procExited = false;
+            while (!outCh.eof || !errCh.eof)
+            {
+                HANDLE waitHandles[3]{};
+                AsyncPipeChannel* waitChannels[3]{};
+                DWORD handleCount = 0;
+
+                if (outCh.pending)
+                {
+                    waitHandles[handleCount] = outCh.event.h;
+                    waitChannels[handleCount++] = &outCh;
+                }
+                if (errCh.pending)
+                {
+                    waitHandles[handleCount] = errCh.event.h;
+                    waitChannels[handleCount++] = &errCh;
+                }
+
+                DWORD procHandleIndex = 0xFFFFFFFFu;
+                if (!procExited)
+                {
+                    procHandleIndex = handleCount;
+                    waitHandles[handleCount] = procHandle;
+                    waitChannels[handleCount++] = nullptr;
+                }
+
+                const auto now = std::chrono::steady_clock::now();
+                if (now >= deadline)
+                {
+                    result.timedOut = true;
+                    TerminateProcess(procHandle, 124);
+                    CancelIo(stdoutPipe.parentRead.h);
+                    CancelIo(stderrPipe.parentRead.h);
+                    break;
+                }
+
+                const auto remainingMs =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
+                const DWORD waitRc = WaitForMultipleObjects(
+                    handleCount, waitHandles, FALSE, static_cast<DWORD>(remainingMs));
+
+                if (waitRc == WAIT_TIMEOUT)
+                {
+                    result.timedOut = true;
+                    TerminateProcess(procHandle, 124);
+                    CancelIo(stdoutPipe.parentRead.h);
+                    CancelIo(stderrPipe.parentRead.h);
+                    break;
+                }
+                if (waitRc < WAIT_OBJECT_0 || waitRc >= WAIT_OBJECT_0 + handleCount)
+                {
+                    break;
+                }
+
+                const DWORD signaledIdx = waitRc - WAIT_OBJECT_0;
+                if (signaledIdx == procHandleIndex)
+                {
+                    procExited = true;
+                    outCh.drainAfterProcessExit();
+                    errCh.drainAfterProcessExit();
+                    break;
+                }
+                if (waitChannels[signaledIdx])
+                {
+                    waitChannels[signaledIdx]->completePending();
+                }
+            }
+        }
+
+        [[nodiscard]] std::expected<gf::git::bo::GitProcessResult, gf::git::bo::GitExecutionError>
+        executeWindows(const std::filesystem::path& gitExecutablePath,
+                       const std::vector<std::string>& fullArgs,
+                       const gf::git::bo::GitCommand& command,
+                       const std::wstring& baseEnvBlock,
+                       const std::stop_token stopToken,
+                       const std::chrono::steady_clock::time_point startClock)
+        {
+            using gf::git::bo::GitErrorKind;
+            using gf::git::bo::GitExecutionError;
+            using gf::git::bo::GitProcessResult;
+
+            OverlappedPipePair stdoutPipe;
+            OverlappedPipePair stderrPipe;
+            if (!createOverlappedChildOutputPipe(stdoutPipe) ||
+                !createOverlappedChildOutputPipe(stderrPipe))
+            {
+                return std::unexpected(GitExecutionError{
+                    .kind = GitErrorKind::PipeIoError,
+                    .message = "Creazione pipe overlapped fallita"
+                });
+            }
+
+            SECURITY_ATTRIBUTES saInherit{};
+            saInherit.nLength = sizeof(saInherit);
+            saInherit.bInheritHandle = TRUE;
+            ScopedHandle nulInput(CreateFileW(L"NUL", GENERIC_READ,
+                                              FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                              &saInherit, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
+
+            STARTUPINFOEXW siEx{};
+            siEx.StartupInfo.cb = sizeof(STARTUPINFOEXW);
+            siEx.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+            siEx.StartupInfo.hStdInput = nulInput.h != INVALID_HANDLE_VALUE
+                                             ? nulInput.h
+                                             : GetStdHandle(STD_INPUT_HANDLE);
+            siEx.StartupInfo.hStdOutput = stdoutPipe.childWrite.h;
+            siEx.StartupInfo.hStdError = stderrPipe.childWrite.h;
+
+            HANDLE inheritableHandles[3]{};
+            DWORD inheritCount = 0;
+            if (nulInput.h != INVALID_HANDLE_VALUE && nulInput.h != nullptr)
+            {
+                inheritableHandles[inheritCount++] = nulInput.h;
+            }
+            inheritableHandles[inheritCount++] = stdoutPipe.childWrite.h;
+            inheritableHandles[inheritCount++] = stderrPipe.childWrite.h;
+
+            SIZE_T attrListSize = 0;
+            InitializeProcThreadAttributeList(nullptr, 1, 0, &attrListSize);
+            std::vector<std::byte> attrListStorage(attrListSize);
+            auto* attrList = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attrListStorage.data());
+            bool hasAttrList = false;
+            if (attrListSize > 0 && InitializeProcThreadAttributeList(attrList, 1, 0, &attrListSize))
+            {
+                if (UpdateProcThreadAttribute(attrList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                                              inheritableHandles, inheritCount * sizeof(HANDLE),
+                                              nullptr, nullptr))
+                {
+                    siEx.lpAttributeList = attrList;
+                    hasAttrList = true;
+                }
+                else
+                {
+                    DeleteProcThreadAttributeList(attrList);
+                }
+            }
+            if (!hasAttrList) siEx.StartupInfo.cb = sizeof(STARTUPINFOW);
+
+            std::wstring cmdLine = process::buildWindowsCommandLine(gitExecutablePath, fullArgs);
+            const std::wstring exeWide = gitExecutablePath.wstring();
+            const std::wstring workDirWide = command.workingDirectory.empty()
+                                                 ? std::wstring{}
+                                                 : command.workingDirectory.wstring();
+            std::wstring envBlock = appendExtraEnvironment(baseEnvBlock, command.extraEnvironment);
+
+            PROCESS_INFORMATION pi{};
+            const DWORD creationFlags = CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT |
+                (hasAttrList ? EXTENDED_STARTUPINFO_PRESENT : 0);
+            const BOOL spawned = CreateProcessW(
+                exeWide.c_str(), cmdLine.data(), nullptr, nullptr, TRUE, creationFlags, envBlock.data(),
+                workDirWide.empty() ? nullptr : workDirWide.c_str(), &siEx.StartupInfo, &pi);
+
+            if (hasAttrList) DeleteProcThreadAttributeList(attrList);
+            stdoutPipe.childWrite.reset();
+            stderrPipe.childWrite.reset();
+            nulInput.reset();
+
+            if (!spawned)
+            {
+                return std::unexpected(GitExecutionError{
+                    .kind = GitErrorKind::SpawnFailed,
+                    .message = "CreateProcessW fallita per git.exe"
+                });
+            }
+
+            ScopedHandle procHandle(pi.hProcess);
+            ScopedHandle threadHandle(pi.hThread);
+
+            GitProcessResult result;
+            std::atomic cancelledFlag{false};
+            std::stop_callback stopCb(stopToken, [&]() noexcept
+            {
+                cancelledFlag.store(true, std::memory_order_release);
+                TerminateProcess(procHandle.h, 130);
+            });
+
+            AsyncPipeChannel outCh;
+            AsyncPipeChannel errCh;
+            if (!outCh.init(stdoutPipe.parentRead.h, &result.stdoutBytes, command.onStdoutChunk) ||
+                !errCh.init(stderrPipe.parentRead.h, &result.stderrBytes, command.onStderrChunk))
+            {
+                TerminateProcess(procHandle.h, 1);
+                return std::unexpected(GitExecutionError{
+                    .kind = GitErrorKind::PipeIoError,
+                    .message = "Inizializzazione eventi overlapped fallita"
+                });
+            }
+
+            drainWin32AsyncPipes(procHandle.h, stdoutPipe, stderrPipe, outCh, errCh,
+                                 startClock + command.timeout, result);
+
+            WaitForSingleObject(procHandle.h, 5000);
+            DWORD exitCode = 0;
+            GetExitCodeProcess(procHandle.h, &exitCode);
+            result.exitCode = static_cast<int>(exitCode);
+            result.cancelled = cancelledFlag.load(std::memory_order_acquire);
+            result.elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - startClock);
+            return result;
+        }
 #else
         [[nodiscard]] std::vector<std::string> buildLinuxEnvironment(const bool noOptionalLocks)
         {
             return process::buildPosixEnvironment(
                 gitEnvOverrides(noOptionalLocks),
                 {"GIT_TERMINAL_PROMPT", "GCM_INTERACTIVE", "GIT_OPTIONAL_LOCKS", "GIT_EDITOR", "LC_ALL"});
+        }
+
+        void drainPosixPipe(const int fd,
+                            std::string& target,
+                            const std::function<void(std::string_view)>& onChunk)
+        {
+            char buf[8192];
+            ssize_t n = 0;
+            while ((n = ::read(fd, buf, sizeof(buf))) > 0)
+            {
+                target.append(buf, static_cast<std::size_t>(n));
+                if (onChunk)
+                {
+                    onChunk(std::string_view(buf, static_cast<std::size_t>(n)));
+                }
+            }
+            ::close(fd);
+        }
+
+        [[nodiscard]] std::expected<gf::git::bo::GitProcessResult, gf::git::bo::GitExecutionError>
+        executePosix(const std::filesystem::path& gitExecutablePath,
+                     const std::vector<std::string>& fullArgs,
+                     const gf::git::bo::GitCommand& command,
+                     const bool noOptionalLocks,
+                     const std::stop_token stopToken,
+                     const std::chrono::steady_clock::time_point startClock)
+        {
+            using gf::git::bo::GitErrorKind;
+            using gf::git::bo::GitExecutionError;
+            using gf::git::bo::GitProcessResult;
+
+            int outPipe[2]{-1, -1};
+            int errPipe[2]{-1, -1};
+            if (::pipe(outPipe) != 0 || ::pipe(errPipe) != 0)
+            {
+                return std::unexpected(GitExecutionError{
+                    .kind = GitErrorKind::PipeIoError,
+                    .message = "pipe() fallita"
+                });
+            }
+
+            posix_spawn_file_actions_t actions;
+            ::posix_spawn_file_actions_init(&actions);
+            ::posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
+            ::posix_spawn_file_actions_adddup2(&actions, outPipe[1], STDOUT_FILENO);
+            ::posix_spawn_file_actions_adddup2(&actions, errPipe[1], STDERR_FILENO);
+            ::posix_spawn_file_actions_addclose(&actions, outPipe[0]);
+            ::posix_spawn_file_actions_addclose(&actions, outPipe[1]);
+            ::posix_spawn_file_actions_addclose(&actions, errPipe[0]);
+            ::posix_spawn_file_actions_addclose(&actions, errPipe[1]);
+
+            std::vector<std::string> argvStorage;
+            argvStorage.reserve(fullArgs.size() + 3);
+            argvStorage.push_back(gitExecutablePath.string());
+            if (!command.workingDirectory.empty())
+            {
+                argvStorage.emplace_back("-C");
+                argvStorage.push_back(command.workingDirectory.string());
+            }
+            argvStorage.insert(argvStorage.end(), fullArgs.begin(), fullArgs.end());
+
+            std::vector<char*> argvPtrs;
+            argvPtrs.reserve(argvStorage.size() + 1);
+            for (auto& s : argvStorage) argvPtrs.push_back(s.data());
+            argvPtrs.push_back(nullptr);
+
+            std::vector<std::string> envStorage = buildLinuxEnvironment(noOptionalLocks);
+            for (const auto& [name, value] : command.extraEnvironment)
+            {
+                envStorage.emplace_back(name + "=" + value);
+            }
+            std::vector<char*> envPtrs;
+            envPtrs.reserve(envStorage.size() + 1);
+            for (auto& s : envStorage) envPtrs.push_back(s.data());
+            envPtrs.push_back(nullptr);
+
+            pid_t pid = 0;
+            const int spawnRc = ::posix_spawn(&pid, gitExecutablePath.c_str(), &actions, nullptr,
+                                              argvPtrs.data(), envPtrs.data());
+            ::posix_spawn_file_actions_destroy(&actions);
+            ::close(outPipe[1]);
+            ::close(errPipe[1]);
+
+            if (spawnRc != 0)
+            {
+                ::close(outPipe[0]);
+                ::close(errPipe[0]);
+                return std::unexpected(GitExecutionError{
+                    .kind = GitErrorKind::SpawnFailed,
+                    .message = "posix_spawn fallita"
+                });
+            }
+
+            GitProcessResult result;
+            std::atomic<bool> cancelledFlag{false};
+            std::stop_callback stopCb(stopToken, [&]() noexcept
+            {
+                cancelledFlag.store(true, std::memory_order_release);
+                ::kill(pid, SIGTERM);
+            });
+
+            std::jthread errThread([fd = errPipe[0], &result, &onChunk = command.onStderrChunk]()
+            {
+                drainPosixPipe(fd, result.stderrBytes, onChunk);
+            });
+            drainPosixPipe(outPipe[0], result.stdoutBytes, command.onStdoutChunk);
+            errThread.join();
+
+            int status = 0;
+            ::waitpid(pid, &status, 0);
+            result.exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+            result.cancelled = cancelledFlag.load(std::memory_order_acquire);
+            result.elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - startClock);
+            return result;
         }
 #endif
     } // namespace
@@ -286,7 +629,6 @@ namespace gf::infra::git
         using gf::git::bo::GitErrorKind;
         using gf::git::bo::GitExecutionError;
         using gf::git::bo::GitLockPolicy;
-        using gf::git::bo::GitProcessResult;
 
         const auto startClock = std::chrono::steady_clock::now();
 
@@ -309,343 +651,14 @@ namespace gf::infra::git
         std::vector<std::string> fullArgs;
         const bool noOptLocks = command.lockPolicy == GitLockPolicy::NoOptionalLocks;
         fullArgs.reserve(command.args.size() + (noOptLocks ? 1 : 0));
-        if (noOptLocks)
-        {
-            fullArgs.emplace_back("--no-optional-locks");
-        }
+        if (noOptLocks) fullArgs.emplace_back("--no-optional-locks");
         fullArgs.insert(fullArgs.end(), command.args.begin(), command.args.end());
 
 #ifdef _WIN32
-        OverlappedPipePair stdoutPipe;
-        OverlappedPipePair stderrPipe;
-        if (!createOverlappedChildOutputPipe(stdoutPipe) ||
-            !createOverlappedChildOutputPipe(stderrPipe))
-        {
-            return std::unexpected(GitExecutionError{
-                .kind = GitErrorKind::PipeIoError,
-                .message = "Creazione pipe overlapped fallita"
-            });
-        }
-
-        SECURITY_ATTRIBUTES saInherit{};
-        saInherit.nLength = sizeof(saInherit);
-        saInherit.bInheritHandle = TRUE;
-        ScopedHandle nulInput(CreateFileW(L"NUL", GENERIC_READ,
-                                          FILE_SHARE_READ | FILE_SHARE_WRITE,
-                                          &saInherit, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
-
-        STARTUPINFOEXW siEx{};
-        siEx.StartupInfo.cb = sizeof(STARTUPINFOEXW);
-        siEx.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
-        siEx.StartupInfo.hStdInput = nulInput.h != INVALID_HANDLE_VALUE
-                                         ? nulInput.h
-                                         : GetStdHandle(STD_INPUT_HANDLE);
-        siEx.StartupInfo.hStdOutput = stdoutPipe.childWrite.h;
-        siEx.StartupInfo.hStdError = stderrPipe.childWrite.h;
-
-        HANDLE inheritableHandles[3]{};
-        DWORD inheritCount = 0;
-        if (nulInput.h != INVALID_HANDLE_VALUE && nulInput.h != nullptr)
-        {
-            inheritableHandles[inheritCount++] = nulInput.h;
-        }
-        inheritableHandles[inheritCount++] = stdoutPipe.childWrite.h;
-        inheritableHandles[inheritCount++] = stderrPipe.childWrite.h;
-
-        SIZE_T attrListSize = 0;
-        InitializeProcThreadAttributeList(nullptr, 1, 0, &attrListSize);
-        std::vector<std::byte> attrListStorage(attrListSize);
-        auto* attrList = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attrListStorage.data());
-        bool hasAttrList = false;
-        if (attrListSize > 0 && InitializeProcThreadAttributeList(attrList, 1, 0, &attrListSize))
-        {
-            if (UpdateProcThreadAttribute(attrList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
-                                          inheritableHandles, inheritCount * sizeof(HANDLE),
-                                          nullptr, nullptr))
-            {
-                siEx.lpAttributeList = attrList;
-                hasAttrList = true;
-            }
-            else
-            {
-                DeleteProcThreadAttributeList(attrList);
-            }
-        }
-        if (!hasAttrList)
-        {
-            siEx.StartupInfo.cb = sizeof(STARTUPINFOW);
-        }
-
-        std::wstring cmdLine = buildWindowsCommandLine(gitExecutablePath_, fullArgs);
-        const std::wstring exeWide = gitExecutablePath_.wstring();
-        const std::wstring workDirWide = command.workingDirectory.empty()
-                                             ? std::wstring{}
-                                             : command.workingDirectory.wstring();
-        std::wstring envBlock = noOptLocks ? envBlockNoLocks_ : envBlockStandard_;
-        if (!command.extraEnvironment.empty())
-        {
-            if (!envBlock.empty()) envBlock.pop_back(); // drop the block terminator
-            for (const auto& [name, value] : command.extraEnvironment)
-            {
-                envBlock.append(process::utf8ToWide(name));
-                envBlock.push_back(L'=');
-                envBlock.append(process::utf8ToWide(value));
-                envBlock.push_back(L'\0');
-            }
-            envBlock.push_back(L'\0');
-        }
-
-        PROCESS_INFORMATION pi{};
-        const DWORD creationFlags = CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT |
-            (hasAttrList ? EXTENDED_STARTUPINFO_PRESENT : 0);
-        const BOOL spawned = CreateProcessW(
-            exeWide.c_str(),
-            cmdLine.data(),
-            nullptr,
-            nullptr,
-            TRUE,
-            creationFlags,
-            envBlock.data(),
-            workDirWide.empty() ? nullptr : workDirWide.c_str(),
-            &siEx.StartupInfo,
-            &pi);
-
-        if (hasAttrList)
-        {
-            DeleteProcThreadAttributeList(attrList);
-        }
-        stdoutPipe.childWrite.reset();
-        stderrPipe.childWrite.reset();
-        nulInput.reset();
-
-        if (!spawned)
-        {
-            return std::unexpected(GitExecutionError{
-                .kind = GitErrorKind::SpawnFailed,
-                .message = "CreateProcessW fallita per git.exe"
-            });
-        }
-
-        ScopedHandle procHandle(pi.hProcess);
-        ScopedHandle threadHandle(pi.hThread);
-
-        GitProcessResult result;
-        std::atomic cancelledFlag{false};
-        std::stop_callback stopCb(stopToken, [&]() noexcept
-        {
-            cancelledFlag.store(true, std::memory_order_release);
-            TerminateProcess(procHandle.h, 130);
-        });
-
-        AsyncPipeChannel outCh;
-        AsyncPipeChannel errCh;
-        if (!outCh.init(stdoutPipe.parentRead.h, &result.stdoutBytes, command.onStdoutChunk) ||
-            !errCh.init(stderrPipe.parentRead.h, &result.stderrBytes, command.onStderrChunk))
-        {
-            TerminateProcess(procHandle.h, 1);
-            return std::unexpected(GitExecutionError{
-                .kind = GitErrorKind::PipeIoError,
-                .message = "Inizializzazione eventi overlapped fallita"
-            });
-        }
-
-        outCh.pumpReads();
-        errCh.pumpReads();
-
-        const auto deadline = startClock + command.timeout;
-        bool procExited = false;
-        while (!outCh.eof || !errCh.eof)
-        {
-            HANDLE waitHandles[3]{};
-            AsyncPipeChannel* waitChannels[3]{};
-            DWORD handleCount = 0;
-
-            if (outCh.pending)
-            {
-                waitHandles[handleCount] = outCh.event.h;
-                waitChannels[handleCount] = &outCh;
-                ++handleCount;
-            }
-            if (errCh.pending)
-            {
-                waitHandles[handleCount] = errCh.event.h;
-                waitChannels[handleCount] = &errCh;
-                ++handleCount;
-            }
-
-            DWORD procHandleIndex = 0xFFFFFFFFu;
-            if (!procExited)
-            {
-                procHandleIndex = handleCount;
-                waitHandles[handleCount] = procHandle.h;
-                waitChannels[handleCount] = nullptr;
-                ++handleCount;
-            }
-
-            const auto now = std::chrono::steady_clock::now();
-            if (now >= deadline)
-            {
-                result.timedOut = true;
-                TerminateProcess(procHandle.h, 124);
-                CancelIo(stdoutPipe.parentRead.h);
-                CancelIo(stderrPipe.parentRead.h);
-                break;
-            }
-            const auto remainingMs = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
-            const DWORD waitRc = WaitForMultipleObjects(
-                handleCount, waitHandles, FALSE, static_cast<DWORD>(remainingMs));
-
-            if (waitRc == WAIT_TIMEOUT)
-            {
-                result.timedOut = true;
-                TerminateProcess(procHandle.h, 124);
-                CancelIo(stdoutPipe.parentRead.h);
-                CancelIo(stderrPipe.parentRead.h);
-                break;
-            }
-            if (waitRc >= WAIT_OBJECT_0 && waitRc < WAIT_OBJECT_0 + handleCount)
-            {
-                const DWORD signaledIdx = waitRc - WAIT_OBJECT_0;
-                if (signaledIdx == procHandleIndex)
-                {
-                    procExited = true;
-                    outCh.drainAfterProcessExit();
-                    errCh.drainAfterProcessExit();
-                    break;
-                }
-                if (waitChannels[signaledIdx])
-                {
-                    waitChannels[signaledIdx]->completePending();
-                }
-            }
-            else
-            {
-                break;
-            }
-        }
-
-        WaitForSingleObject(procHandle.h, 5000);
-        DWORD exitCode = 0;
-        GetExitCodeProcess(procHandle.h, &exitCode);
-        result.exitCode = static_cast<int>(exitCode);
-        result.cancelled = cancelledFlag.load(std::memory_order_acquire);
-        result.elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
-            std::chrono::steady_clock::now() - startClock);
-        return result;
+        return executeWindows(gitExecutablePath_, fullArgs, command,
+                              noOptLocks ? envBlockNoLocks_ : envBlockStandard_, stopToken, startClock);
 #else
-        int outPipe[2]{-1, -1};
-        int errPipe[2]{-1, -1};
-        if (::pipe(outPipe) != 0 || ::pipe(errPipe) != 0)
-        {
-            return std::unexpected(GitExecutionError{
-                .kind = GitErrorKind::PipeIoError,
-                .message = "pipe() fallita"
-            });
-        }
-
-        posix_spawn_file_actions_t actions;
-        ::posix_spawn_file_actions_init(&actions);
-        ::posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
-        ::posix_spawn_file_actions_adddup2(&actions, outPipe[1], STDOUT_FILENO);
-        ::posix_spawn_file_actions_adddup2(&actions, errPipe[1], STDERR_FILENO);
-        ::posix_spawn_file_actions_addclose(&actions, outPipe[0]);
-        ::posix_spawn_file_actions_addclose(&actions, outPipe[1]);
-        ::posix_spawn_file_actions_addclose(&actions, errPipe[0]);
-        ::posix_spawn_file_actions_addclose(&actions, errPipe[1]);
-
-        std::vector<std::string> argvStorage;
-        argvStorage.reserve(fullArgs.size() + 3);
-        argvStorage.push_back(gitExecutablePath_.string());
-        if (!command.workingDirectory.empty())
-        {
-            argvStorage.emplace_back("-C");
-            argvStorage.push_back(command.workingDirectory.string());
-        }
-        for (const auto& a : fullArgs)
-        {
-            argvStorage.push_back(a);
-        }
-        std::vector<char*> argvPtrs;
-        argvPtrs.reserve(argvStorage.size() + 1);
-        for (auto& s : argvStorage)
-        {
-            argvPtrs.push_back(s.data());
-        }
-        argvPtrs.push_back(nullptr);
-
-        std::vector<std::string> envStorage = buildLinuxEnvironment(noOptLocks);
-        for (const auto& [name, value] : command.extraEnvironment)
-        {
-            envStorage.emplace_back(name + "=" + value);
-        }
-        std::vector<char*> envPtrs;
-        envPtrs.reserve(envStorage.size() + 1);
-        for (auto& s : envStorage)
-        {
-            envPtrs.push_back(s.data());
-        }
-        envPtrs.push_back(nullptr);
-
-        pid_t pid = 0;
-        const int spawnRc = ::posix_spawn(&pid, gitExecutablePath_.c_str(), &actions, nullptr,
-                                          argvPtrs.data(), envPtrs.data());
-        ::posix_spawn_file_actions_destroy(&actions);
-        ::close(outPipe[1]);
-        ::close(errPipe[1]);
-
-        if (spawnRc != 0)
-        {
-            ::close(outPipe[0]);
-            ::close(errPipe[0]);
-            return std::unexpected(GitExecutionError{
-                .kind = GitErrorKind::SpawnFailed,
-                .message = "posix_spawn fallita"
-            });
-        }
-
-        GitProcessResult result;
-        std::atomic<bool> cancelledFlag{false};
-        std::stop_callback stopCb(stopToken, [&]() noexcept
-        {
-            cancelledFlag.store(true, std::memory_order_release);
-            ::kill(pid, SIGTERM);
-        });
-
-        std::jthread errThread([fd = errPipe[0], &result, onChunk = command.onStderrChunk]()
-        {
-            char buf[8192];
-            ssize_t n = 0;
-            while ((n = ::read(fd, buf, sizeof(buf))) > 0)
-            {
-                result.stderrBytes.append(buf, static_cast<std::size_t>(n));
-                if (onChunk)
-                {
-                    onChunk(std::string_view(buf, static_cast<std::size_t>(n)));
-                }
-            }
-            ::close(fd);
-        });
-
-        char buf[8192];
-        ssize_t n = 0;
-        while ((n = ::read(outPipe[0], buf, sizeof(buf))) > 0)
-        {
-            result.stdoutBytes.append(buf, static_cast<std::size_t>(n));
-            if (command.onStdoutChunk)
-            {
-                command.onStdoutChunk(std::string_view(buf, static_cast<std::size_t>(n)));
-            }
-        }
-        ::close(outPipe[0]);
-        errThread.join();
-
-        int status = 0;
-        ::waitpid(pid, &status, 0);
-        result.exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-        result.cancelled = cancelledFlag.load(std::memory_order_acquire);
-        result.elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
-            std::chrono::steady_clock::now() - startClock);
-        return result;
+        return executePosix(gitExecutablePath_, fullArgs, command, noOptLocks, stopToken, startClock);
 #endif
     }
 } // namespace gf::infra::git
