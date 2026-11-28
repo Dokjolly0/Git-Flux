@@ -34,20 +34,9 @@ namespace gf::infra::git
             }
         }
 
-        [[nodiscard]] std::string trimString(std::string str)
+        [[nodiscard]] std::string trimString(const std::string_view str)
         {
-            while (!str.empty() && (str.back() == '\n' || str.back() == '\r' || str.back() == ' ' || str.back() ==
-                '\t'))
-            {
-                str.pop_back();
-            }
-            std::size_t start = 0;
-            while (start < str.size() && (str[start] == '\n' || str[start] == '\r' || str[start] == ' ' || str[start] ==
-                '\t'))
-            {
-                ++start;
-            }
-            return str.substr(start);
+            return std::string(core::trim(str));
         }
 
         [[nodiscard]] std::string extractSummaryLine(const std::string_view message)
@@ -60,6 +49,139 @@ namespace gf::infra::git
             return std::string(message.substr(0, newlinePos));
         }
 
+        [[nodiscard]] std::string pickErrorMessage(const gf::git::bo::GitProcessResult& res)
+        {
+            return res.stderrBytes.empty() ? res.stdoutBytes : res.stderrBytes;
+        }
+
+        [[nodiscard]] std::expected<gf::git::bo::GitProcessResult, gf::git::ports::GitOpsError>
+        runGitRaw(gf::git::ports::IGitCommandExecutor& executor,
+                  const std::filesystem::path& repoPath,
+                  std::vector<std::string> args,
+                  const std::string_view errorVerb,
+                  const std::string_view commandLabel,
+                  const gf::git::bo::GitLockPolicy lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+                  const int timeoutMs = 30'000,
+                  const gf::git::bo::HttpsCredentialLoader& httpsCredential = {})
+        {
+            gf::git::bo::GitCommand cmd{
+                .args = std::move(args),
+                .workingDirectory = repoPath,
+                .lockPolicy = lockPolicy,
+                .timeout = std::chrono::milliseconds{timeoutMs}
+            };
+            if (httpsCredential)
+            {
+                gf::git::bl::applyHttpsCredential(cmd, httpsCredential);
+            }
+            auto exec = executor.execute(cmd);
+            if (!exec)
+            {
+                return std::unexpected(gf::git::ports::GitOpsError{
+                    .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+                    .exitCode = -1,
+                    .message = "Impossibile eseguire " + std::string(errorVerb) + ": " + exec.error().message,
+                    .command = std::string(commandLabel)
+                });
+            }
+            return std::move(*exec);
+        }
+
+        template <typename ErrorClassifier>
+        [[nodiscard]] std::expected<gf::git::bo::GitProcessResult, gf::git::ports::GitOpsError>
+        runGitChecked(gf::git::ports::IGitCommandExecutor& executor,
+                      const std::filesystem::path& repoPath,
+                      std::vector<std::string> args,
+                      const std::string_view errorVerb,
+                      const std::string_view commandLabel,
+                      ErrorClassifier&& classifyError,
+                      const gf::git::bo::GitLockPolicy lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+                      const int timeoutMs = 30'000,
+                      const gf::git::bo::HttpsCredentialLoader& httpsCredential = {})
+        {
+            auto exec = runGitRaw(executor, repoPath, std::move(args), errorVerb, commandLabel,
+                                  lockPolicy, timeoutMs, httpsCredential);
+            if (!exec) return exec;
+            if (exec->exitCode != 0)
+            {
+                return std::unexpected(classifyError(*exec, std::string(commandLabel)));
+            }
+            return exec;
+        }
+
+        [[nodiscard]] gf::git::ports::GitOpsError
+        defaultGitFailure(const gf::git::bo::GitProcessResult& exec, const std::string& commandLabel)
+        {
+            return gf::git::ports::GitOpsError{
+                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
+                .exitCode = exec.exitCode,
+                .message = pickErrorMessage(exec),
+                .command = commandLabel
+            };
+        }
+
+        [[nodiscard]] bool isGitObjectPathMissing(const std::string& err) noexcept
+        {
+            return err.find("does not exist") != std::string::npos ||
+                   err.find("non esiste") != std::string::npos ||
+                   err.find("exists on disk") != std::string::npos ||
+                   err.find("Not a valid object name") != std::string::npos ||
+                   err.find("Invalid object name") != std::string::npos ||
+                   err.find("Path '") != std::string::npos;
+        }
+
+        [[nodiscard]] gf::git::ports::GitOpsError
+        classifyRemoteFailure(const gf::git::bo::GitProcessResult& ex, const std::string& label)
+        {
+            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+            const auto& err = ex.stderrBytes;
+            if (err.find("already exists and is not an empty directory") != std::string::npos)
+            {
+                kind = gf::git::ports::GitOpsError::Kind::DestinationAlreadyExists;
+            }
+            else if (err.find("rejected") != std::string::npos ||
+                err.find("non-fast-forward") != std::string::npos ||
+                err.find("fetch first") != std::string::npos ||
+                err.find("stale info") != std::string::npos ||
+                (label == "git push" && err.find("already exists") != std::string::npos))
+            {
+                kind = gf::git::ports::GitOpsError::Kind::RemoteRejected;
+            }
+            else if (err.find("Could not resolve host") != std::string::npos ||
+                err.find("Authentication failed") != std::string::npos ||
+                err.find("Permission denied") != std::string::npos)
+            {
+                kind = gf::git::ports::GitOpsError::Kind::NetworkAuthenticationFailed;
+            }
+            else if (err.find("does not appear to be a git repository") != std::string::npos ||
+                err.find("not found") != std::string::npos ||
+                err.find("fatal: repository") != std::string::npos)
+            {
+                kind = gf::git::ports::GitOpsError::Kind::RemoteNotFound;
+            }
+            return gf::git::ports::GitOpsError{
+                .kind = kind,
+                .exitCode = ex.exitCode,
+                .message = pickErrorMessage(ex),
+                .command = label
+            };
+        }
+
+        [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+        runGitVoid(gf::git::ports::IGitCommandExecutor& executor,
+                   const std::filesystem::path& repoPath,
+                   std::vector<std::string> args,
+                   const std::string_view errorVerb,
+                   const std::string_view commandLabel,
+                   const gf::git::bo::GitLockPolicy lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+                   const int timeoutMs = 30'000)
+        {
+            auto res = runGitChecked(executor, repoPath, std::move(args), errorVerb, commandLabel,
+                                     defaultGitFailure, lockPolicy, timeoutMs);
+            if (!res) return std::unexpected(res.error());
+            return {};
+        }
+
         /// Runs a git command in `repoPath`; returns trimmed stdout on exit code 0, an error otherwise.
         [[nodiscard]] std::expected<std::string, gf::git::ports::GitOpsError>
         runGitCapture(gf::git::ports::IGitCommandExecutor& executor,
@@ -67,32 +189,239 @@ namespace gf::infra::git
                       std::vector<std::string> args)
         {
             const std::string label = "git " + (args.empty() ? std::string{} : args.front());
-            const gf::git::bo::GitCommand cmd{
-                .args = std::move(args),
-                .workingDirectory = repoPath,
-                .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-                .timeout = std::chrono::milliseconds{30'000}
-            };
-            auto exec = executor.execute(cmd);
-            if (!exec)
-            {
-                return std::unexpected(gf::git::ports::GitOpsError{
-                    .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                    .exitCode = -1,
-                    .message = "Impossibile eseguire " + label + ": " + exec.error().message,
-                    .command = label
-                });
-            }
-            if (exec->exitCode != 0)
+            auto exec = runGitChecked(executor, repoPath, std::move(args), label, label, defaultGitFailure);
+            if (!exec) return std::unexpected(exec.error());
+            return trimString(exec->stdoutBytes);
+        }
+
+        [[nodiscard]] std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
+        parseSingleFileDiff(gf::git::ports::IGitCommandExecutor& executor,
+                            const std::filesystem::path& repoPath,
+                            std::vector<std::string> args,
+                            const std::string& filePath,
+                            const std::string_view commandLabel,
+                            const std::string_view errorVerb,
+                            const bool allowExitCode1 = false,
+                            const bool fillEmptyOldPath = true)
+        {
+            auto exec = runGitRaw(executor, repoPath, std::move(args), errorVerb, commandLabel,
+                                  gf::git::bo::GitLockPolicy::NoOptionalLocks);
+            if (!exec) return std::unexpected(exec.error());
+            if ((allowExitCode1 && exec->exitCode > 1) || (!allowExitCode1 && exec->exitCode != 0))
             {
                 return std::unexpected(gf::git::ports::GitOpsError{
                     .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
                     .exitCode = exec->exitCode,
-                    .message = exec->stderrBytes.empty() ? exec->stdoutBytes : exec->stderrBytes,
-                    .command = label
+                    .message = exec->stderrBytes,
+                    .command = std::string(commandLabel)
                 });
             }
-            return trimString(std::move(exec->stdoutBytes));
+            if (exec->stdoutBytes.empty())
+            {
+                return gf::git::bo::FileDiff{.oldPath = filePath, .newPath = filePath};
+            }
+            if (auto diffOpt = gf::git::bl::UnifiedDiffParser::parseSingle(exec->stdoutBytes);
+                diffOpt.has_value())
+            {
+                if (diffOpt->newPath.empty()) diffOpt->newPath = filePath;
+                if (fillEmptyOldPath && diffOpt->oldPath.empty()) diffOpt->oldPath = filePath;
+                return std::move(*diffOpt);
+            }
+            return gf::git::bo::FileDiff{.oldPath = filePath, .newPath = filePath};
+        }
+
+        struct NumStatEntry
+        {
+            int additions = 0;
+            int deletions = 0;
+            bool isBinary = false;
+        };
+
+        [[nodiscard]] gf::git::bo::FileChangeStatus parseFileChangeStatusChar(const std::string_view statusStr) noexcept
+        {
+            switch (statusStr.empty() ? 'M' : statusStr.front())
+            {
+            case 'A': return gf::git::bo::FileChangeStatus::Added;
+            case 'D': return gf::git::bo::FileChangeStatus::Deleted;
+            case 'R': return gf::git::bo::FileChangeStatus::Renamed;
+            case 'C': return gf::git::bo::FileChangeStatus::Copied;
+            default: return gf::git::bo::FileChangeStatus::Modified;
+            }
+        }
+
+        [[nodiscard]] std::string normalizeNumstatPath(const std::string& raw)
+        {
+            const auto arrow = raw.find(" => ");
+            if (arrow == std::string::npos) return raw;
+            const auto lbrace = raw.rfind('{', arrow);
+            const auto rbrace = raw.find('}', arrow + 4);
+            if (lbrace != std::string::npos && rbrace != std::string::npos)
+            {
+                std::string out;
+                out.append(raw, 0, lbrace);
+                out.append(raw, arrow + 4, rbrace - (arrow + 4));
+                out.append(raw, rbrace + 1, std::string::npos);
+                std::size_t pos = 0;
+                while ((pos = out.find("//", pos)) != std::string::npos)
+                {
+                    out.erase(pos, 1);
+                }
+                if (!out.empty() && out.front() == '/') out.erase(0, 1);
+                return out;
+            }
+            return raw.substr(arrow + 4);
+        }
+
+        [[nodiscard]] bool parseNumstatLine(const std::string_view nline,
+                                            std::string& outPath,
+                                            NumStatEntry& outEntry)
+        {
+            const auto tab1 = nline.find('\t');
+            if (tab1 == std::string_view::npos) return false;
+            const auto tab2 = nline.find('\t', tab1 + 1);
+            if (tab2 == std::string_view::npos) return false;
+            const std::string_view addStr = nline.substr(0, tab1);
+            const std::string_view delStr = nline.substr(tab1 + 1, tab2 - tab1 - 1);
+            outPath = std::string(nline.substr(tab2 + 1));
+            outEntry = {};
+            if (addStr == "-" || delStr == "-")
+            {
+                outEntry.isBinary = true;
+            }
+            else
+            {
+                try
+                {
+                    outEntry.additions = std::stoi(std::string(addStr));
+                    outEntry.deletions = std::stoi(std::string(delStr));
+                }
+                catch (...)
+                {
+                    outEntry.additions = 0;
+                    outEntry.deletions = 0;
+                }
+            }
+            return true;
+        }
+
+        [[nodiscard]] bool parseNameStatusLine(const std::string_view dline,
+                                               gf::git::bo::CommitFileChange& outChange)
+        {
+            const auto tab1 = dline.find('\t');
+            if (tab1 == std::string_view::npos) return false;
+            const std::string_view statusStr = dline.substr(0, tab1);
+            const std::string_view rest = dline.substr(tab1 + 1);
+            outChange = {};
+            outChange.status = parseFileChangeStatusChar(statusStr);
+            if (outChange.status == gf::git::bo::FileChangeStatus::Renamed ||
+                outChange.status == gf::git::bo::FileChangeStatus::Copied)
+            {
+                if (const auto tab2 = rest.find('\t'); tab2 != std::string_view::npos)
+                {
+                    outChange.oldPath = std::string(rest.substr(0, tab2));
+                    outChange.path = std::string(rest.substr(tab2 + 1));
+                }
+                else
+                {
+                    outChange.path = std::string(rest);
+                }
+            }
+            else
+            {
+                outChange.path = std::string(rest);
+            }
+            return !outChange.path.empty();
+        }
+
+        [[nodiscard]] std::vector<std::string>
+        readConflictedFiles(gf::git::ports::IGitCommandExecutor& executor,
+                            const std::filesystem::path& repoPath)
+        {
+            std::vector<std::string> files;
+            const auto diffUCmd = executor.execute(gf::git::bo::GitCommand{
+                .args = {"diff", "--name-only", "--diff-filter=U"},
+                .workingDirectory = repoPath,
+                .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
+                .timeout = std::chrono::milliseconds{10'000}
+            });
+            if (!diffUCmd || diffUCmd->exitCode != 0)
+            {
+                return files;
+            }
+            std::string_view out(diffUCmd->stdoutBytes);
+            while (!out.empty())
+            {
+                const auto nl = out.find('\n');
+                std::string_view line = nl == std::string_view::npos ? out : out.substr(0, nl);
+                out = nl == std::string_view::npos ? std::string_view{} : out.substr(nl + 1);
+                line = core::trimTrailingNewlines(line);
+                if (!line.empty())
+                {
+                    files.emplace_back(line);
+                }
+            }
+            return files;
+        }
+
+        [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+        unstageWithFallback(gf::git::ports::IGitCommandExecutor& executor,
+                            const std::filesystem::path& repoPath,
+                            std::vector<std::string> restoreArgs,
+                            std::vector<std::string> fallbackRmArgs,
+                            const std::string_view errorVerb)
+        {
+            auto exec = runGitRaw(executor, repoPath, std::move(restoreArgs), errorVerb, "git restore --staged");
+            if (!exec) return std::unexpected(exec.error());
+            if (exec->exitCode == 0) return {};
+
+            if (exec->stderrBytes.find("HEAD") != std::string::npos)
+            {
+                if (const auto rmResult = executor.execute(gf::git::bo::GitCommand{
+                    .args = std::move(fallbackRmArgs),
+                    .workingDirectory = repoPath,
+                    .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
+                    .timeout = std::chrono::milliseconds{30'000}
+                }); rmResult && rmResult->exitCode == 0)
+                {
+                    return {};
+                }
+            }
+
+            const auto kind = exec->stderrBytes.find("index.lock") != std::string::npos
+                ? gf::git::ports::GitOpsError::Kind::IndexLocked
+                : gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+            return std::unexpected(gf::git::ports::GitOpsError{
+                .kind = kind,
+                .exitCode = exec->exitCode,
+                .message = exec->stderrBytes,
+                .command = "git restore --staged"
+            });
+        }
+
+        [[nodiscard]] bool hasRebaseConflictOutput(const std::string_view combinedOutput) noexcept
+        {
+            return combinedOutput.find("CONFLICT") != std::string_view::npos ||
+                combinedOutput.find("Automatic merge failed") != std::string_view::npos ||
+                combinedOutput.find("conflitti") != std::string_view::npos ||
+                combinedOutput.find("Resolve all conflicts") != std::string_view::npos ||
+                combinedOutput.find("could not apply") != std::string_view::npos ||
+                combinedOutput.find("unmerged") != std::string_view::npos;
+        }
+
+        [[nodiscard]] gf::git::ports::GitOpsError
+        classifyIndexLockedOrPath(const gf::git::bo::GitProcessResult& exec, const std::string& commandLabel)
+        {
+            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+            if (exec.stderrBytes.find("index.lock") != std::string::npos)
+            {
+                kind = gf::git::ports::GitOpsError::Kind::IndexLocked;
+            }
+            else if (exec.stderrBytes.find("did not match any files") != std::string::npos ||
+                exec.stderrBytes.find("non corrisponde ad alcun file") != std::string::npos)
+            {
+                kind = gf::git::ports::GitOpsError::Kind::PathNotFound;
+            }
+            return {kind, exec.exitCode, exec.stderrBytes, commandLabel};
         }
 
         [[nodiscard]] bool isStashNotFoundError(const std::string_view output) noexcept
@@ -122,84 +451,136 @@ namespace gf::infra::git
                 if (std::string s; ifs >> s) return s;
                 return {};
             };
+            auto readStepCount = [&readFirstWord](const std::filesystem::path& p) -> int
+            {
+                const std::string s = readFirstWord(p);
+                if (s.empty()) return 0;
+                try { return std::stoi(s); }
+                catch (...) { return 0; }
+            };
 
-            auto rebaseMergeDir = repoPath / ".git" / "rebase-merge";
-            auto rebaseApplyDir = repoPath / ".git" / "rebase-apply";
+            const auto rebaseMergeDir = repoPath / ".git" / "rebase-merge";
+            const auto rebaseApplyDir = repoPath / ".git" / "rebase-apply";
 
             if (std::error_code ec; std::filesystem::exists(rebaseMergeDir, ec))
             {
-                std::string msgnumStr = readFirstWord(rebaseMergeDir / "msgnum");
-                std::string endStr = readFirstWord(rebaseMergeDir / "end");
-                std::string stoppedSha = readFirstWord(rebaseMergeDir / "stopped-sha");
-                if (!msgnumStr.empty())
+                if (const int step = readStepCount(rebaseMergeDir / "msgnum"); step > 0) result.currentStep = step;
+                if (const int total = readStepCount(rebaseMergeDir / "end"); total > 0) result.totalSteps = total;
+                if (std::string sha = readFirstWord(rebaseMergeDir / "stopped-sha"); !sha.empty())
                 {
-                    try { result.currentStep = std::stoul(msgnumStr); }
-                    catch (...)
-                    {
-                    }
-                }
-                if (!endStr.empty())
-                {
-                    try { result.totalSteps = std::stoul(endStr); }
-                    catch (...)
-                    {
-                    }
-                }
-                if (!stoppedSha.empty())
-                {
-                    result.currentCommitSha = stoppedSha;
+                    result.currentCommitSha = std::move(sha);
                 }
             }
             else if (std::filesystem::exists(rebaseApplyDir, ec))
             {
-                std::string nextStr = readFirstWord(rebaseApplyDir / "next");
-                std::string lastStr = readFirstWord(rebaseApplyDir / "last");
-                std::string origCommit = readFirstWord(rebaseApplyDir / "original-commit");
-                if (!nextStr.empty())
+                if (const int step = readStepCount(rebaseApplyDir / "next"); step > 0) result.currentStep = step;
+                if (const int total = readStepCount(rebaseApplyDir / "last"); total > 0) result.totalSteps = total;
+                if (std::string sha = readFirstWord(rebaseApplyDir / "original-commit"); !sha.empty())
                 {
-                    try { result.currentStep = std::stoul(nextStr); }
-                    catch (...)
-                    {
-                    }
-                }
-                if (!lastStr.empty())
-                {
-                    try { result.totalSteps = std::stoul(lastStr); }
-                    catch (...)
-                    {
-                    }
-                }
-                if (!origCommit.empty())
-                {
-                    result.currentCommitSha = origCommit;
+                    result.currentCommitSha = std::move(sha);
                 }
             }
 
-            auto diffUCmd = executor.execute(gf::git::bo::GitCommand{
-                .args = {"diff", "--name-only", "--diff-filter=U"},
-                .workingDirectory = repoPath,
-                .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
-                .timeout = std::chrono::milliseconds{10'000}
-            });
+            result.conflictedFiles = readConflictedFiles(executor, repoPath);
+        }
 
-            if (diffUCmd && diffUCmd->exitCode == 0)
+        [[nodiscard]] std::expected<void, gf::git::ports::GitOpsError>
+        applyOrPopStash(gf::git::ports::IGitCommandExecutor& executor,
+                        const std::filesystem::path& repoPath,
+                        const std::string_view verb,
+                        const gf::git::bo::StashApplyOptions& options)
+        {
+            std::vector<std::string> args{"stash", std::string(verb)};
+            if (options.restoreIndex) args.emplace_back("--index");
+            args.emplace_back("stash@{" + std::to_string(options.stashIndex) + "}");
+            const std::string cmdLabel = "git stash " + std::string(verb);
+            auto res = runGitChecked(
+                executor, repoPath, std::move(args), "applicare lo stash", cmdLabel,
+                [](const gf::git::bo::GitProcessResult& exec, const std::string& label)
+                {
+                    const std::string combined = exec.stdoutBytes + "\n" + exec.stderrBytes;
+                    auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+                    if (isStashNotFoundError(combined))
+                    {
+                        kind = gf::git::ports::GitOpsError::Kind::StashNotFound;
+                    }
+                    else if (combined.find("CONFLICT") != std::string::npos ||
+                        combined.find("conflict") != std::string::npos)
+                    {
+                        kind = gf::git::ports::GitOpsError::Kind::MergeConflict;
+                    }
+                    return gf::git::ports::GitOpsError{kind, exec.exitCode, pickErrorMessage(exec), label};
+                });
+            if (!res) return std::unexpected(res.error());
+            return {};
+        }
+
+        template <typename InProgressFn>
+        [[nodiscard]] std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
+        executeRebaseStep(gf::git::ports::IGitCommandExecutor& executor,
+                          const std::filesystem::path& repoPath,
+                          std::vector<std::string> args,
+                          const std::string_view errorVerb,
+                          const std::string_view commandLabel,
+                          const bool checkNoRebaseInProgress,
+                          const bool checkDirtyTree,
+                          const gf::git::bo::RebaseStatus successWhenStillInProgress,
+                          InProgressFn&& inProgressCheck)
+        {
+            auto exec = runGitRaw(executor, repoPath, std::move(args), errorVerb, commandLabel,
+                                  gf::git::bo::GitLockPolicy::Standard, 60'000);
+            if (!exec) return std::unexpected(exec.error());
+
+            gf::git::bo::RebaseResult result;
+            const std::string combinedOutput = exec->stdoutBytes + "\n" + exec->stderrBytes;
+
+            if (exec->exitCode == 0)
             {
-                std::string_view out(diffUCmd->stdoutBytes);
-                while (!out.empty())
+                if (successWhenStillInProgress == gf::git::bo::RebaseStatus::UpToDate)
                 {
-                    auto nl = out.find('\n');
-                    std::string_view line = nl == std::string_view::npos ? out : out.substr(0, nl);
-                    out = nl == std::string_view::npos ? std::string_view{} : out.substr(nl + 1);
-                    if (!line.empty() && line.back() == '\r')
-                    {
-                        line.remove_suffix(1);
-                    }
-                    if (!line.empty())
-                    {
-                        result.conflictedFiles.emplace_back(line);
-                    }
+                    result.status = (combinedOutput.find("is up to date") != std::string::npos ||
+                                     combinedOutput.find("è aggiornato") != std::string::npos)
+                                        ? gf::git::bo::RebaseStatus::UpToDate
+                                        : gf::git::bo::RebaseStatus::Finished;
                 }
+                else
+                {
+                    result.status = inProgressCheck() ? successWhenStillInProgress : gf::git::bo::RebaseStatus::Finished;
+                }
+                result.message = exec->stdoutBytes;
+                return result;
             }
+
+            if (checkNoRebaseInProgress &&
+                (combinedOutput.find("no rebase in progress") != std::string::npos ||
+                 combinedOutput.find("nessun rebase in corso") != std::string::npos))
+            {
+                return std::unexpected(gf::git::ports::GitOpsError{
+                    gf::git::ports::GitOpsError::Kind::NoRebaseInProgress,
+                    exec->exitCode, combinedOutput, std::string(commandLabel)
+                });
+            }
+
+            if (hasRebaseConflictOutput(combinedOutput))
+            {
+                result.status = gf::git::bo::RebaseStatus::Conflict;
+                result.message = combinedOutput;
+                populateRebaseProgressAndConflicts(repoPath, executor, result);
+                return result;
+            }
+
+            if (checkDirtyTree &&
+                (combinedOutput.find("cannot rebase: You have unstaged changes") != std::string::npos ||
+                 combinedOutput.find("working tree clean") != std::string::npos ||
+                 combinedOutput.find("unstaged changes") != std::string::npos))
+            {
+                return std::unexpected(gf::git::ports::GitOpsError{
+                    gf::git::ports::GitOpsError::Kind::DirtyWorkingTree,
+                    exec->exitCode, combinedOutput, std::string(commandLabel)
+                });
+            }
+
+            return std::unexpected(defaultGitFailure(*exec, std::string(commandLabel)));
         }
     } // namespace
 
@@ -318,84 +699,18 @@ namespace gf::infra::git
         std::vector<std::string> args{"add", "--"};
         args.insert(args.end(), filePaths.begin(), filePaths.end());
 
-        const gf::git::bo::GitCommand cmd{
-            .args = std::move(args),
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile eseguire git add: " + execResult.error().message,
-                .command = "git add"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-            if (execResult->stderrBytes.find("index.lock") != std::string::npos)
-            {
-                kind = gf::git::ports::GitOpsError::Kind::IndexLocked;
-            }
-            else if (execResult->stderrBytes.find("did not match any files") != std::string::npos ||
-                execResult->stderrBytes.find("non corrisponde ad alcun file") != std::string::npos)
-            {
-                kind = gf::git::ports::GitOpsError::Kind::PathNotFound;
-            }
-
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = kind,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes,
-                .command = "git add"
-            });
-        }
-
+        auto res = runGitChecked(m_executor, repoPath, std::move(args), "git add", "git add",
+                                 classifyIndexLockedOrPath);
+        if (!res) return std::unexpected(res.error());
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::stageAll(const std::filesystem::path& repoPath)
     {
-        const gf::git::bo::GitCommand cmd{
-            .args = {"add", "-A"},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile eseguire git add -A: " + execResult.error().message,
-                .command = "git add -A"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-            if (execResult->stderrBytes.find("index.lock") != std::string::npos)
-            {
-                kind = gf::git::ports::GitOpsError::Kind::IndexLocked;
-            }
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = kind,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes,
-                .command = "git add -A"
-            });
-        }
-
+        auto res = runGitChecked(m_executor, repoPath, {"add", "-A"}, "git add -A", "git add -A",
+                                 classifyIndexLockedOrPath);
+        if (!res) return std::unexpected(res.error());
         return {};
     }
 
@@ -411,115 +726,20 @@ namespace gf::infra::git
         std::vector<std::string> restoreArgs{"restore", "--staged", "--"};
         restoreArgs.insert(restoreArgs.end(), filePaths.begin(), filePaths.end());
 
-        const gf::git::bo::GitCommand restoreCmd{
-            .args = std::move(restoreArgs),
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
+        std::vector<std::string> rmArgs{"rm", "--cached", "--"};
+        rmArgs.insert(rmArgs.end(), filePaths.begin(), filePaths.end());
 
-        auto execResult = m_executor.execute(restoreCmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile eseguire git restore --staged: " + execResult.error().message,
-                .command = "git restore --staged"
-            });
-        }
-
-        // In case of unborn HEAD failure (no commits in repository):
-        if (execResult->exitCode != 0)
-        {
-            if (execResult->stderrBytes.find("HEAD") != std::string::npos)
-            {
-                // Fallback: git rm --cached -- <filePaths>
-                std::vector<std::string> rmArgs{"rm", "--cached", "--"};
-                rmArgs.insert(rmArgs.end(), filePaths.begin(), filePaths.end());
-
-                const gf::git::bo::GitCommand rmCmd{
-                    .args = std::move(rmArgs),
-                    .workingDirectory = repoPath,
-                    .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-                    .timeout = std::chrono::milliseconds{30'000}
-                };
-                if (const auto rmResult = m_executor.execute(rmCmd); rmResult && rmResult->exitCode == 0)
-                {
-                    return {};
-                }
-            }
-
-            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-            if (execResult->stderrBytes.find("index.lock") != std::string::npos)
-            {
-                kind = gf::git::ports::GitOpsError::Kind::IndexLocked;
-            }
-
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = kind,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes,
-                .command = "git restore --staged"
-            });
-        }
-
-        return {};
+        return unstageWithFallback(m_executor, repoPath, std::move(restoreArgs),
+                                   std::move(rmArgs), "git restore --staged");
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::unstageAll(const std::filesystem::path& repoPath)
     {
-        const gf::git::bo::GitCommand restoreCmd{
-            .args = {"restore", "--staged", "."},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(restoreCmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile eseguire git restore --staged .: " + execResult.error().message,
-                .command = "git restore --staged"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            if (execResult->stderrBytes.find("HEAD") != std::string::npos)
-            {
-                // Fallback for unborn HEAD: git rm --cached -r -- .
-                const gf::git::bo::GitCommand rmCmd{
-                    .args = {"rm", "--cached", "-r", "--", "."},
-                    .workingDirectory = repoPath,
-                    .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-                    .timeout = std::chrono::milliseconds{30'000}
-                };
-                if (const auto rmResult = m_executor.execute(rmCmd); rmResult && rmResult->exitCode == 0)
-                {
-                    return {};
-                }
-            }
-
-            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-            if (execResult->stderrBytes.find("index.lock") != std::string::npos)
-            {
-                kind = gf::git::ports::GitOpsError::Kind::IndexLocked;
-            }
-
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = kind,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes,
-                .command = "git restore --staged"
-            });
-        }
-
-        return {};
+        return unstageWithFallback(m_executor, repoPath,
+                                   {"restore", "--staged", "."},
+                                   {"rm", "--cached", "-r", "--", "."},
+                                   "git restore --staged .");
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
@@ -721,10 +941,7 @@ namespace gf::infra::git
             std::error_code ec;
             if (filePath.ends_with('/') || std::filesystem::is_directory(repoPath / filePath, ec))
             {
-                return gf::git::bo::FileDiff{
-                    .oldPath = filePath,
-                    .newPath = filePath
-                };
+                return gf::git::bo::FileDiff{.oldPath = filePath, .newPath = filePath};
             }
             // Untracked: use --no-index against /dev/null
             const auto untrackedFullPath = repoPath / core::utf8ToPath(filePath);
@@ -744,58 +961,9 @@ namespace gf::infra::git
             };
         }
 
-        const gf::git::bo::GitCommand cmd{
-            .args = std::move(args),
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile eseguire git diff: " + execResult.error().message,
-                .command = "git diff"
-            });
-        }
-
         // For --no-index, exitCode 1 indicates differences are present
-        if (const bool isNoIndex = scope == gf::git::bo::DiffScope::Untracked;
-            (isNoIndex && execResult->exitCode >= 2) || (!isNoIndex && execResult->exitCode > 1))
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes,
-                .command = "git diff"
-            });
-        }
-
-        if (execResult->stdoutBytes.empty())
-        {
-            return gf::git::bo::FileDiff{
-                .oldPath = filePath,
-                .newPath = filePath
-            };
-        }
-
-        if (auto diffOpt = gf::git::bl::UnifiedDiffParser::parseSingle(execResult->stdoutBytes);
-            diffOpt.has_value())
-        {
-            if (diffOpt->newPath.empty())
-            {
-                diffOpt->newPath = filePath;
-            }
-            return std::move(*diffOpt);
-        }
-
-        return gf::git::bo::FileDiff{
-            .oldPath = filePath,
-            .newPath = filePath
-        };
+        return parseSingleFileDiff(m_executor, repoPath, std::move(args), filePath,
+                                   "git diff", "git diff", true, false);
     }
 
     std::expected<std::vector<gf::git::bo::FileDiff>, gf::git::ports::GitOpsError>
@@ -833,32 +1001,14 @@ namespace gf::infra::git
             args = {"diff", "--no-color", "-p"};
         }
 
-        const gf::git::bo::GitCommand cmd{
-            .args = std::move(args),
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile eseguire git diff: " + execResult.error().message,
-                .command = "git diff"
-            });
-        }
+        auto execResult = runGitRaw(
+            m_executor, repoPath, std::move(args), "git diff", "git diff",
+            gf::git::bo::GitLockPolicy::NoOptionalLocks);
+        if (!execResult) return std::unexpected(execResult.error());
 
         if (execResult->exitCode > 1)
         {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes,
-                .command = "git diff"
-            });
+            return std::unexpected(defaultGitFailure(*execResult, "git diff"));
         }
 
         return gf::git::bl::UnifiedDiffParser::parse(execResult->stdoutBytes);
@@ -874,143 +1024,56 @@ namespace gf::infra::git
         }
 
         // 1. Run git show -m --first-parent --name-status --format="" <commitSha>
-        const gf::git::bo::GitCommand diffTreeCmd{
-            .args = {"show", "-m", "--first-parent", "--name-status", "--format=", commitSha},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto diffTreeRes = m_executor.execute(diffTreeCmd);
-        if (!diffTreeRes || diffTreeRes->exitCode != 0)
+        auto diffTreeRes = runGitChecked(
+            m_executor, repoPath,
+            {"show", "-m", "--first-parent", "--name-status", "--format=", commitSha},
+            "git show", "git show", defaultGitFailure, gf::git::bo::GitLockPolicy::NoOptionalLocks);
+        if (!diffTreeRes)
         {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = diffTreeRes ? diffTreeRes->exitCode : -1,
-                .message = diffTreeRes ? diffTreeRes->stderrBytes : "Execution failed",
-                .command = "git show"
-            });
+            return std::unexpected(diffTreeRes.error());
         }
 
         // 2. Run git show -m --first-parent --numstat --format="" <commitSha>
-        const gf::git::bo::GitCommand numstatCmd{
-            .args = {"show", "-m", "--first-parent", "--numstat", "--format=", commitSha},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-        auto numstatRes = m_executor.execute(numstatCmd);
+        auto numstatRes = runGitRaw(
+            m_executor, repoPath,
+            {"show", "-m", "--first-parent", "--numstat", "--format=", commitSha},
+            "git show", "git show", gf::git::bo::GitLockPolicy::NoOptionalLocks);
 
-        struct NumStatEntry
-        {
-            int additions = 0;
-            int deletions = 0;
-            bool isBinary = false;
-        };
         std::unordered_map<std::string, NumStatEntry> numstatMap;
-
         if (numstatRes && numstatRes->exitCode == 0)
         {
             std::istringstream nss(numstatRes->stdoutBytes);
             std::string nline;
             while (std::getline(nss, nline))
             {
-                while (!nline.empty() && (nline.back() == '\r' || nline.back() == ' '))
-                {
-                    nline.pop_back();
-                }
+                while (!nline.empty() && (nline.back() == '\r' || nline.back() == ' ')) nline.pop_back();
                 if (nline.empty()) continue;
-
-                auto tab1 = nline.find('\t');
-                if (tab1 == std::string::npos) continue;
-                auto tab2 = nline.find('\t', tab1 + 1);
-                if (tab2 == std::string::npos) continue;
-
-                std::string addStr = nline.substr(0, tab1);
-                std::string delStr = nline.substr(tab1 + 1, tab2 - tab1 - 1);
-                std::string pathStr = nline.substr(tab2 + 1);
-
+                std::string pathStr;
                 NumStatEntry entry;
-                if (addStr == "-" || delStr == "-")
+                if (parseNumstatLine(nline, pathStr, entry))
                 {
-                    entry.isBinary = true;
+                    numstatMap[pathStr] = entry;
                 }
-                else
-                {
-                    try
-                    {
-                        entry.additions = std::stoi(addStr);
-                        entry.deletions = std::stoi(delStr);
-                    }
-                    catch (...)
-                    {
-                        entry.additions = 0;
-                        entry.deletions = 0;
-                    }
-                }
-                numstatMap[pathStr] = entry;
             }
         }
 
-        // Parse diff-tree output
+        // Parse name-status output
         std::vector<gf::git::bo::CommitFileChange> changes;
         std::istringstream dss(diffTreeRes->stdoutBytes);
         std::string dline;
         while (std::getline(dss, dline))
         {
-            while (!dline.empty() && (dline.back() == '\r' || dline.back() == ' '))
-            {
-                dline.pop_back();
-            }
+            while (!dline.empty() && (dline.back() == '\r' || dline.back() == ' ')) dline.pop_back();
             if (dline.empty()) continue;
 
-            auto tab1 = dline.find('\t');
-            if (tab1 == std::string::npos) continue;
-
-            std::string statusStr = dline.substr(0, tab1);
-            std::string rest = dline.substr(tab1 + 1);
-
             gf::git::bo::CommitFileChange change;
-            switch (statusStr.empty() ? 'M' : statusStr.front())
-            {
-            case 'A': change.status = gf::git::bo::FileChangeStatus::Added;
-                break;
-            case 'D': change.status = gf::git::bo::FileChangeStatus::Deleted;
-                break;
-            case 'R': change.status = gf::git::bo::FileChangeStatus::Renamed;
-                break;
-            case 'C': change.status = gf::git::bo::FileChangeStatus::Copied;
-                break;
-            default: change.status = gf::git::bo::FileChangeStatus::Modified;
-                break;
-            }
-
-            if (change.status == gf::git::bo::FileChangeStatus::Renamed ||
-                change.status == gf::git::bo::FileChangeStatus::Copied)
-            {
-                if (const auto tab2 = rest.find('\t'); tab2 != std::string::npos)
-                {
-                    change.oldPath = rest.substr(0, tab2);
-                    change.path = rest.substr(tab2 + 1);
-                }
-                else
-                {
-                    change.path = rest;
-                }
-            }
-            else
-            {
-                change.path = rest;
-            }
-
-            // Match numstat
+            if (!parseNameStatusLine(dline, change)) continue;
             if (const auto it = numstatMap.find(change.path); it != numstatMap.end())
             {
                 change.additions = it->second.additions;
                 change.deletions = it->second.deletions;
                 change.isBinary = it->second.isBinary;
             }
-
             changes.push_back(std::move(change));
         }
 
@@ -1031,60 +1094,18 @@ namespace gf::infra::git
                                                          const std::string& filePath,
                                                          const int contextLines)
     {
-        const int effectiveContext = contextLines < 0 ? 999999 : contextLines;
-        const std::string contextArg = "-U" + std::to_string(effectiveContext);
         if (commitSha.empty() || filePath.empty())
         {
             return gf::git::bo::FileDiff{.oldPath = filePath, .newPath = filePath};
         }
-
-        const gf::git::bo::GitCommand cmd{
-            .args = {
-                "show", "-m", "--first-parent", "--format=", "--no-ext-diff", "--no-textconv", "--no-color", contextArg,
-                "-p", commitSha, "--", filePath
+        const int effectiveContext = contextLines < 0 ? 999999 : contextLines;
+        return parseSingleFileDiff(
+            m_executor, repoPath,
+            {
+                "show", "-m", "--first-parent", "--format=", "--no-ext-diff", "--no-textconv", "--no-color",
+                "-U" + std::to_string(effectiveContext), "-p", commitSha, "--", filePath
             },
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult || execResult->exitCode != 0)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = execResult ? execResult->exitCode : -1,
-                .message = execResult ? execResult->stderrBytes : "Execution failed",
-                .command = "git show"
-            });
-        }
-
-        if (execResult->stdoutBytes.empty())
-        {
-            return gf::git::bo::FileDiff{
-                .oldPath = filePath,
-                .newPath = filePath
-            };
-        }
-
-        if (auto diffOpt = gf::git::bl::UnifiedDiffParser::parseSingle(execResult->stdoutBytes);
-            diffOpt.has_value())
-        {
-            if (diffOpt->newPath.empty())
-            {
-                diffOpt->newPath = filePath;
-            }
-            if (diffOpt->oldPath.empty())
-            {
-                diffOpt->oldPath = filePath;
-            }
-            return std::move(*diffOpt);
-        }
-
-        return gf::git::bo::FileDiff{
-            .oldPath = filePath,
-            .newPath = filePath
-        };
+            filePath, "git show", "git show");
     }
 
     std::expected<gf::git::bo::MultiCommitChangesSummary, gf::git::ports::GitOpsError>
@@ -1106,106 +1127,6 @@ namespace gf::infra::git
             summary.rangeBaseRevision = baseRevision;
             summary.rangeHeadSha = headSha;
         }
-
-        auto parseStatusChar = [](const std::string& statusStr) noexcept -> gf::git::bo::FileChangeStatus
-        {
-            switch (statusStr.empty() ? 'M' : statusStr.front())
-            {
-            case 'A': return gf::git::bo::FileChangeStatus::Added;
-            case 'D': return gf::git::bo::FileChangeStatus::Deleted;
-            case 'R': return gf::git::bo::FileChangeStatus::Renamed;
-            case 'C': return gf::git::bo::FileChangeStatus::Copied;
-            default: return gf::git::bo::FileChangeStatus::Modified;
-            }
-        };
-
-        auto normalizeNumstatPath = [](const std::string& raw) -> std::string
-        {
-            const auto arrow = raw.find(" => ");
-            if (arrow == std::string::npos) return raw;
-            const auto lbrace = raw.rfind('{', arrow);
-            const auto rbrace = raw.find('}', arrow + 4);
-            if (lbrace != std::string::npos && rbrace != std::string::npos)
-            {
-                std::string out;
-                out.append(raw, 0, lbrace);
-                out.append(raw, arrow + 4, rbrace - (arrow + 4));
-                out.append(raw, rbrace + 1, std::string::npos);
-                std::size_t pos = 0;
-                while ((pos = out.find("//", pos)) != std::string::npos)
-                {
-                    out.erase(pos, 1);
-                }
-                if (!out.empty() && out.front() == '/') out.erase(0, 1);
-                return out;
-            }
-            return raw.substr(arrow + 4);
-        };
-
-        struct NumStatEntry
-        {
-            int additions = 0;
-            int deletions = 0;
-            bool isBinary = false;
-        };
-
-        auto parseNumstatLine = [&](const std::string& nline, std::string& outPath, NumStatEntry& outEntry) -> bool
-        {
-            const auto tab1 = nline.find('\t');
-            if (tab1 == std::string::npos) return false;
-            const auto tab2 = nline.find('\t', tab1 + 1);
-            if (tab2 == std::string::npos) return false;
-            const std::string addStr = nline.substr(0, tab1);
-            const std::string delStr = nline.substr(tab1 + 1, tab2 - tab1 - 1);
-            outPath = nline.substr(tab2 + 1);
-            outEntry = {};
-            if (addStr == "-" || delStr == "-")
-            {
-                outEntry.isBinary = true;
-            }
-            else
-            {
-                try
-                {
-                    outEntry.additions = std::stoi(addStr);
-                    outEntry.deletions = std::stoi(delStr);
-                }
-                catch (...)
-                {
-                    outEntry.additions = 0;
-                    outEntry.deletions = 0;
-                }
-            }
-            return true;
-        };
-
-        auto parseNameStatusLine = [&](const std::string& dline, gf::git::bo::CommitFileChange& outChange) -> bool
-        {
-            const auto tab1 = dline.find('\t');
-            if (tab1 == std::string::npos) return false;
-            const std::string statusStr = dline.substr(0, tab1);
-            const std::string rest = dline.substr(tab1 + 1);
-            outChange = {};
-            outChange.status = parseStatusChar(statusStr);
-            if (outChange.status == gf::git::bo::FileChangeStatus::Renamed ||
-                outChange.status == gf::git::bo::FileChangeStatus::Copied)
-            {
-                if (const auto tab2 = rest.find('\t'); tab2 != std::string::npos)
-                {
-                    outChange.oldPath = rest.substr(0, tab2);
-                    outChange.path = rest.substr(tab2 + 1);
-                }
-                else
-                {
-                    outChange.path = rest;
-                }
-            }
-            else
-            {
-                outChange.path = rest;
-            }
-            return !outChange.path.empty();
-        };
 
         constexpr std::string_view kCommitMarker = "__GF_COMMIT__";
 
@@ -1503,54 +1424,18 @@ namespace gf::infra::git
                                                               const std::string& filePath,
                                                               const int contextLines)
     {
-        const int effectiveContext = contextLines < 0 ? 999999 : contextLines;
-        const std::string contextArg = "-U" + std::to_string(effectiveContext);
         if (baseRevision.empty() || headSha.empty() || filePath.empty())
         {
             return gf::git::bo::FileDiff{.oldPath = filePath, .newPath = filePath};
         }
-
-        const gf::git::bo::GitCommand cmd{
-            .args = {
-                "diff", "-M", "--no-ext-diff", "--no-textconv", "--no-color", contextArg,
-                baseRevision, headSha, "--", filePath
+        const int effectiveContext = contextLines < 0 ? 999999 : contextLines;
+        return parseSingleFileDiff(
+            m_executor, repoPath,
+            {
+                "diff", "-M", "--no-ext-diff", "--no-textconv", "--no-color",
+                "-U" + std::to_string(effectiveContext), baseRevision, headSha, "--", filePath
             },
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult || execResult->exitCode != 0)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = execResult ? execResult->exitCode : -1,
-                .message = execResult ? execResult->stderrBytes : "Execution failed",
-                .command = "git diff"
-            });
-        }
-
-        if (execResult->stdoutBytes.empty())
-        {
-            return gf::git::bo::FileDiff{
-                .oldPath = filePath,
-                .newPath = filePath
-            };
-        }
-
-        if (auto diffOpt = gf::git::bl::UnifiedDiffParser::parseSingle(execResult->stdoutBytes);
-            diffOpt.has_value())
-        {
-            if (diffOpt->newPath.empty()) diffOpt->newPath = filePath;
-            if (diffOpt->oldPath.empty()) diffOpt->oldPath = filePath;
-            return std::move(*diffOpt);
-        }
-
-        return gf::git::bo::FileDiff{
-            .oldPath = filePath,
-            .newPath = filePath
-        };
+            filePath, "git diff", "git diff");
     }
 
     std::expected<std::vector<gf::git::bo::BlameLine>, gf::git::ports::GitOpsError>
@@ -1571,22 +1456,12 @@ namespace gf::infra::git
         args.emplace_back("--");
         args.push_back(filePath);
 
-        const gf::git::bo::GitCommand cmd{
-            .args = std::move(args),
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult || execResult->exitCode != 0)
+        auto execResult = runGitChecked(
+            m_executor, repoPath, std::move(args), "git blame", "git blame", defaultGitFailure,
+            gf::git::bo::GitLockPolicy::NoOptionalLocks);
+        if (!execResult)
         {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = execResult ? execResult->exitCode : -1,
-                .message = execResult ? execResult->stderrBytes : "Execution failed",
-                .command = "git blame"
-            });
+            return std::unexpected(execResult.error());
         }
 
         std::vector<gf::git::bo::BlameLine> result;
@@ -1861,63 +1736,34 @@ namespace gf::infra::git
     NativeRepositoryGitOps::createBranch(const std::filesystem::path& repoPath,
                                          const gf::git::bo::CreateBranchOptions& options)
     {
-        std::vector<std::string> args;
-        if (options.checkoutAfterCreate)
-        {
-            args = {"checkout", "-b", options.name};
-        }
-        else
-        {
-            args = {"branch", options.name};
-        }
-
+        std::vector<std::string> args = options.checkoutAfterCreate
+                                            ? std::vector<std::string>{"checkout", "-b", options.name}
+                                            : std::vector<std::string>{"branch", options.name};
         if (options.startPoint.has_value() && !options.startPoint->empty())
         {
             args.push_back(*options.startPoint);
         }
 
-        const gf::git::bo::GitCommand cmd{
-            .args = std::move(args),
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile creare il branch: " + execResult.error().message,
-                .command = "git branch"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-            if (execResult->stderrBytes.find("already exists") != std::string::npos ||
-                execResult->stderrBytes.find("esiste già") != std::string::npos)
+        auto res = runGitChecked(
+            m_executor, repoPath, std::move(args), "creare il branch", "git branch",
+            [](const gf::git::bo::GitProcessResult& exec, const std::string& label)
             {
-                kind = gf::git::ports::GitOpsError::Kind::BranchAlreadyExists;
-            }
-            else if (execResult->stderrBytes.find("not found") != std::string::npos ||
-                execResult->stderrBytes.find("non trovato") != std::string::npos ||
-                execResult->stderrBytes.find("No branch named") != std::string::npos ||
-                execResult->stderrBytes.find("Nessun branch denominato") != std::string::npos)
-            {
-                kind = gf::git::ports::GitOpsError::Kind::BranchNotFound;
-            }
-
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = kind,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes,
-                .command = "git branch"
+                auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+                if (exec.stderrBytes.find("already exists") != std::string::npos ||
+                    exec.stderrBytes.find("esiste già") != std::string::npos)
+                {
+                    kind = gf::git::ports::GitOpsError::Kind::BranchAlreadyExists;
+                }
+                else if (exec.stderrBytes.find("not found") != std::string::npos ||
+                    exec.stderrBytes.find("non trovato") != std::string::npos ||
+                    exec.stderrBytes.find("No branch named") != std::string::npos ||
+                    exec.stderrBytes.find("Nessun branch denominato") != std::string::npos)
+                {
+                    kind = gf::git::ports::GitOpsError::Kind::BranchNotFound;
+                }
+                return gf::git::ports::GitOpsError{kind, exec.exitCode, exec.stderrBytes, label};
             });
-        }
-
+        if (!res) return std::unexpected(res.error());
         return {};
     }
 
@@ -1988,51 +1834,29 @@ namespace gf::infra::git
         }
         args.push_back(checkoutTarget);
 
-        const gf::git::bo::GitCommand cmd{
-            .args = std::move(args),
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile eseguire il checkout: " + execResult.error().message,
-                .command = "git checkout"
+        auto res = runGitChecked(
+            m_executor, repoPath, std::move(args), "il checkout", "git checkout",
+            [](const gf::git::bo::GitProcessResult& exec, const std::string& label)
+            {
+                auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+                if (exec.stderrBytes.find("would be overwritten by checkout") != std::string::npos ||
+                    exec.stderrBytes.find("sarebbero sovrascritte con il checkout") != std::string::npos)
+                {
+                    kind = gf::git::ports::GitOpsError::Kind::DirtyWorkingTree;
+                }
+                else if (exec.stderrBytes.find("did not match any") != std::string::npos ||
+                    exec.stderrBytes.find("non corrisponde ad alcun") != std::string::npos)
+                {
+                    kind = gf::git::ports::GitOpsError::Kind::BranchNotFound;
+                }
+                else if (exec.stderrBytes.find("already exists") != std::string::npos ||
+                    exec.stderrBytes.find("esiste già") != std::string::npos)
+                {
+                    kind = gf::git::ports::GitOpsError::Kind::BranchAlreadyExists;
+                }
+                return gf::git::ports::GitOpsError{kind, exec.exitCode, exec.stderrBytes, label};
             });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-            if (execResult->stderrBytes.find("would be overwritten by checkout") != std::string::npos ||
-                execResult->stderrBytes.find("sarebbero sovrascritte con il checkout") != std::string::npos)
-            {
-                kind = gf::git::ports::GitOpsError::Kind::DirtyWorkingTree;
-            }
-            else if (execResult->stderrBytes.find("did not match any") != std::string::npos ||
-                execResult->stderrBytes.find("non corrisponde ad alcun") != std::string::npos)
-            {
-                kind = gf::git::ports::GitOpsError::Kind::BranchNotFound;
-            }
-            else if (execResult->stderrBytes.find("already exists") != std::string::npos ||
-                execResult->stderrBytes.find("esiste già") != std::string::npos)
-            {
-                kind = gf::git::ports::GitOpsError::Kind::BranchAlreadyExists;
-            }
-
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = kind,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes,
-                .command = "git checkout"
-            });
-        }
-
+        if (!res) return std::unexpected(res.error());
         return {};
     }
 
@@ -2041,49 +1865,28 @@ namespace gf::infra::git
                                          const std::string& branchName,
                                          const bool force)
     {
-        const gf::git::bo::GitCommand cmd{
-            .args = {"branch", force ? "-D" : "-d", branchName},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile eliminare il branch: " + execResult.error().message,
-                .command = "git branch -d"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-            if (execResult->stderrBytes.find("cannot delete") != std::string::npos ||
-                execResult->stderrBytes.find("impossibile eliminare") != std::string::npos ||
-                execResult->stderrBytes.find("not fully merged") != std::string::npos ||
-                execResult->stderrBytes.find("sottoposto a merge") != std::string::npos ||
-                execResult->stderrBytes.find("used by worktree") != std::string::npos)
+        auto res = runGitChecked(
+            m_executor, repoPath, {"branch", force ? "-D" : "-d", branchName},
+            "eliminare il branch", "git branch -d",
+            [](const gf::git::bo::GitProcessResult& exec, const std::string& label)
             {
-                kind = gf::git::ports::GitOpsError::Kind::InvalidOperation;
-            }
-            else if (execResult->stderrBytes.find("not found") != std::string::npos ||
-                execResult->stderrBytes.find("non trovato") != std::string::npos)
-            {
-                kind = gf::git::ports::GitOpsError::Kind::BranchNotFound;
-            }
-
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = kind,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes,
-                .command = "git branch -d"
+                auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+                if (exec.stderrBytes.find("cannot delete") != std::string::npos ||
+                    exec.stderrBytes.find("impossibile eliminare") != std::string::npos ||
+                    exec.stderrBytes.find("not fully merged") != std::string::npos ||
+                    exec.stderrBytes.find("sottoposto a merge") != std::string::npos ||
+                    exec.stderrBytes.find("used by worktree") != std::string::npos)
+                {
+                    kind = gf::git::ports::GitOpsError::Kind::InvalidOperation;
+                }
+                else if (exec.stderrBytes.find("not found") != std::string::npos ||
+                    exec.stderrBytes.find("non trovato") != std::string::npos)
+                {
+                    kind = gf::git::ports::GitOpsError::Kind::BranchNotFound;
+                }
+                return gf::git::ports::GitOpsError{kind, exec.exitCode, exec.stderrBytes, label};
             });
-        }
-
+        if (!res) return std::unexpected(res.error());
         return {};
     }
 
@@ -2092,48 +1895,27 @@ namespace gf::infra::git
                                          const std::string& oldName,
                                          const std::string& newName)
     {
-        const gf::git::bo::GitCommand cmd{
-            .args = {"branch", "-m", oldName, newName},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile rinominare il branch: " + execResult.error().message,
-                .command = "git branch -m"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-            if (execResult->stderrBytes.find("already exists") != std::string::npos ||
-                execResult->stderrBytes.find("esiste già") != std::string::npos)
+        auto res = runGitChecked(
+            m_executor, repoPath, {"branch", "-m", oldName, newName},
+            "rinominare il branch", "git branch -m",
+            [](const gf::git::bo::GitProcessResult& exec, const std::string& label)
             {
-                kind = gf::git::ports::GitOpsError::Kind::BranchAlreadyExists;
-            }
-            else if (execResult->stderrBytes.find("not found") != std::string::npos ||
-                execResult->stderrBytes.find("non trovato") != std::string::npos ||
-                execResult->stderrBytes.find("No branch named") != std::string::npos ||
-                execResult->stderrBytes.find("Nessun branch denominato") != std::string::npos)
-            {
-                kind = gf::git::ports::GitOpsError::Kind::BranchNotFound;
-            }
-
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = kind,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes,
-                .command = "git branch -m"
+                auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+                if (exec.stderrBytes.find("already exists") != std::string::npos ||
+                    exec.stderrBytes.find("esiste già") != std::string::npos)
+                {
+                    kind = gf::git::ports::GitOpsError::Kind::BranchAlreadyExists;
+                }
+                else if (exec.stderrBytes.find("not found") != std::string::npos ||
+                    exec.stderrBytes.find("non trovato") != std::string::npos ||
+                    exec.stderrBytes.find("No branch named") != std::string::npos ||
+                    exec.stderrBytes.find("Nessun branch denominato") != std::string::npos)
+                {
+                    kind = gf::git::ports::GitOpsError::Kind::BranchNotFound;
+                }
+                return gf::git::ports::GitOpsError{kind, exec.exitCode, exec.stderrBytes, label};
             });
-        }
-
+        if (!res) return std::unexpected(res.error());
         return {};
     }
 
@@ -2271,33 +2053,10 @@ namespace gf::infra::git
     std::expected<std::vector<std::string>, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::listTrackedFiles(const std::filesystem::path& repoPath)
     {
-        const gf::git::bo::GitCommand cmd{
-            .args = {"ls-files"},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
-            .timeout = std::chrono::milliseconds{15'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile recuperare i file del repository: " + execResult.error().message,
-                .command = "git ls-files"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes,
-                .command = "git ls-files"
-            });
-        }
+        auto execResult = runGitChecked(
+            m_executor, repoPath, {"ls-files"}, "recuperare i file del repository", "git ls-files",
+            defaultGitFailure, gf::git::bo::GitLockPolicy::NoOptionalLocks, 15'000);
+        if (!execResult) return std::unexpected(execResult.error());
 
         std::vector<std::string> files;
         std::string_view out = execResult->stdoutBytes;
@@ -2326,37 +2085,16 @@ namespace gf::infra::git
     std::expected<std::vector<gf::git::bo::GitTag>, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::listTags(const std::filesystem::path& repoPath)
     {
-        const gf::git::bo::GitCommand cmd{
-            .args = {
+        auto execResult = runGitChecked(
+            m_executor, repoPath,
+            {
                 "tag",
                 "-l",
                 "--format=%(refname:strip=2)%09%(objectname)%09%(*objectname)%09%(taggername)%09%(taggeremail)%09%(taggerdate:iso-strict)%09%(contents:subject)"
             },
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile recuperare i tag: " + execResult.error().message,
-                .command = "git tag -l"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes,
-                .command = "git tag -l"
-            });
-        }
+            "recuperare i tag", "git tag -l",
+            defaultGitFailure, gf::git::bo::GitLockPolicy::NoOptionalLocks);
+        if (!execResult) return std::unexpected(execResult.error());
 
         std::vector<gf::git::bo::GitTag> tags;
         std::string_view out(execResult->stdoutBytes);
@@ -2433,11 +2171,7 @@ namespace gf::infra::git
                                       const gf::git::bo::CreateTagOptions& options)
     {
         std::vector<std::string> args{"tag"};
-        if (options.force)
-        {
-            args.emplace_back("-f");
-        }
-
+        if (options.force) args.emplace_back("-f");
         if (options.message.has_value())
         {
             args.emplace_back("-a");
@@ -2449,52 +2183,29 @@ namespace gf::infra::git
         {
             args.push_back(options.name);
         }
-
         if (options.targetCommit.has_value() && !options.targetCommit->empty())
         {
             args.push_back(*options.targetCommit);
         }
 
-        const gf::git::bo::GitCommand cmd{
-            .args = std::move(args),
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile creare il tag: " + execResult.error().message,
-                .command = "git tag"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-            if (execResult->stderrBytes.find("already exists") != std::string::npos ||
-                execResult->stderrBytes.find("esiste già") != std::string::npos)
+        auto res = runGitChecked(
+            m_executor, repoPath, std::move(args), "creare il tag", "git tag",
+            [](const gf::git::bo::GitProcessResult& exec, const std::string& label)
             {
-                kind = gf::git::ports::GitOpsError::Kind::TagAlreadyExists;
-            }
-            else if (execResult->stderrBytes.find("not a valid object name") != std::string::npos ||
-                execResult->stderrBytes.find("non è un nome di oggetto valido") != std::string::npos)
-            {
-                kind = gf::git::ports::GitOpsError::Kind::BranchNotFound;
-            }
-
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = kind,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes,
-                .command = "git tag"
+                auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+                if (exec.stderrBytes.find("already exists") != std::string::npos ||
+                    exec.stderrBytes.find("esiste già") != std::string::npos)
+                {
+                    kind = gf::git::ports::GitOpsError::Kind::TagAlreadyExists;
+                }
+                else if (exec.stderrBytes.find("not a valid object name") != std::string::npos ||
+                    exec.stderrBytes.find("non è un nome di oggetto valido") != std::string::npos)
+                {
+                    kind = gf::git::ports::GitOpsError::Kind::BranchNotFound;
+                }
+                return gf::git::ports::GitOpsError{kind, exec.exitCode, exec.stderrBytes, label};
             });
-        }
-
+        if (!res) return std::unexpected(res.error());
         return {};
     }
 
@@ -2502,74 +2213,29 @@ namespace gf::infra::git
     NativeRepositoryGitOps::deleteTag(const std::filesystem::path& repoPath,
                                       const std::string& tagName)
     {
-        const gf::git::bo::GitCommand cmd{
-            .args = {"tag", "-d", tagName},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile eliminare il tag: " + execResult.error().message,
-                .command = "git tag -d"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-            if (execResult->stderrBytes.find("not found") != std::string::npos ||
-                execResult->stderrBytes.find("non trovato") != std::string::npos)
+        auto res = runGitChecked(
+            m_executor, repoPath, {"tag", "-d", tagName}, "eliminare il tag", "git tag -d",
+            [](const gf::git::bo::GitProcessResult& exec, const std::string& label)
             {
-                kind = gf::git::ports::GitOpsError::Kind::TagNotFound;
-            }
-
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = kind,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes,
-                .command = "git tag -d"
+                auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+                if (exec.stderrBytes.find("not found") != std::string::npos ||
+                    exec.stderrBytes.find("non trovato") != std::string::npos)
+                {
+                    kind = gf::git::ports::GitOpsError::Kind::TagNotFound;
+                }
+                return gf::git::ports::GitOpsError{kind, exec.exitCode, exec.stderrBytes, label};
             });
-        }
-
+        if (!res) return std::unexpected(res.error());
         return {};
     }
 
     std::expected<std::vector<gf::git::bo::GitRemote>, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::listRemotes(const std::filesystem::path& repoPath)
     {
-        const gf::git::bo::GitCommand cmd{
-            .args = {"remote", "-v"},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile recuperare i remote: " + execResult.error().message,
-                .command = "git remote -v"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes,
-                .command = "git remote -v"
-            });
-        }
+        auto execResult = runGitChecked(
+            m_executor, repoPath, {"remote", "-v"}, "recuperare i remote", "git remote -v",
+            defaultGitFailure, gf::git::bo::GitLockPolicy::NoOptionalLocks);
+        if (!execResult) return std::unexpected(execResult.error());
 
         std::unordered_map<std::string, gf::git::bo::GitRemote> remotesMap;
         std::string_view out(execResult->stdoutBytes);
@@ -2657,41 +2323,19 @@ namespace gf::infra::git
                                       const std::string& name,
                                       const std::string& url)
     {
-        const gf::git::bo::GitCommand cmd{
-            .args = {"remote", "add", name, url},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile aggiungere il remote: " + execResult.error().message,
-                .command = "git remote add"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-            if (execResult->stderrBytes.find("already exists") != std::string::npos ||
-                execResult->stderrBytes.find("esiste già") != std::string::npos)
+        auto res = runGitChecked(
+            m_executor, repoPath, {"remote", "add", name, url}, "aggiungere il remote", "git remote add",
+            [](const gf::git::bo::GitProcessResult& exec, const std::string& label)
             {
-                kind = gf::git::ports::GitOpsError::Kind::RemoteAlreadyExists;
-            }
-
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = kind,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes,
-                .command = "git remote add"
+                auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+                if (exec.stderrBytes.find("already exists") != std::string::npos ||
+                    exec.stderrBytes.find("esiste già") != std::string::npos)
+                {
+                    kind = gf::git::ports::GitOpsError::Kind::RemoteAlreadyExists;
+                }
+                return gf::git::ports::GitOpsError{kind, exec.exitCode, exec.stderrBytes, label};
             });
-        }
-
+        if (!res) return std::unexpected(res.error());
         return {};
     }
 
@@ -2699,42 +2343,20 @@ namespace gf::infra::git
     NativeRepositoryGitOps::removeRemote(const std::filesystem::path& repoPath,
                                          const std::string& name)
     {
-        const gf::git::bo::GitCommand cmd{
-            .args = {"remote", "remove", name},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile rimuovere il remote: " + execResult.error().message,
-                .command = "git remote remove"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-            if (execResult->stderrBytes.find("No such remote") != std::string::npos ||
-                execResult->stderrBytes.find("non trovato") != std::string::npos ||
-                execResult->stderrBytes.find("non esiste") != std::string::npos)
+        auto res = runGitChecked(
+            m_executor, repoPath, {"remote", "remove", name}, "rimuovere il remote", "git remote remove",
+            [](const gf::git::bo::GitProcessResult& exec, const std::string& label)
             {
-                kind = gf::git::ports::GitOpsError::Kind::RemoteNotFound;
-            }
-
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = kind,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes,
-                .command = "git remote remove"
+                auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+                if (exec.stderrBytes.find("No such remote") != std::string::npos ||
+                    exec.stderrBytes.find("non trovato") != std::string::npos ||
+                    exec.stderrBytes.find("non esiste") != std::string::npos)
+                {
+                    kind = gf::git::ports::GitOpsError::Kind::RemoteNotFound;
+                }
+                return gf::git::ports::GitOpsError{kind, exec.exitCode, exec.stderrBytes, label};
             });
-        }
-
+        if (!res) return std::unexpected(res.error());
         return {};
     }
 
@@ -2743,35 +2365,8 @@ namespace gf::infra::git
                                          const std::string& name,
                                          const std::string& url)
     {
-        const gf::git::bo::GitCommand cmd{
-            .args = {"remote", "set-url", name, url},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile aggiornare l'URL del remote: " + execResult.error().message,
-                .command = "git remote set-url"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes,
-                .command = "git remote set-url"
-            });
-        }
-
-        return {};
+        return runGitVoid(m_executor, repoPath, {"remote", "set-url", name, url},
+                          "aggiornare l'URL del remote", "git remote set-url");
     }
 
     std::expected<gf::git::bo::RemoteOperationResult, gf::git::ports::GitOpsError>
@@ -2779,18 +2374,9 @@ namespace gf::infra::git
                                         const gf::git::bo::RemoteOperationOptions& options)
     {
         std::vector<std::string> args{"fetch"};
-        if (options.prune)
-        {
-            args.emplace_back("--prune");
-        }
-        if (options.tags)
-        {
-            args.emplace_back("--tags");
-        }
-        if (options.force)
-        {
-            args.emplace_back("--force");
-        }
+        if (options.prune) args.emplace_back("--prune");
+        if (options.tags) args.emplace_back("--tags");
+        if (options.force) args.emplace_back("--force");
         if (options.allRemotes)
         {
             args.emplace_back("--all");
@@ -2804,51 +2390,15 @@ namespace gf::infra::git
             }
         }
 
-        gf::git::bo::GitCommand cmd{
-            .args = std::move(args),
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{60'000}
-        };
-        gf::git::bl::applyHttpsCredential(cmd, options.httpsCredential);
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile eseguire il fetch: " + execResult.error().message,
-                .command = "git fetch"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-            if (execResult->stderrBytes.find("Could not resolve host") != std::string::npos ||
-                execResult->stderrBytes.find("Authentication failed") != std::string::npos ||
-                execResult->stderrBytes.find("Permission denied") != std::string::npos)
-            {
-                kind = gf::git::ports::GitOpsError::Kind::NetworkAuthenticationFailed;
-            }
-            else if (execResult->stderrBytes.find("does not appear to be a git repository") != std::string::npos ||
-                execResult->stderrBytes.find("not found") != std::string::npos)
-            {
-                kind = gf::git::ports::GitOpsError::Kind::RemoteNotFound;
-            }
-
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = kind,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes,
-                .command = "git fetch"
-            });
-        }
+        auto exec = runGitChecked(
+            m_executor, repoPath, std::move(args), "il fetch", "git fetch",
+            classifyRemoteFailure,
+            gf::git::bo::GitLockPolicy::Standard, 60'000, options.httpsCredential);
+        if (!exec) return std::unexpected(exec.error());
 
         gf::git::bo::RemoteOperationResult result;
         result.success = true;
-        result.output = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes;
+        result.output = exec->stderrBytes.empty() ? exec->stdoutBytes : exec->stderrBytes;
         return result;
     }
 
@@ -2857,66 +2407,38 @@ namespace gf::infra::git
                                        const gf::git::bo::RemoteOperationOptions& options)
     {
         std::vector<std::string> args{"pull"};
-        if (options.rebase)
-        {
-            args.emplace_back("--rebase");
-        }
-        if (options.fastForwardOnly)
-        {
-            args.emplace_back("--ff-only");
-        }
+        if (options.rebase) args.emplace_back("--rebase");
+        if (options.fastForwardOnly) args.emplace_back("--ff-only");
         args.push_back(options.remoteName);
         if (options.branchName.has_value() && !options.branchName->empty())
         {
             args.push_back(*options.branchName);
         }
 
-        gf::git::bo::GitCommand cmd{
-            .args = std::move(args),
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{60'000}
-        };
-        gf::git::bl::applyHttpsCredential(cmd, options.httpsCredential);
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile eseguire il pull: " + execResult.error().message,
-                .command = "git pull"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-            if (execResult->stderrBytes.find("Automatic merge failed") != std::string::npos ||
-                execResult->stdoutBytes.find("Automatic merge failed") != std::string::npos ||
-                execResult->stdoutBytes.find("CONFLICT") != std::string::npos ||
-                execResult->stderrBytes.find("conflitti") != std::string::npos)
+        auto exec = runGitChecked(
+            m_executor, repoPath, std::move(args), "il pull", "git pull",
+            [](const gf::git::bo::GitProcessResult& ex, const std::string& label)
             {
-                kind = gf::git::ports::GitOpsError::Kind::MergeConflict;
-            }
-            else if (execResult->stderrBytes.find("Authentication failed") != std::string::npos ||
-                execResult->stderrBytes.find("Permission denied") != std::string::npos)
-            {
-                kind = gf::git::ports::GitOpsError::Kind::NetworkAuthenticationFailed;
-            }
-
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = kind,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
-                .command = "git pull"
-            });
-        }
+                if (ex.stderrBytes.find("Automatic merge failed") != std::string::npos ||
+                    ex.stdoutBytes.find("Automatic merge failed") != std::string::npos ||
+                    ex.stdoutBytes.find("CONFLICT") != std::string::npos ||
+                    ex.stderrBytes.find("conflitti") != std::string::npos)
+                {
+                    return gf::git::ports::GitOpsError{
+                        gf::git::ports::GitOpsError::Kind::MergeConflict,
+                        ex.exitCode,
+                        pickErrorMessage(ex),
+                        label
+                    };
+                }
+                return classifyRemoteFailure(ex, label);
+            },
+            gf::git::bo::GitLockPolicy::Standard, 60'000, options.httpsCredential);
+        if (!exec) return std::unexpected(exec.error());
 
         gf::git::bo::RemoteOperationResult result;
         result.success = true;
-        result.output = execResult->stdoutBytes;
+        result.output = exec->stdoutBytes;
         return result;
     }
 
@@ -2925,75 +2447,25 @@ namespace gf::infra::git
                                        const gf::git::bo::RemoteOperationOptions& options)
     {
         std::vector<std::string> args{"push"};
-        if (options.setUpstream)
-        {
-            args.emplace_back("-u");
-        }
-        if (options.forceUnconditional)
-        {
-            args.emplace_back("--force");
-        }
-        else if (options.force)
-        {
-            args.emplace_back("--force-with-lease");
-        }
-        if (options.tags)
-        {
-            args.emplace_back("--tags");
-        }
+        if (options.setUpstream) args.emplace_back("-u");
+        if (options.forceUnconditional) args.emplace_back("--force");
+        else if (options.force) args.emplace_back("--force-with-lease");
+        if (options.tags) args.emplace_back("--tags");
         args.push_back(options.remoteName);
         if (options.branchName.has_value() && !options.branchName->empty())
         {
             args.push_back(*options.branchName);
         }
 
-        gf::git::bo::GitCommand cmd{
-            .args = std::move(args),
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{60'000}
-        };
-        gf::git::bl::applyHttpsCredential(cmd, options.httpsCredential);
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile eseguire il push: " + execResult.error().message,
-                .command = "git push"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-            if (execResult->stderrBytes.find("rejected") != std::string::npos ||
-                execResult->stderrBytes.find("non-fast-forward") != std::string::npos ||
-                execResult->stderrBytes.find("fetch first") != std::string::npos ||
-                execResult->stderrBytes.find("stale info") != std::string::npos ||
-                execResult->stderrBytes.find("already exists") != std::string::npos)
-            {
-                kind = gf::git::ports::GitOpsError::Kind::RemoteRejected;
-            }
-            else if (execResult->stderrBytes.find("Authentication failed") != std::string::npos ||
-                execResult->stderrBytes.find("Permission denied") != std::string::npos)
-            {
-                kind = gf::git::ports::GitOpsError::Kind::NetworkAuthenticationFailed;
-            }
-
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = kind,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes,
-                .command = "git push"
-            });
-        }
+        auto exec = runGitChecked(
+            m_executor, repoPath, std::move(args), "il push", "git push",
+            classifyRemoteFailure,
+            gf::git::bo::GitLockPolicy::Standard, 60'000, options.httpsCredential);
+        if (!exec) return std::unexpected(exec.error());
 
         gf::git::bo::RemoteOperationResult result;
         result.success = true;
-        result.output = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes;
+        result.output = exec->stderrBytes.empty() ? exec->stdoutBytes : exec->stderrBytes;
         return result;
     }
 
@@ -3079,33 +2551,7 @@ namespace gf::infra::git
         {
             result.status = gf::git::bo::MergeStatus::Conflict;
             result.summaryMessage = execResult->stdoutBytes;
-
-            auto diffUCmd = m_executor.execute(gf::git::bo::GitCommand{
-                .args = {"diff", "--name-only", "--diff-filter=U"},
-                .workingDirectory = repoPath,
-                .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
-                .timeout = std::chrono::milliseconds{10'000}
-            });
-
-            if (diffUCmd && diffUCmd->exitCode == 0)
-            {
-                std::string_view out(diffUCmd->stdoutBytes);
-                while (!out.empty())
-                {
-                    auto nl = out.find('\n');
-                    std::string_view line = nl == std::string_view::npos ? out : out.substr(0, nl);
-                    out = nl == std::string_view::npos ? std::string_view{} : out.substr(nl + 1);
-                    if (!line.empty() && line.back() == '\r')
-                    {
-                        line.remove_suffix(1);
-                    }
-                    if (!line.empty())
-                    {
-                        result.conflictedFiles.emplace_back(line);
-                    }
-                }
-            }
-
+            result.conflictedFiles = readConflictedFiles(m_executor, repoPath);
             return result;
         }
 
@@ -3120,75 +2566,32 @@ namespace gf::infra::git
     std::expected<void, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::abortMerge(const std::filesystem::path& repoPath)
     {
-        const gf::git::bo::GitCommand cmd{
-            .args = {"merge", "--abort"},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile annullare il merge: " + execResult.error().message,
-                .command = "git merge --abort"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-            if (execResult->stderrBytes.find("no merge to abort") != std::string::npos ||
-                execResult->stderrBytes.find("nessun merge da annullare") != std::string::npos ||
-                execResult->stderrBytes.find("MERGE_HEAD missing") != std::string::npos)
+        auto res = runGitChecked(
+            m_executor, repoPath, {"merge", "--abort"}, "annullare il merge", "git merge --abort",
+            [](const gf::git::bo::GitProcessResult& exec, const std::string& label)
             {
-                kind = gf::git::ports::GitOpsError::Kind::InvalidOperation;
-            }
-
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = kind,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes,
-                .command = "git merge --abort"
+                auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+                if (exec.stderrBytes.find("no merge to abort") != std::string::npos ||
+                    exec.stderrBytes.find("nessun merge da annullare") != std::string::npos ||
+                    exec.stderrBytes.find("MERGE_HEAD missing") != std::string::npos)
+                {
+                    kind = gf::git::ports::GitOpsError::Kind::InvalidOperation;
+                }
+                return gf::git::ports::GitOpsError{kind, exec.exitCode, exec.stderrBytes, label};
             });
-        }
-
+        if (!res) return std::unexpected(res.error());
         return {};
     }
 
     std::expected<std::vector<gf::git::bo::GitStashItem>, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::listStashes(const std::filesystem::path& repoPath)
     {
-        const gf::git::bo::GitCommand cmd{
-            .args = {"stash", "list", "--format=%gd%x00%H%x00%aI%x00%gs%x1e"},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile recuperare l'elenco degli stash: " + execResult.error().message,
-                .command = "git stash list"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes,
-                .command = "git stash list"
-            });
-        }
+        auto execResult = runGitChecked(
+            m_executor, repoPath,
+            {"stash", "list", "--format=%gd%x00%H%x00%aI%x00%gs%x1e"},
+            "recuperare l'elenco degli stash", "git stash list",
+            defaultGitFailure, gf::git::bo::GitLockPolicy::NoOptionalLocks);
+        if (!execResult) return std::unexpected(execResult.error());
 
         std::vector<gf::git::bo::GitStashItem> stashes;
         std::string_view raw = execResult->stdoutBytes;
@@ -3318,46 +2721,24 @@ namespace gf::infra::git
             }
         }
 
-        const gf::git::bo::GitCommand cmd{
-            .args = std::move(args),
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
+        auto exec = runGitRaw(m_executor, repoPath, std::move(args), "salvare lo stash", "git stash push");
+        if (!exec) return std::unexpected(exec.error());
 
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile salvare lo stash: " + execResult.error().message,
-                .command = "git stash push"
-            });
-        }
-
-        if (const std::string combinedOutput = execResult->stdoutBytes + "\n" + execResult->stderrBytes;
+        if (const std::string combinedOutput = exec->stdoutBytes + "\n" + exec->stderrBytes;
             combinedOutput.find("No local changes to save") != std::string::npos ||
             combinedOutput.find("Nessuna modifica locale da salvare") != std::string::npos)
         {
             return std::unexpected(gf::git::ports::GitOpsError{
                 .kind = gf::git::ports::GitOpsError::Kind::NothingToStash,
-                .exitCode = execResult->exitCode,
+                .exitCode = exec->exitCode,
                 .message = "Nessuna modifica locale da salvare nello stash",
                 .command = "git stash push"
             });
         }
-
-        if (execResult->exitCode != 0)
+        if (exec->exitCode != 0)
         {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
-                .command = "git stash push"
-            });
+            return std::unexpected(defaultGitFailure(*exec, "git stash push"));
         }
-
         return {};
     }
 
@@ -3365,187 +2746,39 @@ namespace gf::infra::git
     NativeRepositoryGitOps::stashPop(const std::filesystem::path& repoPath,
                                      const gf::git::bo::StashApplyOptions& options)
     {
-        std::vector<std::string> args = {"stash", "pop"};
-        if (options.restoreIndex)
-        {
-            args.emplace_back("--index");
-        }
-        args.emplace_back("stash@{" + std::to_string(options.stashIndex) + "}");
-
-        const gf::git::bo::GitCommand cmd{
-            .args = std::move(args),
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile applicare lo stash: " + execResult.error().message,
-                .command = "git stash pop"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            const std::string combinedOutput = execResult->stdoutBytes + "\n" + execResult->stderrBytes;
-            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-
-            if (isStashNotFoundError(combinedOutput))
-            {
-                kind = gf::git::ports::GitOpsError::Kind::StashNotFound;
-            }
-            else if (combinedOutput.find("CONFLICT") != std::string::npos ||
-                combinedOutput.find("conflict") != std::string::npos)
-            {
-                kind = gf::git::ports::GitOpsError::Kind::MergeConflict;
-            }
-
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = kind,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
-                .command = "git stash pop"
-            });
-        }
-
-        return {};
+        return applyOrPopStash(m_executor, repoPath, "pop", options);
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::stashApply(const std::filesystem::path& repoPath,
                                        const gf::git::bo::StashApplyOptions& options)
     {
-        std::vector<std::string> args = {"stash", "apply"};
-        if (options.restoreIndex)
-        {
-            args.emplace_back("--index");
-        }
-        args.emplace_back("stash@{" + std::to_string(options.stashIndex) + "}");
-
-        const gf::git::bo::GitCommand cmd{
-            .args = std::move(args),
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile applicare lo stash: " + execResult.error().message,
-                .command = "git stash apply"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            const std::string combinedOutput = execResult->stdoutBytes + "\n" + execResult->stderrBytes;
-            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-
-            if (isStashNotFoundError(combinedOutput))
-            {
-                kind = gf::git::ports::GitOpsError::Kind::StashNotFound;
-            }
-            else if (combinedOutput.find("CONFLICT") != std::string::npos ||
-                combinedOutput.find("conflict") != std::string::npos)
-            {
-                kind = gf::git::ports::GitOpsError::Kind::MergeConflict;
-            }
-
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = kind,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
-                .command = "git stash apply"
-            });
-        }
-
-        return {};
+        return applyOrPopStash(m_executor, repoPath, "apply", options);
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::stashDrop(const std::filesystem::path& repoPath,
                                       const std::size_t stashIndex)
     {
-        const gf::git::bo::GitCommand cmd{
-            .args = {"stash", "drop", "stash@{" + std::to_string(stashIndex) + "}"},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile eliminare lo stash: " + execResult.error().message,
-                .command = "git stash drop"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            const std::string combinedOutput = execResult->stdoutBytes + "\n" + execResult->stderrBytes;
-            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-
-            if (isStashNotFoundError(combinedOutput))
+        auto res = runGitChecked(
+            m_executor, repoPath, {"stash", "drop", "stash@{" + std::to_string(stashIndex) + "}"},
+            "eliminare lo stash", "git stash drop",
+            [](const gf::git::bo::GitProcessResult& exec, const std::string& label)
             {
-                kind = gf::git::ports::GitOpsError::Kind::StashNotFound;
-            }
-
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = kind,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
-                .command = "git stash drop"
+                const std::string combinedOutput = exec.stdoutBytes + "\n" + exec.stderrBytes;
+                const auto kind = isStashNotFoundError(combinedOutput)
+                                      ? gf::git::ports::GitOpsError::Kind::StashNotFound
+                                      : gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+                return gf::git::ports::GitOpsError{kind, exec.exitCode, pickErrorMessage(exec), label};
             });
-        }
-
+        if (!res) return std::unexpected(res.error());
         return {};
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::stashClear(const std::filesystem::path& repoPath)
     {
-        const gf::git::bo::GitCommand cmd{
-            .args = {"stash", "clear"},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile svuotare gli stash: " + execResult.error().message,
-                .command = "git stash clear"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
-                .command = "git stash clear"
-            });
-        }
-
-        return {};
+        return runGitVoid(m_executor, repoPath, {"stash", "clear"}, "svuotare gli stash", "git stash clear");
     }
 
     std::expected<bool, gf::git::ports::GitOpsError>
@@ -3562,10 +2795,7 @@ namespace gf::infra::git
                                         const gf::git::bo::RebaseOptions& options)
     {
         std::vector<std::string> args = {"rebase"};
-        if (options.autostash)
-        {
-            args.emplace_back("--autostash");
-        }
+        if (options.autostash) args.emplace_back("--autostash");
         if (options.onto && !options.onto->empty())
         {
             args.emplace_back("--onto");
@@ -3576,253 +2806,46 @@ namespace gf::infra::git
         {
             args.emplace_back(*options.branch);
         }
-
-        const gf::git::bo::GitCommand cmd{
-            .args = std::move(args),
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{60'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile avviare il rebase: " + execResult.error().message,
-                .command = "git rebase"
-            });
-        }
-
-        gf::git::bo::RebaseResult result;
-        const std::string combinedOutput = execResult->stdoutBytes + "\n" + execResult->stderrBytes;
-
-        if (execResult->exitCode == 0)
-        {
-            if (combinedOutput.find("is up to date") != std::string::npos ||
-                combinedOutput.find("è aggiornato") != std::string::npos)
-            {
-                result.status = gf::git::bo::RebaseStatus::UpToDate;
-            }
-            else
-            {
-                result.status = gf::git::bo::RebaseStatus::Finished;
-            }
-            result.message = execResult->stdoutBytes;
-            return result;
-        }
-
-        if (combinedOutput.find("CONFLICT") != std::string::npos ||
-            combinedOutput.find("Automatic merge failed") != std::string::npos ||
-            combinedOutput.find("conflitti") != std::string::npos ||
-            combinedOutput.find("Resolve all conflicts") != std::string::npos ||
-            combinedOutput.find("could not apply") != std::string::npos)
-        {
-            result.status = gf::git::bo::RebaseStatus::Conflict;
-            result.message = combinedOutput;
-            populateRebaseProgressAndConflicts(repoPath, m_executor, result);
-            return result;
-        }
-
-        if (combinedOutput.find("cannot rebase: You have unstaged changes") != std::string::npos ||
-            combinedOutput.find("working tree clean") != std::string::npos ||
-            combinedOutput.find("unstaged changes") != std::string::npos)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::DirtyWorkingTree,
-                .exitCode = execResult->exitCode,
-                .message = combinedOutput,
-                .command = "git rebase"
-            });
-        }
-
-        return std::unexpected(gf::git::ports::GitOpsError{
-            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-            .exitCode = execResult->exitCode,
-            .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
-            .command = "git rebase"
-        });
+        return executeRebaseStep(
+            m_executor, repoPath, std::move(args), "avviare il rebase", "git rebase",
+            false, true, gf::git::bo::RebaseStatus::UpToDate, [] { return false; });
     }
 
     std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::continueRebase(const std::filesystem::path& repoPath)
     {
-        const gf::git::bo::GitCommand cmd{
-            .args = {"-c", "core.editor=true", "rebase", "--continue"},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{60'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile continuare il rebase: " + execResult.error().message,
-                .command = "git rebase --continue"
-            });
-        }
-
-        gf::git::bo::RebaseResult result;
-        const std::string combinedOutput = execResult->stdoutBytes + "\n" + execResult->stderrBytes;
-
-        if (execResult->exitCode == 0)
-        {
-            if (const auto inProgress = isRebaseInProgress(repoPath); inProgress && *inProgress)
-            {
-                result.status = gf::git::bo::RebaseStatus::Applied;
-            }
-            else
-            {
-                result.status = gf::git::bo::RebaseStatus::Finished;
-            }
-            result.message = execResult->stdoutBytes;
-            return result;
-        }
-
-        if (combinedOutput.find("no rebase in progress") != std::string::npos ||
-            combinedOutput.find("nessun rebase in corso") != std::string::npos)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::NoRebaseInProgress,
-                .exitCode = execResult->exitCode,
-                .message = combinedOutput,
-                .command = "git rebase --continue"
-            });
-        }
-
-        if (combinedOutput.find("CONFLICT") != std::string::npos ||
-            combinedOutput.find("Automatic merge failed") != std::string::npos ||
-            combinedOutput.find("conflitti") != std::string::npos ||
-            combinedOutput.find("Resolve all conflicts") != std::string::npos ||
-            combinedOutput.find("could not apply") != std::string::npos ||
-            combinedOutput.find("unmerged") != std::string::npos)
-        {
-            result.status = gf::git::bo::RebaseStatus::Conflict;
-            result.message = combinedOutput;
-            populateRebaseProgressAndConflicts(repoPath, m_executor, result);
-            return result;
-        }
-
-        return std::unexpected(gf::git::ports::GitOpsError{
-            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-            .exitCode = execResult->exitCode,
-            .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
-            .command = "git rebase --continue"
-        });
+        return executeRebaseStep(
+            m_executor, repoPath, {"-c", "core.editor=true", "rebase", "--continue"},
+            "continuare il rebase", "git rebase --continue",
+            true, false, gf::git::bo::RebaseStatus::Applied,
+            [&] { const auto p = isRebaseInProgress(repoPath); return p && *p; });
     }
 
     std::expected<gf::git::bo::RebaseResult, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::skipRebase(const std::filesystem::path& repoPath)
     {
-        const gf::git::bo::GitCommand cmd{
-            .args = {"-c", "core.editor=true", "rebase", "--skip"},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{60'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile saltare il commit nel rebase: " + execResult.error().message,
-                .command = "git rebase --skip"
-            });
-        }
-
-        gf::git::bo::RebaseResult result;
-        const std::string combinedOutput = execResult->stdoutBytes + "\n" + execResult->stderrBytes;
-
-        if (execResult->exitCode == 0)
-        {
-            if (const auto inProgress = isRebaseInProgress(repoPath); inProgress && *inProgress)
-            {
-                result.status = gf::git::bo::RebaseStatus::Skipped;
-            }
-            else
-            {
-                result.status = gf::git::bo::RebaseStatus::Finished;
-            }
-            result.message = execResult->stdoutBytes;
-            return result;
-        }
-
-        if (combinedOutput.find("no rebase in progress") != std::string::npos ||
-            combinedOutput.find("nessun rebase in corso") != std::string::npos)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::NoRebaseInProgress,
-                .exitCode = execResult->exitCode,
-                .message = combinedOutput,
-                .command = "git rebase --skip"
-            });
-        }
-
-        if (combinedOutput.find("CONFLICT") != std::string::npos ||
-            combinedOutput.find("Automatic merge failed") != std::string::npos ||
-            combinedOutput.find("conflitti") != std::string::npos ||
-            combinedOutput.find("Resolve all conflicts") != std::string::npos ||
-            combinedOutput.find("could not apply") != std::string::npos)
-        {
-            result.status = gf::git::bo::RebaseStatus::Conflict;
-            result.message = combinedOutput;
-            populateRebaseProgressAndConflicts(repoPath, m_executor, result);
-            return result;
-        }
-
-        return std::unexpected(gf::git::ports::GitOpsError{
-            .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-            .exitCode = execResult->exitCode,
-            .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
-            .command = "git rebase --skip"
-        });
+        return executeRebaseStep(
+            m_executor, repoPath, {"-c", "core.editor=true", "rebase", "--skip"},
+            "saltare il commit nel rebase", "git rebase --skip",
+            true, false, gf::git::bo::RebaseStatus::Skipped,
+            [&] { const auto p = isRebaseInProgress(repoPath); return p && *p; });
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::abortRebase(const std::filesystem::path& repoPath)
     {
-        const gf::git::bo::GitCommand cmd{
-            .args = {"rebase", "--abort"},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile annullare il rebase: " + execResult.error().message,
-                .command = "git rebase --abort"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            const std::string combinedOutput = execResult->stdoutBytes + "\n" + execResult->stderrBytes;
-            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-            if (combinedOutput.find("no rebase in progress") != std::string::npos ||
-                combinedOutput.find("nessun rebase in corso") != std::string::npos)
+        auto res = runGitChecked(
+            m_executor, repoPath, {"rebase", "--abort"}, "annullare il rebase", "git rebase --abort",
+            [](const gf::git::bo::GitProcessResult& exec, const std::string& label)
             {
-                kind = gf::git::ports::GitOpsError::Kind::NoRebaseInProgress;
-            }
-
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = kind,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
-                .command = "git rebase --abort"
+                const std::string combined = exec.stdoutBytes + "\n" + exec.stderrBytes;
+                const auto kind = (combined.find("no rebase in progress") != std::string::npos ||
+                                   combined.find("nessun rebase in corso") != std::string::npos)
+                                      ? gf::git::ports::GitOpsError::Kind::NoRebaseInProgress
+                                      : gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+                return gf::git::ports::GitOpsError{kind, exec.exitCode, pickErrorMessage(exec), label};
             });
-        }
-
+        if (!res) return std::unexpected(res.error());
         return {};
     }
 
@@ -3888,33 +2911,7 @@ namespace gf::infra::git
             result.success = false;
             result.hasConflicts = true;
             result.message = combinedOutput;
-
-            auto diffUCmd = m_executor.execute(gf::git::bo::GitCommand{
-                .args = {"diff", "--name-only", "--diff-filter=U"},
-                .workingDirectory = repoPath,
-                .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
-                .timeout = std::chrono::milliseconds{10'000}
-            });
-
-            if (diffUCmd && diffUCmd->exitCode == 0)
-            {
-                std::string_view out(diffUCmd->stdoutBytes);
-                while (!out.empty())
-                {
-                    auto nl = out.find('\n');
-                    std::string_view line = nl == std::string_view::npos ? out : out.substr(0, nl);
-                    out = nl == std::string_view::npos ? std::string_view{} : out.substr(nl + 1);
-                    if (!line.empty() && line.back() == '\r')
-                    {
-                        line.remove_suffix(1);
-                    }
-                    if (!line.empty())
-                    {
-                        result.conflictedFiles.emplace_back(line);
-                    }
-                }
-            }
-
+            result.conflictedFiles = readConflictedFiles(m_executor, repoPath);
             return result;
         }
 
@@ -3952,42 +2949,18 @@ namespace gf::infra::git
     std::expected<void, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::abortCherryPick(const std::filesystem::path& repoPath)
     {
-        const gf::git::bo::GitCommand cmd{
-            .args = {"cherry-pick", "--abort"},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile annullare il cherry-pick: " + execResult.error().message,
-                .command = "git cherry-pick --abort"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            const std::string combinedOutput = execResult->stdoutBytes + "\n" + execResult->stderrBytes;
-            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-            if (combinedOutput.find("no cherry-pick or revert in progress") != std::string::npos ||
-                combinedOutput.find("nessun cherry-pick") != std::string::npos)
+        auto res = runGitChecked(
+            m_executor, repoPath, {"cherry-pick", "--abort"}, "annullare il cherry-pick", "git cherry-pick --abort",
+            [](const gf::git::bo::GitProcessResult& exec, const std::string& label)
             {
-                kind = gf::git::ports::GitOpsError::Kind::InvalidOperation;
-            }
-
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = kind,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
-                .command = "git cherry-pick --abort"
+                const std::string combined = exec.stdoutBytes + "\n" + exec.stderrBytes;
+                const auto kind = (combined.find("no cherry-pick or revert in progress") != std::string::npos ||
+                                   combined.find("nessun cherry-pick") != std::string::npos)
+                                      ? gf::git::ports::GitOpsError::Kind::InvalidOperation
+                                      : gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+                return gf::git::ports::GitOpsError{kind, exec.exitCode, pickErrorMessage(exec), label};
             });
-        }
-
+        if (!res) return std::unexpected(res.error());
         return {};
     }
 
@@ -4127,33 +3100,9 @@ namespace gf::infra::git
 
         if (options.autoStage)
         {
-            const gf::git::bo::GitCommand cmd{
-                .args = {"add", "--", options.filePath},
-                .workingDirectory = repoPath,
-                .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-                .timeout = std::chrono::milliseconds{15'000}
-            };
-
-            auto execResult = m_executor.execute(cmd);
-            if (!execResult)
-            {
-                return std::unexpected(gf::git::ports::GitOpsError{
-                    .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                    .exitCode = -1,
-                    .message = "Impossibile eseguire stage del file risolto: " + execResult.error().message,
-                    .command = "git add"
-                });
-            }
-
-            if (execResult->exitCode != 0)
-            {
-                return std::unexpected(gf::git::ports::GitOpsError{
-                    .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                    .exitCode = execResult->exitCode,
-                    .message = execResult->stderrBytes,
-                    .command = "git add"
-                });
-            }
+            return runGitVoid(m_executor, repoPath, {"add", "--", options.filePath},
+                              "eseguire stage del file risolto", "git add",
+                              gf::git::bo::GitLockPolicy::Standard, 15'000);
         }
 
         return {};
@@ -4167,71 +3116,15 @@ namespace gf::infra::git
         std::string flag = "--mixed";
         if (mode == "soft") flag = "--soft";
         else if (mode == "hard") flag = "--hard";
-
-        const gf::git::bo::GitCommand cmd{
-            .args = {"reset", flag, commitSha},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile eseguire il reset: " + execResult.error().message,
-                .command = "git reset"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
-                .command = "git reset"
-            });
-        }
-
-        return {};
+        return runGitVoid(m_executor, repoPath, {"reset", flag, commitSha}, "eseguire il reset", "git reset");
     }
 
     std::expected<void, gf::git::ports::GitOpsError>
     NativeRepositoryGitOps::revertCommit(const std::filesystem::path& repoPath,
                                          const std::string& commitSha)
     {
-        const gf::git::bo::GitCommand cmd{
-            .args = {"-c", "core.editor=true", "revert", "--no-edit", commitSha},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile eseguire revert: " + execResult.error().message,
-                .command = "git revert"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
-                .command = "git revert"
-            });
-        }
-
-        return {};
+        return runGitVoid(m_executor, repoPath, {"-c", "core.editor=true", "revert", "--no-edit", commitSha},
+                          "eseguire revert", "git revert");
     }
 
     std::expected<std::string, gf::git::ports::GitOpsError>
@@ -4673,40 +3566,8 @@ namespace gf::infra::git
                                            const std::string& commitOrBranch)
     {
         std::vector<std::string> args = {"worktree", "add", worktreePath.string()};
-        if (!commitOrBranch.empty())
-        {
-            args.push_back(commitOrBranch);
-        }
-
-        const gf::git::bo::GitCommand cmd{
-            .args = std::move(args),
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{30'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile creare il worktree: " + execResult.error().message,
-                .command = "git worktree"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
-                .command = "git worktree"
-            });
-        }
-
-        return {};
+        if (!commitOrBranch.empty()) args.push_back(commitOrBranch);
+        return runGitVoid(m_executor, repoPath, std::move(args), "creare il worktree", "git worktree");
     }
 
     std::expected<gf::git::bo::CloneRepositoryResult, gf::git::ports::GitOpsError>
@@ -4849,53 +3710,15 @@ namespace gf::infra::git
 
         if (execResult->exitCode != 0)
         {
-            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-            const auto& err = execResult->stderrBytes;
-
-            if (err.find("already exists and is not an empty directory") != std::string::npos)
-            {
-                kind = gf::git::ports::GitOpsError::Kind::DestinationAlreadyExists;
-            }
-            else if (err.find("Could not resolve host") != std::string::npos ||
-                err.find("Authentication failed") != std::string::npos ||
-                err.find("Permission denied") != std::string::npos)
-            {
-                kind = gf::git::ports::GitOpsError::Kind::NetworkAuthenticationFailed;
-            }
-            else if (err.find("does not appear to be a git repository") != std::string::npos ||
-                err.find("not found") != std::string::npos ||
-                err.find("fatal: repository") != std::string::npos)
-            {
-                kind = gf::git::ports::GitOpsError::Kind::RemoteNotFound;
-            }
-
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = kind,
-                .exitCode = execResult->exitCode,
-                .message = err.empty() ? execResult->stdoutBytes : err,
-                .command = "git clone"
-            });
+            return std::unexpected(classifyRemoteFailure(*execResult, "git clone"));
         }
 
         // Detect initial branch of cloned repository
         std::string branchName = "main";
-        const gf::git::bo::GitCommand branchCmd{
-            .args = {"branch", "--show-current"},
-            .workingDirectory = options.destinationPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::Standard,
-            .timeout = std::chrono::milliseconds{5'000}
-        };
-        if (auto branchRes = m_executor.execute(branchCmd); branchRes && branchRes->exitCode == 0)
+        if (auto branchRes = runGitCapture(m_executor, options.destinationPath, {"branch", "--show-current"});
+            branchRes && !branchRes->empty())
         {
-            auto out = branchRes->stdoutBytes;
-            while (!out.empty() && (out.back() == '\n' || out.back() == '\r'))
-            {
-                out.pop_back();
-            }
-            if (!out.empty())
-            {
-                branchName = std::move(out);
-            }
+            branchName = std::move(*branchRes);
         }
 
         std::string displayName = options.destinationPath.filename().string();
@@ -4918,131 +3741,35 @@ namespace gf::infra::git
         }
 
         constexpr std::size_t kMaxContentBytes = 2 * 1024 * 1024;
-
-        if (revision.empty() || revision == "WORKTREE")
+        auto blob = getFileBlob(repoPath, revision, filePath, kMaxContentBytes);
+        if (!blob)
         {
-            const auto fullPath = repoPath / core::utf8ToPath(filePath);
-            std::error_code ec;
-            if (!std::filesystem::exists(fullPath, ec) || !std::filesystem::is_regular_file(fullPath, ec))
-            {
-                return std::unexpected(gf::git::ports::GitOpsError{
-                    .kind = gf::git::ports::GitOpsError::Kind::PathNotFound,
-                    .exitCode = -1,
-                    .message = "File non trovato nella working tree: " + filePath,
-                    .command = "read file"
-                });
-            }
-
-            if (const auto fileSize = std::filesystem::file_size(fullPath, ec);
-                !ec && fileSize > kMaxContentBytes)
-            {
-                return std::unexpected(gf::git::ports::GitOpsError{
-                    .kind = gf::git::ports::GitOpsError::Kind::InvalidOperation,
-                    .exitCode = -1,
-                    .message = "File troppo grande (> 2 MiB) per l'anteprima testuale",
-                    .command = "read file"
-                });
-            }
-
-            std::ifstream ifs(fullPath, std::ios::binary);
-            if (!ifs)
-            {
-                return std::unexpected(gf::git::ports::GitOpsError{
-                    .kind = gf::git::ports::GitOpsError::Kind::StorageError,
-                    .exitCode = -1,
-                    .message = "Impossibile leggere il file: " + filePath,
-                    .command = "read file"
-                });
-            }
-
-            std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
-            if (content.size() > kMaxContentBytes)
-            {
-                return std::unexpected(gf::git::ports::GitOpsError{
-                    .kind = gf::git::ports::GitOpsError::Kind::InvalidOperation,
-                    .exitCode = -1,
-                    .message = "File troppo grande (> 2 MiB) per l'anteprima testuale",
-                    .command = "read file"
-                });
-            }
-            if (content.find('\0') != std::string::npos)
-            {
-                return std::unexpected(gf::git::ports::GitOpsError{
-                    .kind = gf::git::ports::GitOpsError::Kind::InvalidOperation,
-                    .exitCode = -1,
-                    .message = "Il file contiene dati binari",
-                    .command = "read file"
-                });
-            }
-
-            core::stripUtf8Bom(content);
-            return content;
+            return std::unexpected(blob.error());
         }
 
-        std::string normPath = filePath;
-        std::ranges::replace(normPath, '\\', '/');
-        const std::string targetRev = revision == "INDEX" ? std::string(":0") : revision;
-
-        const gf::git::bo::GitCommand cmd{
-            .args = {"show", targetRev + ":" + normPath},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
-            .timeout = std::chrono::milliseconds{15'000}
-        };
-
-        auto execResult = m_executor.execute(cmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile eseguire git show: " + execResult.error().message,
-                .command = "git show"
-            });
-        }
-
-        if (execResult->exitCode != 0)
-        {
-            const std::string& err = execResult->stderrBytes;
-            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-            if (err.find("does not exist") != std::string::npos ||
-                err.find("non esiste") != std::string::npos ||
-                err.find("exists on disk") != std::string::npos ||
-                err.find("Invalid object name") != std::string::npos ||
-                err.find("Path '") != std::string::npos)
-            {
-                kind = gf::git::ports::GitOpsError::Kind::PathNotFound;
-            }
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = kind,
-                .exitCode = execResult->exitCode,
-                .message = err.empty() ? execResult->stdoutBytes : err,
-                .command = "git show"
-            });
-        }
-
-        std::string content = std::move(execResult->stdoutBytes);
-        if (content.size() > kMaxContentBytes)
+        const std::string commandLabel =
+            (revision.empty() || revision == "WORKTREE") ? "read file" : "git show";
+        if (blob->truncated || blob->bytes.size() > kMaxContentBytes)
         {
             return std::unexpected(gf::git::ports::GitOpsError{
                 .kind = gf::git::ports::GitOpsError::Kind::InvalidOperation,
                 .exitCode = -1,
                 .message = "File troppo grande (> 2 MiB) per l'anteprima testuale",
-                .command = "git show"
+                .command = commandLabel
             });
         }
-        if (content.find('\0') != std::string::npos)
+        if (blob->bytes.find('\0') != std::string::npos)
         {
             return std::unexpected(gf::git::ports::GitOpsError{
                 .kind = gf::git::ports::GitOpsError::Kind::InvalidOperation,
                 .exitCode = -1,
                 .message = "Il file contiene dati binari",
-                .command = "git show"
+                .command = commandLabel
             });
         }
 
-        core::stripUtf8Bom(content);
-        return content;
+        core::stripUtf8Bom(blob->bytes);
+        return std::move(blob->bytes);
     }
 
     std::expected<gf::git::bo::FileBlob, gf::git::ports::GitOpsError>
@@ -5112,42 +3839,17 @@ namespace gf::infra::git
         const std::string spec = targetRev + ":" + normPath;
 
         // First probe exact blob size with `git cat-file -s` so oversized objects never OOM.
-        const gf::git::bo::GitCommand sizeCmd{
-            .args = {"cat-file", "-s", spec},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
-            .timeout = std::chrono::milliseconds{10'000}
-        };
-        auto sizeRes = m_executor.execute(sizeCmd);
-        if (!sizeRes)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile eseguire git cat-file: " + sizeRes.error().message,
-                .command = "git cat-file"
-            });
-        }
-        if (sizeRes->exitCode != 0)
-        {
-            const std::string& err = sizeRes->stderrBytes;
-            auto kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed;
-            if (err.find("does not exist") != std::string::npos ||
-                err.find("non esiste") != std::string::npos ||
-                err.find("exists on disk") != std::string::npos ||
-                err.find("Not a valid object name") != std::string::npos ||
-                err.find("Invalid object name") != std::string::npos ||
-                err.find("Path '") != std::string::npos)
+        auto sizeRes = runGitChecked(
+            m_executor, repoPath, {"cat-file", "-s", spec}, "git cat-file", "git cat-file",
+            [](const gf::git::bo::GitProcessResult& res, const std::string& label)
             {
-                kind = gf::git::ports::GitOpsError::Kind::PathNotFound;
-            }
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = kind,
-                .exitCode = sizeRes->exitCode,
-                .message = err.empty() ? sizeRes->stdoutBytes : err,
-                .command = "git cat-file"
-            });
-        }
+                const auto kind = isGitObjectPathMissing(res.stderrBytes)
+                    ? gf::git::ports::GitOpsError::Kind::PathNotFound
+                    : gf::git::ports::GitOpsError::Kind::ExecutionFailed;
+                return gf::git::ports::GitOpsError{kind, res.exitCode, pickErrorMessage(res), label};
+            },
+            gf::git::bo::GitLockPolicy::NoOptionalLocks, 10'000);
+        if (!sizeRes) return std::unexpected(sizeRes.error());
 
         std::uint64_t objectSize = 0;
         try
@@ -5171,31 +3873,10 @@ namespace gf::infra::git
             };
         }
 
-        const gf::git::bo::GitCommand showCmd{
-            .args = {"show", spec},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks,
-            .timeout = std::chrono::milliseconds{20'000}
-        };
-        auto execResult = m_executor.execute(showCmd);
-        if (!execResult)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = -1,
-                .message = "Impossibile eseguire git show: " + execResult.error().message,
-                .command = "git show"
-            });
-        }
-        if (execResult->exitCode != 0)
-        {
-            return std::unexpected(gf::git::ports::GitOpsError{
-                .kind = gf::git::ports::GitOpsError::Kind::ExecutionFailed,
-                .exitCode = execResult->exitCode,
-                .message = execResult->stderrBytes.empty() ? execResult->stdoutBytes : execResult->stderrBytes,
-                .command = "git show"
-            });
-        }
+        auto execResult = runGitChecked(
+            m_executor, repoPath, {"show", spec}, "git show", "git show", defaultGitFailure,
+            gf::git::bo::GitLockPolicy::NoOptionalLocks, 20'000);
+        if (!execResult) return std::unexpected(execResult.error());
 
         gf::git::bo::FileBlob blob;
         blob.bytes = std::move(execResult->stdoutBytes);
