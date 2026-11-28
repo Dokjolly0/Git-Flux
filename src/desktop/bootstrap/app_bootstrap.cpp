@@ -170,6 +170,7 @@ namespace gf::desktop
         });
         m_workspaceSessionVm->branchManager()->setHttpsCredentialResolver(
             [vm = m_gitProfilesVm.get()](const QString& url) { return vm->httpsCredentialLoader(url); });
+        m_themeManager = std::make_unique<ThemeManager>();
     }
 
     void AppBootstrap::registerWithQml(QQmlApplicationEngine& engine)
@@ -223,6 +224,8 @@ namespace gf::desktop
                                                                     "Model provided by GitProfilesViewModel");
         qmlRegisterUncreatableType<viewmodels::GitProfilesViewModel>("GitFlux.Desktop", 1, 0, "GitProfilesViewModel",
                                                                      "ViewModel managed by bootstrap");
+        qmlRegisterUncreatableType<ThemeManager>("GitFlux.Desktop", 1, 0, "ThemeManager",
+                                                 "Theme manager managed by bootstrap");
 
         auto* rootCtx = engine.rootContext();
         engine.addImageProvider(QStringLiteral("diffpreview"), new DiffImageProvider());
@@ -232,6 +235,7 @@ namespace gf::desktop
         rootCtx->setContextProperty(QStringLiteral("terminalSessionVm"), m_terminalVm.get());
         rootCtx->setContextProperty(QStringLiteral("batchOperationsVm"), m_batchOperationsVm.get());
         rootCtx->setContextProperty(QStringLiteral("gitProfilesVm"), m_gitProfilesVm.get());
+        rootCtx->setContextProperty(QStringLiteral("gfTheme"), m_themeManager.get());
         rootCtx->setContextProperty(QStringLiteral("gfMonoFont"), resolveMonospaceFontFamily());
     }
 
@@ -263,6 +267,11 @@ namespace gf::desktop
     viewmodels::GitProfilesViewModel& AppBootstrap::gitProfilesViewModel() noexcept
     {
         return *m_gitProfilesVm;
+    }
+
+    ThemeManager& AppBootstrap::themeManager() noexcept
+    {
+        return *m_themeManager;
     }
 
     git::bl::GitRepositoryWatcherService& AppBootstrap::watcherService() noexcept

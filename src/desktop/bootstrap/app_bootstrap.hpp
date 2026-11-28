@@ -32,6 +32,7 @@
 #include "desktop/viewmodels/terminal_session_viewmodel.hpp"
 #include "desktop/viewmodels/workspace_session_viewmodel.hpp"
 #include "desktop/viewmodels/git_profiles_viewmodel.hpp"
+#include "desktop/theme/theme_palette.hpp"
 #include "infrastructure/persistence/profiles/sqlite_profile_store.hpp"
 #include "infrastructure/security/crypto_vault.hpp"
 #include "infrastructure/git/credentials/system_credential_detector.hpp"
@@ -64,6 +65,7 @@ namespace gf::desktop
         [[nodiscard]] TerminalSessionViewModel& terminalSessionViewModel() noexcept;
         [[nodiscard]] BatchOperationsViewModel& batchOperationsViewModel() noexcept;
         [[nodiscard]] viewmodels::GitProfilesViewModel& gitProfilesViewModel() noexcept;
+        [[nodiscard]] ThemeManager& themeManager() noexcept;
         [[nodiscard]] git::bl::GitRepositoryWatcherService& watcherService() noexcept;
         [[nodiscard]] git::bl::MultiRepoBatchCoordinator& batchCoordinator() noexcept;
         [[nodiscard]] repositories::bl::RepositoryService& repositoryService() noexcept;
@@ -118,5 +120,6 @@ namespace gf::desktop
         std::unique_ptr<services::GitProviderApiClient> m_gitApiClient;
         std::unique_ptr<services::SshConnectionProbe> m_sshProbe;
         std::unique_ptr<viewmodels::GitProfilesViewModel> m_gitProfilesVm;
+        std::unique_ptr<ThemeManager> m_themeManager;
     };
 } // namespace gf::desktop

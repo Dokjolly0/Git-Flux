@@ -2,6 +2,7 @@
 
 #include "core/modules/groups/bo/group_id.hpp"
 #include "core/modules/repositories/bo/repository_id.hpp"
+#include "core/shared/accent_palette.hpp"
 
 #include <algorithm>
 #include <array>
@@ -13,39 +14,11 @@
 namespace gf::groups::bo
 {
     /// Curated dark-theme accent palette for repository groups (Linear / Arc inspired).
-    inline constexpr std::array<std::string_view, 8> kDefaultGroupPalette = {
-        "#38BDF8", // Sky Cyan
-        "#A78BFA", // Violet
-        "#34D399", // Emerald
-        "#FBBF24", // Amber
-        "#FB7185", // Rose
-        "#818CF8", // Indigo
-        "#2DD4BF", // Teal
-        "#FB923C"  // Orange
-    };
+    inline constexpr auto& kDefaultGroupPalette = gf::core::kAccentPalette;
 
     [[nodiscard]] constexpr bool isValidGroupColor(const std::string_view color) noexcept
     {
-        if (color.empty())
-        {
-            return true;
-        }
-        if (color.size() != 7 || color[0] != '#')
-        {
-            return false;
-        }
-        for (std::size_t i = 1; i < 7; ++i)
-        {
-            const char c = color[i];
-            const bool isHex = (c >= '0' && c <= '9') ||
-                               (c >= 'a' && c <= 'f') ||
-                               (c >= 'A' && c <= 'F');
-            if (!isHex)
-            {
-                return false;
-            }
-        }
-        return true;
+        return gf::core::isValidHexColor(color, true);
     }
 
     [[nodiscard]] constexpr std::string_view defaultGroupColorForId(const std::string_view groupId) noexcept

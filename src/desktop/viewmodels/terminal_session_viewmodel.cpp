@@ -3,6 +3,7 @@
 #include "core/modules/terminal/bl/ansi_parser.hpp"
 #include "core/modules/terminal/bl/command_line_tokenizer.hpp"
 #include "core/modules/terminal/bl/git_completion_engine.hpp"
+#include "core/shared/accent_palette.hpp"
 #include "core/shared/utf8_path.hpp"
 
 #include <QCoreApplication>
@@ -767,16 +768,13 @@ namespace gf::desktop
 
     QStringList TerminalSessionViewModel::tabColorPalette() const
     {
-        return {
-            QStringLiteral("#38BDF8"), // Sky / Cyan
-            QStringLiteral("#A78BFA"), // Violet
-            QStringLiteral("#34D399"), // Emerald
-            QStringLiteral("#FBBF24"), // Amber
-            QStringLiteral("#FB7185"), // Rose
-            QStringLiteral("#818CF8"), // Indigo
-            QStringLiteral("#2DD4BF"), // Teal
-            QStringLiteral("#FB923C")  // Orange
-        };
+        QStringList out;
+        out.reserve(static_cast<qsizetype>(gf::core::kAccentPalette.size()));
+        for (const std::string_view hex : gf::core::kAccentPalette)
+        {
+            out.append(QString::fromUtf8(hex.data(), static_cast<qsizetype>(hex.size())));
+        }
+        return out;
     }
 
     QVariantList TerminalSessionViewModel::availableShells() const
@@ -1140,20 +1138,9 @@ namespace gf::desktop
             return;
         }
         const QString trimmed = hexColor.trimmed();
-        if (!trimmed.isEmpty())
+        if (!gf::core::isValidHexColor(trimmed.toStdString(), true))
         {
-            if (trimmed.size() != 7 || trimmed.front() != QLatin1Char('#'))
-            {
-                return;
-            }
-            for (int i = 1; i < 7; ++i)
-            {
-                const char16_t ch = trimmed[i].unicode();
-                const bool isHex = (ch >= u'0' && ch <= u'9')
-                                   || (ch >= u'a' && ch <= u'f')
-                                   || (ch >= u'A' && ch <= u'F');
-                if (!isHex) return;
-            }
+            return;
         }
         auto& tab = bucket->tabs[static_cast<std::size_t>(index)];
         if (tab->accentColor.compare(trimmed, Qt::CaseInsensitive) == 0)

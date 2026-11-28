@@ -160,28 +160,8 @@ int main(int argc, char* argv[])
 
     QGuiApplication app(argc, argv);
 
-    // Configure dark application palette so Qt Quick Controls Basic fallbacks and tooltips match FluxTheme
-    {
-        QPalette darkPalette;
-        darkPalette.setColor(QPalette::Window, QColor(0x0F, 0x14, 0x1C));
-        darkPalette.setColor(QPalette::WindowText, QColor(0xF8, 0xFA, 0xFC));
-        darkPalette.setColor(QPalette::Base, QColor(0x0A, 0x0E, 0x15));
-        darkPalette.setColor(QPalette::AlternateBase, QColor(0x14, 0x1C, 0x28));
-        darkPalette.setColor(QPalette::ToolTipBase, QColor(0x11, 0x18, 0x24));
-        darkPalette.setColor(QPalette::ToolTipText, QColor(0xF8, 0xFA, 0xFC));
-        darkPalette.setColor(QPalette::Text, QColor(0xF8, 0xFA, 0xFC));
-        darkPalette.setColor(QPalette::Button, QColor(0x16, 0x1F, 0x2E));
-        darkPalette.setColor(QPalette::ButtonText, QColor(0xF8, 0xFA, 0xFC));
-        darkPalette.setColor(QPalette::BrightText, QColor(0x00, 0xE5, 0xFF));
-        darkPalette.setColor(QPalette::Highlight, QColor(0x02, 0x84, 0xC7));
-        darkPalette.setColor(QPalette::HighlightedText, QColor(0xFF, 0xFF, 0xFF));
-        darkPalette.setColor(QPalette::Dark, QColor(0x28, 0x37, 0x4E));
-        darkPalette.setColor(QPalette::Mid, QColor(0x1E, 0x29, 0x3B));
-        darkPalette.setColor(QPalette::Midlight, QColor(0x24, 0x36, 0x52));
-        darkPalette.setColor(QPalette::Light, QColor(0x1C, 0x2A, 0x40));
-        darkPalette.setColor(QPalette::Shadow, QColor(0x00, 0x00, 0x00));
-        QGuiApplication::setPalette(darkPalette);
-    }
+    // Configure initial application palette so Qt Quick Controls Basic fallbacks and tooltips match ThemeManager
+    QGuiApplication::setPalette(gf::desktop::ThemeManager::darkPreset().toQPalette());
 
     // Set application icon from assets
     QIcon appIcon(QStringLiteral(":/qt/qml/GitFlux/Desktop/assets/logo.png"));
@@ -253,6 +233,11 @@ int main(int argc, char* argv[])
     {
         gf::desktop::AppBootstrap bootstrap(dbPath);
         bootstrap.initialize();
+        QObject::connect(&bootstrap.themeManager(), &gf::desktop::ThemeManager::themeChanged,
+                         &app, [&bootstrap]()
+                         {
+                             QGuiApplication::setPalette(bootstrap.themeManager().currentQPalette());
+                         });
 
         QQmlApplicationEngine engine;
         engine.setNetworkAccessManagerFactory(new RedirectNetworkAccessManagerFactory());

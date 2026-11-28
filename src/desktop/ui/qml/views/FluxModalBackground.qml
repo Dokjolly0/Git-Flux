@@ -1,9 +1,12 @@
 import QtQuick
+import "../themes"
 
 Rectangle {
-    color: "#111824"
-    radius: 14
-    border.color: "#28374E"
+    FluxTheme { id: theme }
+
+    color: theme.surfaceElevated
+    radius: theme.radiusLg
+    border.color: theme.borderHighlight
     border.width: 1
 
     Rectangle {

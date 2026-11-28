@@ -1,12 +1,15 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../themes"
 
 Rectangle {
     id: panelRoot
-    color: "#0A0E16"
+    FluxTheme { id: fluxTheme }
+
+    color: fluxTheme.inputBg
     radius: 12
-    border.color: "#1E293B"
+    border.color: fluxTheme.border
     border.width: 1
     clip: false // Allows the floating autocomplete popup to extend above a compact terminal dock
 
@@ -22,10 +25,10 @@ Rectangle {
     property int _lastSyncedTabId: -1
     property string copiedFeedbackTarget: ""
     property string copiedFeedbackMessage: ""
-    readonly property color defaultTabAccent: "#38BDF8"
+    readonly property color defaultTabAccent: fluxTheme.defaultTabAccent
     readonly property string activeTabColor: (terminalVm && terminalVm.activeTabColor) ? terminalVm.activeTabColor : ""
     readonly property color effectiveActiveAccent: activeTabColor.length > 0 ? activeTabColor : defaultTabAccent
-    readonly property var defaultColorPalette: ["#38BDF8", "#A78BFA", "#34D399", "#FBBF24", "#FB7185", "#818CF8", "#2DD4BF", "#FB923C"]
+    readonly property var defaultColorPalette: fluxTheme.accentPalette
 
     component TabColorSwatchRow: RowLayout {
         id: swatchRow
@@ -48,7 +51,7 @@ Rectangle {
             implicitWidth: defaultResetText.implicitWidth + 12
             radius: 6
             color: isSelected ? "#152336" : (resetMa.containsMouse ? "#121C2A" : "#0B111A")
-            border.color: isSelected ? "#00E5FF" : (resetMa.containsMouse ? "#334155" : "#1E293B")
+            border.color: isSelected ? panelRoot.defaultTabAccent : (resetMa.containsMouse ? "#334155" : "#1E293B")
             border.width: 1
 
             Text {
@@ -483,10 +486,11 @@ Rectangle {
     // Rounded inner surface matching the Floating Island aesthetic
     Rectangle {
         id: islandBody
+        objectName: "terminalIslandBody"
         anchors.fill: parent
         anchors.margins: 1
         radius: 11
-        color: "#080B10"
+        color: fluxTheme.canvas
         clip: true
 
     ColumnLayout {
@@ -497,16 +501,17 @@ Rectangle {
         // 1. TERMINAL HEADER & MULTI-TAB BAR
         // =====================================================================
         Rectangle {
+            objectName: "terminalHeaderBar"
             Layout.fillWidth: true
             Layout.preferredHeight: 36
-            color: "#0A0E15"
+            color: fluxTheme.headerBg
 
             Rectangle {
                 anchors.bottom: parent.bottom
                 anchors.left: parent.left
                 anchors.right: parent.right
                 height: 1
-                color: "#1A2434"
+                color: fluxTheme.borderSubtle
             }
 
             RowLayout {
@@ -520,8 +525,8 @@ Rectangle {
                     Layout.preferredHeight: 22
                     implicitWidth: cliBadgeRow.implicitWidth + 12
                     radius: 6
-                    color: "#0F2238"
-                    border.color: "#1E3A5F"
+                    color: fluxTheme.infoBg
+                    border.color: Qt.alpha(fluxTheme.info, 0.35)
                     border.width: 1
 
                     RowLayout {
@@ -530,14 +535,14 @@ Rectangle {
                         spacing: 5
                         Text {
                             text: ">_"
-                            color: "#00E5FF"
+                            color: fluxTheme.accentCyan
                             font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
                             font.pixelSize: 11
                             font.bold: true
                         }
                         Text {
                             text: "CLI"
-                            color: "#E2E8F0"
+                            color: fluxTheme.textPrimary
                             font.pixelSize: 10
                             font.bold: true
                         }
@@ -567,7 +572,7 @@ Rectangle {
                                 readonly property bool isActive: Boolean(panelRoot.terminalVm && panelRoot.terminalVm.activeTabIndex === tabIdx)
                                 readonly property bool isBusy: Boolean(modelData && modelData.isRunning)
                                 readonly property string customColor: (modelData && modelData.accentColor) ? modelData.accentColor : ""
-                                readonly property color tabAccent: customColor.length > 0 ? customColor : "#00E5FF"
+                                readonly property color tabAccent: customColor.length > 0 ? customColor : panelRoot.defaultTabAccent
 
                                 Layout.preferredHeight: 26
                                 Layout.alignment: Qt.AlignVCenter
@@ -575,10 +580,10 @@ Rectangle {
                                 radius: 7
                                 color: customColor.length > 0
                                     ? (isActive ? Qt.alpha(tabAccent, 0.16) : (termTabMa.containsMouse ? Qt.alpha(tabAccent, 0.10) : Qt.alpha(tabAccent, 0.05)))
-                                    : (isActive ? "#152336" : (termTabMa.containsMouse ? "#111927" : "transparent"))
+                                    : (isActive ? fluxTheme.surfaceGlass : (termTabMa.containsMouse ? fluxTheme.surfaceElevated : "transparent"))
                                 border.color: customColor.length > 0
                                     ? (isActive ? Qt.alpha(tabAccent, 0.68) : (termTabMa.containsMouse ? Qt.alpha(tabAccent, 0.42) : Qt.alpha(tabAccent, 0.22)))
-                                    : (isActive ? "#2D4A6E" : (termTabMa.containsMouse ? "#1E2B3E" : "transparent"))
+                                    : (isActive ? fluxTheme.borderHighlight : (termTabMa.containsMouse ? fluxTheme.border : "transparent"))
                                 border.width: 1
 
                                 Rectangle {
@@ -625,10 +630,10 @@ Rectangle {
                                         height: 6
                                         radius: 3
                                         color: termTabRect.isBusy
-                                            ? "#F59E0B"
-                                            : (termTabRect.customColor.length > 0
+                                            ? fluxTheme.warning
+                                            : ((termTabRect.customColor.length > 0 || termTabRect.isActive)
                                                 ? termTabRect.tabAccent
-                                                : (termTabRect.isActive ? "#00E5FF" : "#475569"))
+                                                : fluxTheme.textPlaceholder)
 
                                         SequentialAnimation on opacity {
                                             running: termTabRect.isBusy
@@ -641,7 +646,7 @@ Rectangle {
                                     Text {
                                         objectName: "termTabTitle_" + termTabRect.tabIdx
                                         text: termTabRect.modelData ? (termTabRect.modelData.title || "Terminal") : "Terminal"
-                                        color: termTabRect.isActive ? "#F8FAFC" : "#94A3B8"
+                                        color: termTabRect.isActive ? fluxTheme.textPrimary : fluxTheme.textSecondary
                                         font.pixelSize: 11
                                         font.bold: termTabRect.isActive
                                     }
@@ -1119,9 +1124,9 @@ Rectangle {
                     persistentSelection: false
                     textFormat: TextEdit.RichText
                     wrapMode: TextEdit.WrapAnywhere
-                    color: "#E2E8F0"
-                    selectionColor: "#1D4ED8"
-                    selectedTextColor: "#FFFFFF"
+                    color: fluxTheme.textPrimary
+                    selectionColor: fluxTheme.selectionBg
+                    selectedTextColor: fluxTheme.selectionText
                     font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
                     font.pixelSize: 12
 
@@ -1336,9 +1341,9 @@ Rectangle {
                     persistentSelection: false
                     textFormat: TextEdit.RichText
                     wrapMode: TextEdit.WrapAnywhere
-                    color: "#E2E8F0"
-                    selectionColor: "#1D4ED8"
-                    selectedTextColor: "#FFFFFF"
+                    color: fluxTheme.textPrimary
+                    selectionColor: fluxTheme.selectionBg
+                    selectedTextColor: fluxTheme.selectionText
                     font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
                     font.pixelSize: 12
 
@@ -1665,7 +1670,7 @@ Rectangle {
             visible: !panelRoot.isPagerOpen
             Layout.fillWidth: true
             Layout.preferredHeight: 40
-            color: isStdinMode ? "#14100A" : "#0C121C"
+            color: isStdinMode ? fluxTheme.warningBg : fluxTheme.footerBg
             Behavior on color { ColorAnimation { duration: 120 } }
 
             Rectangle {
@@ -1676,10 +1681,10 @@ Rectangle {
                 anchors.right: parent.right
                 height: promptBar.isStdinMode ? 2 : 1
                 color: promptBar.isStdinMode
-                    ? "#F59E0B"
+                    ? fluxTheme.warning
                     : (cmdInput.activeFocus
-                        ? (panelRoot.activeTabColor.length > 0 ? Qt.alpha(panelRoot.effectiveActiveAccent, 0.55) : "#244366")
-                        : (panelRoot.activeTabColor.length > 0 ? Qt.alpha(panelRoot.effectiveActiveAccent, 0.25) : "#1A2434"))
+                        ? (panelRoot.activeTabColor.length > 0 ? Qt.alpha(panelRoot.effectiveActiveAccent, 0.55) : fluxTheme.borderHighlight)
+                        : (panelRoot.activeTabColor.length > 0 ? Qt.alpha(panelRoot.effectiveActiveAccent, 0.25) : fluxTheme.borderSubtle))
                 Behavior on color { ColorAnimation { duration: 120 } }
             }
 
@@ -1751,15 +1756,15 @@ Rectangle {
                     Layout.preferredHeight: 20
                     implicitWidth: stdinPillText.implicitWidth + 12
                     radius: 5
-                    color: "#2A1B07"
-                    border.color: "#F59E0B"
+                    color: fluxTheme.warningBg
+                    border.color: fluxTheme.warning
                     border.width: 1
 
                     Text {
                         id: stdinPillText
                         anchors.centerIn: parent
                         text: "stdin ›"
-                        color: "#FBBF24"
+                        color: fluxTheme.warningText
                         font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
                         font.pixelSize: 10
                         font.bold: true
@@ -1795,7 +1800,7 @@ Rectangle {
                         text: promptBar.isStdinMode
                             ? "Modalità stdin: scrivi input per il processo attivo (Ctrl+C per interrompere)..."
                             : "Scrivi un comando Git (es. git c...) o shell — Tab completa, Ctrl+Spazio suggerimenti"
-                        color: promptBar.isStdinMode ? "#9A7B4F" : "#475569"
+                        color: promptBar.isStdinMode ? fluxTheme.warningText : fluxTheme.textPlaceholder
                         font.family: cmdInput.font.family
                         font.pixelSize: 12
                         elide: Text.ElideRight
@@ -1813,7 +1818,7 @@ Rectangle {
                             cmdInput.cursorPosition === cmdInput.text.length
                         )
                         text: panelRoot.terminalVm ? panelRoot.terminalVm.ghostText : ""
-                        color: "#4B607B"
+                        color: fluxTheme.textPlaceholder
                         font: cmdInput.font
                     }
 
@@ -1822,9 +1827,9 @@ Rectangle {
                         objectName: "cmdInput"
                         anchors.fill: parent
                         verticalAlignment: TextInput.AlignVCenter
-                        color: "#F8FAFC"
-                        selectionColor: "#1D4ED8"
-                        selectedTextColor: "#FFFFFF"
+                        color: fluxTheme.textPrimary
+                        selectionColor: fluxTheme.selectionBg
+                        selectedTextColor: fluxTheme.selectionText
                         font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
                         font.pixelSize: 12
                         selectByMouse: true

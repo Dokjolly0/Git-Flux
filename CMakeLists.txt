@@ -290,6 +290,7 @@ if (GF_BUILD_DESKTOP)
             src/desktop/viewmodels/terminal_completion_list_model.cpp
             src/desktop/viewmodels/terminal_output_list_model.cpp
             src/desktop/viewmodels/terminal_session_viewmodel.cpp
+            src/desktop/theme/theme_palette.cpp
             src/desktop/bootstrap/app_bootstrap.cpp
     )
     target_include_directories(gf_desktop_viewmodels PUBLIC

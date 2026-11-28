@@ -30,12 +30,12 @@ ApplicationWindow {
                 ToolTip.toolTip.rightPadding = 11;
                 ToolTip.toolTip.font.pixelSize = 11;
                 if (ToolTip.toolTip.background) {
-                    ToolTip.toolTip.background.radius = 8;
-                    ToolTip.toolTip.background.color = "#111824";
-                    ToolTip.toolTip.background.border.color = "#28374E";
+                    ToolTip.toolTip.background.radius = fluxTheme.radiusSm;
+                    ToolTip.toolTip.background.color = Qt.binding(function () { return fluxTheme.surfaceElevated; });
+                    ToolTip.toolTip.background.border.color = Qt.binding(function () { return fluxTheme.borderHighlight; });
                 }
                 if (ToolTip.toolTip.contentItem) {
-                    ToolTip.toolTip.contentItem.color = "#F8FAFC";
+                    ToolTip.toolTip.contentItem.color = Qt.binding(function () { return fluxTheme.textPrimary; });
                 }
             }
         }

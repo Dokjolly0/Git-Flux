@@ -1,9 +1,11 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../themes"
 
 Rectangle {
     id: popupRoot
+    FluxTheme { id: fluxTheme }
 
     property var completionModel: null
     property int selectedIndex: 0
@@ -33,9 +35,9 @@ Rectangle {
     visible: totalCount > 0
     width: 560
     height: Math.min(maxVisibleRows, Math.max(1, totalCount)) * rowHeight + footerHeight + 10
-    radius: 10
-    color: "#0D1420"
-    border.color: "#2A3D58"
+    radius: fluxTheme.radiusMd
+    color: fluxTheme.surfaceElevated
+    border.color: fluxTheme.borderHighlight
     border.width: 1
     z: 300
 
@@ -175,8 +177,8 @@ Rectangle {
                 width: completionList.width
                 height: popupRoot.rowHeight
                 radius: 6
-                color: isSelected ? "#172A42" : (rowMa.containsMouse ? "#121E30" : "transparent")
-                border.color: isSelected ? "#2C4B73" : "transparent"
+                color: isSelected ? fluxTheme.cardHover : (rowMa.containsMouse ? fluxTheme.card : "transparent")
+                border.color: isSelected ? fluxTheme.borderFocus : "transparent"
                 border.width: 1
 
                 RowLayout {
@@ -189,7 +191,7 @@ Rectangle {
                     Text {
                         text: popupRoot.formatHighlightedText(rowItem.displayText, rowItem.matchStart, rowItem.matchLength)
                         textFormat: Text.RichText
-                        color: rowItem.isSelected ? "#F8FAFC" : "#E2E8F0"
+                        color: rowItem.isSelected ? fluxTheme.textPrimary : fluxTheme.textSecondary
                         font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
                         font.pixelSize: 12
                         font.bold: rowItem.isSelected
@@ -220,7 +222,7 @@ Rectangle {
                     // Description
                     Text {
                         text: rowItem.detail
-                        color: rowItem.isSelected ? "#CBD5E1" : "#64748B"
+                        color: rowItem.isSelected ? fluxTheme.textPrimary : fluxTheme.textMuted
                         font.pixelSize: 11
                         Layout.fillWidth: true
                         elide: Text.ElideRight
@@ -248,7 +250,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: popupRoot.footerHeight
             Layout.topMargin: 4
-            color: "#090E17"
+            color: fluxTheme.footerBg
             radius: 9
 
             // Flatten top corners so footer connects seamlessly to popup body
@@ -257,7 +259,7 @@ Rectangle {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 height: 8
-                color: "#090E17"
+                color: fluxTheme.footerBg
             }
 
             Rectangle {
@@ -265,7 +267,7 @@ Rectangle {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 height: 1
-                color: "#1A2538"
+                color: fluxTheme.borderSubtle
             }
 
             RowLayout {
@@ -283,7 +285,7 @@ Rectangle {
                         : (popupRoot.enterWillComplete
                             ? "Tab / Invio completa  •  ↑↓ naviga  •  Shift+Invio esegui  •  Esc chiudi"
                             : "Tab completa  •  ↑↓ naviga  •  Invio esegui  •  Esc chiudi")
-                    color: "#64748B"
+                    color: fluxTheme.textMuted
                     font.pixelSize: 10
                     Layout.fillWidth: true
                     elide: Text.ElideRight
@@ -291,7 +293,7 @@ Rectangle {
 
                 Text {
                     text: popupRoot.totalCount + (popupRoot.totalCount === 1 ? " risultato" : " risultati")
-                    color: "#38BDF8"
+                    color: fluxTheme.info
                     font.pixelSize: 10
                     font.bold: true
                 }

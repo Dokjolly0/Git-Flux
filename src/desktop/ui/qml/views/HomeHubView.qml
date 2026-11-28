@@ -2,9 +2,11 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import "../themes"
 
 Item {
     id: root
+    FluxTheme { id: fluxTheme }
 
     readonly property var homeHubVmRef: (typeof homeHubVm !== "undefined") ? homeHubVm : null
 
@@ -13,7 +15,7 @@ Item {
         property string selectedColor: ""
         readonly property var paletteColors: root.homeHubVmRef && root.homeHubVmRef.groupColorPalette
             ? root.homeHubVmRef.groupColorPalette
-            : ["#38BDF8", "#A78BFA", "#34D399", "#FBBF24", "#FB7185", "#818CF8", "#2DD4BF", "#FB923C"]
+            : fluxTheme.accentPalette
         spacing: 8
         Layout.preferredHeight: 28
         implicitHeight: 28

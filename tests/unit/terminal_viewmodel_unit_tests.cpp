@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "core/modules/terminal/bl/git_catalog_service.hpp"
+#include "desktop/theme/theme_palette.hpp"
 #include "desktop/viewmodels/terminal_session_viewmodel.hpp"
 #include "infrastructure/git/git_discovery.hpp"
 #include "infrastructure/git/native/native_git_executor.hpp"
@@ -11,6 +12,7 @@
 #include <QFile>
 #include <QGuiApplication>
 #include <QQmlComponent>
+#include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickStyle>
@@ -1216,4 +1218,112 @@ TEST_CASE("TerminalDockPanel keeps prompt focus for Ctrl+V and Up/Down after cli
         CHECK(promptRepoText->property("color").toString().compare(QStringLiteral("#38bdf8"), Qt::CaseInsensitive) == 0);
         CHECK(promptBranchChipText->property("color").toString().compare(QStringLiteral("#38bdf8"), Qt::CaseInsensitive) == 0);
     }
+}
+
+TEST_CASE("ThemeManager provides dark, light and custom palettes with live QML updates", "[qml][ui][theme][terminal]")
+{
+    ensureTerminalTestQtApp();
+
+    ThemeManager themeMgr;
+    REQUIRE(themeMgr.activeThemeId() == QStringLiteral("dark"));
+    REQUIRE(themeMgr.isDark());
+    REQUIRE(themeMgr.availableThemes().size() == 2);
+    REQUIRE(themeMgr.accentPalette().size() == 8);
+    CHECK(themeMgr.defaultTabAccent() == QColor(QStringLiteral("#38BDF8")));
+    CHECK(themeMgr.currentQPalette().color(QPalette::Window) == themeMgr.surface());
+
+    QSignalSpy themeSpy(&themeMgr, &ThemeManager::themeChanged);
+    REQUIRE(themeMgr.setActiveTheme(QStringLiteral("light")));
+    CHECK(themeSpy.count() == 1);
+    CHECK(themeMgr.activeThemeId() == QStringLiteral("light"));
+    CHECK_FALSE(themeMgr.isDark());
+    CHECK(themeMgr.canvas() == QColor(QStringLiteral("#F8FAFC")));
+    CHECK(themeMgr.textPrimary() == QColor(QStringLiteral("#0F172A")));
+    CHECK(themeMgr.currentQPalette().color(QPalette::Window) == QColor(QStringLiteral("#FFFFFF")));
+
+    // Built-in presets cannot be overwritten or deleted
+    CHECK_FALSE(themeMgr.registerCustomTheme({
+        {QStringLiteral("id"), QStringLiteral("dark")},
+        {QStringLiteral("canvas"), QStringLiteral("#111111")}
+    }));
+    CHECK_FALSE(themeMgr.removeCustomTheme(QStringLiteral("light")));
+
+    // Custom theme inherits unspecified tokens from baseTheme and applies overrides
+    REQUIRE(themeMgr.registerCustomTheme({
+        {QStringLiteral("id"), QStringLiteral("ocean-night")},
+        {QStringLiteral("displayName"), QStringLiteral("Ocean Night")},
+        {QStringLiteral("baseTheme"), QStringLiteral("dark")},
+        {QStringLiteral("canvas"), QStringLiteral("#0B1622")},
+        {QStringLiteral("headerBg"), QStringLiteral("#102030")},
+        {QStringLiteral("defaultTabAccent"), QStringLiteral("#2DD4BF")}
+    }));
+    CHECK(themeMgr.availableThemes().size() == 3);
+    REQUIRE(themeMgr.setActiveTheme(QStringLiteral("ocean-night")));
+    CHECK(themeMgr.isDark());
+    CHECK(themeMgr.canvas() == QColor(QStringLiteral("#0B1622")));
+    CHECK(themeMgr.headerBg() == QColor(QStringLiteral("#102030")));
+    CHECK(themeMgr.defaultTabAccent() == QColor(QStringLiteral("#2DD4BF")));
+    CHECK(themeMgr.textPrimary() == QColor(QStringLiteral("#F8FAFC"))); // inherited from dark
+
+    const QVariantMap exported = themeMgr.exportTheme(QStringLiteral("ocean-night"));
+    CHECK(exported.value(QStringLiteral("isCustom")).toBool());
+    CHECK(exported.value(QStringLiteral("canvas")).toString().compare(QStringLiteral("#0b1622"), Qt::CaseInsensitive) == 0);
+
+    // Live QML bindings in TerminalDockPanel react to gfTheme switches (dark -> light -> custom)
+    themeMgr.setActiveTheme(QStringLiteral("dark"));
+    const auto qmlPath = std::filesystem::path(__FILE__).parent_path().parent_path().parent_path()
+        / "src" / "desktop" / "ui" / "qml" / "views" / "TerminalDockPanel.qml";
+    QQmlEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("gfTheme"), &themeMgr);
+
+    QQmlComponent component(&engine, QUrl::fromLocalFile(QString::fromStdString(qmlPath.string())));
+    INFO("QML errors: " << component.errorString().toStdString());
+    REQUIRE(component.isReady());
+
+    std::unique_ptr<QObject> panelObj(component.create());
+    REQUIRE(panelObj != nullptr);
+    auto* panelItem = qobject_cast<QQuickItem*>(panelObj.get());
+    REQUIRE(panelItem != nullptr);
+
+    auto findByName = [](QQuickItem* root, const QString& name) -> QQuickItem*
+    {
+        std::vector<QQuickItem*> stack{root};
+        while (!stack.empty())
+        {
+            QQuickItem* cur = stack.back();
+            stack.pop_back();
+            if (cur->objectName() == name) return cur;
+            for (QQuickItem* child : cur->childItems()) stack.push_back(child);
+        }
+        return nullptr;
+    };
+
+    auto* islandBody = findByName(panelItem, QStringLiteral("terminalIslandBody"));
+    auto* headerBar = findByName(panelItem, QStringLiteral("terminalHeaderBar"));
+    auto* promptRepoText = findByName(panelItem, QStringLiteral("promptRepoText"));
+    REQUIRE(islandBody != nullptr);
+    REQUIRE(headerBar != nullptr);
+    REQUIRE(promptRepoText != nullptr);
+
+    CHECK(islandBody->property("color").value<QColor>() == QColor(QStringLiteral("#080B10")));
+    CHECK(headerBar->property("color").value<QColor>() == QColor(QStringLiteral("#0A0E15")));
+    CHECK(promptRepoText->property("color").value<QColor>() == QColor(QStringLiteral("#38BDF8")));
+
+    REQUIRE(themeMgr.setActiveTheme(QStringLiteral("light")));
+    QCoreApplication::processEvents();
+    CHECK(islandBody->property("color").value<QColor>() == QColor(QStringLiteral("#F8FAFC")));
+    CHECK(headerBar->property("color").value<QColor>() == QColor(QStringLiteral("#F1F5F9")));
+    CHECK(promptRepoText->property("color").value<QColor>() == QColor(QStringLiteral("#0284C7")));
+
+    REQUIRE(themeMgr.setActiveTheme(QStringLiteral("ocean-night")));
+    QCoreApplication::processEvents();
+    CHECK(islandBody->property("color").value<QColor>() == QColor(QStringLiteral("#0B1622")));
+    CHECK(headerBar->property("color").value<QColor>() == QColor(QStringLiteral("#102030")));
+    CHECK(promptRepoText->property("color").value<QColor>() == QColor(QStringLiteral("#2DD4BF")));
+
+    // Removing the active custom theme falls back safely to dark
+    REQUIRE(themeMgr.removeCustomTheme(QStringLiteral("ocean-night")));
+    QCoreApplication::processEvents();
+    CHECK(themeMgr.activeThemeId() == QStringLiteral("dark"));
+    CHECK(islandBody->property("color").value<QColor>() == QColor(QStringLiteral("#080B10")));
 }
