@@ -817,4 +817,183 @@ TEST_CASE("TerminalDockPanel keeps prompt focus for Ctrl+V and Up/Down after cli
         CHECK(vm.tabs().isEmpty());
         CHECK_FALSE(vm.isVisible());
     }
+
+    SECTION("Copy buttons, CWD path pill and Ctrl+C selection show brief 'Copiato' visual feedback")
+    {
+        auto* cwdPill = panelObj->findChild<QQuickItem*>(QStringLiteral("cwdPill"));
+        auto* cwdLabel = panelObj->findChild<QQuickItem*>(QStringLiteral("cwdLabel"));
+        auto* copyOutputBtn = panelObj->findChild<QQuickItem*>(QStringLiteral("copyOutputBtn"));
+        auto* copyToastBadge = panelObj->findChild<QQuickItem*>(QStringLiteral("copyToastBadge"));
+        auto* copyToastText = panelObj->findChild<QQuickItem*>(QStringLiteral("copyToastText"));
+        REQUIRE(cwdPill != nullptr);
+        REQUIRE(cwdLabel != nullptr);
+        REQUIRE(copyOutputBtn != nullptr);
+        REQUIRE(copyToastBadge != nullptr);
+        REQUIRE(copyToastText != nullptr);
+        CHECK(panelObj->property("copiedFeedbackTarget").toString().isEmpty());
+        CHECK_FALSE(copyToastBadge->isVisible());
+
+        // Click CWD path pill -> copies working dir and displays "✓ Copiato" + toast
+        QGuiApplication::clipboard()->setText(QStringLiteral("stale"));
+        QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, centerInWindow(cwdPill));
+        QCoreApplication::processEvents();
+        CHECK(QGuiApplication::clipboard()->text() == vm.activeWorkingDir());
+        CHECK(panelObj->property("copiedFeedbackTarget").toString() == QStringLiteral("cwd"));
+        CHECK(cwdPill->property("isCopied").toBool());
+        CHECK(cwdLabel->property("text").toString() == QStringLiteral("✓ Copiato"));
+        CHECK(cwdPill->width() >= cwdLabel->property("implicitWidth").toReal() + 13.0);
+        CHECK(copyToastBadge->isVisible());
+        CHECK(copyToastText->property("text").toString() == QStringLiteral("✓ Percorso copiato negli appunti"));
+
+        // Click header Copy Output button -> copies output and shows feedback
+        QGuiApplication::clipboard()->setText(QStringLiteral("stale"));
+        QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, centerInWindow(copyOutputBtn));
+        QCoreApplication::processEvents();
+        CHECK(QGuiApplication::clipboard()->text().contains(QStringLiteral("alpha_line")));
+        CHECK(panelObj->property("copiedFeedbackTarget").toString() == QStringLiteral("output"));
+        CHECK(copyOutputBtn->property("isCopied").toBool());
+        CHECK_FALSE(cwdPill->property("isCopied").toBool());
+        CHECK(copyToastBadge->isVisible());
+        CHECK(copyToastText->property("text").toString() == QStringLiteral("✓ Output copiato negli appunti"));
+
+        // Ctrl+C on selected output text -> copies selection and shows floating toast
+        outputEdit->forceActiveFocus();
+        QCoreApplication::processEvents();
+        QTest::keyClick(&window, Qt::Key_A, Qt::ControlModifier);
+        QCoreApplication::processEvents();
+        QTest::keyClick(&window, Qt::Key_C, Qt::ControlModifier);
+        QCoreApplication::processEvents();
+        CHECK(panelObj->property("copiedFeedbackTarget").toString() == QStringLiteral("selection"));
+        CHECK(copyToastBadge->isVisible());
+        CHECK(copyToastText->property("text").toString() == QStringLiteral("✓ Selezione copiata negli appunti"));
+
+        // Pager Copy button also shows feedback when pager is open
+        const QString workspaceRepo = QString::fromStdString(std::filesystem::current_path().string());
+        if (QDir(workspaceRepo + QStringLiteral("/.git")).exists())
+        {
+            vm.setActiveRepository(QStringLiteral("id-pager"), QStringLiteral("GitFlux"), workspaceRepo, QStringLiteral("develop"));
+            vm.executeCommand(QStringLiteral("git log -n 40"));
+            REQUIRE(vm.waitForIdle(5000));
+            QCoreApplication::processEvents();
+            REQUIRE(vm.pagerActive());
+
+            auto* pagerCopyBtn = panelObj->findChild<QQuickItem*>(QStringLiteral("pagerCopyBtn"));
+            REQUIRE(pagerCopyBtn != nullptr);
+            QGuiApplication::clipboard()->setText(QStringLiteral("stale"));
+            QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, centerInWindow(pagerCopyBtn));
+            QCoreApplication::processEvents();
+            CHECK(QGuiApplication::clipboard()->text().contains(QStringLiteral("commit ")));
+            CHECK(panelObj->property("copiedFeedbackTarget").toString() == QStringLiteral("pager"));
+            CHECK(pagerCopyBtn->property("isCopied").toBool());
+
+            // Also verify drag selection auto-scrolls pagerFlickable past bottom edge
+            auto* pagerFlickable = panelObj->findChild<QQuickItem*>(QStringLiteral("pagerFlickable"));
+            auto* pagerEdit = panelObj->findChild<QQuickItem*>(QStringLiteral("pagerTextEdit"));
+            REQUIRE(pagerFlickable != nullptr);
+            REQUIRE(pagerEdit != nullptr);
+            REQUIRE(pagerFlickable->property("contentHeight").toReal() > pagerFlickable->height() + 50.0);
+
+            pagerFlickable->setProperty("contentY", 0.0);
+            QCoreApplication::processEvents();
+            const QPoint pStart = pagerFlickable->mapToScene(QPointF(24, 24)).toPoint();
+            const QPoint pBelow = pagerFlickable->mapToScene(QPointF(48, pagerFlickable->height() + 30)).toPoint();
+            QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, pStart);
+            QTest::mouseMove(&window, pBelow, 10);
+            QTest::qWait(120);
+            QCoreApplication::processEvents();
+            const qreal pScrolledDownY = pagerFlickable->property("contentY").toReal();
+            const QString pSelected = pagerEdit->property("selectedText").toString();
+            QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, pBelow);
+            QCoreApplication::processEvents();
+
+            CHECK(pScrolledDownY > 10.0);
+            CHECK_FALSE(pSelected.isEmpty());
+            vm.closePager();
+        }
+    }
+
+    SECTION("Drag selection auto-scrolls outputFlickable when dragging past bottom or top edge")
+    {
+        // Populate many lines so outputFlickable becomes scrollable
+        vm.executeCommand(QStringLiteral("seq 1 60"));
+        REQUIRE(vm.waitForIdle(5000));
+        QCoreApplication::processEvents();
+
+        auto* outputFlickable = panelObj->findChild<QQuickItem*>(QStringLiteral("outputFlickable"));
+        REQUIRE(outputFlickable != nullptr);
+        REQUIRE(outputFlickable->property("contentHeight").toReal() > outputFlickable->height() + 50.0);
+
+        // Start from top of output and drag past the bottom edge
+        outputFlickable->setProperty("contentY", 0.0);
+        QCoreApplication::processEvents();
+        const QPoint startPt = outputFlickable->mapToScene(QPointF(24, 24)).toPoint();
+        const QPoint belowEdgePt = outputFlickable->mapToScene(QPointF(48, outputFlickable->height() + 30)).toPoint();
+
+        QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, startPt);
+        QTest::mouseMove(&window, belowEdgePt, 10);
+        QTest::qWait(120);
+        QCoreApplication::processEvents();
+        const qreal scrolledDownY = outputFlickable->property("contentY").toReal();
+        const QString downSelected = outputEdit->property("selectedText").toString();
+        QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, belowEdgePt);
+        QCoreApplication::processEvents();
+
+        CHECK(scrolledDownY > 10.0);
+        CHECK_FALSE(downSelected.isEmpty());
+
+        // Now start near bottom and drag past the top edge
+        const qreal maxY = outputFlickable->property("contentHeight").toReal() - outputFlickable->height();
+        outputFlickable->setProperty("contentY", maxY);
+        QCoreApplication::processEvents();
+        const QPoint nearBottomPt = outputFlickable->mapToScene(QPointF(24, outputFlickable->height() - 24)).toPoint();
+        const QPoint aboveEdgePt = outputFlickable->mapToScene(QPointF(48, -30)).toPoint();
+
+        QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, nearBottomPt);
+        QTest::mouseMove(&window, aboveEdgePt, 10);
+        QTest::qWait(120);
+        QCoreApplication::processEvents();
+        const qreal scrolledUpY = outputFlickable->property("contentY").toReal();
+        const QString upSelected = outputEdit->property("selectedText").toString();
+        QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, aboveEdgePt);
+        QCoreApplication::processEvents();
+
+        CHECK(scrolledUpY < maxY - 10.0);
+        CHECK_FALSE(upSelected.isEmpty());
+    }
+
+    SECTION("Completion popup footer adapts when row 0 execute action is highlighted")
+    {
+        QFile psScript(tempRoot.filePath(QStringLiteral("build.ps1")));
+        REQUIRE(psScript.open(QIODevice::WriteOnly | QIODevice::Text));
+        psScript.write("param([switch]$Qt, [switch]$Tests)\nWrite-Output 'ok'\n");
+        psScript.close();
+
+        auto* footerHint = panelObj->findChild<QQuickItem*>(QStringLiteral("completionFooterHint"));
+        REQUIRE(footerHint != nullptr);
+
+        cmdInput->forceActiveFocus();
+        QCoreApplication::processEvents();
+
+        const QString cmd = QStringLiteral("./build.ps1 ");
+        cmdInput->setProperty("text", cmd);
+        cmdInput->setProperty("cursorPosition", static_cast<int>(cmd.size()));
+        vm.updateCompletions(cmd, static_cast<int>(cmd.size()), true);
+        QCoreApplication::processEvents();
+
+        REQUIRE(vm.hasCompletions());
+        REQUIRE(vm.completionModel()->isExecuteAction(0));
+        CHECK(footerHint->property("text").toString()
+              == QStringLiteral("Invio esegui  •  ↓ / Tab scegli parametro  •  Esc chiudi"));
+
+        // Moving to a parameter row switches footer back to completion hint
+        QTest::keyClick(&window, Qt::Key_Down);
+        QCoreApplication::processEvents();
+        CHECK(footerHint->property("text").toString().contains(QStringLiteral("completa")));
+
+        // Moving back to row 0 restores execute hint
+        QTest::keyClick(&window, Qt::Key_Up);
+        QCoreApplication::processEvents();
+        CHECK(footerHint->property("text").toString()
+              == QStringLiteral("Invio esegui  •  ↓ / Tab scegli parametro  •  Esc chiudi"));
+    }
 }

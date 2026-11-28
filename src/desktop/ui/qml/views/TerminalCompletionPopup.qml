@@ -10,10 +10,19 @@ Rectangle {
     property bool userNavigated: false
     property bool enterWillComplete: false
     property int totalCount: completionModel ? completionModel.count : 0
+    property int _modelRevision: 0
     readonly property bool selectedIsExecuteAction: Boolean(
+        _modelRevision >= 0 &&
         completionModel && totalCount > 0 && selectedIndex >= 0 && selectedIndex < totalCount &&
         completionModel.isExecuteAction(selectedIndex)
     )
+
+    Connections {
+        target: popupRoot.completionModel
+        function onModelReset() {
+            ++popupRoot._modelRevision;
+        }
+    }
 
     signal itemAccepted(int index)
 
@@ -266,9 +275,14 @@ Rectangle {
                 spacing: 8
 
                 Text {
-                    text: popupRoot.enterWillComplete
-                        ? "Tab / Invio completa  •  ↑↓ naviga  •  Shift+Invio esegui  •  Esc chiudi"
-                        : "Tab completa  •  ↑↓ naviga  •  Invio esegui  •  Esc chiudi"
+                    objectName: "completionFooterHint"
+                    text: popupRoot.selectedIsExecuteAction
+                        ? (popupRoot.totalCount > 1
+                            ? "Invio esegui  •  ↓ / Tab scegli parametro  •  Esc chiudi"
+                            : "Invio / Tab esegui  •  Esc chiudi")
+                        : (popupRoot.enterWillComplete
+                            ? "Tab / Invio completa  •  ↑↓ naviga  •  Shift+Invio esegui  •  Esc chiudi"
+                            : "Tab completa  •  ↑↓ naviga  •  Invio esegui  •  Esc chiudi")
                     color: "#64748B"
                     font.pixelSize: 10
                     Layout.fillWidth: true

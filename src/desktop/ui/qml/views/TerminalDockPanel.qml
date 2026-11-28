@@ -20,6 +20,96 @@ Rectangle {
     readonly property var currentPagerModel: terminalVm ? terminalVm.activePagerModel : null
     property bool _wasPagerOpen: false
     property int _lastSyncedTabId: -1
+    property string copiedFeedbackTarget: ""
+    property string copiedFeedbackMessage: ""
+
+    component TextEditDragAutoScroller: PointHandler {
+        id: scrollerHandler
+        required property Flickable flickable
+        required property TextEdit textEdit
+        property bool returnFocusToPromptOnEmptyClick: false
+        property bool disableAutoScrollOnUp: false
+
+        acceptedButtons: Qt.LeftButton
+        property real lastViewportX: 0
+        property real lastViewportY: 0
+        property int scrollDirection: 0
+        property real scrollSpeed: 0
+
+        function updatePointerMetrics() {
+            if (!flickable || !textEdit || !active) {
+                scrollDirection = 0;
+                scrollSpeed = 0;
+                return;
+            }
+            const dx = point.position.x - point.pressPosition.x;
+            const dy = point.position.y - point.pressPosition.y;
+            if ((dx * dx + dy * dy) < 16) {
+                scrollDirection = 0;
+                scrollSpeed = 0;
+                return;
+            }
+            const pt = flickable.mapFromItem(textEdit, point.position.x, point.position.y);
+            lastViewportX = pt.x;
+            lastViewportY = pt.y;
+
+            const edgeMargin = 14;
+            if (pt.y < edgeMargin) {
+                const overshoot = Math.max(1, edgeMargin - pt.y);
+                scrollDirection = -1;
+                scrollSpeed = Math.min(28, 4 + overshoot * 0.35);
+            } else if (pt.y > flickable.height - edgeMargin) {
+                const overshoot = Math.max(1, pt.y - (flickable.height - edgeMargin));
+                scrollDirection = 1;
+                scrollSpeed = Math.min(28, 4 + overshoot * 0.35);
+            } else {
+                scrollDirection = 0;
+                scrollSpeed = 0;
+            }
+        }
+
+        onActiveChanged: {
+            if (active) {
+                updatePointerMetrics();
+            } else {
+                scrollDirection = 0;
+                scrollSpeed = 0;
+                if (returnFocusToPromptOnEmptyClick && textEdit && textEdit.selectedText.length === 0) {
+                    cmdInput.forceActiveFocus();
+                }
+            }
+        }
+
+        onPointChanged: updatePointerMetrics()
+
+        property Timer _dragScrollTimer: Timer {
+            interval: 16
+            repeat: true
+            running: scrollerHandler.active && scrollerHandler.scrollDirection !== 0
+            onTriggered: {
+                if (!scrollerHandler.flickable || !scrollerHandler.textEdit) return;
+                const fl = scrollerHandler.flickable;
+                const te = scrollerHandler.textEdit;
+                const maxY = Math.max(0, fl.contentHeight - fl.height);
+                const nextY = Math.max(0, Math.min(maxY, fl.contentY + scrollerHandler.scrollDirection * scrollerHandler.scrollSpeed));
+                if (nextY === fl.contentY) return;
+
+                if (scrollerHandler.disableAutoScrollOnUp && scrollerHandler.scrollDirection < 0) {
+                    panelRoot.autoScroll = false;
+                    scrollBottomTimer.stop();
+                }
+
+                const anchor = (te.cursorPosition === te.selectionEnd) ? te.selectionStart : te.selectionEnd;
+                fl.contentY = nextY;
+
+                const localX = Math.max(0, Math.min(te.width, scrollerHandler.lastViewportX));
+                const clampedViewY = Math.max(0, Math.min(Math.max(0, fl.height - 1), scrollerHandler.lastViewportY));
+                const localY = fl.contentY + clampedViewY;
+                const targetPos = te.positionAt(localX, localY);
+                te.select(anchor, targetPos);
+            }
+        }
+    }
 
     function syncAttachedDocuments() {
         if (currentOutputModel && outputTextEdit && outputTextEdit.textDocument) {
@@ -176,10 +266,44 @@ Rectangle {
     }
 
     function copyTextToClipboard(text) {
-        if (!text || text.length === 0) return;
+        if (!text || text.length === 0) return false;
         clipboardHelper.text = text;
         clipboardHelper.selectAll();
         clipboardHelper.copy();
+        return true;
+    }
+
+    function triggerCopiedFeedback(targetId, message) {
+        copiedFeedbackTarget = targetId || "toast";
+        copiedFeedbackMessage = message || "✓ Copiato negli appunti";
+        copiedFeedbackTimer.restart();
+    }
+
+    function copyWithFeedback(text, targetId, message) {
+        if (!copyTextToClipboard(text)) return;
+        let msg = message;
+        if (!msg) {
+            if (targetId === "cwd") msg = "✓ Percorso copiato negli appunti";
+            else if (targetId === "output") msg = "✓ Output copiato negli appunti";
+            else if (targetId === "pager") msg = "✓ Output pager copiato negli appunti";
+            else msg = "✓ Copiato negli appunti";
+        }
+        triggerCopiedFeedback(targetId, msg);
+    }
+
+    function copySelectionWithFeedback(textEdit, targetId) {
+        if (!textEdit || textEdit.selectedText.length === 0) return;
+        textEdit.copy();
+        triggerCopiedFeedback(targetId || "selection", "✓ Selezione copiata negli appunti");
+    }
+
+    Timer {
+        id: copiedFeedbackTimer
+        interval: 1500
+        onTriggered: {
+            panelRoot.copiedFeedbackTarget = "";
+            panelRoot.copiedFeedbackMessage = "";
+        }
     }
 
     Connections {
@@ -510,24 +634,34 @@ Rectangle {
 
                 // Current Working Directory Pill
                 Rectangle {
+                    id: cwdPill
+                    objectName: "cwdPill"
+                    readonly property bool isCopied: panelRoot.copiedFeedbackTarget === "cwd"
                     visible: Boolean(panelRoot.terminalVm && panelRoot.terminalVm.activeWorkingDir.length > 0)
                     Layout.preferredHeight: 22
+                    Layout.minimumWidth: isCopied ? (cwdLabel.implicitWidth + 14) : 0
                     Layout.maximumWidth: 280
                     implicitWidth: Math.min(280, cwdLabel.implicitWidth + 14)
                     radius: 6
-                    color: "#0F1724"
-                    border.color: "#1C293B"
+                    color: isCopied ? "#082F25" : "#0F1724"
+                    border.color: isCopied ? "#10B981" : "#1C293B"
                     border.width: 1
+                    Behavior on color { ColorAnimation { duration: 120 } }
+                    Behavior on border.color { ColorAnimation { duration: 120 } }
 
                     Text {
                         id: cwdLabel
+                        objectName: "cwdLabel"
                         anchors.fill: parent
                         anchors.leftMargin: 7
                         anchors.rightMargin: 7
-                        text: panelRoot.terminalVm ? panelRoot.terminalVm.activeWorkingDir : ""
-                        color: "#64748B"
+                        text: cwdPill.isCopied
+                            ? "✓ Copiato"
+                            : (panelRoot.terminalVm ? panelRoot.terminalVm.activeWorkingDir : "")
+                        color: cwdPill.isCopied ? "#34D399" : "#64748B"
                         font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
                         font.pixelSize: 10
+                        font.bold: cwdPill.isCopied
                         verticalAlignment: Text.AlignVCenter
                         elide: Text.ElideMiddle
                     }
@@ -537,10 +671,12 @@ Rectangle {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         ToolTip.visible: containsMouse
-                        ToolTip.text: "Clicca per copiare il percorso: " + (panelRoot.terminalVm ? panelRoot.terminalVm.activeWorkingDir : "")
+                        ToolTip.text: cwdPill.isCopied
+                            ? "✓ Percorso copiato negli appunti"
+                            : ("Clicca per copiare il percorso: " + (panelRoot.terminalVm ? panelRoot.terminalVm.activeWorkingDir : ""))
                         onClicked: {
                             if (panelRoot.terminalVm) {
-                                panelRoot.copyTextToClipboard(panelRoot.terminalVm.activeWorkingDir);
+                                panelRoot.copyWithFeedback(panelRoot.terminalVm.activeWorkingDir, "cwd");
                             }
                         }
                     }
@@ -608,25 +744,40 @@ Rectangle {
 
                 // Copy Output button
                 Button {
-                    Layout.preferredWidth: 24
+                    id: copyOutputBtn
+                    objectName: "copyOutputBtn"
+                    readonly property bool isCopied: panelRoot.copiedFeedbackTarget === "output"
+                    Layout.preferredWidth: isCopied ? (copyOutputBtnText.implicitWidth + 14) : 24
                     Layout.preferredHeight: 24
+                    leftPadding: isCopied ? 7 : 0
+                    rightPadding: isCopied ? 7 : 0
+                    topPadding: 0
+                    bottomPadding: 0
                     hoverEnabled: true
                     background: Rectangle {
                         radius: 6
-                        color: parent.hovered ? "#1A2639" : "transparent"
+                        color: copyOutputBtn.isCopied
+                            ? "#082F25"
+                            : (copyOutputBtn.hovered ? "#1A2639" : "transparent")
+                        border.color: copyOutputBtn.isCopied ? "#10B981" : "transparent"
+                        border.width: copyOutputBtn.isCopied ? 1 : 0
                     }
                     contentItem: Text {
-                        text: "⧉"
-                        color: parent.hovered ? "#F8FAFC" : "#94A3B8"
-                        font.pixelSize: 12
+                        id: copyOutputBtnText
+                        text: copyOutputBtn.isCopied ? "✓ Copiato" : "⧉"
+                        color: copyOutputBtn.isCopied
+                            ? "#34D399"
+                            : (copyOutputBtn.hovered ? "#F8FAFC" : "#94A3B8")
+                        font.pixelSize: copyOutputBtn.isCopied ? 10 : 12
+                        font.bold: copyOutputBtn.isCopied
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
                     ToolTip.visible: hovered
-                    ToolTip.text: "Copia tutto l'output del terminale"
+                    ToolTip.text: copyOutputBtn.isCopied ? "✓ Output copiato negli appunti" : "Copia tutto l'output del terminale"
                     onClicked: {
                         if (panelRoot.terminalVm) {
-                            panelRoot.copyTextToClipboard(panelRoot.terminalVm.copyActiveOutput());
+                            panelRoot.copyWithFeedback(panelRoot.terminalVm.copyActiveOutput(), "output");
                         }
                     }
                 }
@@ -720,6 +871,7 @@ Rectangle {
 
             Flickable {
                 id: outputFlickable
+                objectName: "outputFlickable"
                 visible: !panelRoot.isPagerOpen
                 anchors.fill: parent
                 anchors.leftMargin: 8
@@ -803,14 +955,12 @@ Rectangle {
                         }
                     }
 
-                    // Return focus to the prompt after a left-click that does not select text
-                    PointHandler {
-                        acceptedButtons: Qt.LeftButton
-                        onActiveChanged: {
-                            if (!active && outputTextEdit.selectedText.length === 0) {
-                                cmdInput.forceActiveFocus();
-                            }
-                        }
+                    // Auto-scroll during drag selection & return focus to prompt on empty left-click
+                    TextEditDragAutoScroller {
+                        flickable: outputFlickable
+                        textEdit: outputTextEdit
+                        returnFocusToPromptOnEmptyClick: true
+                        disableAutoScrollOnUp: true
                     }
 
                     FluxMenu {
@@ -820,14 +970,14 @@ Rectangle {
                             text: "📋 Copia selezione (Ctrl+C)"
                             enabled: outputTextEdit.selectedText.length > 0
                             font.pixelSize: 11
-                            onClicked: outputTextEdit.copy()
+                            onClicked: panelRoot.copySelectionWithFeedback(outputTextEdit, "selection")
                         }
                         FluxMenuItem {
                             text: "⧉ Copia tutto l'output"
                             font.pixelSize: 11
                             onClicked: {
                                 if (panelRoot.terminalVm) {
-                                    panelRoot.copyTextToClipboard(panelRoot.terminalVm.copyActiveOutput());
+                                    panelRoot.copyWithFeedback(panelRoot.terminalVm.copyActiveOutput(), "output");
                                 }
                             }
                         }
@@ -862,7 +1012,7 @@ Rectangle {
                         // Ctrl+C copies when text is selected; otherwise interrupts running command
                         if (ctrl && event.key === Qt.Key_C) {
                             if (outputTextEdit.selectedText.length > 0) {
-                                outputTextEdit.copy();
+                                panelRoot.copySelectionWithFeedback(outputTextEdit, "selection");
                                 event.accepted = true;
                                 return;
                             }
@@ -954,6 +1104,7 @@ Rectangle {
             // =================================================================
             Flickable {
                 id: pagerFlickable
+                objectName: "pagerFlickable"
                 visible: panelRoot.isPagerOpen
                 anchors.fill: parent
                 anchors.leftMargin: 8
@@ -996,6 +1147,7 @@ Rectangle {
 
                 TextEdit {
                     id: pagerTextEdit
+                    objectName: "pagerTextEdit"
                     width: Math.max(100, pagerFlickable.width - 14)
                     height: Math.max(pagerFlickable.height, implicitHeight)
                     readOnly: true
@@ -1019,6 +1171,12 @@ Rectangle {
                         }
                     }
 
+                    // Auto-scroll pager during drag selection past top/bottom edges
+                    TextEditDragAutoScroller {
+                        flickable: pagerFlickable
+                        textEdit: pagerTextEdit
+                    }
+
                     FluxMenu {
                         id: pagerContextMenu
 
@@ -1026,14 +1184,14 @@ Rectangle {
                             text: "📋 Copia selezione (Ctrl+C)"
                             enabled: pagerTextEdit.selectedText.length > 0
                             font.pixelSize: 11
-                            onClicked: pagerTextEdit.copy()
+                            onClicked: panelRoot.copySelectionWithFeedback(pagerTextEdit, "selection")
                         }
                         FluxMenuItem {
                             text: "⧉ Copia tutto il pager"
                             font.pixelSize: 11
                             onClicked: {
                                 if (panelRoot.terminalVm) {
-                                    panelRoot.copyTextToClipboard(panelRoot.terminalVm.copyPagerOutput());
+                                    panelRoot.copyWithFeedback(panelRoot.terminalVm.copyPagerOutput(), "pager");
                                 }
                             }
                         }
@@ -1064,7 +1222,7 @@ Rectangle {
                         if (ctrl && key === Qt.Key_C) {
                             event.accepted = true;
                             if (pagerTextEdit.selectedText.length > 0) {
-                                pagerTextEdit.copy();
+                                panelRoot.copySelectionWithFeedback(pagerTextEdit, "selection");
                             } else {
                                 panelRoot.terminalVm.closePager();
                             }
@@ -1111,6 +1269,36 @@ Rectangle {
                             return;
                         }
                     }
+                }
+            }
+
+            // Floating copy confirmation pill (works for Ctrl+C selection copy, buttons, and CWD pill)
+            Rectangle {
+                id: copyToastBadge
+                objectName: "copyToastBadge"
+                visible: panelRoot.copiedFeedbackTarget.length > 0
+                z: 50
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.topMargin: 8
+                anchors.rightMargin: 16
+                height: 24
+                width: copyToastText.implicitWidth + 18
+                radius: 12
+                color: "#082F25"
+                border.color: "#10B981"
+                border.width: 1
+
+                Text {
+                    id: copyToastText
+                    objectName: "copyToastText"
+                    anchors.centerIn: parent
+                    text: panelRoot.copiedFeedbackMessage.length > 0
+                        ? panelRoot.copiedFeedbackMessage
+                        : "✓ Copiato negli appunti"
+                    color: "#34D399"
+                    font.pixelSize: 10
+                    font.bold: true
                 }
             }
         }
@@ -1231,26 +1419,31 @@ Rectangle {
                 }
 
                 Button {
+                    id: pagerCopyBtn
+                    objectName: "pagerCopyBtn"
+                    readonly property bool isCopied: panelRoot.copiedFeedbackTarget === "pager"
                     Layout.preferredHeight: 24
                     leftPadding: 8
                     rightPadding: 8
                     hoverEnabled: true
                     background: Rectangle {
                         radius: 6
-                        color: parent.hovered ? "#1A2B42" : "#111C2D"
-                        border.color: "#253750"
+                        color: pagerCopyBtn.isCopied
+                            ? "#082F25"
+                            : (pagerCopyBtn.hovered ? "#1A2B42" : "#111C2D")
+                        border.color: pagerCopyBtn.isCopied ? "#10B981" : "#253750"
                         border.width: 1
                     }
                     contentItem: Text {
-                        text: "⧉ Copia"
-                        color: "#CBD5E1"
+                        text: pagerCopyBtn.isCopied ? "✓ Copiato" : "⧉ Copia"
+                        color: pagerCopyBtn.isCopied ? "#34D399" : "#CBD5E1"
                         font.pixelSize: 10
                         font.bold: true
                         verticalAlignment: Text.AlignVCenter
                     }
                     onClicked: {
                         if (panelRoot.terminalVm) {
-                            panelRoot.copyTextToClipboard(panelRoot.terminalVm.copyPagerOutput());
+                            panelRoot.copyWithFeedback(panelRoot.terminalVm.copyPagerOutput(), "pager");
                         }
                     }
                 }
