@@ -1,9 +1,12 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../themes"
 
 MenuItem {
     id: control
+
+    readonly property FluxTheme theme: FluxTheme {}
 
     property bool selected: false
     readonly property bool isDestructive: text.indexOf("🗑") !== -1
@@ -43,18 +46,18 @@ MenuItem {
         y: 1
         width: Math.max(0, control.width - 4)
         height: Math.max(0, control.height - 2)
-        radius: 8
+        radius: control.theme.radiusSm
         color: {
             if (!control.enabled) return "transparent";
-            if (control.down) return control.isDestructive ? "#4C151E" : "#243652";
-            if (control.isActive) return control.isDestructive ? "#38121A" : "#1C2A40";
-            if (control.selected) return "#13263B";
+            if (control.down) return control.isDestructive ? control.theme.dangerBg : control.theme.cardHover;
+            if (control.isActive) return control.isDestructive ? control.theme.dangerBg : control.theme.card;
+            if (control.selected) return control.theme.infoBg;
             return "transparent";
         }
         border.color: {
             if (!control.enabled) return "transparent";
-            if (control.isActive) return control.isDestructive ? "#7F1D1D" : "#2D4263";
-            if (control.selected) return "#1E4066";
+            if (control.isActive) return control.isDestructive ? control.theme.danger : control.theme.borderHighlight;
+            if (control.selected) return control.theme.accentBlue;
             return "transparent";
         }
         border.width: 1
@@ -84,12 +87,12 @@ MenuItem {
             font.bold: control.font.bold
             font.family: control.font.family
             color: {
-                if (!control.enabled) return "#475569";
+                if (!control.enabled) return control.theme.textPlaceholder;
                 if (control.isDestructive) {
-                    return control.isActive ? "#FCA5A5" : "#F87171";
+                    return control.isActive ? control.theme.dangerText : control.theme.danger;
                 }
-                if (control.selected) return "#38BDF8";
-                return control.isActive ? "#F8FAFC" : "#CBD5E1";
+                if (control.selected) return control.theme.borderFocus;
+                return control.isActive ? control.theme.textPrimary : control.theme.textSecondary;
             }
             elide: Text.ElideRight
             verticalAlignment: Text.AlignVCenter
@@ -105,7 +108,7 @@ MenuItem {
         Text {
             visible: control.subMenu !== null
             text: "▸"
-            color: control.isActive ? "#38BDF8" : "#64748B"
+            color: control.isActive ? control.theme.borderFocus : control.theme.textMuted
             font.pixelSize: 12
             font.bold: true
             verticalAlignment: Text.AlignVCenter

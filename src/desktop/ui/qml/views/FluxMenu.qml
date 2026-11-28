@@ -1,8 +1,11 @@
 import QtQuick
 import QtQuick.Templates as T
+import "../themes"
 
 T.Menu {
     id: control
+
+    readonly property FluxTheme theme: FluxTheme {}
 
     function computeMaxItemWidth() {
         let maxW = 220;
@@ -95,9 +98,9 @@ T.Menu {
     background: Rectangle {
         implicitWidth: 220
         implicitHeight: 36
-        color: "#111824"
+        color: control.theme.surface
         radius: 12
-        border.color: "#28374E"
+        border.color: control.theme.borderHighlight
         border.width: 1
 
         // Soft multi-layer ambient shadow (zero external shader module required)
@@ -141,7 +144,7 @@ T.Menu {
             anchors.leftMargin: 10
             anchors.rightMargin: 10
             height: 1
-            color: "#FFFFFF"
+            color: control.theme.selectionText
             opacity: 0.07
         }
     }

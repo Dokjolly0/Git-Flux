@@ -1,10 +1,13 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../themes"
 
 Rectangle {
     id: root
-    color: "#0D1117"
+    color: theme.canvas
+
+    readonly property FluxTheme theme: FluxTheme {}
 
     property var diffViewer: null
     property string monoFont: (typeof gfMonoFont !== "undefined" && gfMonoFont) ? gfMonoFont : "monospace"
@@ -153,7 +156,7 @@ Rectangle {
                 x: Math.max(16, Math.round((imgFlick.contentWidth - width) / 2))
                 y: Math.max(16, Math.round((imgFlick.contentHeight - height) / 2))
                 color: "transparent"
-                border.color: "#334155"
+                border.color: theme.borderHighlight
                 border.width: width > 0 ? 1 : 0
 
                 Image {
@@ -177,8 +180,8 @@ Rectangle {
         property real afterImplicitH: 0
 
         radius: 10
-        color: "#0A0E15"
-        border.color: "#28374E"
+        color: theme.inputBg
+        border.color: theme.border
         border.width: 1
         clip: true
 
@@ -202,13 +205,13 @@ Rectangle {
     component FontSpecimenPane: Rectangle {
         id: specimenPane
         property string headerText: ""
-        property color headerColor: "#FCA5A5"
+        property color headerColor: theme.dangerText
         property string fontFamily: ""
 
         Layout.fillWidth: true
         Layout.fillHeight: true
         radius: 10
-        color: "#0A0E15"
+        color: theme.inputBg
         border.width: 1
         clip: true
 
@@ -229,17 +232,17 @@ Rectangle {
                     font.bold: true
                 }
                 Text {
-                    Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#F8FAFC"
+                    Layout.fillWidth: true; wrapMode: Text.Wrap; color: theme.textPrimary
                     font.family: specimenPane.fontFamily
                     font.pixelSize: 32; text: root.fontSampleText
                 }
                 Text {
-                    Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#CBD5E1"
+                    Layout.fillWidth: true; wrapMode: Text.Wrap; color: theme.textSecondary
                     font.family: specimenPane.fontFamily
                     font.pixelSize: 20; text: root.fontSampleText
                 }
                 Text {
-                    Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#94A3B8"
+                    Layout.fillWidth: true; wrapMode: Text.Wrap; color: theme.textMuted
                     font.family: specimenPane.fontFamily
                     font.pixelSize: 14; text: "ABCDEFGHIJKLMNOPQRSTUVWXYZ\nabcdefghijklmnopqrstuvwxyz\n0123456789 !@#$%^&*()[]{}"
                 }
@@ -250,9 +253,9 @@ Rectangle {
     // Reusable small pill button
     component PillButton: Button {
         property bool active: false
-        property color activeBg: "#0C2D48"
-        property color activeBorder: "#38BDF8"
-        property color activeText: "#7DD3FC"
+        property color activeBg: theme.infoBg
+        property color activeBorder: theme.accentCyan
+        property color activeText: theme.infoText
 
         hoverEnabled: true
         implicitHeight: 24
@@ -263,13 +266,13 @@ Rectangle {
 
         background: Rectangle {
             radius: 5
-            color: parent.active ? parent.activeBg : (parent.hovered ? "#1E293B" : "transparent")
-            border.color: parent.active ? parent.activeBorder : (parent.hovered ? "#334155" : "transparent")
+            color: parent.active ? parent.activeBg : (parent.hovered ? theme.cardHover : "transparent")
+            border.color: parent.active ? parent.activeBorder : (parent.hovered ? theme.borderHighlight : "transparent")
             border.width: 1
         }
         contentItem: Text {
             text: parent.text
-            color: parent.active ? parent.activeText : (parent.hovered ? "#F8FAFC" : "#94A3B8")
+            color: parent.active ? parent.activeText : (parent.hovered ? theme.textPrimary : theme.textMuted)
             font.pixelSize: 11
             font.bold: parent.active
             horizontalAlignment: Text.AlignHCenter
@@ -287,13 +290,13 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 40
-            color: "#11161F"
+            color: theme.surface
 
             Rectangle {
                 anchors.bottom: parent.bottom
                 width: parent.width
                 height: 1
-                color: "#1E293B"
+                color: theme.borderSubtle
             }
 
             RowLayout {
@@ -307,14 +310,14 @@ Rectangle {
                     implicitHeight: 22
                     implicitWidth: fmtLabel.implicitWidth + 14
                     radius: 5
-                    color: "#172030"
-                    border.color: "#28374E"
+                    color: theme.surfaceElevated
+                    border.color: theme.border
                     border.width: 1
                     Text {
                         id: fmtLabel
                         anchors.centerIn: parent
                         text: root.kindIcon(root.fileKind) + "  " + (root.hasViewer ? (root.diffViewer.formatDescription || "File binario") : "")
-                        color: "#E2E8F0"
+                        color: theme.textSecondary
                         font.pixelSize: 11
                         font.bold: true
                     }
@@ -332,7 +335,7 @@ Rectangle {
                         if (n.length > 0) return n;
                         return o;
                     }
-                    color: "#94A3B8"
+                    color: theme.textMuted
                     font.pixelSize: 11
                     elide: Text.ElideRight
                 }
@@ -343,8 +346,8 @@ Rectangle {
                     implicitHeight: 20
                     implicitWidth: pxDiffText.implicitWidth + 12
                     radius: 10
-                    color: "#2D1220"
-                    border.color: "#9F1239"
+                    color: theme.dangerBg
+                    border.color: theme.danger
                     border.width: 1
                     Text {
                         id: pxDiffText
@@ -352,7 +355,7 @@ Rectangle {
                         text: root.hasViewer
                             ? (root.diffViewer.imageDiffPercent.toFixed(root.diffViewer.imageDiffPercent < 1.0 ? 2 : 1) + "% pixel modificati")
                             : ""
-                        color: "#FDA4AF"
+                        color: theme.dangerText
                         font.pixelSize: 10
                         font.bold: true
                     }
@@ -366,8 +369,8 @@ Rectangle {
                     implicitHeight: 28
                     implicitWidth: imgModeRow.implicitWidth + 6
                     radius: 6
-                    color: "#0A0E15"
-                    border.color: "#1E293B"
+                    color: theme.inputBg
+                    border.color: theme.borderSubtle
                     border.width: 1
 
                     RowLayout {
@@ -394,9 +397,9 @@ Rectangle {
                             visible: root.hasDiffImg
                             text: "Differenza"
                             active: root.imageMode === "diff"
-                            activeBg: "#3B1224"
-                            activeBorder: "#F43F5E"
-                            activeText: "#FDA4AF"
+                            activeBg: theme.dangerBg
+                            activeBorder: theme.danger
+                            activeText: theme.dangerText
                             onClicked: root.imageMode = "diff"
                         }
                     }
@@ -442,8 +445,8 @@ Rectangle {
                     implicitHeight: 28
                     implicitWidth: tabSwitchRow.implicitWidth + 6
                     radius: 6
-                    color: "#0A0E15"
-                    border.color: "#1E293B"
+                    color: theme.inputBg
+                    border.color: theme.borderSubtle
                     border.width: 1
 
                     RowLayout {
@@ -491,8 +494,8 @@ Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: noticeText.implicitHeight + 12
             visible: root.hasViewer && root.diffViewer.previewNotice && root.diffViewer.previewNotice.length > 0
-            color: "#1C1917"
-            border.color: "#78350F"
+            color: theme.warningBg
+            border.color: theme.warning
             border.width: 1
 
             Text {
@@ -502,7 +505,7 @@ Rectangle {
                 anchors.rightMargin: 12
                 verticalAlignment: Text.AlignVCenter
                 text: "ℹ️ " + (root.hasViewer ? root.diffViewer.previewNotice : "")
-                color: "#FDE68A"
+                color: theme.warningText
                 font.pixelSize: 11
                 wrapMode: Text.Wrap
             }
@@ -545,8 +548,8 @@ Rectangle {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         radius: 10
-                        color: "#0A0E15"
-                        border.color: "#4C1D24"
+                        color: theme.inputBg
+                        border.color: theme.danger
                         border.width: 1
                         clip: true
 
@@ -557,7 +560,7 @@ Rectangle {
                             Rectangle {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 32
-                                color: "#1F1216"
+                                color: theme.dangerBg
                                 RowLayout {
                                     anchors.fill: parent
                                     anchors.leftMargin: 12
@@ -567,12 +570,12 @@ Rectangle {
                                         implicitHeight: 18
                                         implicitWidth: beforeBadge.implicitWidth + 10
                                         radius: 4
-                                        color: "#7F1D1D"
+                                        color: theme.danger
                                         Text {
                                             id: beforeBadge
                                             anchors.centerIn: parent
                                             text: root.hasNewImg ? "PRIMA" : "ELIMINATA"
-                                            color: "#FECACA"
+                                            color: theme.dangerText
                                             font.pixelSize: 10
                                             font.bold: true
                                         }
@@ -581,13 +584,13 @@ Rectangle {
                                         text: root.hasViewer && root.diffViewer.oldImageWidth > 0
                                             ? (root.diffViewer.oldImageWidth + " × " + root.diffViewer.oldImageHeight + " px")
                                             : ""
-                                        color: "#E2E8F0"
+                                        color: theme.textSecondary
                                         font.pixelSize: 11
                                         font.bold: true
                                     }
                                     Text {
                                         text: root.hasViewer ? root.diffViewer.oldFileSizeText : ""
-                                        color: "#94A3B8"
+                                        color: theme.textMuted
                                         font.pixelSize: 11
                                     }
                                     Item { Layout.fillWidth: true }
@@ -616,8 +619,8 @@ Rectangle {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         radius: 10
-                        color: "#0A0E15"
-                        border.color: "#14532D"
+                        color: theme.inputBg
+                        border.color: theme.success
                         border.width: 1
                         clip: true
 
@@ -628,7 +631,7 @@ Rectangle {
                             Rectangle {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 32
-                                color: "#0E2318"
+                                color: theme.successBg
                                 RowLayout {
                                     anchors.fill: parent
                                     anchors.leftMargin: 12
@@ -638,12 +641,12 @@ Rectangle {
                                         implicitHeight: 18
                                         implicitWidth: afterBadge.implicitWidth + 10
                                         radius: 4
-                                        color: "#065F46"
+                                        color: theme.success
                                         Text {
                                             id: afterBadge
                                             anchors.centerIn: parent
                                             text: root.hasOldImg ? "DOPO" : "NUOVA"
-                                            color: "#A7F3D0"
+                                            color: theme.successText
                                             font.pixelSize: 10
                                             font.bold: true
                                         }
@@ -652,13 +655,13 @@ Rectangle {
                                         text: root.hasViewer && root.diffViewer.newImageWidth > 0
                                             ? (root.diffViewer.newImageWidth + " × " + root.diffViewer.newImageHeight + " px")
                                             : ""
-                                        color: "#E2E8F0"
+                                        color: theme.textSecondary
                                         font.pixelSize: 11
                                         font.bold: true
                                     }
                                     Text {
                                         text: root.hasViewer ? root.diffViewer.newFileSizeText : ""
-                                        color: "#94A3B8"
+                                        color: theme.textMuted
                                         font.pixelSize: 11
                                     }
                                     Item { Layout.fillWidth: true }
@@ -741,20 +744,20 @@ Rectangle {
                                 y: 0
                                 width: 2
                                 height: swipeStage.height
-                                color: "#38BDF8"
+                                color: theme.accentCyan
 
                                 Rectangle {
                                     anchors.centerIn: parent
                                     width: 28
                                     height: 28
                                     radius: 14
-                                    color: "#0F172A"
-                                    border.color: "#38BDF8"
+                                    color: theme.surfaceElevated
+                                    border.color: theme.accentCyan
                                     border.width: 2
                                     Text {
                                         anchors.centerIn: parent
                                         text: "↔"
-                                        color: "#38BDF8"
+                                        color: theme.accentCyan
                                         font.pixelSize: 13
                                         font.bold: true
                                     }
@@ -783,8 +786,8 @@ Rectangle {
                             implicitHeight: 22
                             implicitWidth: swLbl1.implicitWidth + 12
                             radius: 5
-                            color: "#CC7F1D1D"
-                            Text { id: swLbl1; anchors.centerIn: parent; text: "◀ PRIMA"; color: "#FECACA"; font.pixelSize: 10; font.bold: true }
+                            color: Qt.alpha(theme.dangerBg, 0.85)
+                            Text { id: swLbl1; anchors.centerIn: parent; text: "◀ PRIMA"; color: theme.dangerText; font.pixelSize: 10; font.bold: true }
                         }
                         Rectangle {
                             anchors.right: parent.right
@@ -793,8 +796,8 @@ Rectangle {
                             implicitHeight: 22
                             implicitWidth: swLbl2.implicitWidth + 12
                             radius: 5
-                            color: "#CC065F46"
-                            Text { id: swLbl2; anchors.centerIn: parent; text: "DOPO ▶"; color: "#A7F3D0"; font.pixelSize: 10; font.bold: true }
+                            color: Qt.alpha(theme.successBg, 0.85)
+                            Text { id: swLbl2; anchors.centerIn: parent; text: "DOPO ▶"; color: theme.successText; font.pixelSize: 10; font.bold: true }
                         }
                     }
                 }
@@ -846,8 +849,8 @@ Rectangle {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 38
                         radius: 8
-                        color: "#11161F"
-                        border.color: "#1E293B"
+                        color: theme.surface
+                        border.color: theme.borderSubtle
                         border.width: 1
 
                         RowLayout {
@@ -856,7 +859,7 @@ Rectangle {
                             anchors.rightMargin: 16
                             spacing: 12
 
-                            Text { text: "PRIMA"; color: "#FCA5A5"; font.pixelSize: 11; font.bold: true }
+                            Text { text: "PRIMA"; color: theme.dangerText; font.pixelSize: 11; font.bold: true }
                             Slider {
                                 Layout.fillWidth: true
                                 from: 0.0
@@ -864,10 +867,10 @@ Rectangle {
                                 value: root.onionOpacity
                                 onMoved: root.onionOpacity = value
                             }
-                            Text { text: "DOPO"; color: "#6EE7B7"; font.pixelSize: 11; font.bold: true }
+                            Text { text: "DOPO"; color: theme.successText; font.pixelSize: 11; font.bold: true }
                             Text {
                                 text: Math.round(root.onionOpacity * 100) + "%"
-                                color: "#38BDF8"
+                                color: theme.accentCyan
                                 font.pixelSize: 11
                                 font.bold: true
                                 Layout.preferredWidth: 36
@@ -886,8 +889,8 @@ Rectangle {
                     Rectangle {
                         anchors.fill: parent
                         radius: 10
-                        color: "#0A0E15"
-                        border.color: "#9F1239"
+                        color: theme.inputBg
+                        border.color: theme.danger
                         border.width: 1
                         clip: true
 
@@ -908,18 +911,18 @@ Rectangle {
                             implicitHeight: 24
                             implicitWidth: diffLegendRow.implicitWidth + 16
                             radius: 6
-                            color: "#DD0F172A"
-                            border.color: "#334155"
+                            color: Qt.alpha(theme.surfaceElevated, 0.9)
+                            border.color: theme.borderHighlight
                             border.width: 1
 
                             RowLayout {
                                 id: diffLegendRow
                                 anchors.centerIn: parent
                                 spacing: 8
-                                Rectangle { width: 10; height: 10; radius: 2; color: "#F43F5E" }
+                                Rectangle { width: 10; height: 10; radius: 2; color: theme.danger }
                                 Text {
                                     text: "Pixel modificati (" + (root.hasViewer ? root.diffViewer.imageDiffPercent.toFixed(2) : "0") + "%)"
-                                    color: "#F8FAFC"
+                                    color: theme.textPrimary
                                     font.pixelSize: 11
                                     font.bold: true
                                 }
@@ -945,23 +948,23 @@ Rectangle {
 
                     Rectangle {
                         visible: root.hasViewer && root.diffViewer.archiveAddedCount > 0
-                        implicitHeight: 24; implicitWidth: arAddTxt.implicitWidth + 12; radius: 5; color: "#064E3B"; border.color: "#059669"
-                        Text { id: arAddTxt; anchors.centerIn: parent; text: "+" + (root.hasViewer ? root.diffViewer.archiveAddedCount : 0) + " aggiunti"; color: "#A7F3D0"; font.pixelSize: 11; font.bold: true }
+                        implicitHeight: 24; implicitWidth: arAddTxt.implicitWidth + 12; radius: 5; color: theme.successBg; border.color: theme.success
+                        Text { id: arAddTxt; anchors.centerIn: parent; text: "+" + (root.hasViewer ? root.diffViewer.archiveAddedCount : 0) + " aggiunti"; color: theme.successText; font.pixelSize: 11; font.bold: true }
                     }
                     Rectangle {
                         visible: root.hasViewer && root.diffViewer.archiveModifiedCount > 0
-                        implicitHeight: 24; implicitWidth: arModTxt.implicitWidth + 12; radius: 5; color: "#451A03"; border.color: "#D97706"
-                        Text { id: arModTxt; anchors.centerIn: parent; text: "~" + (root.hasViewer ? root.diffViewer.archiveModifiedCount : 0) + " modificati"; color: "#FDE68A"; font.pixelSize: 11; font.bold: true }
+                        implicitHeight: 24; implicitWidth: arModTxt.implicitWidth + 12; radius: 5; color: theme.warningBg; border.color: theme.warning
+                        Text { id: arModTxt; anchors.centerIn: parent; text: "~" + (root.hasViewer ? root.diffViewer.archiveModifiedCount : 0) + " modificati"; color: theme.warningText; font.pixelSize: 11; font.bold: true }
                     }
                     Rectangle {
                         visible: root.hasViewer && root.diffViewer.archiveRemovedCount > 0
-                        implicitHeight: 24; implicitWidth: arRemTxt.implicitWidth + 12; radius: 5; color: "#450A0A"; border.color: "#DC2626"
-                        Text { id: arRemTxt; anchors.centerIn: parent; text: "-" + (root.hasViewer ? root.diffViewer.archiveRemovedCount : 0) + " rimossi"; color: "#FECACA"; font.pixelSize: 11; font.bold: true }
+                        implicitHeight: 24; implicitWidth: arRemTxt.implicitWidth + 12; radius: 5; color: theme.dangerBg; border.color: theme.danger
+                        Text { id: arRemTxt; anchors.centerIn: parent; text: "-" + (root.hasViewer ? root.diffViewer.archiveRemovedCount : 0) + " rimossi"; color: theme.dangerText; font.pixelSize: 11; font.bold: true }
                     }
                     Rectangle {
                         visible: root.hasViewer && root.diffViewer.archiveUnchangedCount > 0
-                        implicitHeight: 24; implicitWidth: arUnchTxt.implicitWidth + 12; radius: 5; color: "#1E293B"; border.color: "#334155"
-                        Text { id: arUnchTxt; anchors.centerIn: parent; text: (root.hasViewer ? root.diffViewer.archiveUnchangedCount : 0) + " invariati"; color: "#94A3B8"; font.pixelSize: 11 }
+                        implicitHeight: 24; implicitWidth: arUnchTxt.implicitWidth + 12; radius: 5; color: theme.surfaceElevated; border.color: theme.borderHighlight
+                        Text { id: arUnchTxt; anchors.centerIn: parent; text: (root.hasViewer ? root.diffViewer.archiveUnchangedCount : 0) + " invariati"; color: theme.textMuted; font.pixelSize: 11 }
                     }
 
                     Item { Layout.fillWidth: true }
@@ -972,20 +975,13 @@ Rectangle {
                         onClicked: root.archiveOnlyChanged = !root.archiveOnlyChanged
                     }
 
-                    TextField {
+                    FluxTextField {
                         Layout.preferredWidth: 220
                         Layout.preferredHeight: 26
                         placeholderText: "Filtra file nell'archivio..."
-                        placeholderTextColor: "#64748B"
-                        color: "#F8FAFC"
                         font.pixelSize: 11
                         text: root.archiveFilterText
                         onTextChanged: root.archiveFilterText = text
-                        background: Rectangle {
-                            color: "#0A0E15"
-                            radius: 5
-                            border.color: parent.activeFocus ? "#38BDF8" : "#334155"
-                        }
                     }
                 }
 
@@ -993,8 +989,8 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     radius: 8
-                    color: "#0A0E15"
-                    border.color: "#1E293B"
+                    color: theme.inputBg
+                    border.color: theme.borderSubtle
                     border.width: 1
                     clip: true
 
@@ -1018,9 +1014,9 @@ Rectangle {
                             width: archiveListView.width - 8
                             height: 28
                             radius: 4
-                            color: modelData.status === "added" ? "#0C2518"
-                                 : (modelData.status === "removed" ? "#261216"
-                                    : (modelData.status === "modified" ? "#241B0D" : "transparent"))
+                            color: modelData.status === "added" ? theme.successBg
+                                 : (modelData.status === "removed" ? theme.dangerBg
+                                    : (modelData.status === "modified" ? theme.warningBg : "transparent"))
 
                             RowLayout {
                                 anchors.fill: parent
@@ -1034,9 +1030,9 @@ Rectangle {
                                     text: modelData.status === "added" ? "+"
                                         : (modelData.status === "removed" ? "−"
                                            : (modelData.status === "modified" ? "~" : "•"))
-                                    color: modelData.status === "added" ? "#34D399"
-                                         : (modelData.status === "removed" ? "#F87171"
-                                            : (modelData.status === "modified" ? "#FBBF24" : "#64748B"))
+                                    color: modelData.status === "added" ? theme.success
+                                         : (modelData.status === "removed" ? theme.danger
+                                            : (modelData.status === "modified" ? theme.warning : theme.textMuted))
                                     font.family: root.monoFont
                                     font.bold: true
                                     font.pixelSize: 12
@@ -1045,7 +1041,7 @@ Rectangle {
                                 Text {
                                     Layout.fillWidth: true
                                     text: modelData.path
-                                    color: modelData.status === "removed" ? "#FCA5A5" : "#E2E8F0"
+                                    color: modelData.status === "removed" ? theme.dangerText : theme.textSecondary
                                     font.family: root.monoFont
                                     font.pixelSize: 11
                                     elide: Text.ElideMiddle
@@ -1055,7 +1051,7 @@ Rectangle {
                                     text: (modelData.oldSizeText && modelData.newSizeText && modelData.oldSizeText !== modelData.newSizeText)
                                         ? (modelData.oldSizeText + " → " + modelData.newSizeText)
                                         : (modelData.newSizeText || modelData.oldSizeText || "")
-                                    color: "#94A3B8"
+                                    color: theme.textMuted
                                     font.family: root.monoFont
                                     font.pixelSize: 11
                                 }
@@ -1074,20 +1070,13 @@ Rectangle {
                 spacing: 12
                 visible: root.activeTab === "preview" && !root.hasVisual && !root.hasArchive && root.hasFont
 
-                TextField {
+                FluxTextField {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 34
                     text: root.fontSampleText
                     onTextChanged: root.fontSampleText = text
-                    color: "#F8FAFC"
                     font.pixelSize: 12
                     placeholderText: "Testo di anteprima del font..."
-                    placeholderTextColor: "#64748B"
-                    background: Rectangle {
-                        color: "#0A0E15"
-                        radius: 6
-                        border.color: parent.activeFocus ? "#38BDF8" : "#334155"
-                    }
                 }
 
                 RowLayout {
@@ -1098,19 +1087,19 @@ Rectangle {
                     // Old font specimen
                     FontSpecimenPane {
                         visible: root.hasViewer && root.diffViewer.oldFontFamily && root.diffViewer.oldFontFamily.length > 0
-                        border.color: "#4C1D24"
+                        border.color: theme.danger
                         headerText: "PRIMA — " + (root.hasViewer ? root.diffViewer.oldFontFamily : "")
-                        headerColor: "#FCA5A5"
+                        headerColor: theme.dangerText
                         fontFamily: root.hasViewer ? root.diffViewer.oldFontFamily : ""
                     }
 
                     // New font specimen
                     FontSpecimenPane {
                         visible: root.hasViewer && root.diffViewer.newFontFamily && root.diffViewer.newFontFamily.length > 0
-                        border.color: "#14532D"
+                        border.color: theme.success
                         headerText: ((root.hasViewer && root.diffViewer.oldFontFamily.length > 0) ? "DOPO — " : "FONT — ") +
                                     (root.hasViewer ? root.diffViewer.newFontFamily : "")
-                        headerColor: "#6EE7B7"
+                        headerColor: theme.successText
                         fontFamily: root.hasViewer ? root.diffViewer.newFontFamily : ""
                     }
                 }
@@ -1139,8 +1128,8 @@ Rectangle {
                         Layout.fillWidth: true
                         implicitHeight: heroRow.implicitHeight + 28
                         radius: 10
-                        color: "#11161F"
-                        border.color: "#1E293B"
+                        color: theme.surface
+                        border.color: theme.borderSubtle
                         border.width: 1
 
                         RowLayout {
@@ -1153,8 +1142,8 @@ Rectangle {
                                 width: 46
                                 height: 46
                                 radius: 10
-                                color: "#172030"
-                                border.color: "#28374E"
+                                color: theme.surfaceElevated
+                                border.color: theme.border
                                 Text {
                                     anchors.centerIn: parent
                                     text: root.kindIcon(root.fileKind)
@@ -1167,13 +1156,13 @@ Rectangle {
                                 spacing: 3
                                 Text {
                                     text: root.hasViewer ? (root.diffViewer.formatDescription || "File binario") : ""
-                                    color: "#F8FAFC"
+                                    color: theme.textPrimary
                                     font.pixelSize: 15
                                     font.bold: true
                                 }
                                 Text {
                                     text: root.hasViewer ? root.diffViewer.filePath : ""
-                                    color: "#94A3B8"
+                                    color: theme.textMuted
                                     font.family: root.monoFont
                                     font.pixelSize: 11
                                     elide: Text.ElideMiddle
@@ -1207,8 +1196,8 @@ Rectangle {
                         visible: root.hasViewer && root.diffViewer.metadataRows && root.diffViewer.metadataRows.length > 0
                         implicitHeight: metaTableCol.implicitHeight + 16
                         radius: 10
-                        color: "#0A0E15"
-                        border.color: "#1E293B"
+                        color: theme.inputBg
+                        border.color: theme.borderSubtle
                         border.width: 1
 
                         ColumnLayout {
@@ -1224,18 +1213,18 @@ Rectangle {
                                 Layout.rightMargin: 8
                                 Layout.preferredHeight: 24
                                 spacing: 10
-                                Text { Layout.preferredWidth: 140; text: "PROPRIETÀ"; color: "#64748B"; font.pixelSize: 10; font.bold: true }
+                                Text { Layout.preferredWidth: 140; text: "PROPRIETÀ"; color: theme.textMuted; font.pixelSize: 10; font.bold: true }
                                 Text {
                                     visible: root.hasViewer && root.diffViewer.hasOldBlob
-                                    Layout.fillWidth: true; text: "PRIMA"; color: "#FCA5A5"; font.pixelSize: 10; font.bold: true
+                                    Layout.fillWidth: true; text: "PRIMA"; color: theme.dangerText; font.pixelSize: 10; font.bold: true
                                 }
                                 Text {
                                     visible: root.hasViewer && root.diffViewer.hasNewBlob
-                                    Layout.fillWidth: true; text: (root.hasViewer && root.diffViewer.hasOldBlob) ? "DOPO" : "VALORE"; color: "#6EE7B7"; font.pixelSize: 10; font.bold: true
+                                    Layout.fillWidth: true; text: (root.hasViewer && root.diffViewer.hasOldBlob) ? "DOPO" : "VALORE"; color: theme.successText; font.pixelSize: 10; font.bold: true
                                 }
                             }
 
-                            Rectangle { Layout.fillWidth: true; height: 1; color: "#1E293B" }
+                            Rectangle { Layout.fillWidth: true; height: 1; color: theme.borderSubtle }
 
                             Repeater {
                                 model: root.hasViewer ? root.diffViewer.metadataRows : []
@@ -1243,7 +1232,7 @@ Rectangle {
                                     Layout.fillWidth: true
                                     implicitHeight: 30
                                     radius: 5
-                                    color: modelData.changed ? "#172030" : "transparent"
+                                    color: modelData.changed ? theme.surfaceElevated : "transparent"
 
                                     RowLayout {
                                         anchors.fill: parent
@@ -1254,7 +1243,7 @@ Rectangle {
                                         Text {
                                             Layout.preferredWidth: 140
                                             text: modelData.label
-                                            color: "#94A3B8"
+                                            color: theme.textMuted
                                             font.pixelSize: 11
                                             font.bold: true
                                             elide: Text.ElideRight
@@ -1263,7 +1252,7 @@ Rectangle {
                                             visible: root.hasViewer && root.diffViewer.hasOldBlob
                                             Layout.fillWidth: true
                                             text: modelData.oldValue || "—"
-                                            color: modelData.changed ? "#FDA4AF" : "#CBD5E1"
+                                            color: modelData.changed ? theme.dangerText : theme.textSecondary
                                             font.family: modelData.label === "SHA-256" ? root.monoFont : ""
                                             font.pixelSize: 11
                                             elide: Text.ElideRight
@@ -1272,7 +1261,7 @@ Rectangle {
                                             visible: root.hasViewer && root.diffViewer.hasNewBlob
                                             Layout.fillWidth: true
                                             text: modelData.newValue || "—"
-                                            color: modelData.changed ? "#86EFAC" : "#E2E8F0"
+                                            color: modelData.changed ? theme.successText : theme.textSecondary
                                             font.family: modelData.label === "SHA-256" ? root.monoFont : ""
                                             font.pixelSize: 11
                                             elide: Text.ElideRight
@@ -1315,7 +1304,7 @@ Rectangle {
                         text: root.hasViewer && root.diffViewer.hexTruncated
                             ? "Anteprima esadecimale (primi 4 KB)"
                             : "Dump esadecimale completo"
-                        color: "#94A3B8"
+                        color: theme.textMuted
                         font.pixelSize: 11
                         font.bold: true
                     }
@@ -1325,13 +1314,13 @@ Rectangle {
                         implicitHeight: 20
                         implicitWidth: hexDiffBadge.implicitWidth + 10
                         radius: 5
-                        color: "#241B0D"
-                        border.color: "#D97706"
+                        color: theme.warningBg
+                        border.color: theme.warning
                         Text {
                             id: hexDiffBadge
                             anchors.centerIn: parent
                             text: (root.hasViewer ? root.diffViewer.hexChangedRows : 0) + " righe modificate"
-                            color: "#FDE68A"
+                            color: theme.warningText
                             font.pixelSize: 10
                             font.bold: true
                         }
@@ -1351,8 +1340,8 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     radius: 8
-                    color: "#0A0E15"
-                    border.color: "#1E293B"
+                    color: theme.inputBg
+                    border.color: theme.borderSubtle
                     border.width: 1
                     clip: true
 
@@ -1373,7 +1362,7 @@ Rectangle {
                             width: hexListView.width - 8
                             height: (root.hasViewer && root.diffViewer.hasOldBlob && root.diffViewer.hasNewBlob && modelData.hasDiff) ? 44 : 22
                             radius: 3
-                            color: modelData.hasDiff ? "#141A24" : "transparent"
+                            color: modelData.hasDiff ? theme.surface : "transparent"
 
                             ColumnLayout {
                                 anchors.fill: parent
@@ -1389,21 +1378,21 @@ Rectangle {
 
                                     Text {
                                         text: modelData.offset
-                                        color: "#64748B"
+                                        color: theme.textMuted
                                         font.family: root.monoFont
                                         font.pixelSize: 11
                                     }
                                     Text {
                                         Layout.fillWidth: true
                                         text: (root.hasViewer && root.diffViewer.hasNewBlob) ? modelData.newHex : modelData.oldHex
-                                        color: "#CBD5E1"
+                                        color: theme.textSecondary
                                         font.family: root.monoFont
                                         font.pixelSize: 11
                                     }
                                     Text {
                                         Layout.preferredWidth: 140
                                         text: (root.hasViewer && root.diffViewer.hasNewBlob) ? modelData.newAscii : modelData.oldAscii
-                                        color: "#94A3B8"
+                                        color: theme.textMuted
                                         font.family: root.monoFont
                                         font.pixelSize: 11
                                     }
@@ -1415,16 +1404,16 @@ Rectangle {
                                     spacing: 12
                                     visible: root.hasViewer && root.diffViewer.hasOldBlob && root.diffViewer.hasNewBlob && modelData.hasDiff
 
-                                    Text { text: modelData.offset + " -"; color: "#F87171"; font.family: root.monoFont; font.pixelSize: 11; font.bold: true }
+                                    Text { text: modelData.offset + " -"; color: theme.danger; font.family: root.monoFont; font.pixelSize: 11; font.bold: true }
                                     Text {
                                         Layout.fillWidth: true
                                         textFormat: Text.RichText
                                         text: modelData.oldRichHex
-                                        color: "#94A3B8"
+                                        color: theme.textMuted
                                         font.family: root.monoFont
                                         font.pixelSize: 11
                                     }
-                                    Text { Layout.preferredWidth: 140; text: modelData.oldAscii; color: "#FDA4AF"; font.family: root.monoFont; font.pixelSize: 11 }
+                                    Text { Layout.preferredWidth: 140; text: modelData.oldAscii; color: theme.dangerText; font.family: root.monoFont; font.pixelSize: 11 }
                                 }
 
                                 // Changed row: New line
@@ -1433,16 +1422,16 @@ Rectangle {
                                     spacing: 12
                                     visible: root.hasViewer && root.diffViewer.hasOldBlob && root.diffViewer.hasNewBlob && modelData.hasDiff
 
-                                    Text { text: modelData.offset + " +"; color: "#34D399"; font.family: root.monoFont; font.pixelSize: 11; font.bold: true }
+                                    Text { text: modelData.offset + " +"; color: theme.success; font.family: root.monoFont; font.pixelSize: 11; font.bold: true }
                                     Text {
                                         Layout.fillWidth: true
                                         textFormat: Text.RichText
                                         text: modelData.newRichHex
-                                        color: "#CBD5E1"
+                                        color: theme.textSecondary
                                         font.family: root.monoFont
                                         font.pixelSize: 11
                                     }
-                                    Text { Layout.preferredWidth: 140; text: modelData.newAscii; color: "#86EFAC"; font.family: root.monoFont; font.pixelSize: 11 }
+                                    Text { Layout.preferredWidth: 140; text: modelData.newAscii; color: theme.successText; font.family: root.monoFont; font.pixelSize: 11 }
                                 }
                             }
                         }

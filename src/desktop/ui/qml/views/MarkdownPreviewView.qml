@@ -1,10 +1,13 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../themes"
 
 Rectangle {
     id: root
-    color: "#0D1117"
+    color: theme.canvas
+
+    readonly property FluxTheme theme: FluxTheme {}
 
     property var diffViewer: null
     property string monoFont: (typeof gfMonoFont !== "undefined" && gfMonoFont) ? gfMonoFont : "Consolas"
@@ -103,8 +106,8 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 36
-            color: "#11161E"
-            border.color: "#21262D"
+            color: theme.surface
+            border.color: theme.border
             border.width: 1
 
             RowLayout {
@@ -123,13 +126,13 @@ Rectangle {
                     enabled: root.diffViewer && root.diffViewer.markdownToc && root.diffViewer.markdownToc.length > 0
                     opacity: enabled ? 1.0 : 0.45
                     background: Rectangle {
-                        color: root.showToc ? "#152336" : (tocBtn.hovered ? "#182232" : "#111824")
+                        color: root.showToc ? theme.infoBg : (tocBtn.hovered ? theme.cardHover : theme.surface)
                         radius: 7
-                        border.color: root.showToc ? "#38BDF8" : "#243247"
+                        border.color: root.showToc ? theme.accentCyan : theme.border
                         border.width: 1
                         Behavior on color {
                             ColorAnimation {
-                                duration: 110
+                                duration: theme.animFast
                             }
                         }
                     }
@@ -143,7 +146,7 @@ Rectangle {
                                 const tocCount = (root.diffViewer && root.diffViewer.markdownToc) ? root.diffViewer.markdownToc.length : 0;
                                 return "Indice" + (tocCount > 0 ? (" (" + tocCount + ")") : "");
                             }
-                            color: root.showToc ? "#38BDF8" : "#CBD5E1"
+                            color: root.showToc ? theme.accentCyan : theme.textSecondary
                             font.pixelSize: 11
                             font.bold: root.showToc
                         }
@@ -160,13 +163,13 @@ Rectangle {
                     hoverEnabled: true
                     readonly property bool isActive: root.diffViewer ? root.diffViewer.showMarkdownRichDiff : true
                     background: Rectangle {
-                        color: richDiffBtn.isActive ? "#063B2C" : (richDiffBtn.hovered ? "#182232" : "#111824")
+                        color: richDiffBtn.isActive ? theme.successBg : (richDiffBtn.hovered ? theme.cardHover : theme.surface)
                         radius: 7
-                        border.color: richDiffBtn.isActive ? "#34D399" : "#243247"
+                        border.color: richDiffBtn.isActive ? theme.accentTeal : theme.border
                         border.width: 1
                         Behavior on color {
                             ColorAnimation {
-                                duration: 110
+                                duration: theme.animFast
                             }
                         }
                     }
@@ -176,11 +179,11 @@ Rectangle {
                             Layout.preferredWidth: 7
                             Layout.preferredHeight: 7
                             radius: 3.5
-                            color: richDiffBtn.isActive ? "#34D399" : "#64748B"
+                            color: richDiffBtn.isActive ? theme.accentTeal : theme.textMuted
                         }
                         Text {
                             text: "Rich Diff" + (root.changedBlocksCount > 0 ? (" (" + root.changedBlocksCount + ")") : "")
-                            color: richDiffBtn.isActive ? "#6EE7B7" : "#94A3B8"
+                            color: richDiffBtn.isActive ? theme.successText : theme.textMuted
                             font.pixelSize: 11
                             font.bold: richDiffBtn.isActive
                         }
@@ -200,19 +203,19 @@ Rectangle {
                     rightPadding: 9
                     hoverEnabled: true
                     background: Rectangle {
-                        color: nextChangeBtn.hovered ? "#182334" : "#111824"
+                        color: nextChangeBtn.hovered ? theme.cardHover : theme.surface
                         radius: 7
-                        border.color: "#243247"
+                        border.color: theme.border
                         border.width: 1
                         Behavior on color {
                             ColorAnimation {
-                                duration: 110
+                                duration: theme.animFast
                             }
                         }
                     }
                     contentItem: Text {
                         text: "↓ Prossima modifica"
-                        color: "#38BDF8"
+                        color: theme.accentCyan
                         font.pixelSize: 11
                         font.bold: true
                     }
@@ -236,19 +239,19 @@ Rectangle {
                     rightPadding: 9
                     hoverEnabled: true
                     background: Rectangle {
-                        color: widthToggleBtn.hovered ? "#182334" : "#111824"
+                        color: widthToggleBtn.hovered ? theme.cardHover : theme.surface
                         radius: 7
-                        border.color: "#243247"
+                        border.color: theme.border
                         border.width: 1
                         Behavior on color {
                             ColorAnimation {
-                                duration: 110
+                                duration: theme.animFast
                             }
                         }
                     }
                     contentItem: Text {
                         text: root.fullWidth ? "↔ Larghezza lettore" : "↔ Espandi pagina"
-                        color: "#CBD5E1"
+                        color: theme.textSecondary
                         font.pixelSize: 11
                     }
                     onClicked: root.fullWidth = !root.fullWidth
@@ -258,9 +261,9 @@ Rectangle {
                 Rectangle {
                     Layout.preferredHeight: 26
                     implicitWidth: zoomRow.implicitWidth + 8
-                    color: "#0A0E15"
+                    color: theme.inputBg
                     radius: 7
-                    border.color: "#222F42"
+                    border.color: theme.border
                     border.width: 1
 
                     RowLayout {
@@ -273,12 +276,12 @@ Rectangle {
                             Layout.preferredWidth: 22
                             Layout.preferredHeight: 20
                             background: Rectangle {
-                                color: zoomOutBtn.hovered ? "#1E293B" : "transparent"
+                                color: zoomOutBtn.hovered ? theme.cardHover : "transparent"
                                 radius: 3
                             }
                             contentItem: Text {
                                 text: "A-"
-                                color: "#CBD5E1"
+                                color: theme.textSecondary
                                 font.pixelSize: 10
                                 font.bold: true
                                 horizontalAlignment: Text.AlignHCenter
@@ -289,7 +292,7 @@ Rectangle {
 
                         Text {
                             text: Math.round(root.zoomScale * 100) + "%"
-                            color: "#8B949E"
+                            color: theme.textMuted
                             font.pixelSize: 10
                             Layout.preferredWidth: 34
                             horizontalAlignment: Text.AlignHCenter
@@ -300,12 +303,12 @@ Rectangle {
                             Layout.preferredWidth: 22
                             Layout.preferredHeight: 20
                             background: Rectangle {
-                                color: zoomInBtn.hovered ? "#1E293B" : "transparent"
+                                color: zoomInBtn.hovered ? theme.cardHover : "transparent"
                                 radius: 3
                             }
                             contentItem: Text {
                                 text: "A+"
-                                color: "#CBD5E1"
+                                color: theme.textSecondary
                                 font.pixelSize: 10
                                 font.bold: true
                                 horizontalAlignment: Text.AlignHCenter
@@ -322,14 +325,14 @@ Rectangle {
                     Layout.preferredHeight: 24
                     enabled: root.diffViewer && root.diffViewer.markdownSource && root.diffViewer.markdownSource.length > 0
                     background: Rectangle {
-                        color: root.copiedWholeFile ? "#064E3B" : (copyMdBtn.hovered ? "#1E293B" : "#161B22")
+                        color: root.copiedWholeFile ? theme.successBg : (copyMdBtn.hovered ? theme.cardHover : theme.surfaceElevated)
                         radius: 4
-                        border.color: root.copiedWholeFile ? "#10B981" : "#30363D"
+                        border.color: root.copiedWholeFile ? theme.accentTeal : theme.borderHighlight
                         border.width: 1
                     }
                     contentItem: Text {
                         text: root.copiedWholeFile ? "✓ Copiato!" : "📋 Copia .md"
-                        color: root.copiedWholeFile ? "#6EE7B7" : "#E2E8F0"
+                        color: root.copiedWholeFile ? theme.successText : theme.textSecondary
                         font.pixelSize: 11
                         font.bold: root.copiedWholeFile
                     }
@@ -351,8 +354,8 @@ Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 32
             visible: root.diffViewer && root.diffViewer.markdownNotice && root.diffViewer.markdownNotice.length > 0
-            color: "#1C2128"
-            border.color: "#D29922"
+            color: theme.warningBg
+            border.color: theme.warning
             border.width: 1
 
             RowLayout {
@@ -362,11 +365,11 @@ Rectangle {
                 spacing: 8
 
                 Text {
-                    text: "ℹ"; color: "#D29922"; font.bold: true; font.pixelSize: 12
+                    text: "ℹ"; color: theme.warning; font.bold: true; font.pixelSize: 12
                 }
                 Text {
                     text: root.diffViewer ? root.diffViewer.markdownNotice : ""
-                    color: "#E3B341"
+                    color: theme.warningText
                     font.pixelSize: 11
                     elide: Text.ElideRight
                     Layout.fillWidth: true
@@ -387,8 +390,8 @@ Rectangle {
                 visible: root.showToc
                 Layout.preferredWidth: 235
                 Layout.fillHeight: true
-                color: "#0B0F17"
-                border.color: "#21262D"
+                color: theme.canvas
+                border.color: theme.border
                 border.width: 1
 
                 ColumnLayout {
@@ -398,8 +401,8 @@ Rectangle {
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 32
-                        color: "#11161E"
-                        border.color: "#21262D"
+                        color: theme.surface
+                        border.color: theme.border
                         border.width: 1
 
                         Text {
@@ -407,7 +410,7 @@ Rectangle {
                             anchors.leftMargin: 12
                             anchors.verticalCenter: parent.verticalCenter
                             text: "SOMMARIO DOCUMENTO"
-                            color: "#8B949E"
+                            color: theme.textMuted
                             font.pixelSize: 10
                             font.bold: true
                         }
@@ -426,7 +429,7 @@ Rectangle {
                         delegate: Rectangle {
                             width: ListView.view.width
                             height: 28
-                            color: tocItemMouse.containsMouse ? "#161B22" : "transparent"
+                            color: tocItemMouse.containsMouse ? theme.surfaceElevated : "transparent"
 
                             Text {
                                 anchors.left: parent.left
@@ -435,7 +438,7 @@ Rectangle {
                                 anchors.rightMargin: 10
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: modelData.title || ""
-                                color: modelData.level <= 2 ? "#F0F6FC" : "#8B949E"
+                                color: modelData.level <= 2 ? theme.textPrimary : theme.textMuted
                                 font.pixelSize: modelData.level === 1 ? 12 : 11
                                 font.bold: modelData.level <= 2
                                 elide: Text.ElideRight
@@ -463,7 +466,7 @@ Rectangle {
                     anchors.centerIn: parent
                     visible: !root.diffViewer || !root.diffViewer.markdownBlocks || root.diffViewer.markdownBlocks.length === 0
                     text: "Nessun contenuto Markdown da visualizzare"
-                    color: "#64748B"
+                    color: theme.textMuted
                     font.pixelSize: 13
                 }
 
@@ -491,9 +494,9 @@ Rectangle {
                         readonly property string changeStatus: modelData.changeStatus || "unchanged"
                         readonly property bool hasChange: showRichDiff && changeStatus !== "unchanged"
                         readonly property color changeColor: {
-                            if (changeStatus === "added") return "#2EA043";
-                            if (changeStatus === "modified") return "#D29922";
-                            if (changeStatus === "deleted") return "#F85149";
+                            if (changeStatus === "added") return theme.success;
+                            if (changeStatus === "modified") return theme.warning;
+                            if (changeStatus === "deleted") return theme.danger;
                             return "transparent";
                         }
 
@@ -508,8 +511,8 @@ Rectangle {
                                 anchors.fill: parent
                                 anchors.margins: -4
                                 radius: 6
-                                color: "#1C2D42"
-                                border.color: "#38BDF8"
+                                color: theme.infoBg
+                                border.color: theme.accentCyan
                                 border.width: 1
                                 visible: root.highlightedBlockIndex === index
                                 opacity: 0.45
@@ -541,14 +544,14 @@ Rectangle {
                                     height: 16
                                     width: addCountText.implicitWidth + 8
                                     radius: 8
-                                    color: "#122D1B"
-                                    border.color: "#2EA043"
+                                    color: theme.successBg
+                                    border.color: theme.success
                                     border.width: 1
                                     Text {
                                         id: addCountText
                                         anchors.centerIn: parent
                                         text: "+" + modelData.addedLineCount
-                                        color: "#7EE787"
+                                        color: theme.successText
                                         font.pixelSize: 9
                                         font.bold: true
                                     }
@@ -559,14 +562,14 @@ Rectangle {
                                     height: 16
                                     width: delCountText.implicitWidth + 8
                                     radius: 8
-                                    color: "#2D1215"
-                                    border.color: "#F85149"
+                                    color: theme.dangerBg
+                                    border.color: theme.danger
                                     border.width: 1
                                     Text {
                                         id: delCountText
                                         anchors.centerIn: parent
                                         text: "-" + modelData.deletedLineCount
-                                        color: "#FFA198"
+                                        color: theme.dangerText
                                         font.pixelSize: 9
                                         font.bold: true
                                     }
@@ -590,7 +593,7 @@ Rectangle {
                                         text: modelData.html || ""
                                         textFormat: Text.RichText
                                         wrapMode: Text.Wrap
-                                        color: "#F0F6FC"
+                                        color: theme.textPrimary
                                         font.bold: true
                                         font.pixelSize: {
                                             const lvl = modelData.level || 1;
@@ -609,7 +612,7 @@ Rectangle {
                                         visible: (modelData.level || 1) <= 2
                                         Layout.fillWidth: true
                                         Layout.preferredHeight: 1
-                                        color: "#21262D"
+                                        color: theme.border
                                     }
                                 }
 
@@ -620,7 +623,7 @@ Rectangle {
                                     text: modelData.html || ""
                                     textFormat: Text.RichText
                                     wrapMode: Text.Wrap
-                                    color: "#E6EDF3"
+                                    color: theme.textPrimary
                                     font.pixelSize: Math.round(14 * root.zoomScale)
                                     lineHeight: 1.45
                                     horizontalAlignment: modelData.centered ? Text.AlignHCenter : Text.AlignLeft
@@ -641,8 +644,8 @@ Rectangle {
                                             height: 22
                                             width: badgeLabelRow.implicitWidth + 14
                                             radius: 4
-                                            color: modelData.color || "#1F6FEB"
-                                            border.color: "#FFFFFF"
+                                            color: modelData.color || theme.accentBlue
+                                            border.color: theme.textPrimary
                                             border.width: badgeMouse.containsMouse ? 1 : 0
 
                                             Row {
@@ -651,7 +654,7 @@ Rectangle {
                                                 spacing: 4
                                                 Text {
                                                     text: modelData.label || ""
-                                                    color: "#FFFFFF"
+                                                    color: theme.textPrimary
                                                     font.pixelSize: Math.round(11 * root.zoomScale)
                                                     font.bold: true
                                                 }
@@ -678,9 +681,9 @@ Rectangle {
                                     visible: modelData.kind === "code"
                                     Layout.fillWidth: true
                                     implicitHeight: codeCardCol.implicitHeight
-                                    color: "#161B22"
+                                    color: theme.surfaceElevated
                                     radius: 6
-                                    border.color: modelData.isDiagram ? "#2F4F6F" : "#30363D"
+                                    border.color: modelData.isDiagram ? theme.info : theme.borderHighlight
                                     border.width: 1
 
                                     property bool copiedBlock: false
@@ -700,7 +703,7 @@ Rectangle {
                                         Rectangle {
                                             Layout.fillWidth: true
                                             Layout.preferredHeight: 30
-                                            color: "#1C2128"
+                                            color: theme.headerBg
                                             radius: 6
 
                                             Rectangle {
@@ -708,7 +711,7 @@ Rectangle {
                                                 anchors.right: parent.right
                                                 anchors.bottom: parent.bottom
                                                 height: 6
-                                                color: "#1C2128"
+                                                color: theme.headerBg
                                             }
 
                                             Rectangle {
@@ -716,7 +719,7 @@ Rectangle {
                                                 anchors.right: parent.right
                                                 anchors.bottom: parent.bottom
                                                 height: 1
-                                                color: "#30363D"
+                                                color: theme.borderHighlight
                                             }
 
                                             RowLayout {
@@ -734,7 +737,7 @@ Rectangle {
                                                     text: (modelData.languageTag && modelData.languageTag.length > 0)
                                                         ? modelData.languageTag.toUpperCase()
                                                         : "TEXT"
-                                                    color: modelData.isDiagram ? "#79C0FF" : "#8B949E"
+                                                    color: modelData.isDiagram ? theme.infoText : theme.textMuted
                                                     font.family: root.monoFont
                                                     font.pixelSize: 10
                                                     font.bold: true
@@ -743,7 +746,7 @@ Rectangle {
                                                 Text {
                                                     visible: modelData.isDiagram === true
                                                     text: "Diagramma sorgente"
-                                                    color: "#6E7681"
+                                                    color: theme.textPlaceholder
                                                     font.pixelSize: 10
                                                 }
 
@@ -755,14 +758,14 @@ Rectangle {
                                                     id: copyCodeBtn
                                                     Layout.preferredHeight: 20
                                                     background: Rectangle {
-                                                        color: codeCard.copiedBlock ? "#064E3B" : (copyCodeBtn.hovered ? "#30363D" : "#21262D")
+                                                        color: codeCard.copiedBlock ? theme.successBg : (copyCodeBtn.hovered ? theme.borderHighlight : theme.border)
                                                         radius: 4
-                                                        border.color: codeCard.copiedBlock ? "#10B981" : "#30363D"
+                                                        border.color: codeCard.copiedBlock ? theme.accentTeal : theme.borderHighlight
                                                         border.width: 1
                                                     }
                                                     contentItem: Text {
                                                         text: codeCard.copiedBlock ? "✓ Copiato" : "Copia"
-                                                        color: codeCard.copiedBlock ? "#6EE7B7" : "#CBD5E1"
+                                                        color: codeCard.copiedBlock ? theme.successText : theme.textSecondary
                                                         font.pixelSize: 10
                                                         font.bold: true
                                                     }
@@ -797,7 +800,7 @@ Rectangle {
                                                 y: 10
                                                 text: modelData.html || ""
                                                 textFormat: Text.RichText
-                                                color: "#E6EDF3"
+                                                color: theme.textPrimary
                                                 font.family: root.monoFont
                                                 font.pixelSize: Math.round(12.5 * root.zoomScale)
                                                 wrapMode: Text.NoWrap
@@ -815,15 +818,15 @@ Rectangle {
                                     radius: 4
                                     readonly property string alertKind: modelData.alertType || "none"
                                     readonly property color accentColor: {
-                                        if (alertKind === "note") return "#58A6FF";
-                                        if (alertKind === "tip") return "#3FB950";
-                                        if (alertKind === "important") return "#A371F7";
-                                        if (alertKind === "warning") return "#D29922";
-                                        if (alertKind === "caution") return "#F85149";
-                                        return "#3B434B";
+                                        if (alertKind === "note") return theme.info;
+                                        if (alertKind === "tip") return theme.success;
+                                        if (alertKind === "important") return theme.accentPurple;
+                                        if (alertKind === "warning") return theme.warning;
+                                        if (alertKind === "caution") return theme.danger;
+                                        return theme.borderHighlight;
                                     }
-                                    color: alertKind === "none" ? "#11161D" : "#141A23"
-                                    border.color: alertKind === "none" ? "#21262D" : accentColor
+                                    color: alertKind === "none" ? theme.surface : theme.surfaceElevated
+                                    border.color: alertKind === "none" ? theme.border : accentColor
                                     border.width: alertKind === "none" ? 0 : 1
 
                                     Rectangle {
@@ -866,7 +869,7 @@ Rectangle {
                                             text: modelData.html || ""
                                             textFormat: Text.RichText
                                             wrapMode: Text.Wrap
-                                            color: (modelData.alertType || "none") === "none" ? "#9198A1" : "#E6EDF3"
+                                            color: (modelData.alertType || "none") === "none" ? theme.textMuted : theme.textPrimary
                                             font.pixelSize: Math.round(13.5 * root.zoomScale)
                                             lineHeight: 1.4
                                             onLinkActivated: (link) => root.handleLink(link)
@@ -893,15 +896,15 @@ Rectangle {
                                             width: 14
                                             height: 14
                                             radius: 3
-                                            color: modelData.taskChecked ? "#238636" : "#161B22"
-                                            border.color: modelData.taskChecked ? "#3FB950" : "#484F58"
+                                            color: modelData.taskChecked ? theme.success : theme.surfaceElevated
+                                            border.color: modelData.taskChecked ? theme.success : theme.textPlaceholder
                                             border.width: 1
 
                                             Text {
                                                 visible: modelData.taskChecked === true
                                                 anchors.centerIn: parent
                                                 text: "✓"
-                                                color: "#FFFFFF"
+                                                color: theme.textPrimary
                                                 font.pixelSize: 10
                                                 font.bold: true
                                             }
@@ -914,7 +917,7 @@ Rectangle {
                                             anchors.rightMargin: 2
                                             anchors.verticalCenter: parent.verticalCenter
                                             text: modelData.listMarker || "•"
-                                            color: modelData.ordered ? "#8B949E" : "#58A6FF"
+                                            color: modelData.ordered ? theme.textMuted : theme.info
                                             font.pixelSize: Math.round((modelData.ordered ? 12.5 : 15) * root.zoomScale)
                                             font.bold: true
                                         }
@@ -925,7 +928,7 @@ Rectangle {
                                         text: modelData.html || ""
                                         textFormat: Text.RichText
                                         wrapMode: Text.Wrap
-                                        color: "#E6EDF3"
+                                        color: theme.textPrimary
                                         font.pixelSize: Math.round(13.5 * root.zoomScale)
                                         lineHeight: 1.4
                                         onLinkActivated: (link) => root.handleLink(link)
@@ -938,9 +941,9 @@ Rectangle {
                                     visible: modelData.kind === "table"
                                     Layout.fillWidth: true
                                     implicitHeight: tableFlick.height
-                                    color: "#0D1117"
+                                    color: theme.canvas
                                     radius: 6
-                                    border.color: "#30363D"
+                                    border.color: theme.borderHighlight
                                     border.width: 1
                                     clip: true
 
@@ -1003,9 +1006,9 @@ Rectangle {
                                                     Layout.fillHeight: true
                                                     Layout.preferredHeight: Math.max(32, cellText.implicitHeight + 14)
                                                     color: modelData.isHeader
-                                                        ? "#161B22"
-                                                        : (modelData.rowIdx % 2 === 0 ? "#0D1117" : "#12171F")
-                                                    border.color: "#30363D"
+                                                        ? theme.surfaceElevated
+                                                        : (modelData.rowIdx % 2 === 0 ? theme.canvas : theme.surface)
+                                                    border.color: theme.borderHighlight
                                                     border.width: 0.5
 
                                                     Text {
@@ -1015,7 +1018,7 @@ Rectangle {
                                                         text: modelData.text || ""
                                                         textFormat: Text.RichText
                                                         wrapMode: Text.Wrap
-                                                        color: modelData.isHeader ? "#F0F6FC" : "#E6EDF3"
+                                                        color: theme.textPrimary
                                                         font.bold: modelData.isHeader === true
                                                         font.pixelSize: Math.round(12.5 * root.zoomScale)
                                                         horizontalAlignment: {
@@ -1038,7 +1041,7 @@ Rectangle {
                                     Layout.topMargin: 6
                                     Layout.bottomMargin: 6
                                     Layout.preferredHeight: 2
-                                    color: "#21262D"
+                                    color: theme.border
                                 }
 
                                 // 9. DELETED SNIPPET OR INLINE REMOVED LINES (Rich Diff)
@@ -1049,9 +1052,9 @@ Rectangle {
                                     )
                                     Layout.fillWidth: true
                                     implicitHeight: deletedBoxCol.implicitHeight + 16
-                                    color: "#221013"
+                                    color: theme.dangerBg
                                     radius: 5
-                                    border.color: "#7F1D1D"
+                                    border.color: theme.danger
                                     border.width: 1
 
                                     ColumnLayout {
@@ -1064,7 +1067,7 @@ Rectangle {
 
                                         Text {
                                             text: "− Rimosso (" + (modelData.deletedLineCount || 1) + (modelData.deletedLineCount === 1 ? " riga)" : " righe)")
-                                            color: "#F87171"
+                                            color: theme.danger
                                             font.pixelSize: 10
                                             font.bold: true
                                         }
@@ -1072,7 +1075,7 @@ Rectangle {
                                         Text {
                                             Layout.fillWidth: true
                                             text: modelData.deletedLinesText || ""
-                                            color: "#FFA198"
+                                            color: theme.dangerText
                                             font.family: root.monoFont
                                             font.pixelSize: Math.round(11.5 * root.zoomScale)
                                             wrapMode: Text.WrapAtWordBoundaryOrAnywhere

@@ -1,7 +1,11 @@
 import QtQuick
 import QtQuick.Controls
+import "../themes"
 
 MenuSeparator {
+    id: root
+    readonly property FluxTheme theme: FluxTheme {}
+
     padding: 0
     topPadding: 4
     bottomPadding: 4
@@ -16,7 +20,7 @@ MenuSeparator {
     contentItem: Rectangle {
         implicitWidth: 184
         implicitHeight: 1
-        color: "#222F42"
+        color: root.theme.border
         radius: 0.5
     }
 

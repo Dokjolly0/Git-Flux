@@ -82,49 +82,29 @@ Rectangle {
         const before = escapeHtml(displayText.slice(0, matchStart));
         const matched = escapeHtml(displayText.slice(matchStart, end));
         const after = escapeHtml(displayText.slice(end));
-        return before + "<span style=\"color:#00E5FF;font-weight:700;\">" + matched + "</span>" + after;
+        return before + "<span style=\"color:" + fluxTheme.accentCyan + ";font-weight:700;\">" + matched + "</span>" + after;
     }
 
     function badgeFg(categoryLabel, kind) {
-        if (categoryLabel === "porcelain" || categoryLabel === "git") return "#38BDF8";
-        if (categoryLabel === "alias" || kind === "alias") return "#C084FC";
-        if (categoryLabel === "ancillary" || categoryLabel === "interop") return "#7DD3FC";
-        if (categoryLabel === "external") return "#FBBF24";
-        if (categoryLabel === "run" || kind === "execute") return "#34D399";
-        if (categoryLabel === "flag" || categoryLabel === "param" || kind === "flag") return "#34D399";
-        if (categoryLabel === "value") return "#F472B6";
-        if (categoryLabel === "ps1") return "#60A5FA";
-        if (categoryLabel === "sh") return "#4ADE80";
-        if (categoryLabel === "bat") return "#FBBF24";
-        if (categoryLabel === "py") return "#FACC15";
-        if (categoryLabel === "branch" || categoryLabel === "ref" || kind === "branch") return "#4ADE80";
-        if (categoryLabel === "remote" || kind === "remote") return "#60A5FA";
-        if (categoryLabel === "tag" || kind === "tag") return "#FACC15";
-        if (categoryLabel === "stash" || kind === "stash") return "#F472B6";
-        if (categoryLabel === "file" || categoryLabel === "dir" || categoryLabel === "path") return "#2DD4BF";
-        if (categoryLabel === "commit") return "#FB923C";
-        return "#94A3B8";
+        if (categoryLabel === "porcelain" || categoryLabel === "git" || categoryLabel === "remote" || kind === "remote" || categoryLabel === "ps1") {
+            return fluxTheme.info;
+        }
+        if (categoryLabel === "alias" || kind === "alias") return fluxTheme.accentPurple;
+        if (categoryLabel === "ancillary" || categoryLabel === "interop") return fluxTheme.infoText;
+        if (categoryLabel === "external" || categoryLabel === "bat" || categoryLabel === "py" || categoryLabel === "tag" || kind === "tag") {
+            return fluxTheme.warningText;
+        }
+        if (categoryLabel === "run" || kind === "execute" || categoryLabel === "flag" || categoryLabel === "param" || kind === "flag" || categoryLabel === "sh" || categoryLabel === "branch" || categoryLabel === "ref" || kind === "branch") {
+            return fluxTheme.successText;
+        }
+        if (categoryLabel === "value" || categoryLabel === "stash" || kind === "stash") return fluxTheme.dangerText;
+        if (categoryLabel === "file" || categoryLabel === "dir" || categoryLabel === "path") return fluxTheme.accentTeal;
+        if (categoryLabel === "commit") return fluxTheme.warning;
+        return fluxTheme.textSecondary;
     }
 
     function badgeBg(categoryLabel, kind) {
-        if (categoryLabel === "porcelain" || categoryLabel === "git") return "#0C2A44";
-        if (categoryLabel === "alias" || kind === "alias") return "#2B1547";
-        if (categoryLabel === "ancillary" || categoryLabel === "interop") return "#10283E";
-        if (categoryLabel === "external") return "#3A2509";
-        if (categoryLabel === "run" || kind === "execute") return "#064E3B";
-        if (categoryLabel === "flag" || categoryLabel === "param" || kind === "flag") return "#083529";
-        if (categoryLabel === "value") return "#3B132A";
-        if (categoryLabel === "ps1") return "#10274A";
-        if (categoryLabel === "sh") return "#0A3320";
-        if (categoryLabel === "bat") return "#3A2509";
-        if (categoryLabel === "py") return "#382E08";
-        if (categoryLabel === "branch" || categoryLabel === "ref" || kind === "branch") return "#0A3320";
-        if (categoryLabel === "remote" || kind === "remote") return "#10274A";
-        if (categoryLabel === "tag" || kind === "tag") return "#382E08";
-        if (categoryLabel === "stash" || kind === "stash") return "#3B132A";
-        if (categoryLabel === "file" || categoryLabel === "dir" || categoryLabel === "path") return "#0A2E2C";
-        if (categoryLabel === "commit") return "#3B1D0B";
-        return "#1A2434";
+        return Qt.alpha(badgeFg(categoryLabel, kind), 0.14);
     }
 
     // Subtle outer glow border for depth

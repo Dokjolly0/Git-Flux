@@ -1,9 +1,11 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../themes"
 
 Dialog {
     id: root
+    readonly property FluxTheme theme: FluxTheme {}
     title: "Crea Pull Request"
     modal: true
     width: 550
@@ -52,9 +54,9 @@ Dialog {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 42
-            color: "#0D131D"
+            color: root.theme.inputBg
             radius: 10
-            border.color: "#222F42"
+            border.color: root.theme.border
             border.width: 1
 
             RowLayout {
@@ -64,7 +66,7 @@ Dialog {
                 spacing: 8
 
                 Rectangle {
-                    color: "#0E7490"
+                    color: root.theme.accentTeal
                     radius: 7
                     Layout.preferredHeight: 24
                     Layout.preferredWidth: Math.min(180, srcText.implicitWidth + 16)
@@ -72,7 +74,7 @@ Dialog {
                         id: srcText
                         anchors.centerIn: parent
                         text: "🌿 " + root.sourceBranch
-                        color: "#FFFFFF"
+                        color: root.theme.selectionText
                         font.pixelSize: 11
                         font.bold: true
                         elide: Text.ElideMiddle
@@ -81,15 +83,15 @@ Dialog {
 
                 Text {
                     text: "➔"
-                    color: "#94A3B8"
+                    color: root.theme.textSecondary
                     font.pixelSize: 14
                     font.bold: true
                 }
 
                 Rectangle {
-                    color: "#152336"
+                    color: root.theme.infoBg
                     radius: 7
-                    border.color: "#38BDF8"
+                    border.color: root.theme.borderFocus
                     border.width: 1
                     Layout.preferredHeight: 24
                     Layout.preferredWidth: Math.min(180, tgtText.implicitWidth + 16)
@@ -97,7 +99,7 @@ Dialog {
                         id: tgtText
                         anchors.centerIn: parent
                         text: "🎯 " + root.targetBranch
-                        color: "#93C5FD"
+                        color: root.theme.infoText
                         font.pixelSize: 11
                         font.bold: true
                         elide: Text.ElideMiddle
@@ -110,7 +112,7 @@ Dialog {
 
                 Text {
                     text: (root.branchManager && root.branchManager.remoteUrl) ? "Remote: origin" : "Nessun remote"
-                    color: "#64748B"
+                    color: root.theme.textMuted
                     font.pixelSize: 10
                 }
             }
@@ -123,33 +125,15 @@ Dialog {
 
             Text {
                 text: "Titolo della Pull Request:"
-                color: "#CBD5E1"
+                color: root.theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
             }
 
-            TextField {
+            FluxTextField {
                 id: titleField
                 Layout.fillWidth: true
-                Layout.preferredHeight: 36
-                color: "#F8FAFC"
-                font.pixelSize: 12
                 placeholderText: "Inserisci titolo della Pull Request..."
-                placeholderTextColor: "#64748B"
-                selectByMouse: true
-
-                background: Rectangle {
-                    color: "#0A0E15"
-                    radius: 8
-                    border.color: titleField.activeFocus ? "#38BDF8" : "#222F42"
-                    border.width: 1
-
-                    Behavior on border.color {
-                        ColorAnimation {
-                            duration: 120
-                        }
-                    }
-                }
             }
         }
 
@@ -161,7 +145,7 @@ Dialog {
 
             Text {
                 text: "Descrizione / Note (opzionale):"
-                color: "#CBD5E1"
+                color: root.theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
             }
@@ -174,22 +158,24 @@ Dialog {
 
                 TextArea {
                     id: descField
-                    color: "#F8FAFC"
+                    color: root.theme.textPrimary
                     font.pixelSize: 12
                     placeholderText: "Descrivi le modifiche incluse in questa Pull Request..."
-                    placeholderTextColor: "#64748B"
+                    placeholderTextColor: root.theme.textMuted
+                    selectionColor: root.theme.selectionBg
+                    selectedTextColor: root.theme.selectionText
                     selectByMouse: true
                     wrapMode: TextEdit.Wrap
 
                     background: Rectangle {
-                        color: "#0A0E15"
-                        radius: 8
-                        border.color: descField.activeFocus ? "#38BDF8" : "#222F42"
+                        color: root.theme.inputBg
+                        radius: root.theme.radiusSm
+                        border.color: descField.activeFocus ? root.theme.borderFocus : root.theme.border
                         border.width: 1
 
                         Behavior on border.color {
                             ColorAnimation {
-                                duration: 120
+                                duration: root.theme.animFast
                             }
                         }
                     }
@@ -201,9 +187,9 @@ Dialog {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 30
-            color: "#0D131D"
-            radius: 8
-            border.color: "#1E293B"
+            color: root.theme.inputBg
+            radius: root.theme.radiusSm
+            border.color: root.theme.borderSubtle
             border.width: 1
             visible: root.calculatedPrUrl.length > 0
 
@@ -215,13 +201,13 @@ Dialog {
 
                 Text {
                     text: "🔗 URL:"
-                    color: "#64748B"
+                    color: root.theme.textMuted
                     font.pixelSize: 10
                 }
 
                 Text {
                     text: root.calculatedPrUrl
-                    color: "#38BDF8"
+                    color: root.theme.borderFocus
                     font.pixelSize: 10
                     elide: Text.ElideMiddle
                     Layout.fillWidth: true
@@ -233,68 +219,47 @@ Dialog {
         Text {
             id: errorText
             Layout.fillWidth: true
-            color: "#EF4444"
+            color: root.theme.danger
             font.pixelSize: 11
             visible: text.length > 0
             wrapMode: Text.WordWrap
         }
     }
 
-    footer: Rectangle {
-        color: "#161F2E"
-        height: 54
-        radius: 14
+    footer: FluxModalFooter {
+        footerHeight: 54
+        horizontalMargin: 18
+        buttonSpacing: 10
 
-        Rectangle {
-            anchors.top: parent.top
-            width: parent.width
-            height: 14
-            color: "#161F2E"
+        Item {
+            Layout.fillWidth: true
         }
 
-        Rectangle {
-            anchors.top: parent.top
-            width: parent.width
-            height: 1
-            color: "#222F42"
+        FluxActionButton {
+            text: "Annulla"
+            Layout.preferredHeight: 34
+            fontPixelSize: 12
+            onClicked: root.close()
         }
 
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 18
-            anchors.rightMargin: 18
-            spacing: 10
-
-            Item {
-                Layout.fillWidth: true
-            }
-
-            FluxActionButton {
-                text: "Annulla"
-                Layout.preferredHeight: 34
-                fontPixelSize: 12
-                onClicked: root.close()
-            }
-
-            FluxActionButton {
-                text: "🌐 Apri nel Browser"
-                Layout.preferredHeight: 34
-                Layout.preferredWidth: 160
-                enabled: root.calculatedPrUrl.length > 0
-                baseColor: "#0284C7"
-                hoverColor: "#0EA5E9"
-                baseBorderColor: "#38BDF8"
-                textColor: "#FFFFFF"
-                fontPixelSize: 12
-                fontBold: true
-                onClicked: {
-                    const url = root.calculatedPrUrl;
-                    if (url && url.length > 0) {
-                        Qt.openUrlExternally(url);
-                        root.close();
-                    } else {
-                        errorText.text = "Impossibile calcolare l'URL del remote repository";
-                    }
+        FluxActionButton {
+            text: "🌐 Apri nel Browser"
+            Layout.preferredHeight: 34
+            Layout.preferredWidth: 160
+            enabled: root.calculatedPrUrl.length > 0
+            baseColor: root.theme.accentBlue
+            hoverColor: root.theme.accentBlueHover
+            baseBorderColor: root.theme.borderFocus
+            textColor: root.theme.selectionText
+            fontPixelSize: 12
+            fontBold: true
+            onClicked: {
+                const url = root.calculatedPrUrl;
+                if (url && url.length > 0) {
+                    Qt.openUrlExternally(url);
+                    root.close();
+                } else {
+                    errorText.text = "Impossibile calcolare l'URL del remote repository";
                 }
             }
         }

@@ -1,14 +1,16 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../themes"
 
 Rectangle {
     id: root
-    color: "#080B10"
+    readonly property FluxTheme theme: FluxTheme {}
+    color: theme.canvas
 
     property var sessionVm: null
     property string hoveredGroupId: ""
-    property color hoveredGroupColor: "#38BDF8"
+    property color hoveredGroupColor: theme.borderFocus
     property var collapsedGroupIds: ({})
     // Network operation in progress ("fetch", "pull", "push" or ""): runs in the background, the
     // window stays usable; the buttons only wait for it (not for local operations or reloads).
@@ -64,26 +66,28 @@ Rectangle {
 
     component TopBarCapsuleButton: Button {
         id: capsuleBtn
-        property color textColor: "#E2E8F0"
+        property color textColor: root.theme.textPrimary
 
         Layout.preferredHeight: 32
         leftPadding: 12
         rightPadding: 12
         hoverEnabled: true
         background: Rectangle {
-            color: capsuleBtn.down ? "#1E2D42" : (capsuleBtn.hovered ? "#1A2639" : "#121A27")
+            color: capsuleBtn.down
+                ? root.theme.cardHover
+                : (capsuleBtn.hovered ? root.theme.card : root.theme.surfaceElevated)
             radius: 9
-            border.color: capsuleBtn.hovered ? "#334968" : "#222F42"
+            border.color: capsuleBtn.hovered ? root.theme.borderHighlight : root.theme.border
             border.width: 1
 
             Behavior on color {
                 ColorAnimation {
-                    duration: 120
+                    duration: root.theme.animFast
                 }
             }
             Behavior on border.color {
                 ColorAnimation {
-                    duration: 120
+                    duration: root.theme.animFast
                 }
             }
         }
@@ -92,58 +96,6 @@ Rectangle {
             color: capsuleBtn.textColor
             font.pixelSize: 11
             font.bold: true
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
-    }
-
-    component TopBarSplitMainBtn: Button {
-        id: splitMain
-        property color textColor: "#F1F5F9"
-
-        Layout.preferredHeight: 30
-        leftPadding: 12
-        rightPadding: 10
-        hoverEnabled: true
-        background: Rectangle {
-            color: splitMain.down ? "#1E2D42" : (splitMain.hovered ? "#1A2639" : "transparent")
-            radius: 8
-            Behavior on color {
-                ColorAnimation {
-                    duration: 110
-                }
-            }
-        }
-        contentItem: Text {
-            text: splitMain.text
-            color: splitMain.enabled ? splitMain.textColor : "#64748B"
-            font.pixelSize: 11
-            font.bold: true
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
-    }
-
-    component TopBarSplitArrowBtn: Button {
-        id: splitArrow
-        property bool menuOpened: false
-
-        Layout.preferredHeight: 30
-        Layout.preferredWidth: 24
-        hoverEnabled: true
-        background: Rectangle {
-            color: (splitArrow.down || splitArrow.menuOpened) ? "#1E2D42" : (splitArrow.hovered ? "#1A2639" : "transparent")
-            radius: 8
-            Behavior on color {
-                ColorAnimation {
-                    duration: 110
-                }
-            }
-        }
-        contentItem: Text {
-            text: "▾"
-            color: splitArrow.menuOpened ? "#38BDF8" : "#94A3B8"
-            font.pixelSize: 9
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
         }
@@ -159,13 +111,13 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 44
-            color: "#0A0E15"
+            color: root.theme.headerBg
 
             Rectangle {
                 anchors.bottom: parent.bottom
                 width: parent.width
                 height: 1
-                color: "#1A2434"
+                color: root.theme.borderSubtle
             }
 
             RowLayout {
@@ -182,19 +134,21 @@ Rectangle {
                     rightPadding: 10
                     hoverEnabled: true
                     background: Rectangle {
-                        color: parent.down ? "#1E2D42" : (parent.hovered ? "#182334" : "#101722")
-                        radius: 8
-                        border.color: parent.hovered ? "#2B3D56" : "#1C2636"
+                        color: parent.down
+                            ? root.theme.cardHover
+                            : (parent.hovered ? root.theme.surfaceGlass : root.theme.surfaceElevated)
+                        radius: root.theme.radiusSm
+                        border.color: parent.hovered ? root.theme.borderHighlight : root.theme.borderSubtle
                         border.width: 1
 
                         Behavior on color {
                             ColorAnimation {
-                                duration: 120
+                                duration: root.theme.animFast
                             }
                         }
                         Behavior on border.color {
                             ColorAnimation {
-                                duration: 120
+                                duration: root.theme.animFast
                             }
                         }
                     }
@@ -213,7 +167,7 @@ Rectangle {
                         }
                         Text {
                             text: "Home"
-                            color: "#E2E8F0"
+                            color: root.theme.textPrimary
                             font.bold: true
                             font.pixelSize: 11
                         }
@@ -229,7 +183,7 @@ Rectangle {
                     id: workspaceBadge
                     readonly property color wsAccent: (root.sessionVm && root.sessionVm.currentGroupColor && root.sessionVm.currentGroupColor.length > 0)
                         ? root.sessionVm.currentGroupColor
-                        : "#38BDF8"
+                        : root.theme.borderFocus
                     visible: Boolean(root.sessionVm && root.sessionVm.sessionKind === "workspace"
                         && root.sessionVm.currentGroupName && root.sessionVm.currentGroupName.length > 0)
                     Layout.preferredHeight: 28
@@ -254,7 +208,7 @@ Rectangle {
 
                         Text {
                             text: root.sessionVm ? root.sessionVm.currentGroupName : ""
-                            color: "#F8FAFC"
+                            color: root.theme.textPrimary
                             font.bold: true
                             font.pixelSize: 11
                         }
@@ -268,12 +222,12 @@ Rectangle {
                             Rectangle {
                                 anchors.fill: parent
                                 radius: 9
-                                color: closeWsBtn.containsMouse ? "#3B1219" : "transparent"
+                                color: closeWsBtn.containsMouse ? root.theme.dangerBg : "transparent"
                             }
                             Text {
                                 anchors.centerIn: parent
                                 text: "×"
-                                color: closeWsBtn.containsMouse ? "#EF4444" : Qt.alpha(workspaceBadge.wsAccent, 0.90)
+                                color: closeWsBtn.containsMouse ? root.theme.danger : Qt.alpha(workspaceBadge.wsAccent, 0.90)
                                 font.pixelSize: 12
                                 font.bold: true
                             }
@@ -294,7 +248,7 @@ Rectangle {
                     Layout.preferredWidth: 1
                     Layout.preferredHeight: 20
                     Layout.alignment: Qt.AlignVCenter
-                    color: "#1E293B"
+                    color: root.theme.borderSubtle
                 }
 
                 // Scrollable Tab Bar with Chrome/Arc-style Colored Group Clusters & Multi-Group Dots
@@ -322,7 +276,7 @@ Rectangle {
                                 readonly property string clusterGroupName: (clusterData && clusterData.groupName) ? clusterData.groupName : ""
                                 readonly property color clusterColor: (clusterData && clusterData.groupColor && clusterData.groupColor.length > 0)
                                     ? clusterData.groupColor
-                                    : "#38BDF8"
+                                    : root.theme.borderFocus
                                 readonly property var clusterTabs: (clusterData && clusterData.tabs) ? clusterData.tabs : []
                                 readonly property bool isCollapsed: !isUngrouped && root.isGroupCollapsed(clusterGroupId)
                                 readonly property bool isClusterHovered: !isUngrouped && root.hoveredGroupId === clusterGroupId
@@ -380,7 +334,7 @@ Rectangle {
 
                                             Text {
                                                 text: clusterBox.clusterGroupName
-                                                color: "#F8FAFC"
+                                                color: root.theme.textPrimary
                                                 font.pixelSize: 11
                                                 font.bold: true
                                             }
@@ -396,7 +350,7 @@ Rectangle {
                                                     id: collapsedCountText
                                                     anchors.centerIn: parent
                                                     text: String(clusterBox.clusterTabs.length)
-                                                    color: "#F8FAFC"
+                                                    color: root.theme.textPrimary
                                                     font.pixelSize: 9
                                                     font.bold: true
                                                 }
@@ -449,7 +403,7 @@ Rectangle {
                                             readonly property var tabGroupIds: (tabData && tabData.groupIds) ? tabData.groupIds : []
                                             readonly property color tabAccentColor: (tabData && tabData.primaryGroupColor && tabData.primaryGroupColor.length > 0)
                                                 ? tabData.primaryGroupColor
-                                                : "#38BDF8"
+                                                : root.theme.borderFocus
                                             readonly property bool isMemberOfHoveredGroup: root.hoveredGroupId.length > 0
                                                 && tabGroupIds.indexOf(root.hoveredGroupId) !== -1
                                             readonly property bool isDimmedByGroupHover: root.hoveredGroupId.length > 0
@@ -459,18 +413,18 @@ Rectangle {
                                             Layout.preferredHeight: 30
                                             Layout.alignment: Qt.AlignVCenter
                                             implicitWidth: tabRow.implicitWidth + 20
-                                            radius: 8
+                                            radius: root.theme.radiusSm
                                             opacity: isDimmedByGroupHover ? 0.38 : 1.0
                                             color: isMemberOfHoveredGroup
                                                 ? Qt.alpha(root.hoveredGroupColor, isActiveTab ? 0.24 : 0.16)
                                                 : (isActiveTab
-                                                    ? "#152336"
-                                                    : (tabMouseArea.containsMouse ? "#111927" : "transparent"))
+                                                    ? root.theme.surfaceGlass
+                                                    : (tabMouseArea.containsMouse ? root.theme.surfaceElevated : "transparent"))
                                             border.color: isMemberOfHoveredGroup
                                                 ? root.hoveredGroupColor
                                                 : (isActiveTab
                                                     ? Qt.alpha(tabAccentColor, 0.72)
-                                                    : (tabMouseArea.containsMouse ? "#1F2C3F" : "transparent"))
+                                                    : (tabMouseArea.containsMouse ? root.theme.borderHighlight : "transparent"))
                                             border.width: 1
 
                                             Behavior on opacity { NumberAnimation { duration: 120 } }
@@ -514,7 +468,7 @@ Rectangle {
                                                     width: 7
                                                     height: 7
                                                     radius: 3.5
-                                                    color: tabRect.isActiveTab ? "#38BDF8" : "#475569"
+                                                    color: tabRect.isActiveTab ? root.theme.borderFocus : root.theme.textPlaceholder
                                                 }
 
                                                 // Single dot or Stacked Multi-Group Dots (up to 3 overlapping dots + "+N")
@@ -532,8 +486,8 @@ Rectangle {
                                                             height: 9
                                                             radius: 4.5
                                                             z: 10 - index
-                                                            color: (modelData && modelData.color) ? modelData.color : "#38BDF8"
-                                                            border.color: tabRect.isActiveTab ? "#152336" : "#0A0E15"
+                                                            color: (modelData && modelData.color) ? modelData.color : root.theme.borderFocus
+                                                            border.color: tabRect.isActiveTab ? root.theme.surfaceGlass : root.theme.inputBg
                                                             border.width: 1.5
                                                         }
                                                     }
@@ -542,14 +496,14 @@ Rectangle {
                                                 Text {
                                                     visible: tabRect.tabGroups.length > 3
                                                     text: "+" + (tabRect.tabGroups.length - 3)
-                                                    color: "#94A3B8"
+                                                    color: root.theme.textSecondary
                                                     font.pixelSize: 9
                                                     font.bold: true
                                                 }
 
                                                 Text {
                                                     text: tabRect.tabData ? (tabRect.tabData.name || "") : ""
-                                                    color: (tabRect.isActiveTab || tabRect.isMemberOfHoveredGroup) ? "#F8FAFC" : "#94A3B8"
+                                                    color: (tabRect.isActiveTab || tabRect.isMemberOfHoveredGroup) ? root.theme.textPrimary : root.theme.textSecondary
                                                     font.bold: tabRect.isActiveTab
                                                     font.pixelSize: 11
                                                 }
@@ -560,7 +514,7 @@ Rectangle {
                                                     width: 6
                                                     height: 6
                                                     radius: 3
-                                                    color: "#F59E0B"
+                                                    color: root.theme.warning
                                                 }
 
                                                 MouseArea {
@@ -574,7 +528,7 @@ Rectangle {
                                                     Rectangle {
                                                         anchors.fill: parent
                                                         radius: 5
-                                                        color: closeTabBtn.containsMouse ? "#3B1219" : "transparent"
+                                                        color: closeTabBtn.containsMouse ? root.theme.dangerBg : "transparent"
                                                         Behavior on color {
                                                             ColorAnimation { duration: 100 }
                                                         }
@@ -583,7 +537,7 @@ Rectangle {
                                                     Text {
                                                         anchors.centerIn: parent
                                                         text: "×"
-                                                        color: closeTabBtn.containsMouse ? "#F87171" : "#64748B"
+                                                        color: closeTabBtn.containsMouse ? root.theme.dangerText : root.theme.textMuted
                                                         font.pixelSize: 13
                                                         font.bold: true
                                                     }
@@ -608,29 +562,21 @@ Rectangle {
                         }
 
                         // Add Tab Button
-                        Button {
+                        FluxActionButton {
                             Layout.preferredHeight: 28
                             Layout.preferredWidth: 28
                             Layout.alignment: Qt.AlignVCenter
-                            hoverEnabled: true
-                            background: Rectangle {
-                                color: parent.hovered ? "#1A2639" : "#111824"
-                                radius: 8
-                                border.color: parent.hovered ? "#2E4260" : "#1F2C3F"
-                                border.width: 1
-
-                                Behavior on color {
-                                    ColorAnimation { duration: 120 }
-                                }
-                            }
-                            contentItem: Text {
-                                text: "+"
-                                color: parent.hovered ? "#F8FAFC" : "#94A3B8"
-                                font.pixelSize: 14
-                                font.bold: true
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
+                            leftPadding: 0
+                            rightPadding: 0
+                            text: "+"
+                            fontPixelSize: 14
+                            fontBold: true
+                            baseColor: root.theme.surface
+                            hoverColor: root.theme.cardHover
+                            baseBorderColor: root.theme.border
+                            hoverBorderColor: root.theme.borderHighlight
+                            textColor: root.theme.textSecondary
+                            hoverTextColor: root.theme.textPrimary
                             ToolTip.visible: hovered
                             ToolTip.text: "Apri un altro repository in una nuova scheda"
                             onClicked: {
@@ -648,13 +594,13 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 48
-            color: "#0D131D"
+            color: root.theme.surface
 
             Rectangle {
                 anchors.bottom: parent.bottom
                 width: parent.width
                 height: 1
-                color: "#1B2535"
+                color: root.theme.borderSubtle
             }
 
             // LEFT SIDE: Branch Selector Dropdown
@@ -676,176 +622,97 @@ Rectangle {
                 spacing: 8
 
                 // 1. PULL CAPSULE SPLIT BUTTON
-                Rectangle {
-                    Layout.preferredHeight: 32
-                    implicitWidth: pullSplitRow.implicitWidth + 2
-                    radius: 9
-                    color: "#121A27"
-                    border.color: (pullMainBtn.hovered || pullMenuBtn.hovered || pullMenu.opened) ? "#334968" : "#222F42"
-                    border.width: 1
-
-                    Behavior on border.color {
-                        ColorAnimation {
-                            duration: 120
+                FluxSplitButton {
+                    text: root.remoteOperation === "pull" ? "⏳ Pull..." : (root.remoteOperation === "fetch" ? "⏳ Fetch..." : "⬇ Pull")
+                    mainEnabled: root.remoteOperation === ""
+                    onMainClicked: {
+                        if (root.sessionVm && root.sessionVm.branchManager) {
+                            root.sessionVm.branchManager.pullRemote("origin", "default");
                         }
                     }
 
-                    RowLayout {
-                        id: pullSplitRow
-                        anchors.centerIn: parent
-                        spacing: 0
-
-                        TopBarSplitMainBtn {
-                            id: pullMainBtn
-                            text: root.remoteOperation === "pull" ? "⏳ Pull..." : (root.remoteOperation === "fetch" ? "⏳ Fetch..." : "⬇ Pull")
-                            enabled: root.remoteOperation === ""
-                            onClicked: {
-                                if (root.sessionVm && root.sessionVm.branchManager) {
-                                    root.sessionVm.branchManager.pullRemote("origin", "default");
-                                }
+                    FluxMenuItem {
+                        text: "⬇ Pull (Default: Fast-Forward)"
+                        font.pixelSize: 11
+                        onClicked: {
+                            if (root.sessionVm && root.sessionVm.branchManager) {
+                                root.sessionVm.branchManager.pullRemote("origin", "default");
                             }
                         }
-
-                        Rectangle {
-                            Layout.preferredWidth: 1
-                            Layout.preferredHeight: 16
-                            color: "#243247"
+                    }
+                    FluxMenuItem {
+                        text: "⬇ Pull con Rebase (--rebase)"
+                        font.pixelSize: 11
+                        onClicked: {
+                            if (root.sessionVm && root.sessionVm.branchManager) {
+                                root.sessionVm.branchManager.pullRemote("origin", "rebase");
+                            }
                         }
-
-                        TopBarSplitArrowBtn {
-                            id: pullMenuBtn
-                            menuOpened: pullMenu.opened
-                            onClicked: pullMenu.open()
-
-                            FluxMenu {
-                                id: pullMenu
-                                y: pullMenuBtn.height + 4
-
-                                FluxMenuItem {
-                                    text: "⬇ Pull (Default: Fast-Forward)"
-                                    font.pixelSize: 11
-                                    onClicked: {
-                                        if (root.sessionVm && root.sessionVm.branchManager) {
-                                            root.sessionVm.branchManager.pullRemote("origin", "default");
-                                        }
-                                    }
-                                }
-                                FluxMenuItem {
-                                    text: "⬇ Pull con Rebase (--rebase)"
-                                    font.pixelSize: 11
-                                    onClicked: {
-                                        if (root.sessionVm && root.sessionVm.branchManager) {
-                                            root.sessionVm.branchManager.pullRemote("origin", "rebase");
-                                        }
-                                    }
-                                }
-                                FluxMenuItem {
-                                    text: "⬇ Pull Solo Fast-Forward (--ff-only)"
-                                    font.pixelSize: 11
-                                    onClicked: {
-                                        if (root.sessionVm && root.sessionVm.branchManager) {
-                                            root.sessionVm.branchManager.pullRemote("origin", "ff-only");
-                                        }
-                                    }
-                                }
-                                FluxMenuSeparator {
-                                }
-                                FluxMenuItem {
-                                    text: "⬇ Fetch da tutti i remote (--all)"
-                                    font.pixelSize: 11
-                                    onClicked: {
-                                        if (root.sessionVm && root.sessionVm.branchManager) {
-                                            root.sessionVm.branchManager.fetchRemote("origin", true);
-                                        }
-                                    }
-                                }
+                    }
+                    FluxMenuItem {
+                        text: "⬇ Pull Solo Fast-Forward (--ff-only)"
+                        font.pixelSize: 11
+                        onClicked: {
+                            if (root.sessionVm && root.sessionVm.branchManager) {
+                                root.sessionVm.branchManager.pullRemote("origin", "ff-only");
+                            }
+                        }
+                    }
+                    FluxMenuSeparator {}
+                    FluxMenuItem {
+                        text: "⬇ Fetch da tutti i remote (--all)"
+                        font.pixelSize: 11
+                        onClicked: {
+                            if (root.sessionVm && root.sessionVm.branchManager) {
+                                root.sessionVm.branchManager.fetchRemote("origin", true);
                             }
                         }
                     }
                 }
 
                 // 2. PUSH CAPSULE SPLIT BUTTON
-                Rectangle {
-                    Layout.preferredHeight: 32
-                    implicitWidth: pushSplitRow.implicitWidth + 2
-                    radius: 9
-                    color: "#121A27"
-                    border.color: (pushMainBtn.hovered || pushMenuBtn.hovered || pushMenu.opened) ? "#334968" : "#222F42"
-                    border.width: 1
-
-                    Behavior on border.color {
-                        ColorAnimation {
-                            duration: 120
+                FluxSplitButton {
+                    text: root.remoteOperation === "push" ? "⏳ Push..." : "⬆ Push"
+                    mainEnabled: root.remoteOperation === ""
+                    onMainClicked: {
+                        if (root.sessionVm && root.sessionVm.branchManager) {
+                            root.sessionVm.branchManager.pushRemote("origin", false, false, false);
                         }
                     }
 
-                    RowLayout {
-                        id: pushSplitRow
-                        anchors.centerIn: parent
-                        spacing: 0
-
-                        TopBarSplitMainBtn {
-                            id: pushMainBtn
-                            text: root.remoteOperation === "push" ? "⏳ Push..." : "⬆ Push"
-                            enabled: root.remoteOperation === ""
-                            onClicked: {
-                                if (root.sessionVm && root.sessionVm.branchManager) {
-                                    root.sessionVm.branchManager.pushRemote("origin", false, false, false);
-                                }
+                    FluxMenuItem {
+                        text: "⬆ Push (Default)"
+                        font.pixelSize: 11
+                        onClicked: {
+                            if (root.sessionVm && root.sessionVm.branchManager) {
+                                root.sessionVm.branchManager.pushRemote("origin", false, false, false);
                             }
                         }
-
-                        Rectangle {
-                            Layout.preferredWidth: 1
-                            Layout.preferredHeight: 16
-                            color: "#243247"
+                    }
+                    FluxMenuItem {
+                        text: "⬆ Push & Imposta Upstream (-u)"
+                        font.pixelSize: 11
+                        onClicked: {
+                            if (root.sessionVm && root.sessionVm.branchManager) {
+                                root.sessionVm.branchManager.pushRemote("origin", true, false, false);
+                            }
                         }
-
-                        TopBarSplitArrowBtn {
-                            id: pushMenuBtn
-                            menuOpened: pushMenu.opened
-                            onClicked: pushMenu.open()
-
-                            FluxMenu {
-                                id: pushMenu
-                                y: pushMenuBtn.height + 4
-
-                                FluxMenuItem {
-                                    text: "⬆ Push (Default)"
-                                    font.pixelSize: 11
-                                    onClicked: {
-                                        if (root.sessionVm && root.sessionVm.branchManager) {
-                                            root.sessionVm.branchManager.pushRemote("origin", false, false, false);
-                                        }
-                                    }
-                                }
-                                FluxMenuItem {
-                                    text: "⬆ Push & Imposta Upstream (-u)"
-                                    font.pixelSize: 11
-                                    onClicked: {
-                                        if (root.sessionVm && root.sessionVm.branchManager) {
-                                            root.sessionVm.branchManager.pushRemote("origin", true, false, false);
-                                        }
-                                    }
-                                }
-                                FluxMenuItem {
-                                    text: "⬆ Push Sicuro con Force-With-Lease"
-                                    font.pixelSize: 11
-                                    onClicked: {
-                                        if (root.sessionVm && root.sessionVm.branchManager) {
-                                            root.sessionVm.branchManager.pushRemote("origin", false, true, false);
-                                        }
-                                    }
-                                }
-                                FluxMenuItem {
-                                    text: "⬆ Push con Tutti i Tag (--tags)"
-                                    font.pixelSize: 11
-                                    onClicked: {
-                                        if (root.sessionVm && root.sessionVm.branchManager) {
-                                            root.sessionVm.branchManager.pushRemote("origin", false, false, true);
-                                        }
-                                    }
-                                }
+                    }
+                    FluxMenuItem {
+                        text: "⬆ Push Sicuro con Force-With-Lease"
+                        font.pixelSize: 11
+                        onClicked: {
+                            if (root.sessionVm && root.sessionVm.branchManager) {
+                                root.sessionVm.branchManager.pushRemote("origin", false, true, false);
+                            }
+                        }
+                    }
+                    FluxMenuItem {
+                        text: "⬆ Push con Tutti i Tag (--tags)"
+                        font.pixelSize: 11
+                        onClicked: {
+                            if (root.sessionVm && root.sessionVm.branchManager) {
+                                root.sessionVm.branchManager.pushRemote("origin", false, false, true);
                             }
                         }
                     }
@@ -862,173 +729,91 @@ Rectangle {
                 }
 
                 // 4. STASH CAPSULE SPLIT BUTTON (Shown only when WIP has local changes)
-                Rectangle {
+                FluxSplitButton {
                     objectName: "topbarStashButton"
                     visible: root.hasWipChanges
-                    Layout.preferredHeight: 32
-                    implicitWidth: stashSplitRow.implicitWidth + 2
-                    radius: 9
-                    color: "#121A27"
-                    border.color: (stashMainBtn.hovered || stashMenuBtn.hovered || stashMenu.opened) ? "#334968" : "#222F42"
-                    border.width: 1
-
-                    Behavior on border.color {
-                        ColorAnimation {
-                            duration: 120
+                    text: "📦 Stash"
+                    textColor: root.theme.textPrimary
+                    tooltipText: "Salva le modifiche locali (WIP) nello Stash"
+                    onMainClicked: {
+                        if (root.sessionVm && root.sessionVm.stashManager) {
+                            root.sessionVm.stashManager.refresh();
                         }
+                        stashModal.open();
                     }
 
-                    RowLayout {
-                        id: stashSplitRow
-                        anchors.centerIn: parent
-                        spacing: 0
-
-                        TopBarSplitMainBtn {
-                            id: stashMainBtn
-                            text: "📦 Stash"
-                            textColor: "#E2E8F0"
-                            ToolTip.visible: hovered
-                            ToolTip.text: "Salva le modifiche locali (WIP) nello Stash"
-                            onClicked: {
-                                if (root.sessionVm && root.sessionVm.stashManager) {
-                                    root.sessionVm.stashManager.refresh();
-                                }
-                                stashModal.open();
+                    FluxMenuItem {
+                        text: "📦 Salva modifiche correnti ( inclusi non tracciati )"
+                        font.pixelSize: 11
+                        onClicked: {
+                            if (root.sessionVm && root.sessionVm.stashManager) {
+                                root.sessionVm.stashManager.push("", true, false);
                             }
                         }
-
-                        Rectangle {
-                            Layout.preferredWidth: 1
-                            Layout.preferredHeight: 16
-                            color: "#243247"
-                        }
-
-                        TopBarSplitArrowBtn {
-                            id: stashMenuBtn
-                            menuOpened: stashMenu.opened
-                            onClicked: stashMenu.open()
-
-                            FluxMenu {
-                                id: stashMenu
-                                y: stashMenuBtn.height + 4
-
-                                FluxMenuItem {
-                                    text: "📦 Salva modifiche correnti ( inclusi non tracciati )"
-                                    font.pixelSize: 11
-                                    onClicked: {
-                                        if (root.sessionVm && root.sessionVm.stashManager) {
-                                            root.sessionVm.stashManager.push("", true, false);
-                                        }
-                                    }
-                                }
-                                FluxMenuItem {
-                                    text: "📦 Nuovo Stash con messaggio personalizzato..."
-                                    font.pixelSize: 11
-                                    onClicked: {
-                                        if (root.sessionVm && root.sessionVm.stashManager) {
-                                            root.sessionVm.stashManager.refresh();
-                                        }
-                                        stashModal.open();
-                                    }
-                                }
-                                FluxMenuSeparator {
-                                }
-                                FluxMenuItem {
-                                    text: "⚙ Gestione completa Stash..."
-                                    font.pixelSize: 11
-                                    onClicked: {
-                                        if (root.sessionVm && root.sessionVm.stashManager) {
-                                            root.sessionVm.stashManager.refresh();
-                                        }
-                                        stashModal.open();
-                                    }
-                                }
+                    }
+                    FluxMenuItem {
+                        text: "📦 Nuovo Stash con messaggio personalizzato..."
+                        font.pixelSize: 11
+                        onClicked: {
+                            if (root.sessionVm && root.sessionVm.stashManager) {
+                                root.sessionVm.stashManager.refresh();
                             }
+                            stashModal.open();
+                        }
+                    }
+                    FluxMenuSeparator {}
+                    FluxMenuItem {
+                        text: "⚙ Gestione completa Stash..."
+                        font.pixelSize: 11
+                        onClicked: {
+                            if (root.sessionVm && root.sessionVm.stashManager) {
+                                root.sessionVm.stashManager.refresh();
+                            }
+                            stashModal.open();
                         }
                     }
                 }
 
                 // 5. QUICK POP CAPSULE SPLIT BUTTON (Shown only when at least one stash exists)
-                Rectangle {
+                FluxSplitButton {
                     objectName: "topbarPopButton"
                     visible: root.hasStashes
-                    Layout.preferredHeight: 32
-                    implicitWidth: popSplitRow.implicitWidth + 2
-                    radius: 9
-                    color: "#121A27"
-                    border.color: (popMainBtn.hovered || popMenuBtn.hovered || popMenu.opened) ? "#334968" : "#222F42"
-                    border.width: 1
-
-                    Behavior on border.color {
-                        ColorAnimation {
-                            duration: 120
+                    text: root.stashCount > 1 ? ("↩ Pop (" + root.stashCount + ")") : "↩ Pop"
+                    textColor: root.theme.textPrimary
+                    tooltipText: "Applica e rimuovi il commit di stash più recente (pop stash@{0})"
+                    onMainClicked: {
+                        if (root.sessionVm && root.sessionVm.stashManager) {
+                            root.sessionVm.stashManager.pop(0);
                         }
                     }
 
-                    RowLayout {
-                        id: popSplitRow
-                        anchors.centerIn: parent
-                        spacing: 0
-
-                        TopBarSplitMainBtn {
-                            id: popMainBtn
-                            text: root.stashCount > 1 ? ("↩ Pop (" + root.stashCount + ")") : "↩ Pop"
-                            textColor: "#E2E8F0"
-                            ToolTip.visible: hovered
-                            ToolTip.text: "Applica e rimuovi il commit di stash più recente (pop stash@{0})"
-                            onClicked: {
-                                if (root.sessionVm && root.sessionVm.stashManager) {
-                                    root.sessionVm.stashManager.pop(0);
-                                }
+                    FluxMenuItem {
+                        text: "↩ Pop ultimo stash (stash@{0})"
+                        font.pixelSize: 11
+                        onClicked: {
+                            if (root.sessionVm && root.sessionVm.stashManager) {
+                                root.sessionVm.stashManager.pop(0);
                             }
                         }
-
-                        Rectangle {
-                            Layout.preferredWidth: 1
-                            Layout.preferredHeight: 16
-                            color: "#243247"
-                        }
-
-                        TopBarSplitArrowBtn {
-                            id: popMenuBtn
-                            menuOpened: popMenu.opened
-                            onClicked: popMenu.open()
-
-                            FluxMenu {
-                                id: popMenu
-                                y: popMenuBtn.height + 4
-
-                                FluxMenuItem {
-                                    text: "↩ Pop ultimo stash (stash@{0})"
-                                    font.pixelSize: 11
-                                    onClicked: {
-                                        if (root.sessionVm && root.sessionVm.stashManager) {
-                                            root.sessionVm.stashManager.pop(0);
-                                        }
-                                    }
-                                }
-                                FluxMenuItem {
-                                    text: "📋 Applica ultimo stash senza rimuoverlo (Apply)"
-                                    font.pixelSize: 11
-                                    onClicked: {
-                                        if (root.sessionVm && root.sessionVm.stashManager) {
-                                            root.sessionVm.stashManager.apply(0, false);
-                                        }
-                                    }
-                                }
-                                FluxMenuSeparator {
-                                }
-                                FluxMenuItem {
-                                    text: "⚙ Gestione completa Stash (" + root.stashCount + ")..."
-                                    font.pixelSize: 11
-                                    onClicked: {
-                                        if (root.sessionVm && root.sessionVm.stashManager) {
-                                            root.sessionVm.stashManager.refresh();
-                                        }
-                                        stashModal.open();
-                                    }
-                                }
+                    }
+                    FluxMenuItem {
+                        text: "📋 Applica ultimo stash senza rimuoverlo (Apply)"
+                        font.pixelSize: 11
+                        onClicked: {
+                            if (root.sessionVm && root.sessionVm.stashManager) {
+                                root.sessionVm.stashManager.apply(0, false);
                             }
+                        }
+                    }
+                    FluxMenuSeparator {}
+                    FluxMenuItem {
+                        text: "⚙ Gestione completa Stash (" + root.stashCount + ")..."
+                        font.pixelSize: 11
+                        onClicked: {
+                            if (root.sessionVm && root.sessionVm.stashManager) {
+                                root.sessionVm.stashManager.refresh();
+                            }
+                            stashModal.open();
                         }
                     }
                 }
@@ -1049,29 +834,29 @@ Rectangle {
                     hoverEnabled: true
                     background: Rectangle {
                         color: root.isTerminalVisible
-                            ? (terminalToggleBtn.hovered ? "#15324D" : "#0F253B")
-                            : (terminalToggleBtn.down ? "#1E2D42" : (terminalToggleBtn.hovered ? "#1A2639" : "#121A27"))
+                            ? (terminalToggleBtn.hovered ? root.theme.surfaceGlass : root.theme.infoBg)
+                            : (terminalToggleBtn.down ? root.theme.cardHover : (terminalToggleBtn.hovered ? root.theme.card : root.theme.surfaceElevated))
                         radius: 9
                         border.color: root.isTerminalVisible
-                            ? "#00E5FF"
-                            : (terminalToggleBtn.hovered ? "#334968" : "#222F42")
+                            ? root.theme.accentCyan
+                            : (terminalToggleBtn.hovered ? root.theme.borderHighlight : root.theme.border)
                         border.width: 1
 
-                        Behavior on color { ColorAnimation { duration: 120 } }
-                        Behavior on border.color { ColorAnimation { duration: 120 } }
+                        Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+                        Behavior on border.color { ColorAnimation { duration: root.theme.animFast } }
                     }
                     contentItem: RowLayout {
                         spacing: 6
                         Text {
                             text: ">_"
-                            color: root.isTerminalVisible ? "#00E5FF" : "#38BDF8"
+                            color: root.isTerminalVisible ? root.theme.accentCyan : root.theme.borderFocus
                             font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
                             font.pixelSize: 11
                             font.bold: true
                         }
                         Text {
                             text: "Terminal"
-                            color: root.isTerminalVisible ? "#F8FAFC" : "#CBD5E1"
+                            color: root.isTerminalVisible ? root.theme.textPrimary : root.theme.textSecondary
                             font.pixelSize: 11
                             font.bold: true
                         }
@@ -1080,7 +865,7 @@ Rectangle {
                             width: 6
                             height: 6
                             radius: 3
-                            color: "#F59E0B"
+                            color: root.theme.warning
                         }
                     }
                     ToolTip.visible: hovered
@@ -1096,7 +881,7 @@ Rectangle {
 
                 TopBarCapsuleButton {
                     text: "⚙ Branch & Sync..."
-                    textColor: "#CBD5E1"
+                    textColor: root.theme.textSecondary
                     onClicked: {
                         branchModal.open();
                     }
@@ -1108,8 +893,8 @@ Rectangle {
                     Layout.preferredHeight: 30
                     Layout.preferredWidth: batchIndicatorRow.implicitWidth + 18
                     radius: 15
-                    color: "#0F2B48"
-                    border.color: "#38BDF8"
+                    color: root.theme.infoBg
+                    border.color: root.theme.borderFocus
                     border.width: 1
 
                     RowLayout {
@@ -1124,7 +909,7 @@ Rectangle {
 
                         Text {
                             text: (batchOperationsVm ? batchOperationsVm.progressPercentage : 0) + "% " + (batchOperationsVm ? batchOperationsVm.currentRepoName : "")
-                            color: "#38BDF8"
+                            color: root.theme.borderFocus
                             font.bold: true
                             font.pixelSize: 11
                         }
@@ -1151,8 +936,8 @@ Rectangle {
             Layout.preferredHeight: visible ? 36 : 0
             visible: bannerText.text !== ""
             radius: 10
-            color: bannerIsError ? "#3B1219" : "#064E3B"
-            border.color: bannerIsError ? "#EF4444" : "#10B981"
+            color: bannerIsError ? root.theme.dangerBg : root.theme.successBg
+            border.color: bannerIsError ? root.theme.danger : root.theme.success
             border.width: 1
             clip: true
 
@@ -1172,7 +957,7 @@ Rectangle {
                 Text {
                     id: bannerText
                     text: ""
-                    color: "#FFFFFF"
+                    color: root.theme.selectionText
                     font.bold: true
                     font.pixelSize: 11
                     Layout.fillWidth: true
@@ -1185,11 +970,11 @@ Rectangle {
                     Layout.preferredHeight: 24
                     hoverEnabled: true
                     background: Rectangle {
-                        radius: 6
-                        color: parent.hovered ? "#FFFFFF22" : "transparent"
+                        radius: root.theme.radiusXs
+                        color: parent.hovered ? Qt.alpha(root.theme.selectionText, 0.15) : "transparent"
                     }
                     contentItem: Text {
-                        text: "✕"; color: "#FFFFFF"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                        text: "✕"; color: root.theme.selectionText; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                     }
                     onClicked: bannerText.text = ""
                 }
@@ -1229,8 +1014,8 @@ Rectangle {
             Layout.preferredHeight: (root.sessionVm && root.sessionVm.isRebaseInProgress) ? 42 : 0
             visible: root.sessionVm && root.sessionVm.isRebaseInProgress
             radius: 10
-            color: "#451A03"
-            border.color: "#F59E0B"
+            color: root.theme.warningBg
+            border.color: root.theme.warning
             border.width: 1
             clip: true
 
@@ -1242,96 +1027,59 @@ Rectangle {
 
                 Text {
                     text: "⚠ OPERAZIONE DI REBASE IN CORSO"
-                    color: "#FEF3C7"
+                    color: root.theme.warningText
                     font.bold: true
                     font.pixelSize: 12
                 }
 
                 Text {
                     text: "Risolvi i conflitti pendenti oppure prosegui con l'applicazione dei commit."
-                    color: "#FDE68A"
+                    color: root.theme.warningText
                     font.pixelSize: 11
                     Layout.fillWidth: true
                 }
 
-                Button {
+                FluxActionButton {
                     text: "✓ Continua Rebase"
                     Layout.preferredHeight: 28
                     leftPadding: 10
                     rightPadding: 10
-                    hoverEnabled: true
-                    background: Rectangle {
-                        color: parent.hovered ? "#047857" : "#059669"
-                        radius: 7
-                        Behavior on color {
-                            ColorAnimation {
-                                duration: 110
-                            }
-                        }
-                    }
-                    contentItem: Text {
-                        text: parent.text
-                        color: "#FFFFFF"
-                        font.bold: true
-                        font.pixelSize: 11
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
+                    cornerRadius: 7
+                    baseColor: root.theme.successBg
+                    hoverColor: root.theme.success
+                    baseBorderColor: root.theme.successText
+                    textColor: root.theme.selectionText
+                    fontBold: true
+                    animDuration: 110
                     onClicked: {
                         if (root.sessionVm) root.sessionVm.continueRebase();
                     }
                 }
 
-                Button {
+                FluxActionButton {
                     text: "⏭ Salta Commit"
                     Layout.preferredHeight: 28
                     leftPadding: 10
                     rightPadding: 10
-                    hoverEnabled: true
-                    background: Rectangle {
-                        color: parent.hovered ? "#475569" : "#334155"
-                        radius: 7
-                        Behavior on color {
-                            ColorAnimation {
-                                duration: 110
-                            }
-                        }
-                    }
-                    contentItem: Text {
-                        text: parent.text
-                        color: "#F1F5F9"
-                        font.pixelSize: 11
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
+                    cornerRadius: 7
+                    animDuration: 110
                     onClicked: {
                         if (root.sessionVm) root.sessionVm.skipRebase();
                     }
                 }
 
-                Button {
+                FluxActionButton {
                     text: "✕ Annulla (Abort)"
                     Layout.preferredHeight: 28
                     leftPadding: 10
                     rightPadding: 10
-                    hoverEnabled: true
-                    background: Rectangle {
-                        color: parent.hovered ? "#B91C1C" : "#991B1B"
-                        radius: 7
-                        Behavior on color {
-                            ColorAnimation {
-                                duration: 110
-                            }
-                        }
-                    }
-                    contentItem: Text {
-                        text: parent.text
-                        color: "#FFFFFF"
-                        font.bold: true
-                        font.pixelSize: 11
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
+                    cornerRadius: 7
+                    baseColor: root.theme.dangerBg
+                    hoverColor: root.theme.danger
+                    baseBorderColor: root.theme.dangerText
+                    textColor: root.theme.selectionText
+                    fontBold: true
+                    animDuration: 110
                     onClicked: {
                         if (root.sessionVm) root.sessionVm.abortRebase();
                     }

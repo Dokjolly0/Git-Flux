@@ -1,9 +1,11 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../themes"
 
 Dialog {
     id: root
+    readonly property FluxTheme theme: FluxTheme {}
     title: "Conferma Force Push"
     modal: true
     width: 520
@@ -33,14 +35,14 @@ Dialog {
     }
 
     background: FluxModalBackground {
-        border.color: root.requiresUnconditionalForce ? "#7F1D1D" : "#78350F"
+        border.color: root.requiresUnconditionalForce ? root.theme.danger : root.theme.warning
     }
 
     header: FluxModalHeader {
         titleText: root.requiresUnconditionalForce
             ? "⚠ Force Push Richiesto (--force)"
             : "⚠ Force Push Richiesto"
-        titleColor: root.requiresUnconditionalForce ? "#F87171" : "#F59E0B"
+        titleColor: root.requiresUnconditionalForce ? root.theme.dangerText : root.theme.warning
         onCloseRequested: root.close()
     }
 
@@ -51,9 +53,9 @@ Dialog {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 36
-            color: "#0D131D"
+            color: root.theme.inputBg
             radius: 9
-            border.color: "#222F42"
+            border.color: root.theme.border
             border.width: 1
 
             RowLayout {
@@ -64,13 +66,13 @@ Dialog {
 
                 Text {
                     text: "Destinazione:"
-                    color: "#94A3B8"
+                    color: root.theme.textSecondary
                     font.pixelSize: 11
                 }
 
                 Text {
                     text: (root.branchName.length > 0 ? (root.branchName + "  →  ") : "") + root.remoteName
-                    color: "#38BDF8"
+                    color: root.theme.borderFocus
                     font.bold: true
                     font.pixelSize: 11
                     elide: Text.ElideRight
@@ -80,9 +82,9 @@ Dialog {
                 Rectangle {
                     Layout.preferredHeight: 22
                     implicitWidth: modeBadgeText.implicitWidth + 14
-                    radius: 6
-                    color: root.requiresUnconditionalForce ? "#3B1219" : "#451A03"
-                    border.color: root.requiresUnconditionalForce ? "#EF4444" : "#D97706"
+                    radius: root.theme.radiusXs
+                    color: root.requiresUnconditionalForce ? root.theme.dangerBg : root.theme.warningBg
+                    border.color: root.requiresUnconditionalForce ? root.theme.danger : root.theme.warning
                     border.width: 1
 
                     Text {
@@ -90,7 +92,7 @@ Dialog {
                         anchors.centerIn: parent
                         text: (root.requiresUnconditionalForce ? "--force" : "--force-with-lease")
                               + (root.tags ? " --tags" : "")
-                        color: root.requiresUnconditionalForce ? "#FCA5A5" : "#FCD34D"
+                        color: root.requiresUnconditionalForce ? root.theme.dangerText : root.theme.warningText
                         font.family: "monospace"
                         font.bold: true
                         font.pixelSize: 10
@@ -102,7 +104,7 @@ Dialog {
         // Human-readable explanation
         Text {
             text: root.reasonSummary
-            color: "#F1F5F9"
+            color: root.theme.textPrimary
             font.pixelSize: 12
             wrapMode: Text.WordWrap
             Layout.fillWidth: true
@@ -113,8 +115,8 @@ Dialog {
             Layout.fillWidth: true
             implicitHeight: promptText.implicitHeight + 16
             radius: 9
-            color: root.requiresUnconditionalForce ? "#2A1215" : "#261B0D"
-            border.color: root.requiresUnconditionalForce ? "#7F1D1D" : "#78350F"
+            color: root.requiresUnconditionalForce ? root.theme.dangerBg : root.theme.warningBg
+            border.color: root.requiresUnconditionalForce ? root.theme.danger : root.theme.warning
             border.width: 1
 
             Text {
@@ -124,7 +126,7 @@ Dialog {
                 text: root.requiresUnconditionalForce
                     ? "Vuoi forzare comunque il push con --force? Questa operazione può sovrascrivere commit o tag sul remote non presenti in locale."
                     : "Vuoi procedere con il force push sicuro (--force-with-lease)? La cronologia remota verrà aggiornata alla tua versione locale solo se il remote non è cambiato nel frattempo."
-                color: root.requiresUnconditionalForce ? "#FECACA" : "#FDE68A"
+                color: root.requiresUnconditionalForce ? root.theme.dangerText : root.theme.warningText
                 font.pixelSize: 11
                 wrapMode: Text.WordWrap
             }
@@ -135,9 +137,9 @@ Dialog {
             visible: root.details.length > 0
             Layout.fillWidth: true
             Layout.preferredHeight: 92
-            color: "#0A0E15"
-            radius: 8
-            border.color: "#1E293B"
+            color: root.theme.inputBg
+            radius: root.theme.radiusSm
+            border.color: root.theme.borderSubtle
             border.width: 1
             clip: true
 
@@ -151,7 +153,7 @@ Dialog {
                     readOnly: true
                     wrapMode: TextEdit.Wrap
                     selectByMouse: true
-                    color: "#94A3B8"
+                    color: root.theme.textSecondary
                     font.family: "monospace"
                     font.pixelSize: 10
                     padding: 0
@@ -170,67 +172,26 @@ Dialog {
                 Layout.fillWidth: true
             }
 
-            Button {
-                id: cancelBtn
+            FluxActionButton {
                 text: "Annulla"
                 Layout.preferredHeight: 34
-                leftPadding: 14
-                rightPadding: 14
-                hoverEnabled: true
-                background: Rectangle {
-                    color: cancelBtn.hovered ? "#1E2B3E" : "#151E2C"
-                    radius: 8
-                    border.color: "#28374E"
-                    border.width: 1
-
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: 120
-                        }
-                    }
-                }
-                contentItem: Text {
-                    text: cancelBtn.text
-                    color: "#CBD5E1"
-                    font.pixelSize: 11
-                    font.bold: true
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
+                fontBold: true
                 onClicked: root.close()
             }
 
-            Button {
-                id: confirmForceBtn
+            FluxActionButton {
                 text: root.requiresUnconditionalForce
                     ? "⚠ Force Push (--force)"
                     : "⬆ Push con Force-With-Lease"
                 Layout.preferredHeight: 34
                 leftPadding: 16
                 rightPadding: 16
-                hoverEnabled: true
-                background: Rectangle {
-                    color: root.requiresUnconditionalForce
-                        ? (confirmForceBtn.hovered ? "#DC2626" : "#B91C1C")
-                        : (confirmForceBtn.hovered ? "#D97706" : "#B45309")
-                    radius: 8
-                    border.color: root.requiresUnconditionalForce ? "#EF4444" : "#F59E0B"
-                    border.width: 1
-
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: 120
-                        }
-                    }
-                }
-                contentItem: Text {
-                    text: confirmForceBtn.text
-                    color: "#FFFFFF"
-                    font.pixelSize: 11
-                    font.bold: true
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
+                fontBold: true
+                baseColor: root.requiresUnconditionalForce ? root.theme.dangerBg : root.theme.warningBg
+                hoverColor: root.requiresUnconditionalForce ? root.theme.danger : root.theme.warning
+                baseBorderColor: root.requiresUnconditionalForce ? root.theme.danger : root.theme.warning
+                textColor: root.requiresUnconditionalForce ? root.theme.dangerText : root.theme.warningText
+                hoverTextColor: root.theme.selectionText
                 onClicked: {
                     const targetRemote = root.remoteName;
                     const upstream = root.setUpstream;

@@ -1,9 +1,11 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../themes"
 
 Dialog {
     id: root
+    readonly property FluxTheme theme: FluxTheme {}
     title: batchOperationsVm ? batchOperationsVm.currentOperationName : "Operazione Batch"
     modal: true
     width: 620
@@ -28,8 +30,12 @@ Dialog {
                 width: 38
                 height: 38
                 radius: 12
-                color: batchOperationsVm && batchOperationsVm.isRunning ? "#152336" : (batchOperationsVm && batchOperationsVm.failedCount > 0 ? "#3B1219" : "#064E3B")
-                border.color: batchOperationsVm && batchOperationsVm.isRunning ? "#38BDF8" : (batchOperationsVm && batchOperationsVm.failedCount > 0 ? "#EF4444" : "#10B981")
+                color: batchOperationsVm && batchOperationsVm.isRunning
+                    ? root.theme.surfaceGlass
+                    : (batchOperationsVm && batchOperationsVm.failedCount > 0 ? root.theme.dangerBg : root.theme.successBg)
+                border.color: batchOperationsVm && batchOperationsVm.isRunning
+                    ? root.theme.borderFocus
+                    : (batchOperationsVm && batchOperationsVm.failedCount > 0 ? root.theme.danger : root.theme.success)
 
                 Text {
                     anchors.centerIn: parent
@@ -44,36 +50,32 @@ Dialog {
 
                 Text {
                     text: batchOperationsVm ? batchOperationsVm.currentOperationName : "Operazione Multi-Repository"
-                    color: "#F8FAFC"
+                    color: root.theme.textPrimary
                     font.bold: true
                     font.pixelSize: 15
                 }
 
                 Text {
                     text: batchOperationsVm ? batchOperationsVm.statusMessage : ""
-                    color: "#94A3B8"
+                    color: root.theme.textSecondary
                     font.pixelSize: 12
                     elide: Text.ElideRight
                     Layout.fillWidth: true
                 }
             }
 
-            Button {
+            FluxActionButton {
                 text: "✕"
                 Layout.preferredWidth: 28
                 Layout.preferredHeight: 28
-                hoverEnabled: true
-                background: Rectangle {
-                    radius: 8
-                    color: parent.hovered ? "#243247" : "transparent"
-                }
-                contentItem: Text {
-                    text: "✕"
-                    color: parent.hovered ? "#F8FAFC" : "#94A3B8"
-                    font.bold: true
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
+                leftPadding: 0
+                rightPadding: 0
+                baseColor: "transparent"
+                hoverColor: root.theme.cardHover
+                baseBorderColor: "transparent"
+                textColor: root.theme.textSecondary
+                hoverTextColor: root.theme.textPrimary
+                fontBold: true
                 onClicked: root.close()
             }
         }
@@ -91,7 +93,7 @@ Dialog {
                     text: batchOperationsVm && batchOperationsVm.isRunning
                         ? "Avanzamento (" + batchOperationsVm.completedRepos + " di " + batchOperationsVm.totalRepos + " repository)"
                         : "Completato: " + (batchOperationsVm ? batchOperationsVm.succeededCount : 0) + " riusciti, " + (batchOperationsVm ? batchOperationsVm.failedCount : 0) + " falliti"
-                    color: "#CBD5E1"
+                    color: root.theme.textSecondary
                     font.pixelSize: 12
                 }
                 Item {
@@ -99,7 +101,7 @@ Dialog {
                 }
                 Text {
                     text: (batchOperationsVm ? batchOperationsVm.progressPercentage : 0) + "%"
-                    color: "#38BDF8"
+                    color: root.theme.borderFocus
                     font.bold: true
                     font.pixelSize: 12
                 }
@@ -113,7 +115,7 @@ Dialog {
 
                 background: Rectangle {
                     implicitHeight: 8
-                    color: "#182334"
+                    color: root.theme.surfaceGlass
                     radius: 4
                 }
 
@@ -126,10 +128,10 @@ Dialog {
                         gradient: Gradient {
                             orientation: Gradient.Horizontal
                             GradientStop {
-                                position: 0.0; color: "#00E5FF"
+                                position: 0.0; color: root.theme.accentCyan
                             }
                             GradientStop {
-                                position: 1.0; color: "#0284C7"
+                                position: 1.0; color: root.theme.accentBlue
                             }
                         }
                     }
@@ -143,9 +145,9 @@ Dialog {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            color: "#0D131D"
+            color: root.theme.inputBg
             radius: 10
-            border.color: "#222F42"
+            border.color: root.theme.border
             border.width: 1
             clip: true
 
@@ -165,9 +167,9 @@ Dialog {
                 delegate: Rectangle {
                     width: resultsList.width
                     height: 42
-                    color: modelData.isFailed ? "#2D1519" : "#131C2A"
+                    color: modelData.isFailed ? root.theme.dangerBg : root.theme.card
                     radius: 8
-                    border.color: modelData.isFailed ? "#7F1D1D" : "#222F42"
+                    border.color: modelData.isFailed ? root.theme.danger : root.theme.border
                     border.width: 1
 
                     RowLayout {
@@ -183,7 +185,7 @@ Dialog {
 
                         Text {
                             text: modelData.repoName
-                            color: "#F8FAFC"
+                            color: root.theme.textPrimary
                             font.bold: true
                             font.pixelSize: 12
                             Layout.preferredWidth: 160
@@ -192,7 +194,7 @@ Dialog {
 
                         Text {
                             text: modelData.message
-                            color: modelData.isFailed ? "#F87171" : "#94A3B8"
+                            color: modelData.isFailed ? root.theme.dangerText : root.theme.textSecondary
                             font.pixelSize: 11
                             Layout.fillWidth: true
                             elide: Text.ElideRight
@@ -200,7 +202,7 @@ Dialog {
 
                         Text {
                             text: modelData.durationMs + " ms"
-                            color: "#64748B"
+                            color: root.theme.textMuted
                             font.pixelSize: 10
                         }
                     }
@@ -210,7 +212,7 @@ Dialog {
                     anchors.centerIn: parent
                     visible: resultsList.count === 0
                     text: batchOperationsVm && batchOperationsVm.isRunning ? "Elaborazione in corso..." : "Nessuna operazione recente."
-                    color: "#64748B"
+                    color: root.theme.textMuted
                     font.pixelSize: 12
                 }
             }
@@ -227,64 +229,33 @@ Dialog {
                 Layout.fillWidth: true
             }
 
-            Button {
+            FluxActionButton {
                 visible: batchOperationsVm && batchOperationsVm.isRunning
                 text: "Annulla"
                 Layout.preferredHeight: 34
-                leftPadding: 14
-                rightPadding: 14
-                hoverEnabled: true
+                baseColor: root.theme.dangerBg
+                hoverColor: root.theme.danger
+                baseBorderColor: root.theme.danger
+                textColor: root.theme.dangerText
+                hoverTextColor: root.theme.selectionText
+                fontPixelSize: 12
+                fontBold: true
                 onClicked: {
                     if (batchOperationsVm) {
                         batchOperationsVm.cancelCurrentOperation()
                     }
                 }
-                background: Rectangle {
-                    color: parent.hovered ? "#B91C1C" : "#991B1B"
-                    radius: 8
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: 120
-                        }
-                    }
-                }
-                contentItem: Text {
-                    text: parent.text
-                    color: "#FFFFFF"
-                    font.bold: true
-                    font.pixelSize: 12
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
             }
 
-            Button {
+            FluxActionButton {
                 visible: !batchOperationsVm || !batchOperationsVm.isRunning
                 text: "Chiudi"
                 Layout.preferredHeight: 34
                 leftPadding: 16
                 rightPadding: 16
-                hoverEnabled: true
+                fontPixelSize: 12
+                fontBold: true
                 onClicked: root.close()
-                background: Rectangle {
-                    color: parent.hovered ? "#1E2B3E" : "#151E2C"
-                    radius: 8
-                    border.color: "#28374E"
-                    border.width: 1
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: 120
-                        }
-                    }
-                }
-                contentItem: Text {
-                    text: parent.text
-                    color: "#F8FAFC"
-                    font.pixelSize: 12
-                    font.bold: true
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
             }
         }
     }

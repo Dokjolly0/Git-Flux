@@ -1,9 +1,11 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../themes"
 
 Item {
     id: root
+    FluxTheme { id: theme }
     visible: false
 
     signal sessionStarted(var repoIds)
@@ -41,9 +43,9 @@ Item {
         width: Math.min(parent.width - 64, 840)
         height: Math.min(parent.height - 64, 570)
         anchors.centerIn: parent
-        color: "#111824"
+        color: root.theme.surfaceElevated
         radius: 16
-        border.color: "#28374E"
+        border.color: root.theme.borderHighlight
         border.width: 1
 
         // Soft ambient drop shadow
@@ -88,8 +90,8 @@ Item {
                             width: 32
                             height: 32
                             radius: 9
-                            color: "#0F2942"
-                            border.color: "#1E4066"
+                            color: root.theme.infoBg
+                            border.color: root.theme.borderHighlight
                             border.width: 1
 
                             Text {
@@ -100,7 +102,7 @@ Item {
                         }
                         Text {
                             text: "Apertura Rapida Multi-Gruppo"
-                            color: "#F8FAFC"
+                            color: root.theme.textPrimary
                             font.pixelSize: 17
                             font.bold: true
                         }
@@ -108,37 +110,32 @@ Item {
 
                     Text {
                         text: "Seleziona uno o più gruppi: i repository condivisi vengono uniti senza duplicati in una sessione volatile."
-                        color: "#94A3B8"
+                        color: root.theme.textSecondary
                         font.pixelSize: 12
                     }
                 }
 
-                Button {
+                FluxActionButton {
                     text: "✕"
-                    flat: true
                     Layout.preferredWidth: 30
                     Layout.preferredHeight: 30
-                    hoverEnabled: true
+                    leftPadding: 0
+                    rightPadding: 0
+                    baseColor: "transparent"
+                    hoverColor: root.theme.cardHover
+                    baseBorderColor: "transparent"
+                    textColor: root.theme.textSecondary
+                    hoverTextColor: root.theme.textPrimary
+                    fontPixelSize: 14
+                    fontBold: true
                     onClicked: root.close()
-                    contentItem: Text {
-                        text: "✕"
-                        color: parent.hovered ? "#F8FAFC" : "#94A3B8"
-                        font.pixelSize: 14
-                        font.bold: true
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    background: Rectangle {
-                        color: parent.hovered ? "#243247" : "transparent"
-                        radius: 8
-                    }
                 }
             }
 
             Rectangle {
                 Layout.fillWidth: true
                 height: 1
-                color: "#222F42"
+                color: root.theme.border
             }
 
             // Two-column body: Left Groups, Right Deduplicated Preview
@@ -151,9 +148,9 @@ Item {
                 Rectangle {
                     Layout.fillHeight: true
                     Layout.preferredWidth: 325
-                    color: "#0D131D"
+                    color: root.theme.inputBg
                     radius: 12
-                    border.color: "#222F42"
+                    border.color: root.theme.border
                     border.width: 1
 
                     ColumnLayout {
@@ -165,51 +162,37 @@ Item {
                             Layout.fillWidth: true
                             Text {
                                 text: "Gruppi Catalogo"
-                                color: "#F8FAFC"
+                                color: root.theme.textPrimary
                                 font.pixelSize: 13
                                 font.bold: true
                                 Layout.fillWidth: true
                             }
 
-                            Button {
+                            FluxActionButton {
                                 text: "Tutti"
                                 Layout.preferredHeight: 24
                                 leftPadding: 8
                                 rightPadding: 8
-                                hoverEnabled: true
+                                cornerRadius: root.theme.radiusXs
+                                baseColor: "transparent"
+                                hoverColor: root.theme.infoBg
+                                baseBorderColor: "transparent"
+                                textColor: root.theme.borderFocus
+                                fontBold: true
                                 onClicked: quickOpenVm.selectAllGroups()
-                                contentItem: Text {
-                                    text: "Tutti"
-                                    color: "#38BDF8"
-                                    font.pixelSize: 11
-                                    font.bold: true
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                                background: Rectangle {
-                                    color: parent.hovered ? "#152336" : "transparent"
-                                    radius: 6
-                                }
                             }
 
-                            Button {
+                            FluxActionButton {
                                 text: "Nessuno"
                                 Layout.preferredHeight: 24
                                 leftPadding: 8
                                 rightPadding: 8
-                                hoverEnabled: true
+                                cornerRadius: root.theme.radiusXs
+                                baseColor: "transparent"
+                                hoverColor: root.theme.cardHover
+                                baseBorderColor: "transparent"
+                                textColor: root.theme.textSecondary
                                 onClicked: quickOpenVm.clearSelection()
-                                contentItem: Text {
-                                    text: "Nessuno"
-                                    color: "#94A3B8"
-                                    font.pixelSize: 11
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                                background: Rectangle {
-                                    color: parent.hovered ? "#182232" : "transparent"
-                                    radius: 6
-                                }
                             }
                         }
 
@@ -232,10 +215,10 @@ Item {
                                 width: groupSelectListView.width
                                 height: 44
                                 radius: 9
-                                readonly property color grpAccent: (model.groupColor && model.groupColor.length > 0) ? model.groupColor : "#38BDF8"
+                                readonly property color grpAccent: (model.groupColor && model.groupColor.length > 0) ? model.groupColor : root.theme.borderFocus
                                 readonly property bool isSelected: quickOpenVm.selectedGroupIds.indexOf(model.id) !== -1
-                                color: isSelected ? Qt.alpha(grpAccent, 0.16) : (mouseArea.containsMouse ? "#172233" : "#111926")
-                                border.color: isSelected ? grpAccent : (mouseArea.containsMouse ? Qt.alpha(grpAccent, 0.50) : "#1D283A")
+                                color: isSelected ? Qt.alpha(grpAccent, 0.16) : (mouseArea.containsMouse ? root.theme.cardHover : root.theme.surface)
+                                border.color: isSelected ? grpAccent : (mouseArea.containsMouse ? Qt.alpha(grpAccent, 0.50) : root.theme.borderSubtle)
                                 border.width: 1
 
                                 Behavior on color {
@@ -266,8 +249,8 @@ Item {
                                     Rectangle {
                                         width: 18
                                         height: 18
-                                        radius: 6
-                                        color: qoGrpRow.isSelected ? qoGrpRow.grpAccent : "#0A0E15"
+                                        radius: root.theme.radiusXs
+                                        color: qoGrpRow.isSelected ? qoGrpRow.grpAccent : root.theme.inputBg
                                         border.color: qoGrpRow.isSelected ? qoGrpRow.grpAccent : Qt.alpha(qoGrpRow.grpAccent, 0.55)
                                         border.width: 1.5
 
@@ -280,7 +263,7 @@ Item {
                                         Text {
                                             anchors.centerIn: parent
                                             text: "✓"
-                                            color: "#0A0E15"
+                                            color: root.theme.inputBg
                                             font.pixelSize: 11
                                             font.bold: true
                                             visible: qoGrpRow.isSelected
@@ -296,7 +279,7 @@ Item {
 
                                     Text {
                                         text: model.name
-                                        color: "#F8FAFC"
+                                        color: root.theme.textPrimary
                                         font.pixelSize: 13
                                         font.bold: qoGrpRow.isSelected
                                         Layout.fillWidth: true
@@ -315,7 +298,7 @@ Item {
                                             id: countText
                                             anchors.centerIn: parent
                                             text: model.repositoryCount + " repo"
-                                            color: "#E2E8F0"
+                                            color: root.theme.textPrimary
                                             font.pixelSize: 10
                                             font.bold: true
                                         }
@@ -330,9 +313,9 @@ Item {
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    color: "#0D131D"
+                    color: root.theme.inputBg
                     radius: 12
-                    border.color: "#222F42"
+                    border.color: root.theme.border
                     border.width: 1
 
                     ColumnLayout {
@@ -346,7 +329,7 @@ Item {
 
                             Text {
                                 text: "Repository Risultanti"
-                                color: "#F8FAFC"
+                                color: root.theme.textPrimary
                                 font.pixelSize: 13
                                 font.bold: true
                             }
@@ -355,15 +338,15 @@ Item {
                                 height: 22
                                 width: uniqueCountLabel.implicitWidth + 14
                                 radius: 11
-                                color: "#0F2942"
-                                border.color: "#38BDF8"
+                                color: root.theme.infoBg
+                                border.color: root.theme.borderFocus
                                 border.width: 1
 
                                 Text {
                                     id: uniqueCountLabel
                                     anchors.centerIn: parent
                                     text: quickOpenVm.resolvedRepositoriesCount + " unici"
-                                    color: "#38BDF8"
+                                    color: root.theme.borderFocus
                                     font.pixelSize: 11
                                     font.bold: true
                                 }
@@ -374,8 +357,8 @@ Item {
                                 height: 22
                                 width: dedupLabel.implicitWidth + 14
                                 radius: 11
-                                color: "#221248"
-                                border.color: "#7C4DFF"
+                                color: Qt.alpha(root.theme.accentPurple, 0.18)
+                                border.color: root.theme.accentPurple
                                 border.width: 1
                                 visible: quickOpenVm.deduplicatedCount > 0
 
@@ -383,7 +366,7 @@ Item {
                                     id: dedupLabel
                                     anchors.centerIn: parent
                                     text: "⚡ " + quickOpenVm.deduplicatedCount + " duplicati uniti"
-                                    color: "#E9D5FF"
+                                    color: root.theme.textPrimary
                                     font.pixelSize: 11
                                     font.bold: true
                                 }
@@ -413,8 +396,8 @@ Item {
                                 width: previewListView.width
                                 height: 48
                                 radius: 9
-                                color: "#131C2A"
-                                border.color: "#222F42"
+                                color: root.theme.card
+                                border.color: root.theme.border
                                 border.width: 1
 
                                 RowLayout {
@@ -434,7 +417,7 @@ Item {
 
                                         Text {
                                             text: modelData.displayName
-                                            color: "#F8FAFC"
+                                            color: root.theme.textPrimary
                                             font.pixelSize: 13
                                             font.bold: true
                                             elide: Text.ElideRight
@@ -442,7 +425,7 @@ Item {
 
                                         Text {
                                             text: modelData.localPath
-                                            color: "#94A3B8"
+                                            color: root.theme.textSecondary
                                             font.pixelSize: 11
                                             elide: Text.ElideMiddle
                                             Layout.fillWidth: true
@@ -453,15 +436,15 @@ Item {
                                         visible: modelData.isMissing
                                         height: 20
                                         width: 62
-                                        radius: 6
-                                        color: "#3B1219"
-                                        border.color: "#EF4444"
+                                        radius: root.theme.radiusXs
+                                        color: root.theme.dangerBg
+                                        border.color: root.theme.danger
                                         border.width: 1
 
                                         Text {
                                             anchors.centerIn: parent
                                             text: "Mancante"
-                                            color: "#FCA5A5"
+                                            color: root.theme.dangerText
                                             font.pixelSize: 10
                                             font.bold: true
                                         }
@@ -482,7 +465,7 @@ Item {
 
                                     Text {
                                         text: "Nessun gruppo selezionato"
-                                        color: "#94A3B8"
+                                        color: root.theme.textSecondary
                                         font.pixelSize: 13
                                         font.bold: true
                                         Layout.alignment: Qt.AlignHCenter
@@ -490,7 +473,7 @@ Item {
 
                                     Text {
                                         text: "Seleziona uno o più gruppi a sinistra per generare il contesto multi-repo volatile."
-                                        color: "#64748B"
+                                        color: root.theme.textMuted
                                         font.pixelSize: 11
                                         wrapMode: Text.WordWrap
                                         Layout.maximumWidth: 260
@@ -510,69 +493,36 @@ Item {
 
                 Text {
                     text: "Le sessioni rapide non modificano i file di configurazione del workspace."
-                    color: "#64748B"
+                    color: root.theme.textMuted
                     font.pixelSize: 11
                     Layout.fillWidth: true
                 }
 
-                Button {
+                FluxActionButton {
                     text: "Annulla"
                     Layout.preferredHeight: 36
                     leftPadding: 16
                     rightPadding: 16
-                    hoverEnabled: true
+                    fontPixelSize: 12
+                    fontBold: true
                     onClicked: root.close()
-                    contentItem: Text {
-                        text: "Annulla"
-                        color: "#CBD5E1"
-                        font.pixelSize: 12
-                        font.bold: true
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    background: Rectangle {
-                        color: parent.hovered ? "#1E2B3E" : "#151E2C"
-                        radius: 8
-                        border.color: "#28374E"
-                        border.width: 1
-
-                        Behavior on color {
-                            ColorAnimation {
-                                duration: 120
-                            }
-                        }
-                    }
                 }
 
-                Button {
+                FluxActionButton {
                     enabled: quickOpenVm.resolvedRepositoriesCount > 0
+                    text: "⚡ Apri Sessione Rapida (" + quickOpenVm.resolvedRepositoriesCount + " Repo)"
                     Layout.preferredHeight: 36
                     leftPadding: 18
                     rightPadding: 18
-                    hoverEnabled: true
+                    baseColor: root.theme.accentBlue
+                    hoverColor: root.theme.accentBlueHover
+                    baseBorderColor: root.theme.borderFocus
+                    textColor: root.theme.selectionText
+                    fontPixelSize: 12
+                    fontBold: true
                     onClicked: {
                         if (quickOpenVm.openQuickSession()) {
                             root.close();
-                        }
-                    }
-                    contentItem: Text {
-                        text: "⚡ Apri Sessione Rapida (" + quickOpenVm.resolvedRepositoriesCount + " Repo)"
-                        color: parent.enabled ? "#FFFFFF" : "#475569"
-                        font.pixelSize: 12
-                        font.bold: true
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    background: Rectangle {
-                        color: parent.enabled ? (parent.hovered ? "#0EA5E9" : "#0284C7") : "#161F2E"
-                        radius: 8
-                        border.color: parent.enabled ? "#38BDF8" : "#222F42"
-                        border.width: 1
-
-                        Behavior on color {
-                            ColorAnimation {
-                                duration: 120
-                            }
                         }
                     }
                 }

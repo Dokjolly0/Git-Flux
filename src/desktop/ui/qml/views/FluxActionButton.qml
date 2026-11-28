@@ -1,22 +1,34 @@
 import QtQuick
 import QtQuick.Controls
+import "../themes"
 
 Button {
     id: control
 
-    property color baseColor: "#151E2C"
-    property color hoverColor: "#1E2B3E"
-    property color disabledColor: "#161F2E"
-    property color baseBorderColor: "#28374E"
+    readonly property FluxTheme theme: FluxTheme {}
+
+    property string variant: "" // "", "primary", "danger", "success"
+    property color baseColor: variant === "primary" ? theme.accentBlue
+        : (variant === "danger" ? theme.dangerBg
+        : (variant === "success" ? theme.successBg : theme.surfaceElevated))
+    property color hoverColor: variant === "primary" ? theme.accentBlueHover
+        : (variant === "danger" ? theme.danger
+        : (variant === "success" ? theme.success : theme.cardHover))
+    property color disabledColor: theme.surface
+    property color baseBorderColor: variant === "primary" ? theme.borderFocus
+        : (variant === "danger" ? theme.danger
+        : (variant === "success" ? theme.success : theme.borderHighlight))
     property color hoverBorderColor: baseBorderColor
-    property color disabledBorderColor: "#222F42"
-    property color textColor: "#CBD5E1"
+    property color disabledBorderColor: theme.border
+    property color textColor: variant === "primary" ? theme.selectionText
+        : (variant === "danger" ? theme.dangerText
+        : (variant === "success" ? theme.successText : theme.textPrimary))
     property color hoverTextColor: textColor
-    property color disabledTextColor: "#475569"
-    property int cornerRadius: 8
-    property int fontPixelSize: 11
+    property color disabledTextColor: theme.textPlaceholder
+    property int cornerRadius: theme.radiusSm
+    property int fontPixelSize: theme.fontCaption
     property bool fontBold: false
-    property int animDuration: 120
+    property int animDuration: theme.animFast
 
     hoverEnabled: true
     leftPadding: 14

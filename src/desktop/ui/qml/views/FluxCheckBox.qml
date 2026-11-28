@@ -1,12 +1,15 @@
 import QtQuick
 import QtQuick.Controls
+import "../themes"
 
 CheckBox {
     id: control
 
-    property color textColor: "#CBD5E1"
-    property color checkedTextColor: "#F8FAFC"
-    property int fontSize: 11
+    readonly property FluxTheme theme: FluxTheme {}
+
+    property color textColor: theme.textSecondary
+    property color checkedTextColor: theme.textPrimary
+    property int fontSize: theme.fontCaption
 
     hoverEnabled: true
     padding: 2
@@ -17,31 +20,33 @@ CheckBox {
         implicitHeight: 18
         x: control.leftPadding
         y: parent.height / 2 - height / 2
-        radius: 6
+        radius: control.theme.radiusXs
         color: control.checked
-            ? (control.hovered ? "#0EA5E9" : "#0284C7")
-            : (control.hovered ? "#1E293B" : "#0B1019")
+            ? (control.hovered ? control.theme.accentBlueHover : control.theme.accentBlue)
+            : (control.hovered ? control.theme.cardHover : control.theme.inputBg)
         border.color: control.checked
-            ? "#38BDF8"
-            : (control.activeFocus ? "#38BDF8" : (control.hovered ? "#475569" : "#2D3B4E"))
+            ? control.theme.borderFocus
+            : (control.activeFocus
+                ? control.theme.borderFocus
+                : (control.hovered ? control.theme.borderHighlight : control.theme.border))
         border.width: 1
 
         Behavior on color {
             ColorAnimation {
-                duration: 120
+                duration: control.theme.animFast
             }
         }
         Behavior on border.color {
             ColorAnimation {
-                duration: 120
+                duration: control.theme.animFast
             }
         }
 
         Text {
             anchors.centerIn: parent
             text: "✓"
-            color: "#FFFFFF"
-            font.pixelSize: 11
+            color: control.theme.selectionText
+            font.pixelSize: control.theme.fontCaption
             font.bold: true
             opacity: control.checked ? 1.0 : 0.0
             scale: control.checked ? 1.0 : 0.6
@@ -64,14 +69,16 @@ CheckBox {
         text: control.text
         font.pixelSize: control.fontSize
         font.bold: control.font.bold
-        color: !control.enabled ? "#475569" : (control.checked ? control.checkedTextColor : control.textColor)
+        color: !control.enabled
+            ? control.theme.textPlaceholder
+            : (control.checked ? control.checkedTextColor : control.textColor)
         leftPadding: control.indicator && control.indicator.visible ? control.indicator.width + control.spacing : 0
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight
 
         Behavior on color {
             ColorAnimation {
-                duration: 120
+                duration: control.theme.animFast
             }
         }
     }

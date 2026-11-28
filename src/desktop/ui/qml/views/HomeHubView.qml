@@ -10,65 +10,13 @@ Item {
 
     readonly property var homeHubVmRef: (typeof homeHubVm !== "undefined") ? homeHubVm : null
 
-    component GroupColorSwatchPicker: RowLayout {
-        id: swatchPicker
-        property string selectedColor: ""
-        readonly property var paletteColors: root.homeHubVmRef && root.homeHubVmRef.groupColorPalette
-            ? root.homeHubVmRef.groupColorPalette
-            : fluxTheme.accentPalette
-        spacing: 8
-        Layout.preferredHeight: 28
-        implicitHeight: 28
-
-        Repeater {
-            model: swatchPicker.paletteColors
-            delegate: Rectangle {
-                id: swatchRect
-                required property string modelData
-                readonly property bool isSelected: swatchPicker.selectedColor.toLowerCase() === modelData.toLowerCase()
-                implicitWidth: 24
-                implicitHeight: 24
-                Layout.preferredWidth: 24
-                Layout.preferredHeight: 24
-                Layout.alignment: Qt.AlignVCenter
-                width: 24
-                height: 24
-                radius: 12
-                color: modelData
-                border.color: isSelected ? "#F8FAFC" : (swatchMa.containsMouse ? "#CBD5E1" : "transparent")
-                border.width: isSelected ? 2.5 : 1.5
-                scale: isSelected ? 1.12 : (swatchMa.containsMouse ? 1.06 : 1.0)
-
-                Behavior on scale { NumberAnimation { duration: 100 } }
-                Behavior on border.color { ColorAnimation { duration: 100 } }
-
-                Text {
-                    anchors.centerIn: parent
-                    visible: swatchRect.isSelected
-                    text: "✓"
-                    color: "#0A0E15"
-                    font.pixelSize: 12
-                    font.bold: true
-                }
-
-                MouseArea {
-                    id: swatchMa
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: swatchPicker.selectedColor = swatchRect.modelData
-                }
-            }
-        }
-    }
-
     property bool isDraggingRepo: false
     property string draggedRepoId: ""
     property string draggedRepoName: ""
     property bool isDraggingGroup: false
     property string draggedGroupId: ""
     property string draggedGroupName: ""
-    property color draggedGroupColor: "#7C4DFF"
+    property color draggedGroupColor: fluxTheme.accentPurple
     property string hoveredGroupId: ""
     property string hoveredGroupName: ""
     property string hoveredWorkspaceId: ""
@@ -88,7 +36,7 @@ Item {
         isDraggingGroup = true;
         draggedGroupId = groupId;
         draggedGroupName = groupName;
-        draggedGroupColor = (groupColor && groupColor.length > 0) ? groupColor : "#7C4DFF";
+        draggedGroupColor = (groupColor && groupColor.length > 0) ? groupColor : fluxTheme.accentPurple;
     }
 
     function clearDragState() {
@@ -98,7 +46,7 @@ Item {
         isDraggingGroup = false;
         draggedGroupId = "";
         draggedGroupName = "";
-        draggedGroupColor = "#7C4DFF";
+        draggedGroupColor = fluxTheme.accentPurple;
         hoveredGroupId = "";
         hoveredGroupName = "";
         hoveredWorkspaceId = "";
@@ -218,8 +166,8 @@ Item {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 58
-            color: "#0D131D"
-            border.color: "#1B2535"
+            color: fluxTheme.surface
+            border.color: fluxTheme.borderSubtle
             border.width: 1
 
             RowLayout {
@@ -245,7 +193,7 @@ Item {
 
                     Text {
                         text: "Git Flux"
-                        color: "#F8FAFC"
+                        color: fluxTheme.textPrimary
                         font.pixelSize: 16
                         font.bold: true
                     }
@@ -261,13 +209,13 @@ Item {
                     Layout.maximumWidth: 430
                     height: 36
                     radius: 10
-                    color: "#080B10"
-                    border.color: searchInput.activeFocus ? "#38BDF8" : "#222F42"
+                    color: fluxTheme.inputBg
+                    border.color: searchInput.activeFocus ? fluxTheme.accentCyan : fluxTheme.border
                     border.width: 1
 
                     Behavior on border.color {
                         ColorAnimation {
-                            duration: 120
+                            duration: fluxTheme.animFast
                         }
                     }
 
@@ -280,13 +228,13 @@ Item {
                         Text {
                             text: "🔍"
                             font.pixelSize: 12
-                            color: searchInput.activeFocus ? "#38BDF8" : "#64748B"
+                            color: searchInput.activeFocus ? fluxTheme.accentCyan : fluxTheme.textMuted
                         }
 
                         TextInput {
                             id: searchInput
                             Layout.fillWidth: true
-                            color: "#F8FAFC"
+                            color: fluxTheme.textPrimary
                             font.pixelSize: 13
                             selectByMouse: true
                             clip: true
@@ -294,7 +242,7 @@ Item {
 
                             Text {
                                 text: "Filtra repository, gruppi o workspace..."
-                                color: "#64748B"
+                                color: fluxTheme.textMuted
                                 font.pixelSize: 13
                                 visible: !searchInput.text && !searchInput.activeFocus
                             }
@@ -310,14 +258,14 @@ Item {
                             onClicked: searchInput.text = ""
                             contentItem: Text {
                                 text: "✕"
-                                color: parent.hovered ? "#F8FAFC" : "#94A3B8"
+                                color: parent.hovered ? fluxTheme.textPrimary : fluxTheme.textMuted
                                 font.pixelSize: 11
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
                             }
                             background: Rectangle {
                                 radius: 6
-                                color: parent.hovered ? "#1E293B" : "transparent"
+                                color: parent.hovered ? fluxTheme.cardHover : "transparent"
                             }
                         }
                     }
@@ -336,8 +284,8 @@ Item {
                         height: 36
                         implicitWidth: sectionPillsLayout.implicitWidth + 10
                         radius: 10
-                        color: "#080B10"
-                        border.color: "#222F42"
+                        color: fluxTheme.inputBg
+                        border.color: fluxTheme.border
                         border.width: 1
 
                         RowLayout {
@@ -350,13 +298,13 @@ Item {
                                 height: 28
                                 implicitWidth: repoPillInnerRow.implicitWidth + 18
                                 radius: 7
-                                color: (homeHubVm && homeHubVm.showRepositories) ? "#0F2942" : (repoPillMouse.containsMouse ? "#121A27" : "transparent")
-                                border.color: (homeHubVm && homeHubVm.showRepositories) ? "#0284C7" : "transparent"
+                                color: (homeHubVm && homeHubVm.showRepositories) ? fluxTheme.infoBg : (repoPillMouse.containsMouse ? fluxTheme.cardHover : "transparent")
+                                border.color: (homeHubVm && homeHubVm.showRepositories) ? fluxTheme.info : "transparent"
                                 border.width: 1
 
                                 Behavior on color {
                                     ColorAnimation {
-                                        duration: 110
+                                        duration: fluxTheme.animFast
                                     }
                                 }
 
@@ -370,7 +318,7 @@ Item {
                                     }
                                     Text {
                                         text: "Repository"
-                                        color: (homeHubVm && homeHubVm.showRepositories) ? "#38BDF8" : "#94A3B8"
+                                        color: (homeHubVm && homeHubVm.showRepositories) ? fluxTheme.accentCyan : fluxTheme.textMuted
                                         font.pixelSize: 11
                                         font.bold: Boolean(homeHubVm && homeHubVm.showRepositories)
                                     }
@@ -392,13 +340,13 @@ Item {
                                 height: 28
                                 implicitWidth: grpPillInnerRow.implicitWidth + 18
                                 radius: 7
-                                color: (homeHubVm && homeHubVm.showGroups) ? "#23124A" : (grpPillMouse.containsMouse ? "#121A27" : "transparent")
-                                border.color: (homeHubVm && homeHubVm.showGroups) ? "#7C4DFF" : "transparent"
+                                color: (homeHubVm && homeHubVm.showGroups) ? Qt.alpha(fluxTheme.accentPurple, 0.22) : (grpPillMouse.containsMouse ? fluxTheme.cardHover : "transparent")
+                                border.color: (homeHubVm && homeHubVm.showGroups) ? fluxTheme.accentPurple : "transparent"
                                 border.width: 1
 
                                 Behavior on color {
                                     ColorAnimation {
-                                        duration: 110
+                                        duration: fluxTheme.animFast
                                     }
                                 }
 
@@ -412,7 +360,7 @@ Item {
                                     }
                                     Text {
                                         text: "Gruppi"
-                                        color: (homeHubVm && homeHubVm.showGroups) ? "#E9D5FF" : "#94A3B8"
+                                        color: (homeHubVm && homeHubVm.showGroups) ? fluxTheme.textPrimary : fluxTheme.textMuted
                                         font.pixelSize: 11
                                         font.bold: Boolean(homeHubVm && homeHubVm.showGroups)
                                     }
@@ -434,13 +382,13 @@ Item {
                                 height: 28
                                 implicitWidth: wsPillInnerRow.implicitWidth + 18
                                 radius: 7
-                                color: (homeHubVm && homeHubVm.showWorkspaces) ? "#063B2C" : (wsPillMouse.containsMouse ? "#121A27" : "transparent")
-                                border.color: (homeHubVm && homeHubVm.showWorkspaces) ? "#10B981" : "transparent"
+                                color: (homeHubVm && homeHubVm.showWorkspaces) ? fluxTheme.successBg : (wsPillMouse.containsMouse ? fluxTheme.cardHover : "transparent")
+                                border.color: (homeHubVm && homeHubVm.showWorkspaces) ? fluxTheme.accentTeal : "transparent"
                                 border.width: 1
 
                                 Behavior on color {
                                     ColorAnimation {
-                                        duration: 110
+                                        duration: fluxTheme.animFast
                                     }
                                 }
 
@@ -454,7 +402,7 @@ Item {
                                     }
                                     Text {
                                         text: "Workspace"
-                                        color: (homeHubVm && homeHubVm.showWorkspaces) ? "#34D399" : "#94A3B8"
+                                        color: (homeHubVm && homeHubVm.showWorkspaces) ? fluxTheme.accentTeal : fluxTheme.textMuted
                                         font.pixelSize: 11
                                         font.bold: Boolean(homeHubVm && homeHubVm.showWorkspaces)
                                     }
@@ -484,30 +432,30 @@ Item {
                             spacing: 6
                             Text {
                                 text: "⬇"
-                                color: "#38BDF8"
+                                color: fluxTheme.accentCyan
                                 font.pixelSize: 12
                             }
                             Text {
                                 text: "Clona"
-                                color: "#F8FAFC"
+                                color: fluxTheme.textPrimary
                                 font.pixelSize: 12
                                 font.bold: true
                             }
                         }
                         background: Rectangle {
-                            color: parent.hovered ? "#1E2B3E" : "#141D2B"
+                            color: parent.hovered ? fluxTheme.cardHover : fluxTheme.surfaceElevated
                             radius: 9
-                            border.color: parent.hovered ? "#38BDF8" : "#26354A"
+                            border.color: parent.hovered ? fluxTheme.accentCyan : fluxTheme.border
                             border.width: 1
 
                             Behavior on color {
                                 ColorAnimation {
-                                    duration: 120
+                                    duration: fluxTheme.animFast
                                 }
                             }
                             Behavior on border.color {
                                 ColorAnimation {
-                                    duration: 120
+                                    duration: fluxTheme.animFast
                                 }
                             }
                         }
@@ -525,24 +473,24 @@ Item {
                             Text {
                                 text: "⚡"
                                 font.pixelSize: 12
-                                color: "#FFFFFF"
+                                color: fluxTheme.selectionText
                             }
                             Text {
                                 text: "Quick Open"
-                                color: "#FFFFFF"
+                                color: fluxTheme.selectionText
                                 font.pixelSize: 12
                                 font.bold: true
                             }
                         }
                         background: Rectangle {
-                            color: parent.hovered ? "#0EA5E9" : "#0284C7"
+                            color: parent.hovered ? fluxTheme.accentBlueHover : fluxTheme.accentBlue
                             radius: 9
-                            border.color: "#38BDF8"
+                            border.color: fluxTheme.accentCyan
                             border.width: 1
 
                             Behavior on color {
                                 ColorAnimation {
-                                    duration: 120
+                                    duration: fluxTheme.animFast
                                 }
                             }
                         }
@@ -570,13 +518,13 @@ Item {
             property bool isError: true
             property string messageText: ""
 
-            color: isError ? "#2D1517" : "#13231B"
-            border.color: isError ? "#F85149" : "#3FB950"
+            color: isError ? fluxTheme.dangerBg : fluxTheme.successBg
+            border.color: isError ? fluxTheme.danger : fluxTheme.success
             border.width: 1
 
             Behavior on opacity {
                 NumberAnimation {
-                    duration: 200
+                    duration: fluxTheme.animNormal
                 }
             }
 
@@ -620,7 +568,7 @@ Item {
 
                 Text {
                     text: feedbackBanner.messageText
-                    color: feedbackBanner.isError ? "#FF7B72" : "#7EE787"
+                    color: feedbackBanner.isError ? fluxTheme.dangerText : fluxTheme.successText
                     font.pixelSize: 12
                     font.bold: true
                     Layout.fillWidth: true
@@ -632,7 +580,7 @@ Item {
                     flat: true
                     onClicked: feedbackBanner.dismiss()
                     contentItem: Text {
-                        text: "✕"; color: "#8B949E"; font.pixelSize: 13
+                        text: "✕"; color: fluxTheme.textMuted; font.pixelSize: 13
                     }
                     background: Rectangle {
                         color: "transparent"
@@ -647,7 +595,7 @@ Item {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            color: "#080B10"
+            color: fluxTheme.canvas
 
             SplitView {
                 anchors.fill: parent
@@ -663,7 +611,7 @@ Item {
                         width: 2
                         height: 44
                         radius: 1
-                        color: SplitHandle.hovered || SplitHandle.pressed ? "#38BDF8" : "#1E293B"
+                        color: SplitHandle.hovered || SplitHandle.pressed ? fluxTheme.accentCyan : fluxTheme.borderSubtle
                     }
                 }
 
@@ -675,9 +623,9 @@ Item {
                     SplitView.preferredWidth: parent.width / root.visibleColumnCount
                     SplitView.minimumWidth: 340
                     SplitView.fillWidth: (root.visibleColumnCount === 1) || Boolean(homeHubVm && !homeHubVm.showGroups && !homeHubVm.showWorkspaces)
-                    color: "#0F141C"
+                    color: fluxTheme.surface
                     radius: 14
-                    border.color: "#1E293B"
+                    border.color: fluxTheme.borderSubtle
                     border.width: 1
 
                     ColumnLayout {
@@ -690,7 +638,7 @@ Item {
                             Layout.fillWidth: true
                             Text {
                                 text: "Repositories"
-                                color: "#F8FAFC"
+                                color: fluxTheme.textPrimary
                                 font.pixelSize: 15
                                 font.bold: true
                             }
@@ -698,14 +646,14 @@ Item {
                                 height: 22
                                 width: repoCountText.implicitWidth + 14
                                 radius: 11
-                                color: "#0F2942"
-                                border.color: "#1E4066"
+                                color: fluxTheme.infoBg
+                                border.color: fluxTheme.info
                                 border.width: 1
                                 Text {
                                     id: repoCountText
                                     anchors.centerIn: parent
                                     text: homeHubVm.repositoriesCount
-                                    color: "#38BDF8"
+                                    color: fluxTheme.accentCyan
                                     font.pixelSize: 11
                                     font.bold: true
                                 }
@@ -721,20 +669,20 @@ Item {
                                 onClicked: repoFolderDialog.open()
                                 contentItem: Text {
                                     text: "+"
-                                    color: parent.hovered ? "#F8FAFC" : "#94A3B8"
+                                    color: parent.hovered ? fluxTheme.textPrimary : fluxTheme.textMuted
                                     font.pixelSize: 15
                                     font.bold: true
                                     horizontalAlignment: Text.AlignHCenter
                                     verticalAlignment: Text.AlignVCenter
                                 }
                                 background: Rectangle {
-                                    color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                                    color: parent.hovered ? fluxTheme.cardHover : fluxTheme.surfaceElevated
                                     radius: 8
-                                    border.color: parent.hovered ? "#38BDF8" : "#243247"
+                                    border.color: parent.hovered ? fluxTheme.accentCyan : fluxTheme.border
                                     border.width: 1
                                     Behavior on color {
                                         ColorAnimation {
-                                            duration: 110
+                                            duration: fluxTheme.animFast
                                         }
                                     }
                                 }
@@ -768,18 +716,18 @@ Item {
                                 width: repoListView.width
                                 implicitHeight: repoColLayout.implicitHeight + 18
                                 radius: 10
-                                color: repoCardRect.isMissing ? "#261318" : (repoHover.containsMouse ? "#182334" : "#121A27")
-                                border.color: repoCardRect.isMissing ? "#EF4444" : (repoHover.containsMouse ? "#38BDF8" : "#1F2C3F")
+                                color: repoCardRect.isMissing ? fluxTheme.dangerBg : (repoHover.containsMouse ? fluxTheme.cardHover : fluxTheme.card)
+                                border.color: repoCardRect.isMissing ? fluxTheme.danger : (repoHover.containsMouse ? fluxTheme.accentCyan : fluxTheme.borderSubtle)
                                 border.width: 1
 
                                 Behavior on color {
                                     ColorAnimation {
-                                        duration: 110
+                                        duration: fluxTheme.animFast
                                     }
                                 }
                                 Behavior on border.color {
                                     ColorAnimation {
-                                        duration: 110
+                                        duration: fluxTheme.animFast
                                     }
                                 }
 
@@ -796,7 +744,7 @@ Item {
 
                                         Text {
                                             text: "⋮⋮"
-                                            color: repoHover.containsMouse ? "#38BDF8" : "#475569"
+                                            color: repoHover.containsMouse ? fluxTheme.accentCyan : fluxTheme.textPlaceholder
                                             font.pixelSize: 13
                                             visible: !repoCardRect.isMissing
                                             ToolTip.visible: repoHover.containsMouse && !root.isDraggingRepo
@@ -811,7 +759,7 @@ Item {
                                         Text {
                                             id: repoCardNameText
                                             text: repoCardRect.displayName
-                                            color: "#F0F6FC"
+                                            color: fluxTheme.textPrimary
                                             font.pixelSize: 13
                                             font.bold: true
                                             elide: Text.ElideRight
@@ -832,8 +780,8 @@ Item {
                                             height: 18
                                             implicitWidth: branchText.implicitWidth + 12
                                             radius: 9
-                                            color: "#0F2634"
-                                            border.color: "#0284C7"
+                                            color: fluxTheme.infoBg
+                                            border.color: fluxTheme.info
                                             border.width: 1
 
                                             RowLayout {
@@ -841,13 +789,13 @@ Item {
                                                 spacing: 3
                                                 Text {
                                                     text: ""
-                                                    color: "#38BDF8"
+                                                    color: fluxTheme.accentCyan
                                                     font.pixelSize: 10
                                                 }
                                                 Text {
                                                     id: branchText
                                                     text: repoCardRect.branch ? repoCardRect.branch : ""
-                                                    color: "#38BDF8"
+                                                    color: fluxTheme.accentCyan
                                                     font.pixelSize: 10
                                                     font.bold: true
                                                 }
@@ -860,12 +808,12 @@ Item {
                                             height: 18
                                             implicitWidth: 60
                                             radius: 4
-                                            color: "#3A1B1F"
-                                            border.color: "#F85149"
+                                            color: fluxTheme.dangerBg
+                                            border.color: fluxTheme.danger
                                             Text {
                                                 anchors.centerIn: parent
                                                 text: "Mancante"
-                                                color: "#F85149"
+                                                color: fluxTheme.danger
                                                 font.pixelSize: 10
                                             }
                                         }
@@ -887,20 +835,20 @@ Item {
                                             }
                                             contentItem: Text {
                                                 text: "Ricollega"
-                                                color: "#38BDF8"
+                                                color: fluxTheme.accentCyan
                                                 font.pixelSize: 11
                                                 font.bold: true
                                                 horizontalAlignment: Text.AlignHCenter
                                                 verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                                                color: parent.hovered ? fluxTheme.cardHover : fluxTheme.surfaceElevated
                                                 radius: 7
-                                                border.color: "#38BDF8"
+                                                border.color: fluxTheme.accentCyan
                                                 border.width: 1
                                                 Behavior on color {
                                                     ColorAnimation {
-                                                        duration: 110
+                                                        duration: fluxTheme.animFast
                                                     }
                                                 }
                                             }
@@ -921,23 +869,23 @@ Item {
                                                 Text {
                                                     text: "▶"
                                                     font.pixelSize: 9
-                                                    color: "#FFFFFF"
+                                                    color: fluxTheme.selectionText
                                                 }
                                                 Text {
                                                     text: "Apri"
-                                                    color: "#FFFFFF"
+                                                    color: fluxTheme.selectionText
                                                     font.pixelSize: 11
                                                     font.bold: true
                                                 }
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#0EA5E9" : "#0284C7"
+                                                color: parent.hovered ? fluxTheme.accentBlueHover : fluxTheme.accentBlue
                                                 radius: 7
-                                                border.color: "#38BDF8"
+                                                border.color: fluxTheme.accentCyan
                                                 border.width: 1
                                                 Behavior on color {
                                                     ColorAnimation {
-                                                        duration: 110
+                                                        duration: fluxTheme.animFast
                                                     }
                                                 }
                                             }
@@ -951,7 +899,7 @@ Item {
 
                                         Text {
                                             text: repoCardRect.localPath
-                                            color: "#8B949E"
+                                            color: fluxTheme.textMuted
                                             font.pixelSize: 11
                                             elide: Text.ElideMiddle
                                             Layout.fillWidth: true
@@ -970,7 +918,7 @@ Item {
                                                 text: "📂"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                                color: parent.hovered ? fluxTheme.cardHover : "transparent"; radius: 7
                                             }
                                         }
 
@@ -987,7 +935,7 @@ Item {
                                                 text: "💻"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                                color: parent.hovered ? fluxTheme.cardHover : "transparent"; radius: 7
                                             }
                                         }
 
@@ -1003,7 +951,7 @@ Item {
                                                 text: "📋"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                                color: parent.hovered ? fluxTheme.cardHover : "transparent"; radius: 7
                                             }
                                         }
 
@@ -1023,7 +971,7 @@ Item {
                                                 text: "✏️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                                color: parent.hovered ? fluxTheme.cardHover : "transparent"; radius: 7
                                             }
                                         }
 
@@ -1045,7 +993,7 @@ Item {
                                                 text: "🗂️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                                color: parent.hovered ? fluxTheme.cardHover : "transparent"; radius: 7
                                             }
                                         }
 
@@ -1058,10 +1006,10 @@ Item {
                                             ToolTip.text: "Rimuovi dal catalogo"
                                             onClicked: homeHubVm.removeRepository(repoCardRect.id)
                                             contentItem: Text {
-                                                text: "✕"; color: parent.hovered ? "#EF4444" : "#8B949E"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                                                text: "✕"; color: parent.hovered ? fluxTheme.danger : fluxTheme.textMuted; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#3B1219" : "transparent"; radius: 7
+                                                color: parent.hovered ? fluxTheme.dangerBg : "transparent"; radius: 7
                                             }
                                         }
                                     }
@@ -1155,26 +1103,19 @@ Item {
 
                                     Text {
                                         text: "Nessun repository registrato."
-                                        color: "#8B949E"
+                                        color: fluxTheme.textMuted
                                         font.pixelSize: 13
                                         horizontalAlignment: Text.AlignHCenter
                                         Layout.alignment: Qt.AlignHCenter
                                     }
 
-                                    Button {
+                                    FluxActionButton {
                                         Layout.alignment: Qt.AlignHCenter
+                                        text: "📁 Sfoglia cartella..."
+                                        textColor: fluxTheme.accentCyan
+                                        fontBold: true
+                                        fontPixelSize: 12
                                         onClicked: repoFolderDialog.open()
-                                        contentItem: Text {
-                                            text: "📁 Sfoglia cartella..."
-                                            color: "#58A6FF"
-                                            font.pixelSize: 12
-                                            font.bold: true
-                                        }
-                                        background: Rectangle {
-                                            color: parent.hovered ? "#30363D" : "#21262D"
-                                            radius: 6
-                                            border.color: "#30363D"
-                                        }
                                     }
                                 }
                             }
@@ -1190,9 +1131,9 @@ Item {
                     SplitView.preferredWidth: parent.width / root.visibleColumnCount
                     SplitView.minimumWidth: 340
                     SplitView.fillWidth: (root.visibleColumnCount === 1) || Boolean(homeHubVm && !homeHubVm.showWorkspaces)
-                    color: "#0F141C"
+                    color: fluxTheme.surface
                     radius: 14
-                    border.color: "#1E293B"
+                    border.color: fluxTheme.borderSubtle
                     border.width: 1
 
                     ColumnLayout {
@@ -1205,7 +1146,7 @@ Item {
                             Layout.fillWidth: true
                             Text {
                                 text: "Gruppi"
-                                color: "#F8FAFC"
+                                color: fluxTheme.textPrimary
                                 font.pixelSize: 15
                                 font.bold: true
                             }
@@ -1213,14 +1154,14 @@ Item {
                                 height: 22
                                 width: groupCountText.implicitWidth + 14
                                 radius: 11
-                                color: "#23124A"
-                                border.color: "#5B21B6"
+                                color: Qt.alpha(fluxTheme.accentPurple, 0.22)
+                                border.color: fluxTheme.accentPurple
                                 border.width: 1
                                 Text {
                                     id: groupCountText
                                     anchors.centerIn: parent
                                     text: homeHubVm.groupsCount
-                                    color: "#C084FC"
+                                    color: fluxTheme.accentPurple
                                     font.pixelSize: 11
                                     font.bold: true
                                 }
@@ -1236,20 +1177,20 @@ Item {
                                 onClicked: addGroupDialog.open()
                                 contentItem: Text {
                                     text: "+"
-                                    color: parent.hovered ? "#F8FAFC" : "#94A3B8"
+                                    color: parent.hovered ? fluxTheme.textPrimary : fluxTheme.textMuted
                                     font.pixelSize: 15
                                     font.bold: true
                                     horizontalAlignment: Text.AlignHCenter
                                     verticalAlignment: Text.AlignVCenter
                                 }
                                 background: Rectangle {
-                                    color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                                    color: parent.hovered ? fluxTheme.cardHover : fluxTheme.surfaceElevated
                                     radius: 8
-                                    border.color: parent.hovered ? "#A855F7" : "#243247"
+                                    border.color: parent.hovered ? fluxTheme.accentPurple : fluxTheme.border
                                     border.width: 1
                                     Behavior on color {
                                         ColorAnimation {
-                                            duration: 110
+                                            duration: fluxTheme.animFast
                                         }
                                     }
                                 }
@@ -1283,29 +1224,29 @@ Item {
 
                                 property string grpCardId: grpCardRect.id
                                 property string grpCardName: grpCardRect.name
-                                readonly property color accentColor: grpCardRect.groupColor.length > 0 ? grpCardRect.groupColor : "#7C4DFF"
+                                readonly property color accentColor: grpCardRect.groupColor.length > 0 ? grpCardRect.groupColor : fluxTheme.accentPurple
                                 readonly property bool isDropTarget: root.isDraggingRepo && (root.hoveredGroupId === grpCardRect.id)
 
                                 width: groupListView.width
                                 implicitHeight: grpColLayout.implicitHeight + 18
                                 radius: 10
-                                color: isDropTarget ? Qt.alpha(accentColor, 0.22) : (grpHover.containsMouse ? "#182334" : "#121A27")
-                                border.color: isDropTarget ? accentColor : (grpHover.containsMouse ? Qt.alpha(accentColor, 0.72) : "#1F2C3F")
+                                color: isDropTarget ? Qt.alpha(accentColor, 0.22) : (grpHover.containsMouse ? fluxTheme.cardHover : fluxTheme.card)
+                                border.color: isDropTarget ? accentColor : (grpHover.containsMouse ? Qt.alpha(accentColor, 0.72) : fluxTheme.borderSubtle)
                                 border.width: isDropTarget ? 2 : 1
                                 scale: isDropTarget ? 1.02 : 1.0
                                 Behavior on scale {
                                     NumberAnimation {
-                                        duration: 100
+                                        duration: fluxTheme.animFast
                                     }
                                 }
                                 Behavior on color {
                                     ColorAnimation {
-                                        duration: 110
+                                        duration: fluxTheme.animFast
                                     }
                                 }
                                 Behavior on border.color {
                                     ColorAnimation {
-                                        duration: 110
+                                        duration: fluxTheme.animFast
                                     }
                                 }
 
@@ -1336,7 +1277,7 @@ Item {
 
                                         Text {
                                             text: "⋮⋮"
-                                            color: grpHover.containsMouse ? grpCardRect.accentColor : "#475569"
+                                            color: grpHover.containsMouse ? grpCardRect.accentColor : fluxTheme.textPlaceholder
                                             font.pixelSize: 13
                                             ToolTip.visible: grpHover.containsMouse && !root.isDraggingGroup
                                             ToolTip.text: "Trascina su un workspace per associarlo"
@@ -1348,7 +1289,7 @@ Item {
                                             height: 11
                                             radius: 5.5
                                             color: grpCardRect.accentColor
-                                            border.color: colorDotMa.containsMouse ? "#F8FAFC" : Qt.alpha(grpCardRect.accentColor, 0.35)
+                                            border.color: colorDotMa.containsMouse ? fluxTheme.textPrimary : Qt.alpha(grpCardRect.accentColor, 0.35)
                                             border.width: colorDotMa.containsMouse ? 1.5 : 1
 
                                             MouseArea {
@@ -1371,7 +1312,7 @@ Item {
                                         Text {
                                             id: grpCardNameText
                                             text: grpCardRect.name
-                                            color: "#F0F6FC"
+                                            color: fluxTheme.textPrimary
                                             font.pixelSize: 13
                                             font.bold: true
                                             elide: Text.ElideRight
@@ -1398,7 +1339,7 @@ Item {
                                                 id: grpBadgeText
                                                 anchors.centerIn: parent
                                                 text: grpCardRect.repositoryCount + (grpCardRect.repositoryCount === 1 ? " progetto" : " progetti")
-                                                color: "#F0F6FC"
+                                                color: fluxTheme.textPrimary
                                                 font.pixelSize: 10
                                                 font.bold: true
                                             }
@@ -1426,7 +1367,7 @@ Item {
                                                 }
                                                 Text {
                                                     text: "Apri Gruppo"
-                                                    color: "#F8FAFC"
+                                                    color: fluxTheme.textPrimary
                                                     font.pixelSize: 11
                                                     font.bold: true
                                                 }
@@ -1438,12 +1379,12 @@ Item {
                                                 border.width: 1
                                                 Behavior on color {
                                                     ColorAnimation {
-                                                        duration: 110
+                                                        duration: fluxTheme.animFast
                                                     }
                                                 }
                                                 Behavior on border.color {
                                                     ColorAnimation {
-                                                        duration: 110
+                                                        duration: fluxTheme.animFast
                                                     }
                                                 }
                                             }
@@ -1467,7 +1408,7 @@ Item {
                                                 text: "➕"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                                color: parent.hovered ? fluxTheme.cardHover : "transparent"; radius: 7
                                             }
                                         }
 
@@ -1488,7 +1429,7 @@ Item {
                                                 text: "✏️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                                color: parent.hovered ? fluxTheme.cardHover : "transparent"; radius: 7
                                             }
                                         }
 
@@ -1505,10 +1446,10 @@ Item {
                                                 batchProgressModal.open();
                                             }
                                             contentItem: Text {
-                                                text: "⬇"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter; color: "#38BDF8"
+                                                text: "⬇"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter; color: fluxTheme.accentCyan
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                                color: parent.hovered ? fluxTheme.cardHover : "transparent"; radius: 7
                                             }
                                         }
 
@@ -1521,10 +1462,10 @@ Item {
                                             ToolTip.text: "Elimina gruppo"
                                             onClicked: homeHubVm.removeGroup(grpCardRect.id)
                                             contentItem: Text {
-                                                text: "✕"; color: parent.hovered ? "#EF4444" : "#8B949E"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                                                text: "✕"; color: parent.hovered ? fluxTheme.danger : fluxTheme.textMuted; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#3B1219" : "transparent"; radius: 7
+                                                color: parent.hovered ? fluxTheme.dangerBg : "transparent"; radius: 7
                                             }
                                         }
                                     }
@@ -1540,7 +1481,7 @@ Item {
                                         Text {
                                             anchors.centerIn: parent
                                             text: "📥 Rilascia per aggiungere al gruppo '" + grpCardRect.name + "'"
-                                            color: "#F8FAFC"
+                                            color: fluxTheme.textPrimary
                                             font.pixelSize: 10
                                             font.bold: true
                                         }
@@ -1577,7 +1518,7 @@ Item {
 
                                                     Text {
                                                         text: modelData
-                                                        color: "#E2E8F0"
+                                                        color: fluxTheme.textSecondary
                                                         font.pixelSize: 10
                                                         font.bold: true
                                                     }
@@ -1593,7 +1534,7 @@ Item {
                                                         Text {
                                                             anchors.centerIn: parent
                                                             text: "×"
-                                                            color: removeRepoFromGrpMa.containsMouse ? "#EF4444" : Qt.alpha(grpCardRect.accentColor, 0.85)
+                                                            color: removeRepoFromGrpMa.containsMouse ? fluxTheme.danger : Qt.alpha(grpCardRect.accentColor, 0.85)
                                                             font.pixelSize: 11
                                                             font.bold: true
                                                         }
@@ -1610,7 +1551,7 @@ Item {
                                     Text {
                                         visible: grpCardRect.repositoryCount === 0
                                         text: "Nessun progetto associato. Clicca ➕ per associare repository."
-                                        color: "#6E7681"
+                                        color: fluxTheme.textPlaceholder
                                         font.pixelSize: 11
                                     }
                                 }
@@ -1678,7 +1619,7 @@ Item {
                                 anchors.centerIn: parent
                                 visible: homeHubVm.groupsCount === 0
                                 text: "Nessun gruppo creato.\nOrganizza i repo in gruppi con '+ Gruppo'."
-                                color: "#6E7681"
+                                color: fluxTheme.textPlaceholder
                                 font.pixelSize: 12
                                 horizontalAlignment: Text.AlignHCenter
                             }
@@ -1694,9 +1635,9 @@ Item {
                     SplitView.preferredWidth: parent.width / root.visibleColumnCount
                     SplitView.minimumWidth: 340
                     SplitView.fillWidth: true
-                    color: "#0F141C"
+                    color: fluxTheme.surface
                     radius: 14
-                    border.color: "#1E293B"
+                    border.color: fluxTheme.borderSubtle
                     border.width: 1
 
                     ColumnLayout {
@@ -1709,7 +1650,7 @@ Item {
                             Layout.fillWidth: true
                             Text {
                                 text: "Workspace"
-                                color: "#F8FAFC"
+                                color: fluxTheme.textPrimary
                                 font.pixelSize: 15
                                 font.bold: true
                             }
@@ -1717,14 +1658,14 @@ Item {
                                 height: 22
                                 width: wsCountText.implicitWidth + 14
                                 radius: 11
-                                color: "#063B2C"
-                                border.color: "#059669"
+                                color: fluxTheme.successBg
+                                border.color: fluxTheme.success
                                 border.width: 1
                                 Text {
                                     id: wsCountText
                                     anchors.centerIn: parent
                                     text: homeHubVm.workspacesCount
-                                    color: "#34D399"
+                                    color: fluxTheme.accentTeal
                                     font.pixelSize: 11
                                     font.bold: true
                                 }
@@ -1740,20 +1681,20 @@ Item {
                                 onClicked: addWorkspaceDialog.open()
                                 contentItem: Text {
                                     text: "+"
-                                    color: parent.hovered ? "#F8FAFC" : "#94A3B8"
+                                    color: parent.hovered ? fluxTheme.textPrimary : fluxTheme.textMuted
                                     font.pixelSize: 15
                                     font.bold: true
                                     horizontalAlignment: Text.AlignHCenter
                                     verticalAlignment: Text.AlignVCenter
                                 }
                                 background: Rectangle {
-                                    color: parent.hovered ? "#1E2B3E" : "#151E2C"
+                                    color: parent.hovered ? fluxTheme.cardHover : fluxTheme.surfaceElevated
                                     radius: 8
-                                    border.color: parent.hovered ? "#10B981" : "#243247"
+                                    border.color: parent.hovered ? fluxTheme.accentTeal : fluxTheme.border
                                     border.width: 1
                                     Behavior on color {
                                         ColorAnimation {
-                                            duration: 110
+                                            duration: fluxTheme.animFast
                                         }
                                     }
                                 }
@@ -1794,7 +1735,7 @@ Item {
 
                                 property string wsCardId: wsCardRect.id
                                 property string wsCardName: wsCardRect.name
-                                readonly property color accentColor: wsCardRect.workspaceColor.length > 0 ? wsCardRect.workspaceColor : "#10B981"
+                                readonly property color accentColor: wsCardRect.workspaceColor.length > 0 ? wsCardRect.workspaceColor : fluxTheme.accentTeal
                                 readonly property bool isDropTargetGroup: root.isDraggingGroup && (root.hoveredWorkspaceId === wsCardRect.id)
                                 readonly property bool isDropTargetRepo: root.isDraggingRepo && (root.hoveredWorkspaceId === wsCardRect.id)
                                 readonly property bool isDropTarget: isDropTargetRepo || isDropTargetGroup
@@ -1804,25 +1745,25 @@ Item {
                                 radius: 10
                                 color: isDropTarget
                                     ? Qt.alpha(root.isDraggingGroup ? root.draggedGroupColor : accentColor, 0.22)
-                                    : (wsHover.containsMouse ? "#182334" : "#121A27")
+                                    : (wsHover.containsMouse ? fluxTheme.cardHover : fluxTheme.card)
                                 border.color: isDropTarget
                                     ? (root.isDraggingGroup ? root.draggedGroupColor : accentColor)
-                                    : (wsHover.containsMouse ? Qt.alpha(accentColor, 0.72) : "#1F2C3F")
+                                    : (wsHover.containsMouse ? Qt.alpha(accentColor, 0.72) : fluxTheme.borderSubtle)
                                 border.width: isDropTarget ? 2 : 1
                                 scale: isDropTarget ? 1.02 : 1.0
                                 Behavior on scale {
                                     NumberAnimation {
-                                        duration: 100
+                                        duration: fluxTheme.animFast
                                     }
                                 }
                                 Behavior on color {
                                     ColorAnimation {
-                                        duration: 110
+                                        duration: fluxTheme.animFast
                                     }
                                 }
                                 Behavior on border.color {
                                     ColorAnimation {
-                                        duration: 110
+                                        duration: fluxTheme.animFast
                                     }
                                 }
 
@@ -1861,7 +1802,7 @@ Item {
                                             height: 11
                                             radius: 5.5
                                             color: wsCardRect.accentColor
-                                            border.color: wsColorDotMa.containsMouse ? "#F8FAFC" : Qt.alpha(wsCardRect.accentColor, 0.35)
+                                            border.color: wsColorDotMa.containsMouse ? fluxTheme.textPrimary : Qt.alpha(wsCardRect.accentColor, 0.35)
                                             border.width: wsColorDotMa.containsMouse ? 1.5 : 1
 
                                             MouseArea {
@@ -1884,7 +1825,7 @@ Item {
                                         Text {
                                             id: wsCardNameText
                                             text: wsCardRect.name
-                                            color: "#F0F6FC"
+                                            color: fluxTheme.textPrimary
                                             font.pixelSize: 13
                                             font.bold: true
                                             elide: Text.ElideRight
@@ -1910,7 +1851,7 @@ Item {
                                                 id: wsSummaryPill
                                                 anchors.centerIn: parent
                                                 text: wsCardRect.summary
-                                                color: "#F0F6FC"
+                                                color: fluxTheme.textPrimary
                                                 font.pixelSize: 10
                                                 font.bold: true
                                             }
@@ -1938,7 +1879,7 @@ Item {
                                                 }
                                                 Text {
                                                     text: "Apri"
-                                                    color: "#F8FAFC"
+                                                    color: fluxTheme.textPrimary
                                                     font.pixelSize: 11
                                                     font.bold: true
                                                 }
@@ -1950,12 +1891,12 @@ Item {
                                                 border.width: 1
                                                 Behavior on color {
                                                     ColorAnimation {
-                                                        duration: 110
+                                                        duration: fluxTheme.animFast
                                                     }
                                                 }
                                                 Behavior on border.color {
                                                     ColorAnimation {
-                                                        duration: 110
+                                                        duration: fluxTheme.animFast
                                                     }
                                                 }
                                             }
@@ -1979,7 +1920,7 @@ Item {
                                                 text: "➕"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                                color: parent.hovered ? fluxTheme.cardHover : "transparent"; radius: 7
                                             }
                                         }
 
@@ -2001,7 +1942,7 @@ Item {
                                                 text: "🗂️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                                color: parent.hovered ? fluxTheme.cardHover : "transparent"; radius: 7
                                             }
                                         }
 
@@ -2022,7 +1963,7 @@ Item {
                                                 text: "✏️"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                                color: parent.hovered ? fluxTheme.cardHover : "transparent"; radius: 7
                                             }
                                         }
 
@@ -2037,10 +1978,10 @@ Item {
                                                 batchProgressModal.open();
                                             }
                                             contentItem: Text {
-                                                text: "⬇"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter; color: "#34D399"
+                                                text: "⬇"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter; color: fluxTheme.accentTeal
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#243247" : "transparent"; radius: 7
+                                                color: parent.hovered ? fluxTheme.cardHover : "transparent"; radius: 7
                                             }
                                         }
 
@@ -2052,10 +1993,10 @@ Item {
                                             ToolTip.text: "Elimina workspace"
                                             onClicked: homeHubVm.removeWorkspace(wsCardRect.id)
                                             contentItem: Text {
-                                                text: "✕"; color: parent.hovered ? "#EF4444" : "#8B949E"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                                                text: "✕"; color: parent.hovered ? fluxTheme.danger : fluxTheme.textMuted; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
                                             }
                                             background: Rectangle {
-                                                color: parent.hovered ? "#3B1219" : "transparent"; radius: 7
+                                                color: parent.hovered ? fluxTheme.dangerBg : "transparent"; radius: 7
                                             }
                                         }
                                     }
@@ -2066,14 +2007,14 @@ Item {
                                         height: 24
                                         visible: wsCardRect.isDropTarget
                                         radius: 6
-                                        color: root.isDraggingGroup ? Qt.alpha(root.draggedGroupColor, 0.22) : "#052E16"
-                                        border.color: root.isDraggingGroup ? root.draggedGroupColor : "#22C55E"
+                                        color: root.isDraggingGroup ? Qt.alpha(root.draggedGroupColor, 0.22) : fluxTheme.successBg
+                                        border.color: root.isDraggingGroup ? root.draggedGroupColor : fluxTheme.success
                                         Text {
                                             anchors.centerIn: parent
                                             text: root.isDraggingGroup
                                                 ? ("📥 Rilascia per aggiungere il gruppo '" + root.draggedGroupName + "' al workspace")
                                                 : ("📥 Rilascia per aggiungere il repository '" + root.draggedRepoName + "' al workspace")
-                                            color: root.isDraggingGroup ? "#F8FAFC" : "#86EFAC"
+                                            color: root.isDraggingGroup ? fluxTheme.textPrimary : fluxTheme.successText
                                             font.pixelSize: 10
                                             font.bold: true
                                         }
@@ -2092,7 +2033,7 @@ Item {
                                                 id: wsGrpChip
                                                 readonly property color chipColor: (wsCardRect.groupColors && index < wsCardRect.groupColors.length && wsCardRect.groupColors[index].length > 0)
                                                     ? wsCardRect.groupColors[index]
-                                                    : "#7C4DFF"
+                                                    : fluxTheme.accentPurple
                                                 height: 22
                                                 implicitWidth: wsGrpChipRow.implicitWidth + 12
                                                 radius: 6
@@ -2114,7 +2055,7 @@ Item {
 
                                                     Text {
                                                         text: modelData
-                                                        color: "#F8FAFC"
+                                                        color: fluxTheme.textPrimary
                                                         font.pixelSize: 10
                                                         font.bold: true
                                                     }
@@ -2130,7 +2071,7 @@ Item {
                                                         Text {
                                                             anchors.centerIn: parent
                                                             text: "×"
-                                                            color: removeGrpFromWsMa.containsMouse ? "#EF4444" : Qt.alpha(wsGrpChip.chipColor, 0.85)
+                                                            color: removeGrpFromWsMa.containsMouse ? fluxTheme.danger : Qt.alpha(wsGrpChip.chipColor, 0.85)
                                                             font.pixelSize: 11
                                                             font.bold: true
                                                         }
@@ -2164,13 +2105,13 @@ Item {
                                                     ? wsCardRect.repositoryGroupNames[wsRepoChip.index]
                                                     : []
                                                 readonly property bool hasGroupColor: repoColors.length > 0
-                                                readonly property color primaryGroupColor: hasGroupColor ? repoColors[0] : "#64748B"
+                                                readonly property color primaryGroupColor: hasGroupColor ? repoColors[0] : fluxTheme.textMuted
 
                                                 height: 22
                                                 implicitWidth: wsChipRow.implicitWidth + 12
                                                 radius: 6
-                                                color: hasGroupColor ? Qt.alpha(primaryGroupColor, 0.11) : "#21262D"
-                                                border.color: hasGroupColor ? Qt.alpha(primaryGroupColor, 0.36) : "#30363D"
+                                                color: hasGroupColor ? Qt.alpha(primaryGroupColor, 0.11) : fluxTheme.surfaceElevated
+                                                border.color: hasGroupColor ? Qt.alpha(primaryGroupColor, 0.36) : fluxTheme.borderHighlight
                                                 border.width: 1
 
                                                 RowLayout {
@@ -2184,7 +2125,7 @@ Item {
                                                         width: 6
                                                         height: 6
                                                         radius: 3
-                                                        color: "#64748B"
+                                                        color: fluxTheme.textMuted
                                                     }
 
                                                     // Single dot or stacked multi-group dots for repositories belonging to workspace groups
@@ -2204,7 +2145,7 @@ Item {
                                                                 radius: wsRepoChip.repoColors.length > 1 ? 4 : 3
                                                                 z: 10 - index
                                                                 color: modelData
-                                                                border.color: "#121A27"
+                                                                border.color: fluxTheme.card
                                                                 border.width: wsRepoChip.repoColors.length > 1 ? 1 : 0
                                                             }
                                                         }
@@ -2213,14 +2154,14 @@ Item {
                                                     Text {
                                                         visible: wsRepoChip.repoColors.length > 3
                                                         text: "+" + (wsRepoChip.repoColors.length - 3)
-                                                        color: "#94A3B8"
+                                                        color: fluxTheme.textMuted
                                                         font.pixelSize: 9
                                                         font.bold: true
                                                     }
 
                                                     Text {
                                                         text: wsRepoChip.modelData
-                                                        color: wsRepoChip.hasGroupColor ? "#E2E8F0" : "#CBD5E1"
+                                                        color: wsRepoChip.hasGroupColor ? fluxTheme.textSecondary : fluxTheme.textPrimary
                                                         font.pixelSize: 10
                                                         font.bold: wsRepoChip.hasGroupColor
                                                     }
@@ -2239,8 +2180,8 @@ Item {
                                                             anchors.centerIn: parent
                                                             text: "×"
                                                             color: removeRepoFromWsMa.containsMouse
-                                                                ? "#EF4444"
-                                                                : (wsRepoChip.hasGroupColor ? Qt.alpha(wsRepoChip.primaryGroupColor, 0.85) : "#64748B")
+                                                                ? fluxTheme.danger
+                                                                : (wsRepoChip.hasGroupColor ? Qt.alpha(wsRepoChip.primaryGroupColor, 0.85) : fluxTheme.textMuted)
                                                             font.pixelSize: 11
                                                             font.bold: true
                                                         }
@@ -2256,7 +2197,7 @@ Item {
 
                                     Text {
                                         text: "Ultimo accesso: " + wsCardRect.lastOpenedAt
-                                        color: "#8B949E"
+                                        color: fluxTheme.textMuted
                                         font.pixelSize: 11
                                     }
                                 }
@@ -2275,7 +2216,7 @@ Item {
                                 anchors.centerIn: parent
                                 visible: homeHubVm.workspacesCount === 0
                                 text: "Nessun workspace configurato.\nCrea un ambiente persistente con '+ Workspace'."
-                                color: "#6E7681"
+                                color: fluxTheme.textPlaceholder
                                 font.pixelSize: 12
                                 horizontalAlignment: Text.AlignHCenter
                             }
@@ -2291,8 +2232,8 @@ Item {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 30
-            color: "#0D131D"
-            border.color: "#1B2535"
+            color: fluxTheme.surface
+            border.color: fluxTheme.borderSubtle
 
             RowLayout {
                 anchors.fill: parent
@@ -2302,7 +2243,7 @@ Item {
 
                 Text {
                     text: homeHubVm.statusMessage.length > 0 ? homeHubVm.statusMessage : "Pronto"
-                    color: "#94A3B8"
+                    color: fluxTheme.textMuted
                     font.pixelSize: 11
                     Layout.fillWidth: true
                     elide: Text.ElideRight
@@ -2310,7 +2251,7 @@ Item {
 
                 Text {
                     text: "Git Flux v0.1.0 • Architettura C++23 Local-First"
-                    color: "#64748B"
+                    color: fluxTheme.textPlaceholder
                     font.pixelSize: 11
                 }
             }
@@ -2352,45 +2293,13 @@ Item {
         title: "Crea Nuovo Gruppo"
 
         property var selectedRepoIds: []
-        property string selectedColor: "#38BDF8"
+        property string selectedColor: fluxTheme.accentCyan
 
-        background: Rectangle {
-            color: "#111824"
-            radius: 14
-            border.color: "#28374E"
-            border.width: 1
-            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
-            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
-        }
+        background: FluxModalBackground {}
 
-        header: Rectangle {
-            color: "#161F2E"
-            implicitHeight: 46
-            height: 46
-            radius: 14
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 14
-                Text {
-                    text: "🗂️ Crea Nuovo Gruppo"
-                    color: "#F8FAFC"
-                    font.bold: true
-                    font.pixelSize: 13
-                }
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "✕"
-                    Layout.preferredWidth: 26
-                    Layout.preferredHeight: 26
-                    hoverEnabled: true
-                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
-                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: addGroupDialog.reject()
-                }
-            }
+        header: FluxModalHeader {
+            titleText: "🗂️ Crea Nuovo Gruppo"
+            onCloseRequested: addGroupDialog.reject()
         }
 
         contentItem: ColumnLayout {
@@ -2398,50 +2307,39 @@ Item {
 
             Text {
                 text: "Nome del gruppo:"
-                color: "#CBD5E1"
+                color: fluxTheme.textSecondary
                 font.bold: true
                 font.pixelSize: 12
             }
 
-            Rectangle {
+            FluxTextField {
+                id: groupNameInput
                 Layout.fillWidth: true
                 Layout.preferredHeight: 36
-                implicitHeight: 36
-                height: 36
-                color: "#0A0E15"
-                radius: 8
-                border.color: groupNameInput.activeFocus ? (addGroupDialog.selectedColor.length > 0 ? addGroupDialog.selectedColor : "#7C4DFF") : "#222F42"
-                border.width: 1
-                Behavior on border.color { ColorAnimation { duration: 120 } }
-                TextInput {
-                    id: groupNameInput
-                    anchors.fill: parent
-                    anchors.leftMargin: 10
-                    anchors.rightMargin: 10
-                    verticalAlignment: TextInput.AlignVCenter
-                    color: "#F8FAFC"
-                    font.pixelSize: 13
-                    selectByMouse: true
-                    onAccepted: addGroupDialog.accept()
-                }
+                font.pixelSize: 13
+                focusBorderColor: addGroupDialog.selectedColor.length > 0 ? addGroupDialog.selectedColor : fluxTheme.accentPurple
+                onAccepted: addGroupDialog.accept()
             }
 
             Text {
                 text: "Colore del gruppo:"
-                color: "#CBD5E1"
+                color: fluxTheme.textSecondary
                 font.bold: true
                 font.pixelSize: 12
             }
 
-            GroupColorSwatchPicker {
+            FluxColorSwatchRow {
                 id: addGroupColorPicker
+                paletteColors: root.homeHubVmRef && root.homeHubVmRef.groupColorPalette
+                    ? root.homeHubVmRef.groupColorPalette
+                    : fluxTheme.accentPalette
                 selectedColor: addGroupDialog.selectedColor
                 onSelectedColorChanged: addGroupDialog.selectedColor = selectedColor
             }
 
             Text {
                 text: "Seleziona i progetti da includere nel gruppo:"
-                color: "#94A3B8"
+                color: fluxTheme.textMuted
                 font.pixelSize: 11
                 visible: homeHubVm.repositoriesCount > 0
             }
@@ -2461,9 +2359,9 @@ Item {
                     width: newGrpRepoList.width
                     height: 34
                     radius: 8
-                    readonly property color grpSelCol: addGroupDialog.selectedColor.length > 0 ? addGroupDialog.selectedColor : "#7C4DFF"
-                    color: isChecked ? Qt.alpha(grpSelCol, 0.16) : "#0D131D"
-                    border.color: isChecked ? grpSelCol : "#1F2C3F"
+                    readonly property color grpSelCol: addGroupDialog.selectedColor.length > 0 ? addGroupDialog.selectedColor : fluxTheme.accentPurple
+                    color: isChecked ? Qt.alpha(grpSelCol, 0.16) : fluxTheme.surface
+                    border.color: isChecked ? grpSelCol : fluxTheme.borderSubtle
                     border.width: 1
 
                     property bool isChecked: addGroupDialog.selectedRepoIds.indexOf(model.id) !== -1
@@ -2490,7 +2388,7 @@ Item {
 
                         Text {
                             text: model.displayName
-                            color: "#F8FAFC"
+                            color: fluxTheme.textPrimary
                             font.pixelSize: 12
                             font.bold: isChecked
                             Layout.fillWidth: true
@@ -2499,7 +2397,7 @@ Item {
 
                         Text {
                             text: model.branch ? (" " + model.branch) : ""
-                            color: "#38BDF8"
+                            color: fluxTheme.accentCyan
                             font.pixelSize: 10
                             visible: Boolean(model.branch && model.branch.length > 0)
                         }
@@ -2508,40 +2406,25 @@ Item {
             }
         }
 
-        footer: Rectangle {
-            color: "#161F2E"
-            implicitHeight: 52
-            height: 52
-            radius: 14
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                spacing: 10
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "Annulla"
-                    Layout.preferredHeight: 32
-                    leftPadding: 14
-                    rightPadding: 14
-                    hoverEnabled: true
-                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
-                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: addGroupDialog.reject()
-                }
-                Button {
-                    text: "✓ Crea Gruppo"
-                    Layout.preferredHeight: 32
-                    leftPadding: 16
-                    rightPadding: 16
-                    hoverEnabled: true
-                    readonly property color btnAccent: addGroupDialog.selectedColor.length > 0 ? addGroupDialog.selectedColor : "#7C4DFF"
-                    background: Rectangle { color: Qt.alpha(parent.btnAccent, parent.hovered ? 0.36 : 0.24); radius: 8; border.color: parent.btnAccent; border.width: 1 }
-                    contentItem: Text { text: parent.text; color: "#F8FAFC"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: addGroupDialog.accept()
-                }
+        footer: FluxModalFooter {
+            buttonSpacing: 10
+            Item { Layout.fillWidth: true }
+            FluxActionButton {
+                text: "Annulla"
+                Layout.preferredHeight: 32
+                onClicked: addGroupDialog.reject()
+            }
+            FluxActionButton {
+                text: "✓ Crea Gruppo"
+                Layout.preferredHeight: 32
+                leftPadding: 16
+                rightPadding: 16
+                fontBold: true
+                readonly property color btnAccent: addGroupDialog.selectedColor.length > 0 ? addGroupDialog.selectedColor : fluxTheme.accentPurple
+                baseColor: Qt.alpha(btnAccent, 0.24)
+                hoverColor: Qt.alpha(btnAccent, 0.36)
+                baseBorderColor: btnAccent
+                onClicked: addGroupDialog.accept()
             }
         }
 
@@ -2577,35 +2460,11 @@ Item {
         property string repoId: ""
         property string initialName: ""
 
-        background: Rectangle {
-            color: "#111824"
-            radius: 14
-            border.color: "#28374E"
-            border.width: 1
-            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
-            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
-        }
+        background: FluxModalBackground {}
 
-        header: Rectangle {
-            color: "#161F2E"
-            implicitHeight: 46
-            height: 46
-            radius: 14
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 14
-                Text { text: "✏️ Rinomina Repository"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
-                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
-                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: renameRepoDialog.reject()
-                }
-            }
+        header: FluxModalHeader {
+            titleText: "✏️ Rinomina Repository"
+            onCloseRequested: renameRepoDialog.reject()
         }
 
         contentItem: ColumnLayout {
@@ -2613,60 +2472,36 @@ Item {
 
             Text {
                 text: "Nuovo nome visualizzato:"
-                color: "#CBD5E1"
+                color: fluxTheme.textSecondary
                 font.bold: true
                 font.pixelSize: 12
             }
 
-            Rectangle {
+            FluxTextField {
+                id: renameRepoInput
                 Layout.fillWidth: true
                 Layout.preferredHeight: 36
-                implicitHeight: 36
-                height: 36
-                color: "#0A0E15"
-                radius: 8
-                border.color: renameRepoInput.activeFocus ? "#38BDF8" : "#222F42"
-                border.width: 1
-                Behavior on border.color { ColorAnimation { duration: 120 } }
-                TextInput {
-                    id: renameRepoInput
-                    anchors.fill: parent
-                    anchors.leftMargin: 10
-                    anchors.rightMargin: 10
-                    verticalAlignment: TextInput.AlignVCenter
-                    color: "#F8FAFC"
-                    font.pixelSize: 13
-                    selectByMouse: true
-                    onAccepted: renameRepoDialog.accept()
-                }
+                font.pixelSize: 13
+                onAccepted: renameRepoDialog.accept()
             }
         }
 
-        footer: Rectangle {
-            color: "#161F2E"
-            implicitHeight: 52
-            height: 52
-            radius: 14
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                spacing: 10
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "Annulla"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
-                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
-                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: renameRepoDialog.reject()
-                }
-                Button {
-                    text: "✓ Salva"; Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
-                    background: Rectangle { color: parent.hovered ? "#0EA5E9" : "#0284C7"; radius: 8; border.color: "#38BDF8"; border.width: 1 }
-                    contentItem: Text { text: parent.text; color: "#FFFFFF"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: renameRepoDialog.accept()
-                }
+        footer: FluxModalFooter {
+            buttonSpacing: 10
+            Item { Layout.fillWidth: true }
+            FluxActionButton {
+                text: "Annulla"
+                Layout.preferredHeight: 32
+                onClicked: renameRepoDialog.reject()
+            }
+            FluxActionButton {
+                text: "✓ Salva"
+                variant: "primary"
+                fontBold: true
+                Layout.preferredHeight: 32
+                leftPadding: 16
+                rightPadding: 16
+                onClicked: renameRepoDialog.accept()
             }
         }
 
@@ -2698,35 +2533,11 @@ Item {
         property string initialColor: ""
         property string selectedColor: ""
 
-        background: Rectangle {
-            color: "#111824"
-            radius: 14
-            border.color: "#28374E"
-            border.width: 1
-            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
-            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
-        }
+        background: FluxModalBackground {}
 
-        header: Rectangle {
-            color: "#161F2E"
-            implicitHeight: 46
-            height: 46
-            radius: 14
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 14
-                Text { text: "✏️ Modifica Gruppo"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
-                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
-                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: renameGroupDialog.reject()
-                }
-            }
+        header: FluxModalHeader {
+            titleText: "✏️ Modifica Gruppo"
+            onCloseRequested: renameGroupDialog.reject()
         }
 
         contentItem: ColumnLayout {
@@ -2734,74 +2545,56 @@ Item {
 
             Text {
                 text: "Nome gruppo:"
-                color: "#CBD5E1"
+                color: fluxTheme.textSecondary
                 font.bold: true
                 font.pixelSize: 12
             }
 
-            Rectangle {
+            FluxTextField {
+                id: renameGroupInput
                 Layout.fillWidth: true
                 Layout.preferredHeight: 36
-                implicitHeight: 36
-                height: 36
-                color: "#0A0E15"
-                radius: 8
-                border.color: renameGroupInput.activeFocus ? (renameGroupDialog.selectedColor.length > 0 ? renameGroupDialog.selectedColor : "#7C4DFF") : "#222F42"
-                border.width: 1
-                Behavior on border.color { ColorAnimation { duration: 120 } }
-                TextInput {
-                    id: renameGroupInput
-                    anchors.fill: parent
-                    anchors.leftMargin: 10
-                    anchors.rightMargin: 10
-                    verticalAlignment: TextInput.AlignVCenter
-                    color: "#F8FAFC"
-                    font.pixelSize: 13
-                    selectByMouse: true
-                    onAccepted: renameGroupDialog.accept()
-                }
+                font.pixelSize: 13
+                focusBorderColor: renameGroupDialog.selectedColor.length > 0 ? renameGroupDialog.selectedColor : fluxTheme.accentPurple
+                onAccepted: renameGroupDialog.accept()
             }
 
             Text {
                 text: "Colore del gruppo:"
-                color: "#CBD5E1"
+                color: fluxTheme.textSecondary
                 font.bold: true
                 font.pixelSize: 12
             }
 
-            GroupColorSwatchPicker {
+            FluxColorSwatchRow {
                 id: editGroupColorPicker
+                paletteColors: root.homeHubVmRef && root.homeHubVmRef.groupColorPalette
+                    ? root.homeHubVmRef.groupColorPalette
+                    : fluxTheme.accentPalette
                 selectedColor: renameGroupDialog.selectedColor
                 onSelectedColorChanged: renameGroupDialog.selectedColor = selectedColor
             }
         }
 
-        footer: Rectangle {
-            color: "#161F2E"
-            implicitHeight: 52
-            height: 52
-            radius: 14
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                spacing: 10
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "Annulla"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
-                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
-                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: renameGroupDialog.reject()
-                }
-                Button {
-                    text: "✓ Salva"; Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
-                    readonly property color btnAccent: renameGroupDialog.selectedColor.length > 0 ? renameGroupDialog.selectedColor : "#7C4DFF"
-                    background: Rectangle { color: Qt.alpha(parent.btnAccent, parent.hovered ? 0.36 : 0.24); radius: 8; border.color: parent.btnAccent; border.width: 1 }
-                    contentItem: Text { text: parent.text; color: "#F8FAFC"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: renameGroupDialog.accept()
-                }
+        footer: FluxModalFooter {
+            buttonSpacing: 10
+            Item { Layout.fillWidth: true }
+            FluxActionButton {
+                text: "Annulla"
+                Layout.preferredHeight: 32
+                onClicked: renameGroupDialog.reject()
+            }
+            FluxActionButton {
+                text: "✓ Salva"
+                Layout.preferredHeight: 32
+                leftPadding: 16
+                rightPadding: 16
+                fontBold: true
+                readonly property color btnAccent: renameGroupDialog.selectedColor.length > 0 ? renameGroupDialog.selectedColor : fluxTheme.accentPurple
+                baseColor: Qt.alpha(btnAccent, 0.24)
+                hoverColor: Qt.alpha(btnAccent, 0.36)
+                baseBorderColor: btnAccent
+                onClicked: renameGroupDialog.accept()
             }
         }
 
@@ -2852,35 +2645,11 @@ Item {
             refreshAvailableGroupsForRepo();
         }
 
-        background: Rectangle {
-            color: "#111824"
-            radius: 14
-            border.color: "#28374E"
-            border.width: 1
-            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
-            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
-        }
+        background: FluxModalBackground {}
 
-        header: Rectangle {
-            color: "#161F2E"
-            implicitHeight: 46
-            height: 46
-            radius: 14
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 14
-                Text { text: "🗂️ Aggiungi a Gruppo"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
-                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
-                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: addToGroupDialog.reject()
-                }
-            }
+        header: FluxModalHeader {
+            titleText: "🗂️ Aggiungi a Gruppo"
+            onCloseRequested: addToGroupDialog.reject()
         }
 
         contentItem: ColumnLayout {
@@ -2888,7 +2657,7 @@ Item {
 
             Text {
                 text: "Seleziona il gruppo a cui aggiungere '" + addToGroupDialog.targetRepoName + "':"
-                color: "#CBD5E1"
+                color: fluxTheme.textSecondary
                 font.pixelSize: 12
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
@@ -2909,13 +2678,13 @@ Item {
                     width: groupPickList.width
                     height: 36
                     radius: 8
-                    readonly property color grpAccent: (modelData.groupColor && modelData.groupColor.length > 0) ? modelData.groupColor : "#7C4DFF"
+                    readonly property color grpAccent: (modelData.groupColor && modelData.groupColor.length > 0) ? modelData.groupColor : fluxTheme.accentPurple
                     readonly property bool isChosen: addToGroupDialog.selectedGroupId === modelData.id
-                    color: isChosen ? Qt.alpha(grpAccent, 0.20) : (grpPickHover.containsMouse ? "#172233" : "#0D131D")
-                    border.color: isChosen ? grpAccent : "#222F42"
+                    color: isChosen ? Qt.alpha(grpAccent, 0.20) : (grpPickHover.containsMouse ? fluxTheme.cardHover : fluxTheme.surface)
+                    border.color: isChosen ? grpAccent : fluxTheme.border
                     border.width: 1
 
-                    Behavior on color { ColorAnimation { duration: 110 } }
+                    Behavior on color { ColorAnimation { duration: fluxTheme.animFast } }
 
                     MouseArea {
                         id: grpPickHover
@@ -2942,7 +2711,7 @@ Item {
 
                         Text {
                             text: modelData.name
-                            color: "#F8FAFC"
+                            color: fluxTheme.textPrimary
                             font.pixelSize: 12
                             font.bold: addToGrpRow.isChosen
                             Layout.fillWidth: true
@@ -2950,7 +2719,7 @@ Item {
 
                         Text {
                             text: modelData.repositoryCount + " repo"
-                            color: "#94A3B8"
+                            color: fluxTheme.textMuted
                             font.pixelSize: 11
                         }
                     }
@@ -2962,38 +2731,31 @@ Item {
                 text: (homeHubVm && homeHubVm.groupsCount === 0)
                     ? "Nessun gruppo disponibile. Crea prima un gruppo."
                     : "Questo repository fa già parte di tutti i gruppi esistenti."
-                color: "#94A3B8"
+                color: fluxTheme.textMuted
                 font.pixelSize: 12
             }
         }
 
-        footer: Rectangle {
-            color: "#161F2E"
-            implicitHeight: 52
-            height: 52
-            radius: 14
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                spacing: 10
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "Annulla"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
-                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
-                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: addToGroupDialog.reject()
-                }
-                Button {
-                    text: "✓ Aggiungi"
-                    enabled: addToGroupDialog.selectedGroupId.length > 0
-                    Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
-                    background: Rectangle { color: parent.enabled ? (parent.hovered ? "#9061F9" : "#7C4DFF") : "#161F2E"; radius: 8; border.color: parent.enabled ? "#A855F7" : "#222F42"; border.width: 1 }
-                    contentItem: Text { text: parent.text; color: parent.enabled ? "#FFFFFF" : "#475569"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: addToGroupDialog.accept()
-                }
+        footer: FluxModalFooter {
+            buttonSpacing: 10
+            Item { Layout.fillWidth: true }
+            FluxActionButton {
+                text: "Annulla"
+                Layout.preferredHeight: 32
+                onClicked: addToGroupDialog.reject()
+            }
+            FluxActionButton {
+                text: "✓ Aggiungi"
+                enabled: addToGroupDialog.selectedGroupId.length > 0
+                Layout.preferredHeight: 32
+                leftPadding: 16
+                rightPadding: 16
+                fontBold: true
+                baseColor: Qt.alpha(fluxTheme.accentPurple, 0.85)
+                hoverColor: fluxTheme.accentPurple
+                baseBorderColor: fluxTheme.accentPurple
+                textColor: fluxTheme.selectionText
+                onClicked: addToGroupDialog.accept()
             }
         }
 
@@ -3033,35 +2795,11 @@ Item {
             refreshAvailableReposForGroup();
         }
 
-        background: Rectangle {
-            color: "#111824"
-            radius: 14
-            border.color: "#28374E"
-            border.width: 1
-            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
-            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
-        }
+        background: FluxModalBackground {}
 
-        header: Rectangle {
-            color: "#161F2E"
-            implicitHeight: 46
-            height: 46
-            radius: 14
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 14
-                Text { text: "📁 Aggiungi Progetto al Gruppo"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
-                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
-                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: addRepoToGroupDialog.reject()
-                }
-            }
+        header: FluxModalHeader {
+            titleText: "📁 Aggiungi Progetto al Gruppo"
+            onCloseRequested: addRepoToGroupDialog.reject()
         }
 
         contentItem: ColumnLayout {
@@ -3069,7 +2807,7 @@ Item {
 
             Text {
                 text: "Aggiungi un repository a '" + addRepoToGroupDialog.targetGroupName + "':"
-                color: "#CBD5E1"
+                color: fluxTheme.textSecondary
                 font.pixelSize: 12
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
@@ -3090,11 +2828,11 @@ Item {
                     width: repoPickList.width
                     height: 38
                     radius: 8
-                    color: (addRepoToGroupDialog.selectedRepoId === modelData.id) ? "#152336" : (repoPickHover.containsMouse ? "#172233" : "#0D131D")
-                    border.color: (addRepoToGroupDialog.selectedRepoId === modelData.id) ? "#38BDF8" : "#222F42"
+                    color: (addRepoToGroupDialog.selectedRepoId === modelData.id) ? fluxTheme.infoBg : (repoPickHover.containsMouse ? fluxTheme.cardHover : fluxTheme.surface)
+                    border.color: (addRepoToGroupDialog.selectedRepoId === modelData.id) ? fluxTheme.accentCyan : fluxTheme.border
                     border.width: 1
 
-                    Behavior on color { ColorAnimation { duration: 110 } }
+                    Behavior on color { ColorAnimation { duration: fluxTheme.animFast } }
 
                     MouseArea {
                         id: repoPickHover
@@ -3116,7 +2854,7 @@ Item {
 
                         Text {
                             text: modelData.displayName
-                            color: "#F8FAFC"
+                            color: fluxTheme.textPrimary
                             font.pixelSize: 12
                             font.bold: true
                             Layout.fillWidth: true
@@ -3125,7 +2863,7 @@ Item {
 
                         Text {
                             text: modelData.branch ? (" " + modelData.branch) : ""
-                            color: "#38BDF8"
+                            color: fluxTheme.accentCyan
                             font.pixelSize: 10
                             visible: Boolean(modelData.branch && modelData.branch.length > 0)
                         }
@@ -3140,38 +2878,28 @@ Item {
                 text: (homeHubVm && homeHubVm.repositoriesCount === 0)
                     ? "Nessun repository registrato."
                     : "Tutti i repository registrati fanno già parte di questo gruppo."
-                color: "#94A3B8"
+                color: fluxTheme.textMuted
                 font.pixelSize: 12
             }
         }
 
-        footer: Rectangle {
-            color: "#161F2E"
-            implicitHeight: 52
-            height: 52
-            radius: 14
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                spacing: 10
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "Annulla"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
-                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
-                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: addRepoToGroupDialog.reject()
-                }
-                Button {
-                    text: "✓ Aggiungi"
-                    enabled: addRepoToGroupDialog.selectedRepoId.length > 0
-                    Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
-                    background: Rectangle { color: parent.enabled ? (parent.hovered ? "#0EA5E9" : "#0284C7") : "#161F2E"; radius: 8; border.color: parent.enabled ? "#38BDF8" : "#222F42"; border.width: 1 }
-                    contentItem: Text { text: parent.text; color: parent.enabled ? "#FFFFFF" : "#475569"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: addRepoToGroupDialog.accept()
-                }
+        footer: FluxModalFooter {
+            buttonSpacing: 10
+            Item { Layout.fillWidth: true }
+            FluxActionButton {
+                text: "Annulla"
+                Layout.preferredHeight: 32
+                onClicked: addRepoToGroupDialog.reject()
+            }
+            FluxActionButton {
+                text: "✓ Aggiungi"
+                variant: "primary"
+                fontBold: true
+                enabled: addRepoToGroupDialog.selectedRepoId.length > 0
+                Layout.preferredHeight: 32
+                leftPadding: 16
+                rightPadding: 16
+                onClicked: addRepoToGroupDialog.accept()
             }
         }
 
@@ -3211,35 +2939,11 @@ Item {
             refreshAvailableReposForWorkspace();
         }
 
-        background: Rectangle {
-            color: "#111824"
-            radius: 14
-            border.color: "#28374E"
-            border.width: 1
-            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
-            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
-        }
+        background: FluxModalBackground {}
 
-        header: Rectangle {
-            color: "#161F2E"
-            implicitHeight: 46
-            height: 46
-            radius: 14
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 14
-                Text { text: "💼 Aggiungi Progetto al Workspace"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
-                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
-                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: addRepoToWsDialog.reject()
-                }
-            }
+        header: FluxModalHeader {
+            titleText: "💼 Aggiungi Progetto al Workspace"
+            onCloseRequested: addRepoToWsDialog.reject()
         }
 
         contentItem: ColumnLayout {
@@ -3247,7 +2951,7 @@ Item {
 
             Text {
                 text: "Aggiungi un repository a '" + addRepoToWsDialog.targetWorkspaceName + "':"
-                color: "#CBD5E1"
+                color: fluxTheme.textSecondary
                 font.pixelSize: 12
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
@@ -3268,11 +2972,11 @@ Item {
                     width: wsRepoPickList.width
                     height: 38
                     radius: 8
-                    color: (addRepoToWsDialog.selectedRepoId === modelData.id) ? "#063B2C" : (wsRepoPickHover.containsMouse ? "#172233" : "#0D131D")
-                    border.color: (addRepoToWsDialog.selectedRepoId === modelData.id) ? "#10B981" : "#222F42"
+                    color: (addRepoToWsDialog.selectedRepoId === modelData.id) ? fluxTheme.successBg : (wsRepoPickHover.containsMouse ? fluxTheme.cardHover : fluxTheme.surface)
+                    border.color: (addRepoToWsDialog.selectedRepoId === modelData.id) ? fluxTheme.accentTeal : fluxTheme.border
                     border.width: 1
 
-                    Behavior on color { ColorAnimation { duration: 110 } }
+                    Behavior on color { ColorAnimation { duration: fluxTheme.animFast } }
 
                     MouseArea {
                         id: wsRepoPickHover
@@ -3294,7 +2998,7 @@ Item {
 
                         Text {
                             text: modelData.displayName
-                            color: "#F8FAFC"
+                            color: fluxTheme.textPrimary
                             font.pixelSize: 12
                             font.bold: true
                             Layout.fillWidth: true
@@ -3303,7 +3007,7 @@ Item {
 
                         Text {
                             text: modelData.branch ? (" " + modelData.branch) : ""
-                            color: "#38BDF8"
+                            color: fluxTheme.accentCyan
                             font.pixelSize: 10
                             visible: Boolean(modelData.branch && modelData.branch.length > 0)
                         }
@@ -3318,38 +3022,28 @@ Item {
                 text: (homeHubVm && homeHubVm.repositoriesCount === 0)
                     ? "Nessun repository registrato."
                     : "Tutti i repository registrati fanno già parte di questo workspace."
-                color: "#94A3B8"
+                color: fluxTheme.textMuted
                 font.pixelSize: 12
             }
         }
 
-        footer: Rectangle {
-            color: "#161F2E"
-            implicitHeight: 52
-            height: 52
-            radius: 14
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                spacing: 10
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "Annulla"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
-                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
-                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: addRepoToWsDialog.reject()
-                }
-                Button {
-                    text: "✓ Aggiungi"
-                    enabled: addRepoToWsDialog.selectedRepoId.length > 0
-                    Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
-                    background: Rectangle { color: parent.enabled ? (parent.hovered ? "#10B981" : "#059669") : "#161F2E"; radius: 8; border.color: parent.enabled ? "#34D399" : "#222F42"; border.width: 1 }
-                    contentItem: Text { text: parent.text; color: parent.enabled ? "#FFFFFF" : "#475569"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: addRepoToWsDialog.accept()
-                }
+        footer: FluxModalFooter {
+            buttonSpacing: 10
+            Item { Layout.fillWidth: true }
+            FluxActionButton {
+                text: "Annulla"
+                Layout.preferredHeight: 32
+                onClicked: addRepoToWsDialog.reject()
+            }
+            FluxActionButton {
+                text: "✓ Aggiungi"
+                variant: "success"
+                fontBold: true
+                enabled: addRepoToWsDialog.selectedRepoId.length > 0
+                Layout.preferredHeight: 32
+                leftPadding: 16
+                rightPadding: 16
+                onClicked: addRepoToWsDialog.accept()
             }
         }
 
@@ -3389,35 +3083,11 @@ Item {
             refreshAvailableGroupsForWorkspace();
         }
 
-        background: Rectangle {
-            color: "#111824"
-            radius: 14
-            border.color: "#28374E"
-            border.width: 1
-            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
-            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
-        }
+        background: FluxModalBackground {}
 
-        header: Rectangle {
-            color: "#161F2E"
-            implicitHeight: 46
-            height: 46
-            radius: 14
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 14
-                Text { text: "🗂️ Aggiungi Gruppo al Workspace"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
-                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
-                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: addGrpToWsDialog.reject()
-                }
-            }
+        header: FluxModalHeader {
+            titleText: "🗂️ Aggiungi Gruppo al Workspace"
+            onCloseRequested: addGrpToWsDialog.reject()
         }
 
         contentItem: ColumnLayout {
@@ -3425,7 +3095,7 @@ Item {
 
             Text {
                 text: "Aggiungi un gruppo a '" + addGrpToWsDialog.targetWorkspaceName + "':"
-                color: "#CBD5E1"
+                color: fluxTheme.textSecondary
                 font.pixelSize: 12
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
@@ -3446,13 +3116,13 @@ Item {
                     width: wsGrpPickList.width
                     height: 38
                     radius: 8
-                    readonly property color grpAccent: (modelData.groupColor && modelData.groupColor.length > 0) ? modelData.groupColor : "#7C4DFF"
+                    readonly property color grpAccent: (modelData.groupColor && modelData.groupColor.length > 0) ? modelData.groupColor : fluxTheme.accentPurple
                     readonly property bool isChosen: addGrpToWsDialog.selectedGroupId === modelData.id
-                    color: isChosen ? Qt.alpha(grpAccent, 0.20) : (wsGrpPickHover.containsMouse ? "#172233" : "#0D131D")
-                    border.color: isChosen ? grpAccent : "#222F42"
+                    color: isChosen ? Qt.alpha(grpAccent, 0.20) : (wsGrpPickHover.containsMouse ? fluxTheme.cardHover : fluxTheme.surface)
+                    border.color: isChosen ? grpAccent : fluxTheme.border
                     border.width: 1
 
-                    Behavior on color { ColorAnimation { duration: 110 } }
+                    Behavior on color { ColorAnimation { duration: fluxTheme.animFast } }
 
                     MouseArea {
                         id: wsGrpPickHover
@@ -3479,7 +3149,7 @@ Item {
 
                         Text {
                             text: modelData.name
-                            color: "#F8FAFC"
+                            color: fluxTheme.textPrimary
                             font.pixelSize: 12
                             font.bold: true
                             Layout.fillWidth: true
@@ -3488,7 +3158,7 @@ Item {
 
                         Text {
                             text: modelData.repositoryCount + (modelData.repositoryCount === 1 ? " progetto" : " progetti")
-                            color: "#E9D5FF"
+                            color: fluxTheme.textSecondary
                             font.pixelSize: 10
                             font.bold: true
                         }
@@ -3501,38 +3171,31 @@ Item {
                 text: (homeHubVm && homeHubVm.groupsCount === 0)
                     ? "Nessun gruppo disponibile. Crea prima un gruppo."
                     : "Tutti i gruppi esistenti fanno già parte di questo workspace."
-                color: "#94A3B8"
+                color: fluxTheme.textMuted
                 font.pixelSize: 12
             }
         }
 
-        footer: Rectangle {
-            color: "#161F2E"
-            implicitHeight: 52
-            height: 52
-            radius: 14
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                spacing: 10
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "Annulla"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
-                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
-                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: addGrpToWsDialog.reject()
-                }
-                Button {
-                    text: "✓ Aggiungi"
-                    enabled: addGrpToWsDialog.selectedGroupId.length > 0
-                    Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
-                    background: Rectangle { color: parent.enabled ? (parent.hovered ? "#9061F9" : "#7C4DFF") : "#161F2E"; radius: 8; border.color: parent.enabled ? "#A855F7" : "#222F42"; border.width: 1 }
-                    contentItem: Text { text: parent.text; color: parent.enabled ? "#FFFFFF" : "#475569"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: addGrpToWsDialog.accept()
-                }
+        footer: FluxModalFooter {
+            buttonSpacing: 10
+            Item { Layout.fillWidth: true }
+            FluxActionButton {
+                text: "Annulla"
+                Layout.preferredHeight: 32
+                onClicked: addGrpToWsDialog.reject()
+            }
+            FluxActionButton {
+                text: "✓ Aggiungi"
+                enabled: addGrpToWsDialog.selectedGroupId.length > 0
+                Layout.preferredHeight: 32
+                leftPadding: 16
+                rightPadding: 16
+                fontBold: true
+                baseColor: Qt.alpha(fluxTheme.accentPurple, 0.85)
+                hoverColor: fluxTheme.accentPurple
+                baseBorderColor: fluxTheme.accentPurple
+                textColor: fluxTheme.selectionText
+                onClicked: addGrpToWsDialog.accept()
             }
         }
 
@@ -3554,37 +3217,13 @@ Item {
         bottomPadding: 14
         title: "Crea Nuovo Workspace"
 
-        property string selectedColor: "#34D399"
+        property string selectedColor: fluxTheme.accentTeal
 
-        background: Rectangle {
-            color: "#111824"
-            radius: 14
-            border.color: "#28374E"
-            border.width: 1
-            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
-            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
-        }
+        background: FluxModalBackground {}
 
-        header: Rectangle {
-            color: "#161F2E"
-            implicitHeight: 46
-            height: 46
-            radius: 14
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 14
-                Text { text: "💼 Crea Nuovo Workspace"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
-                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
-                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: addWorkspaceDialog.reject()
-                }
-            }
+        header: FluxModalHeader {
+            titleText: "💼 Crea Nuovo Workspace"
+            onCloseRequested: addWorkspaceDialog.reject()
         }
 
         contentItem: ColumnLayout {
@@ -3592,74 +3231,56 @@ Item {
 
             Text {
                 text: "Nome del workspace:"
-                color: "#CBD5E1"
+                color: fluxTheme.textSecondary
                 font.bold: true
                 font.pixelSize: 12
             }
 
-            Rectangle {
+            FluxTextField {
+                id: wsNameInput
                 Layout.fillWidth: true
                 Layout.preferredHeight: 36
-                implicitHeight: 36
-                height: 36
-                color: "#0A0E15"
-                radius: 8
-                border.color: wsNameInput.activeFocus ? (addWorkspaceDialog.selectedColor.length > 0 ? addWorkspaceDialog.selectedColor : "#10B981") : "#222F42"
-                border.width: 1
-                Behavior on border.color { ColorAnimation { duration: 120 } }
-                TextInput {
-                    id: wsNameInput
-                    anchors.fill: parent
-                    anchors.leftMargin: 10
-                    anchors.rightMargin: 10
-                    verticalAlignment: TextInput.AlignVCenter
-                    color: "#F8FAFC"
-                    font.pixelSize: 13
-                    selectByMouse: true
-                    onAccepted: addWorkspaceDialog.accept()
-                }
+                font.pixelSize: 13
+                focusBorderColor: addWorkspaceDialog.selectedColor.length > 0 ? addWorkspaceDialog.selectedColor : fluxTheme.accentTeal
+                onAccepted: addWorkspaceDialog.accept()
             }
 
             Text {
                 text: "Colore del workspace:"
-                color: "#CBD5E1"
+                color: fluxTheme.textSecondary
                 font.bold: true
                 font.pixelSize: 12
             }
 
-            GroupColorSwatchPicker {
+            FluxColorSwatchRow {
                 id: addWorkspaceColorPicker
+                paletteColors: root.homeHubVmRef && root.homeHubVmRef.groupColorPalette
+                    ? root.homeHubVmRef.groupColorPalette
+                    : fluxTheme.accentPalette
                 selectedColor: addWorkspaceDialog.selectedColor
                 onSelectedColorChanged: addWorkspaceDialog.selectedColor = selectedColor
             }
         }
 
-        footer: Rectangle {
-            color: "#161F2E"
-            implicitHeight: 52
-            height: 52
-            radius: 14
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                spacing: 10
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "Annulla"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
-                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
-                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: addWorkspaceDialog.reject()
-                }
-                Button {
-                    text: "✓ Crea Workspace"; Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
-                    readonly property color btnAccent: addWorkspaceDialog.selectedColor.length > 0 ? addWorkspaceDialog.selectedColor : "#10B981"
-                    background: Rectangle { color: Qt.alpha(parent.btnAccent, parent.hovered ? 0.36 : 0.24); radius: 8; border.color: parent.btnAccent; border.width: 1 }
-                    contentItem: Text { text: parent.text; color: "#F8FAFC"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: addWorkspaceDialog.accept()
-                }
+        footer: FluxModalFooter {
+            buttonSpacing: 10
+            Item { Layout.fillWidth: true }
+            FluxActionButton {
+                text: "Annulla"
+                Layout.preferredHeight: 32
+                onClicked: addWorkspaceDialog.reject()
+            }
+            FluxActionButton {
+                text: "✓ Crea Workspace"
+                Layout.preferredHeight: 32
+                leftPadding: 16
+                rightPadding: 16
+                fontBold: true
+                readonly property color btnAccent: addWorkspaceDialog.selectedColor.length > 0 ? addWorkspaceDialog.selectedColor : fluxTheme.accentTeal
+                baseColor: Qt.alpha(btnAccent, 0.24)
+                hoverColor: Qt.alpha(btnAccent, 0.36)
+                baseBorderColor: btnAccent
+                onClicked: addWorkspaceDialog.accept()
             }
         }
 
@@ -3695,35 +3316,11 @@ Item {
         property string initialColor: ""
         property string selectedColor: ""
 
-        background: Rectangle {
-            color: "#111824"
-            radius: 14
-            border.color: "#28374E"
-            border.width: 1
-            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
-            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
-        }
+        background: FluxModalBackground {}
 
-        header: Rectangle {
-            color: "#161F2E"
-            implicitHeight: 46
-            height: 46
-            radius: 14
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 14
-                Text { text: "✏️ Modifica Workspace"; color: "#F8FAFC"; font.bold: true; font.pixelSize: 13 }
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
-                    background: Rectangle { radius: 7; color: parent.hovered ? "#243247" : "transparent" }
-                    contentItem: Text { text: "✕"; color: parent.hovered ? "#F8FAFC" : "#94A3B8"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: editWorkspaceDialog.reject()
-                }
-            }
+        header: FluxModalHeader {
+            titleText: "✏️ Modifica Workspace"
+            onCloseRequested: editWorkspaceDialog.reject()
         }
 
         contentItem: ColumnLayout {
@@ -3731,74 +3328,56 @@ Item {
 
             Text {
                 text: "Nome workspace:"
-                color: "#CBD5E1"
+                color: fluxTheme.textSecondary
                 font.bold: true
                 font.pixelSize: 12
             }
 
-            Rectangle {
+            FluxTextField {
+                id: editWorkspaceInput
                 Layout.fillWidth: true
                 Layout.preferredHeight: 36
-                implicitHeight: 36
-                height: 36
-                color: "#0A0E15"
-                radius: 8
-                border.color: editWorkspaceInput.activeFocus ? (editWorkspaceDialog.selectedColor.length > 0 ? editWorkspaceDialog.selectedColor : "#10B981") : "#222F42"
-                border.width: 1
-                Behavior on border.color { ColorAnimation { duration: 120 } }
-                TextInput {
-                    id: editWorkspaceInput
-                    anchors.fill: parent
-                    anchors.leftMargin: 10
-                    anchors.rightMargin: 10
-                    verticalAlignment: TextInput.AlignVCenter
-                    color: "#F8FAFC"
-                    font.pixelSize: 13
-                    selectByMouse: true
-                    onAccepted: editWorkspaceDialog.accept()
-                }
+                font.pixelSize: 13
+                focusBorderColor: editWorkspaceDialog.selectedColor.length > 0 ? editWorkspaceDialog.selectedColor : fluxTheme.accentTeal
+                onAccepted: editWorkspaceDialog.accept()
             }
 
             Text {
                 text: "Colore del workspace:"
-                color: "#CBD5E1"
+                color: fluxTheme.textSecondary
                 font.bold: true
                 font.pixelSize: 12
             }
 
-            GroupColorSwatchPicker {
+            FluxColorSwatchRow {
                 id: editWorkspaceColorPicker
+                paletteColors: root.homeHubVmRef && root.homeHubVmRef.groupColorPalette
+                    ? root.homeHubVmRef.groupColorPalette
+                    : fluxTheme.accentPalette
                 selectedColor: editWorkspaceDialog.selectedColor
                 onSelectedColorChanged: editWorkspaceDialog.selectedColor = selectedColor
             }
         }
 
-        footer: Rectangle {
-            color: "#161F2E"
-            implicitHeight: 52
-            height: 52
-            radius: 14
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                spacing: 10
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "Annulla"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
-                    background: Rectangle { color: parent.hovered ? "#1E2B3E" : "#151E2C"; radius: 8; border.color: "#28374E"; border.width: 1 }
-                    contentItem: Text { text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: editWorkspaceDialog.reject()
-                }
-                Button {
-                    text: "✓ Salva"; Layout.preferredHeight: 32; leftPadding: 16; rightPadding: 16; hoverEnabled: true
-                    readonly property color btnAccent: editWorkspaceDialog.selectedColor.length > 0 ? editWorkspaceDialog.selectedColor : "#10B981"
-                    background: Rectangle { color: Qt.alpha(parent.btnAccent, parent.hovered ? 0.36 : 0.24); radius: 8; border.color: parent.btnAccent; border.width: 1 }
-                    contentItem: Text { text: parent.text; color: "#F8FAFC"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: editWorkspaceDialog.accept()
-                }
+        footer: FluxModalFooter {
+            buttonSpacing: 10
+            Item { Layout.fillWidth: true }
+            FluxActionButton {
+                text: "Annulla"
+                Layout.preferredHeight: 32
+                onClicked: editWorkspaceDialog.reject()
+            }
+            FluxActionButton {
+                text: "✓ Salva"
+                Layout.preferredHeight: 32
+                leftPadding: 16
+                rightPadding: 16
+                fontBold: true
+                readonly property color btnAccent: editWorkspaceDialog.selectedColor.length > 0 ? editWorkspaceDialog.selectedColor : fluxTheme.accentTeal
+                baseColor: Qt.alpha(btnAccent, 0.24)
+                hoverColor: Qt.alpha(btnAccent, 0.36)
+                baseBorderColor: btnAccent
+                onClicked: editWorkspaceDialog.accept()
             }
         }
 
@@ -3845,35 +3424,15 @@ Item {
         title: "Attenzione — Errore Operazione"
         property string errorMessage: ""
 
-        background: Rectangle {
-            color: "#111824"
-            radius: 14
-            border.color: "#EF4444"
-            border.width: 1
-            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
-            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
+        background: FluxModalBackground {
+            border.color: fluxTheme.danger
         }
 
-        header: Rectangle {
-            color: "#2A1217"
-            implicitHeight: 46
-            height: 46
-            radius: 14
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#2A1217" }
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#7F1D1D" }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 14
-                Text { text: "⚠️ Impossibile completare l'operazione"; color: "#FCA5A5"; font.bold: true; font.pixelSize: 13 }
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "✕"; Layout.preferredWidth: 26; Layout.preferredHeight: 26; hoverEnabled: true
-                    background: Rectangle { radius: 7; color: parent.hovered ? "#4C151E" : "transparent" }
-                    contentItem: Text { text: "✕"; color: parent.hovered ? "#FFFFFF" : "#FCA5A5"; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: errorFeedbackDialog.close()
-                }
-            }
+        header: FluxModalHeader {
+            color: fluxTheme.dangerBg
+            titleText: "⚠️ Impossibile completare l'operazione"
+            titleColor: fluxTheme.dangerText
+            onCloseRequested: errorFeedbackDialog.close()
         }
 
         contentItem: ColumnLayout {
@@ -3888,21 +3447,21 @@ Item {
                 contentWidth: width
                 contentHeight: errorMessageEdit.implicitHeight
                 boundsBehavior: Flickable.StopAtBounds
-                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                ScrollBar.vertical: FluxScrollBar {}
 
                 TextEdit {
                     id: errorMessageEdit
                     width: errorMessageFlick.width
                     text: errorFeedbackDialog.errorMessage
-                    color: "#F8FAFC"
+                    color: fluxTheme.textPrimary
                     font.pixelSize: 13
                     wrapMode: TextEdit.Wrap
                     textFormat: TextEdit.PlainText
                     readOnly: true
                     selectByMouse: true
                     selectByKeyboard: true
-                    selectionColor: "#2563EB"
-                    selectedTextColor: "#FFFFFF"
+                    selectionColor: fluxTheme.selectionBg
+                    selectedTextColor: fluxTheme.selectionText
                 }
             }
 
@@ -3910,46 +3469,40 @@ Item {
                 // Only relevant when adding/opening a local folder that isn't a Git repository.
                 visible: /cartell|repository git|\.git|not a git repository/i.test(errorFeedbackDialog.errorMessage)
                 text: "Suggerimento: Seleziona la cartella radice del progetto Git oppure la cartella '.git' al suo interno tramite il selettore cartelle."
-                color: "#94A3B8"
+                color: fluxTheme.textMuted
                 font.pixelSize: 11
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
             }
         }
 
-        footer: Rectangle {
-            color: "#161F2E"
-            implicitHeight: 52
-            height: 52
-            radius: 14
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                Button {
-                    id: copyErrorBtn
-                    property bool copied: false
-                    text: copied ? "✔ Copiato" : "Copia errore"; Layout.preferredHeight: 32; leftPadding: 14; rightPadding: 14; hoverEnabled: true
-                    background: Rectangle { color: parent.hovered ? "#334155" : "#1E293B"; radius: 8; border.color: "#475569"; border.width: 1 }
-                    contentItem: Text { text: copyErrorBtn.text; color: "#E2E8F0"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: {
-                        // gitProfilesVm copies silently (homeHubVm would echo the whole text in a banner)
-                        const vm = (typeof gitProfilesVm !== "undefined" && gitProfilesVm) ? gitProfilesVm : homeHubVm;
-                        vm.copyToClipboard(errorFeedbackDialog.errorMessage);
-                        copied = true;
-                        copiedResetTimer.restart();
-                    }
-                    Timer { id: copiedResetTimer; interval: 2000; onTriggered: copyErrorBtn.copied = false }
+        footer: FluxModalFooter {
+            FluxActionButton {
+                id: copyErrorBtn
+                property bool copied: false
+                text: copied ? "✔ Copiato" : "Copia errore"
+                Layout.preferredHeight: 32
+                fontBold: true
+                fontPixelSize: 12
+                onClicked: {
+                    // gitProfilesVm copies silently (homeHubVm would echo the whole text in a banner)
+                    const vm = (typeof gitProfilesVm !== "undefined" && gitProfilesVm) ? gitProfilesVm : homeHubVm;
+                    vm.copyToClipboard(errorFeedbackDialog.errorMessage);
+                    copied = true;
+                    copiedResetTimer.restart();
                 }
-                Item { Layout.fillWidth: true }
-                Button {
-                    Layout.preferredHeight: 32; leftPadding: 18; rightPadding: 18; hoverEnabled: true
-                    background: Rectangle { color: parent.hovered ? "#DC2626" : "#B91C1C"; radius: 8; border.color: "#EF4444"; border.width: 1 }
-                    contentItem: Text { text: "Chiudi"; color: "#FFFFFF"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    onClicked: errorFeedbackDialog.close()
-                }
+                Timer { id: copiedResetTimer; interval: 2000; onTriggered: copyErrorBtn.copied = false }
+            }
+            Item { Layout.fillWidth: true }
+            FluxActionButton {
+                text: "Chiudi"
+                variant: "danger"
+                fontBold: true
+                fontPixelSize: 12
+                Layout.preferredHeight: 32
+                leftPadding: 18
+                rightPadding: 18
+                onClicked: errorFeedbackDialog.close()
             }
         }
     }
@@ -3963,8 +3516,8 @@ Item {
         width: 220
         height: 38
         radius: 9
-        color: "#152336"
-        border.color: "#38BDF8"
+        color: fluxTheme.infoBg
+        border.color: fluxTheme.accentCyan
         border.width: 1.5
         z: 99999
         opacity: 0.95
@@ -3979,7 +3532,7 @@ Item {
             }
             Text {
                 text: root.draggedRepoName
-                color: "#F8FAFC"
+                color: fluxTheme.textPrimary
                 font.pixelSize: 12
                 font.bold: true
                 elide: Text.ElideRight
@@ -4013,7 +3566,7 @@ Item {
             }
             Text {
                 text: root.draggedGroupName
-                color: "#F8FAFC"
+                color: fluxTheme.textPrimary
                 font.pixelSize: 12
                 font.bold: true
                 elide: Text.ElideRight

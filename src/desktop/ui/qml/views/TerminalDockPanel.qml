@@ -30,94 +30,6 @@ Rectangle {
     readonly property color effectiveActiveAccent: activeTabColor.length > 0 ? activeTabColor : defaultTabAccent
     readonly property var defaultColorPalette: fluxTheme.accentPalette
 
-    component TabColorSwatchRow: RowLayout {
-        id: swatchRow
-        property string selectedColor: ""
-        property string objectNamePrefix: "tabColorSwatch_"
-        signal colorPicked(string hexColor)
-
-        readonly property var palette: (panelRoot.terminalVm && panelRoot.terminalVm.tabColorPalette && panelRoot.terminalVm.tabColorPalette.length > 0)
-            ? panelRoot.terminalVm.tabColorPalette
-            : panelRoot.defaultColorPalette
-
-        spacing: 7
-        Layout.preferredHeight: 28
-
-        Rectangle {
-            id: defaultResetPill
-            objectName: swatchRow.objectNamePrefix + "default"
-            readonly property bool isSelected: swatchRow.selectedColor.length === 0
-            Layout.preferredHeight: 22
-            implicitWidth: defaultResetText.implicitWidth + 12
-            radius: 6
-            color: isSelected ? "#152336" : (resetMa.containsMouse ? "#121C2A" : "#0B111A")
-            border.color: isSelected ? panelRoot.defaultTabAccent : (resetMa.containsMouse ? "#334155" : "#1E293B")
-            border.width: 1
-
-            Text {
-                id: defaultResetText
-                anchors.centerIn: parent
-                text: "Predefinito"
-                color: defaultResetPill.isSelected ? "#E2E8F0" : "#94A3B8"
-                font.pixelSize: 10
-                font.bold: defaultResetPill.isSelected
-            }
-
-            MouseArea {
-                id: resetMa
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    swatchRow.selectedColor = "";
-                    swatchRow.colorPicked("");
-                }
-            }
-        }
-
-        Repeater {
-            model: swatchRow.palette
-
-            delegate: Rectangle {
-                id: swatchRect
-                required property string modelData
-                readonly property bool isSelected: swatchRow.selectedColor.toLowerCase() === modelData.toLowerCase()
-                objectName: swatchRow.objectNamePrefix + modelData
-                width: 22
-                height: 22
-                Layout.preferredWidth: 22
-                Layout.preferredHeight: 22
-                Layout.alignment: Qt.AlignVCenter
-                radius: 11
-                color: modelData
-                border.color: isSelected ? "#F8FAFC" : (swatchMa.containsMouse ? "#CBD5E1" : "transparent")
-                border.width: isSelected ? 2 : 1
-                scale: isSelected ? 1.12 : (swatchMa.containsMouse ? 1.06 : 1.0)
-                Behavior on scale { NumberAnimation { duration: 100 } }
-
-                Text {
-                    anchors.centerIn: parent
-                    visible: swatchRect.isSelected
-                    text: "✓"
-                    color: "#0A0E15"
-                    font.pixelSize: 11
-                    font.bold: true
-                }
-
-                MouseArea {
-                    id: swatchMa
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        swatchRow.selectedColor = swatchRect.modelData;
-                        swatchRow.colorPicked(swatchRect.modelData);
-                    }
-                }
-            }
-        }
-    }
-
     component TextEditDragAutoScroller: PointHandler {
         id: scrollerHandler
         required property Flickable flickable
@@ -663,15 +575,15 @@ Rectangle {
                                         Layout.preferredHeight: 16
                                         implicitWidth: shellBadgeText.implicitWidth + (canSwitchShell ? 10 : 4)
                                         radius: 4
-                                        color: canSwitchShell && shellBadgeMa.containsMouse ? "#1E3554" : (canSwitchShell ? "#0E1A2B" : "transparent")
-                                        border.color: canSwitchShell && shellBadgeMa.containsMouse ? "#38BDF8" : (canSwitchShell ? "#253A57" : "transparent")
+                                        color: canSwitchShell && shellBadgeMa.containsMouse ? fluxTheme.cardHover : (canSwitchShell ? fluxTheme.infoBg : "transparent")
+                                        border.color: canSwitchShell && shellBadgeMa.containsMouse ? fluxTheme.borderFocus : (canSwitchShell ? fluxTheme.borderHighlight : "transparent")
                                         border.width: canSwitchShell ? 1 : 0
 
                                         Text {
                                             id: shellBadgeText
                                             anchors.centerIn: parent
                                             text: shellBadge.canSwitchShell ? (shellBadge.shellId + " ▾") : shellBadge.shellId
-                                            color: shellBadge.canSwitchShell && shellBadgeMa.containsMouse ? "#7DD3FC" : "#94A3B8"
+                                            color: shellBadge.canSwitchShell && shellBadgeMa.containsMouse ? fluxTheme.infoText : fluxTheme.textSecondary
                                             font.pixelSize: 9
                                             font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
                                         }
@@ -704,12 +616,12 @@ Rectangle {
                                         Rectangle {
                                             anchors.fill: parent
                                             radius: 4
-                                            color: closeTermTabBtn.containsMouse ? "#3B1219" : "transparent"
+                                            color: closeTermTabBtn.containsMouse ? fluxTheme.dangerBg : "transparent"
                                         }
                                         Text {
                                             anchors.centerIn: parent
                                             text: "×"
-                                            color: closeTermTabBtn.containsMouse ? "#F87171" : "#64748B"
+                                            color: closeTermTabBtn.containsMouse ? fluxTheme.dangerText : fluxTheme.textMuted
                                             font.pixelSize: 12
                                             font.bold: true
                                         }
@@ -727,8 +639,8 @@ Rectangle {
                             Layout.alignment: Qt.AlignVCenter
                             implicitWidth: newTabRow.implicitWidth + 2
                             radius: 7
-                            color: "#111824"
-                            border.color: (addTabBtn.hovered || shellMenuBtn.hovered || shellPickerMenu.opened) ? "#2E4260" : "#1F2C3F"
+                            color: fluxTheme.surface
+                            border.color: (addTabBtn.hovered || shellMenuBtn.hovered || shellPickerMenu.opened) ? fluxTheme.borderHighlight : fluxTheme.borderSubtle
                             border.width: 1
 
                             RowLayout {
@@ -742,12 +654,12 @@ Rectangle {
                                     Layout.preferredHeight: 22
                                     hoverEnabled: true
                                     background: Rectangle {
-                                        radius: 6
-                                        color: addTabBtn.hovered ? "#1A2639" : "transparent"
+                                        radius: fluxTheme.radiusXs
+                                        color: addTabBtn.hovered ? fluxTheme.cardHover : "transparent"
                                     }
                                     contentItem: Text {
                                         text: "+"
-                                        color: addTabBtn.hovered ? "#F8FAFC" : "#94A3B8"
+                                        color: addTabBtn.hovered ? fluxTheme.textPrimary : fluxTheme.textSecondary
                                         font.pixelSize: 13
                                         font.bold: true
                                         horizontalAlignment: Text.AlignHCenter
@@ -767,7 +679,7 @@ Rectangle {
                                     visible: panelRoot.terminalVm && panelRoot.terminalVm.availableShells.length > 1
                                     Layout.preferredWidth: 1
                                     Layout.preferredHeight: 12
-                                    color: "#243247"
+                                    color: fluxTheme.borderHighlight
                                 }
 
                                 Button {
@@ -777,12 +689,12 @@ Rectangle {
                                     Layout.preferredHeight: 22
                                     hoverEnabled: true
                                     background: Rectangle {
-                                        radius: 6
-                                        color: (shellMenuBtn.hovered || shellPickerMenu.opened) ? "#1A2639" : "transparent"
+                                        radius: fluxTheme.radiusXs
+                                        color: (shellMenuBtn.hovered || shellPickerMenu.opened) ? fluxTheme.cardHover : "transparent"
                                     }
                                     contentItem: Text {
                                         text: "▾"
-                                        color: shellPickerMenu.opened ? "#38BDF8" : "#94A3B8"
+                                        color: shellPickerMenu.opened ? fluxTheme.borderFocus : fluxTheme.textSecondary
                                         font.pixelSize: 9
                                         horizontalAlignment: Text.AlignHCenter
                                         verticalAlignment: Text.AlignVCenter
@@ -826,12 +738,12 @@ Rectangle {
                     Layout.minimumWidth: isCopied ? (cwdLabel.implicitWidth + 14) : 0
                     Layout.maximumWidth: 280
                     implicitWidth: Math.min(280, cwdLabel.implicitWidth + 14)
-                    radius: 6
-                    color: isCopied ? "#082F25" : "#0F1724"
-                    border.color: isCopied ? "#10B981" : "#1C293B"
+                    radius: fluxTheme.radiusXs
+                    color: isCopied ? fluxTheme.successBg : fluxTheme.surface
+                    border.color: isCopied ? fluxTheme.success : fluxTheme.borderSubtle
                     border.width: 1
-                    Behavior on color { ColorAnimation { duration: 120 } }
-                    Behavior on border.color { ColorAnimation { duration: 120 } }
+                    Behavior on color { ColorAnimation { duration: fluxTheme.animFast } }
+                    Behavior on border.color { ColorAnimation { duration: fluxTheme.animFast } }
 
                     Text {
                         id: cwdLabel
@@ -842,7 +754,7 @@ Rectangle {
                         text: cwdPill.isCopied
                             ? "✓ Copiato"
                             : (panelRoot.terminalVm ? panelRoot.terminalVm.activeWorkingDir : "")
-                        color: cwdPill.isCopied ? "#34D399" : "#64748B"
+                        color: cwdPill.isCopied ? fluxTheme.successText : fluxTheme.textMuted
                         font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
                         font.pixelSize: 10
                         font.bold: cwdPill.isCopied
@@ -874,14 +786,14 @@ Rectangle {
                     rightPadding: 8
                     hoverEnabled: true
                     background: Rectangle {
-                        radius: 6
-                        color: parent.hovered ? "#5C1924" : "#3B1219"
-                        border.color: "#EF4444"
+                        radius: fluxTheme.radiusXs
+                        color: parent.hovered ? fluxTheme.danger : fluxTheme.dangerBg
+                        border.color: fluxTheme.danger
                         border.width: 1
                     }
                     contentItem: Text {
                         text: "⏹ Stop"
-                        color: "#FCA5A5"
+                        color: parent.hovered ? fluxTheme.selectionText : fluxTheme.dangerText
                         font.pixelSize: 10
                         font.bold: true
                         horizontalAlignment: Text.AlignHCenter
@@ -904,14 +816,14 @@ Rectangle {
                     rightPadding: 8
                     hoverEnabled: true
                     background: Rectangle {
-                        radius: 6
-                        color: parent.hovered ? "#15324D" : "#0F2238"
-                        border.color: "#2A4B70"
+                        radius: fluxTheme.radiusXs
+                        color: parent.hovered ? fluxTheme.surfaceGlass : fluxTheme.infoBg
+                        border.color: fluxTheme.borderHighlight
                         border.width: 1
                     }
                     contentItem: Text {
                         text: "📄 Riapri pager"
-                        color: "#7DD3FC"
+                        color: fluxTheme.infoText
                         font.pixelSize: 10
                         font.bold: true
                         horizontalAlignment: Text.AlignHCenter
@@ -939,19 +851,19 @@ Rectangle {
                     bottomPadding: 0
                     hoverEnabled: true
                     background: Rectangle {
-                        radius: 6
+                        radius: fluxTheme.radiusXs
                         color: copyOutputBtn.isCopied
-                            ? "#082F25"
-                            : (copyOutputBtn.hovered ? "#1A2639" : "transparent")
-                        border.color: copyOutputBtn.isCopied ? "#10B981" : "transparent"
+                            ? fluxTheme.successBg
+                            : (copyOutputBtn.hovered ? fluxTheme.cardHover : "transparent")
+                        border.color: copyOutputBtn.isCopied ? fluxTheme.success : "transparent"
                         border.width: copyOutputBtn.isCopied ? 1 : 0
                     }
                     contentItem: Text {
                         id: copyOutputBtnText
                         text: copyOutputBtn.isCopied ? "✓ Copiato" : "⧉"
                         color: copyOutputBtn.isCopied
-                            ? "#34D399"
-                            : (copyOutputBtn.hovered ? "#F8FAFC" : "#94A3B8")
+                            ? fluxTheme.successText
+                            : (copyOutputBtn.hovered ? fluxTheme.textPrimary : fluxTheme.textSecondary)
                         font.pixelSize: copyOutputBtn.isCopied ? 10 : 12
                         font.bold: copyOutputBtn.isCopied
                         horizontalAlignment: Text.AlignHCenter
@@ -972,12 +884,12 @@ Rectangle {
                     Layout.preferredHeight: 24
                     hoverEnabled: true
                     background: Rectangle {
-                        radius: 6
-                        color: parent.hovered ? "#1A2639" : "transparent"
+                        radius: fluxTheme.radiusXs
+                        color: parent.hovered ? fluxTheme.cardHover : "transparent"
                     }
                     contentItem: Text {
                         text: "⌫"
-                        color: parent.hovered ? "#F8FAFC" : "#94A3B8"
+                        color: parent.hovered ? fluxTheme.textPrimary : fluxTheme.textSecondary
                         font.pixelSize: 12
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
@@ -998,12 +910,12 @@ Rectangle {
                     Layout.preferredHeight: 24
                     hoverEnabled: true
                     background: Rectangle {
-                        radius: 6
-                        color: parent.hovered ? "#1A2639" : "transparent"
+                        radius: fluxTheme.radiusXs
+                        color: parent.hovered ? fluxTheme.cardHover : "transparent"
                     }
                     contentItem: Text {
                         text: (panelRoot.terminalVm && panelRoot.terminalVm.isMaximized) ? "⤡" : "⤢"
-                        color: parent.hovered ? "#38BDF8" : "#94A3B8"
+                        color: parent.hovered ? fluxTheme.borderFocus : fluxTheme.textSecondary
                         font.pixelSize: 12
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
@@ -1023,12 +935,12 @@ Rectangle {
                     Layout.preferredHeight: 24
                     hoverEnabled: true
                     background: Rectangle {
-                        radius: 6
-                        color: parent.hovered ? "#3B1219" : "transparent"
+                        radius: fluxTheme.radiusXs
+                        color: parent.hovered ? fluxTheme.dangerBg : "transparent"
                     }
                     contentItem: Text {
                         text: "✕"
-                        color: parent.hovered ? "#F87171" : "#94A3B8"
+                        color: parent.hovered ? fluxTheme.dangerText : fluxTheme.textSecondary
                         font.pixelSize: 11
                         font.bold: true
                         horizontalAlignment: Text.AlignHCenter
@@ -1265,13 +1177,13 @@ Rectangle {
                 hoverEnabled: true
                 background: Rectangle {
                     radius: 13
-                    color: parent.hovered ? "#1A324D" : "#112236"
-                    border.color: "#38BDF8"
+                    color: parent.hovered ? fluxTheme.surfaceGlass : fluxTheme.infoBg
+                    border.color: fluxTheme.borderFocus
                     border.width: 1
                 }
                 contentItem: Text {
                     text: "↓ Torna in fondo"
-                    color: "#E2E8F0"
+                    color: fluxTheme.textPrimary
                     font.pixelSize: 10
                     font.bold: true
                     verticalAlignment: Text.AlignVCenter
@@ -1469,8 +1381,8 @@ Rectangle {
                 height: 24
                 width: copyToastText.implicitWidth + 18
                 radius: 12
-                color: "#082F25"
-                border.color: "#10B981"
+                color: fluxTheme.successBg
+                border.color: fluxTheme.success
                 border.width: 1
 
                 Text {
@@ -1480,7 +1392,7 @@ Rectangle {
                     text: panelRoot.copiedFeedbackMessage.length > 0
                         ? panelRoot.copiedFeedbackMessage
                         : "✓ Copiato negli appunti"
-                    color: "#34D399"
+                    color: fluxTheme.successText
                     font.pixelSize: 10
                     font.bold: true
                 }
@@ -1494,14 +1406,14 @@ Rectangle {
             visible: panelRoot.isPagerOpen
             Layout.fillWidth: true
             Layout.preferredHeight: 38
-            color: "#0C1524"
+            color: fluxTheme.headerBg
 
             Rectangle {
                 anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.right: parent.right
                 height: 1
-                color: "#1F3B5C"
+                color: fluxTheme.borderHighlight
             }
 
             RowLayout {
@@ -1514,14 +1426,14 @@ Rectangle {
                     Layout.preferredHeight: 20
                     implicitWidth: pagerBadgeText.implicitWidth + 12
                     radius: 5
-                    color: "#0C2A44"
-                    border.color: "#00E5FF"
+                    color: fluxTheme.infoBg
+                    border.color: fluxTheme.accentCyan
                     border.width: 1
                     Text {
                         id: pagerBadgeText
                         anchors.centerIn: parent
                         text: "PAGER"
-                        color: "#00E5FF"
+                        color: fluxTheme.accentCyan
                         font.pixelSize: 9
                         font.bold: true
                     }
@@ -1529,7 +1441,7 @@ Rectangle {
 
                 Text {
                     text: panelRoot.terminalVm ? panelRoot.terminalVm.pagerCommand : ""
-                    color: "#F8FAFC"
+                    color: fluxTheme.textPrimary
                     font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
                     font.pixelSize: 11
                     font.bold: true
@@ -1539,7 +1451,7 @@ Rectangle {
 
                 Text {
                     text: "Riga " + pagerFlickable.topVisibleLine + " / " + (panelRoot.terminalVm ? panelRoot.terminalVm.pagerLineCount : 0)
-                    color: "#38BDF8"
+                    color: fluxTheme.borderFocus
                     font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
                     font.pixelSize: 11
                     font.bold: true
@@ -1547,54 +1459,34 @@ Rectangle {
 
                 Text {
                     text: "Seleziona + Ctrl+C copia  •  ↑↓/Spazio scorri  •  g/G inizio/fine  •  q chiudi"
-                    color: "#64748B"
+                    color: fluxTheme.textMuted
                     font.pixelSize: 10
                     Layout.fillWidth: true
                     elide: Text.ElideRight
                 }
 
-                Button {
+                FluxActionButton {
+                    text: "↑ Inizio"
                     Layout.preferredHeight: 24
                     leftPadding: 8
                     rightPadding: 8
-                    hoverEnabled: true
-                    background: Rectangle {
-                        radius: 6
-                        color: parent.hovered ? "#1A2B42" : "#111C2D"
-                        border.color: "#253750"
-                        border.width: 1
-                    }
-                    contentItem: Text {
-                        text: "↑ Inizio"
-                        color: "#CBD5E1"
-                        font.pixelSize: 10
-                        font.bold: true
-                        verticalAlignment: Text.AlignVCenter
-                    }
+                    cornerRadius: fluxTheme.radiusXs
+                    fontPixelSize: 10
+                    fontBold: true
                     onClicked: {
                         panelRoot.scrollPagerToTop();
                         pagerTextEdit.forceActiveFocus();
                     }
                 }
 
-                Button {
+                FluxActionButton {
+                    text: "↓ Fine"
                     Layout.preferredHeight: 24
                     leftPadding: 8
                     rightPadding: 8
-                    hoverEnabled: true
-                    background: Rectangle {
-                        radius: 6
-                        color: parent.hovered ? "#1A2B42" : "#111C2D"
-                        border.color: "#253750"
-                        border.width: 1
-                    }
-                    contentItem: Text {
-                        text: "↓ Fine"
-                        color: "#CBD5E1"
-                        font.pixelSize: 10
-                        font.bold: true
-                        verticalAlignment: Text.AlignVCenter
-                    }
+                    cornerRadius: fluxTheme.radiusXs
+                    fontPixelSize: 10
+                    fontBold: true
                     onClicked: {
                         panelRoot.scrollPagerToBottom();
                         pagerTextEdit.forceActiveFocus();
@@ -1610,16 +1502,16 @@ Rectangle {
                     rightPadding: 8
                     hoverEnabled: true
                     background: Rectangle {
-                        radius: 6
+                        radius: fluxTheme.radiusXs
                         color: pagerCopyBtn.isCopied
-                            ? "#082F25"
-                            : (pagerCopyBtn.hovered ? "#1A2B42" : "#111C2D")
-                        border.color: pagerCopyBtn.isCopied ? "#10B981" : "#253750"
+                            ? fluxTheme.successBg
+                            : (pagerCopyBtn.hovered ? fluxTheme.cardHover : fluxTheme.surfaceElevated)
+                        border.color: pagerCopyBtn.isCopied ? fluxTheme.success : fluxTheme.borderHighlight
                         border.width: 1
                     }
                     contentItem: Text {
                         text: pagerCopyBtn.isCopied ? "✓ Copiato" : "⧉ Copia"
-                        color: pagerCopyBtn.isCopied ? "#34D399" : "#CBD5E1"
+                        color: pagerCopyBtn.isCopied ? fluxTheme.successText : fluxTheme.textSecondary
                         font.pixelSize: 10
                         font.bold: true
                         verticalAlignment: Text.AlignVCenter
@@ -1631,24 +1523,18 @@ Rectangle {
                     }
                 }
 
-                Button {
+                FluxActionButton {
+                    text: "✕ Chiudi (q)"
                     Layout.preferredHeight: 24
                     leftPadding: 10
                     rightPadding: 10
-                    hoverEnabled: true
-                    background: Rectangle {
-                        radius: 6
-                        color: parent.hovered ? "#1E4268" : "#122B45"
-                        border.color: "#38BDF8"
-                        border.width: 1
-                    }
-                    contentItem: Text {
-                        text: "✕ Chiudi (q)"
-                        color: "#F8FAFC"
-                        font.pixelSize: 10
-                        font.bold: true
-                        verticalAlignment: Text.AlignVCenter
-                    }
+                    cornerRadius: fluxTheme.radiusXs
+                    baseColor: fluxTheme.infoBg
+                    hoverColor: fluxTheme.surfaceGlass
+                    baseBorderColor: fluxTheme.borderFocus
+                    textColor: fluxTheme.textPrimary
+                    fontPixelSize: 10
+                    fontBold: true
                     onClicked: {
                         if (panelRoot.terminalVm) {
                             panelRoot.terminalVm.closePager();
@@ -1733,7 +1619,7 @@ Rectangle {
                 Text {
                     visible: Boolean(panelRoot.terminalVm && panelRoot.terminalVm.activeRelativeDir !== "/")
                     text: panelRoot.terminalVm ? panelRoot.terminalVm.activeRelativeDir : ""
-                    color: "#94A3B8"
+                    color: fluxTheme.textSecondary
                     font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
                     font.pixelSize: 11
                 }
@@ -2040,14 +1926,14 @@ Rectangle {
                     width: 36
                     height: 36
                     radius: 10
-                    color: "#2A1B07"
-                    border.color: "#F59E0B"
+                    color: fluxTheme.warningBg
+                    border.color: fluxTheme.warning
                     border.width: 1
 
                     Text {
                         anchors.centerIn: parent
                         text: "⚠"
-                        color: "#FBBF24"
+                        color: fluxTheme.warningText
                         font.pixelSize: 16
                     }
                 }
@@ -2058,14 +1944,14 @@ Rectangle {
 
                     Text {
                         text: "Comando in esecuzione"
-                        color: "#F8FAFC"
+                        color: fluxTheme.textPrimary
                         font.pixelSize: 14
                         font.bold: true
                     }
 
                     Text {
                         text: "Nella scheda \"" + closeRunningTabDialog.pendingTabTitle + "\" c'è ancora un processo attivo.\nVuoi terminarlo e chiudere la scheda?"
-                        color: "#94A3B8"
+                        color: fluxTheme.textSecondary
                         font.pixelSize: 12
                         wrapMode: Text.WordWrap
                         Layout.fillWidth: true
@@ -2092,10 +1978,11 @@ Rectangle {
                     objectName: "confirmCloseTabBtn"
                     text: "Termina e chiudi"
                     Layout.preferredHeight: 30
-                    baseColor: "#5C1924"
-                    hoverColor: "#7F1D1D"
-                    baseBorderColor: "#EF4444"
-                    textColor: "#FCA5A5"
+                    baseColor: fluxTheme.dangerBg
+                    hoverColor: fluxTheme.danger
+                    baseBorderColor: fluxTheme.danger
+                    textColor: fluxTheme.dangerText
+                    hoverTextColor: fluxTheme.selectionText
                     fontBold: true
                     onClicked: {
                         const idx = closeRunningTabDialog.pendingTabIndex;
@@ -2267,7 +2154,7 @@ Rectangle {
 
             Text {
                 text: "✏ Rinomina e personalizza scheda"
-                color: "#F8FAFC"
+                color: fluxTheme.textPrimary
                 font.pixelSize: 13
                 font.bold: true
             }
@@ -2276,8 +2163,8 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 34
                 radius: 7
-                color: "#090E16"
-                border.color: renameTabInput.activeFocus ? "#38BDF8" : "#253750"
+                color: fluxTheme.inputBg
+                border.color: renameTabInput.activeFocus ? fluxTheme.borderFocus : fluxTheme.borderHighlight
                 border.width: 1
 
                 TextInput {
@@ -2287,9 +2174,9 @@ Rectangle {
                     anchors.leftMargin: 10
                     anchors.rightMargin: 10
                     verticalAlignment: TextInput.AlignVCenter
-                    color: "#F8FAFC"
-                    selectionColor: "#1D4ED8"
-                    selectedTextColor: "#FFFFFF"
+                    color: fluxTheme.textPrimary
+                    selectionColor: fluxTheme.selectionBg
+                    selectedTextColor: fluxTheme.selectionText
                     font.pixelSize: 12
                     selectByMouse: true
                     clip: true
@@ -2306,12 +2193,18 @@ Rectangle {
 
                 Text {
                     text: "Colore scheda"
-                    color: "#94A3B8"
+                    color: fluxTheme.textSecondary
                     font.pixelSize: 11
                 }
 
-                TabColorSwatchRow {
+                FluxColorSwatchRow {
                     id: renameColorSwatches
+                    showDefaultOption: true
+                    swatchSize: 22
+                    defaultAccentColor: panelRoot.defaultTabAccent
+                    paletteColors: (panelRoot.terminalVm && panelRoot.terminalVm.tabColorPalette && panelRoot.terminalVm.tabColorPalette.length > 0)
+                        ? panelRoot.terminalVm.tabColorPalette
+                        : panelRoot.defaultColorPalette
                     objectNamePrefix: "renameTabSwatch_"
                 }
             }
@@ -2336,10 +2229,10 @@ Rectangle {
                     text: "Salva"
                     enabled: renameTabInput.text.trim().length > 0
                     Layout.preferredHeight: 30
-                    baseColor: "#122B45"
-                    hoverColor: "#1E4268"
-                    baseBorderColor: "#38BDF8"
-                    textColor: "#F8FAFC"
+                    baseColor: fluxTheme.infoBg
+                    hoverColor: fluxTheme.surfaceGlass
+                    baseBorderColor: fluxTheme.borderFocus
+                    textColor: fluxTheme.textPrimary
                     fontBold: true
                     onClicked: renameTabDialog.submitRename()
                 }
@@ -2376,15 +2269,21 @@ Rectangle {
 
             Text {
                 text: "🎨 Colore scheda: " + tabColorDialog.targetTabTitle
-                color: "#F8FAFC"
+                color: fluxTheme.textPrimary
                 font.pixelSize: 13
                 font.bold: true
                 elide: Text.ElideRight
                 Layout.fillWidth: true
             }
 
-            TabColorSwatchRow {
+            FluxColorSwatchRow {
                 id: colorPickerSwatches
+                showDefaultOption: true
+                swatchSize: 22
+                defaultAccentColor: panelRoot.defaultTabAccent
+                paletteColors: (panelRoot.terminalVm && panelRoot.terminalVm.tabColorPalette && panelRoot.terminalVm.tabColorPalette.length > 0)
+                    ? panelRoot.terminalVm.tabColorPalette
+                    : panelRoot.defaultColorPalette
                 objectNamePrefix: "quickTabSwatch_"
                 onColorPicked: function (hexColor) {
                     const idx = tabColorDialog.targetTabIndex;

@@ -1,9 +1,11 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../themes"
 
 Dialog {
     id: root
+    readonly property FluxTheme theme: FluxTheme {}
     title: "Crea Nuovo Branch"
     modal: true
     width: 480
@@ -49,9 +51,9 @@ Dialog {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 36
-            color: "#0D131D"
+            color: root.theme.inputBg
             radius: 9
-            border.color: "#222F42"
+            border.color: root.theme.border
             border.width: 1
 
             RowLayout {
@@ -62,13 +64,13 @@ Dialog {
 
                 Text {
                     text: "Punto di partenza:"
-                    color: "#94A3B8"
+                    color: root.theme.textSecondary
                     font.pixelSize: 11
                 }
 
                 Text {
                     text: root.startPoint.length > 0 ? root.startPoint : "HEAD (Branch attuale: " + (root.branchManager ? root.branchManager.currentBranch : "main") + ")"
-                    color: "#38BDF8"
+                    color: root.theme.borderFocus
                     font.bold: true
                     font.pixelSize: 11
                     font.family: root.startPoint.length > 0 ? "monospace" : "sans-serif"
@@ -85,32 +87,15 @@ Dialog {
 
             Text {
                 text: "Nome del branch:"
-                color: "#E2E8F0"
+                color: root.theme.textPrimary
                 font.bold: true
                 font.pixelSize: 11
             }
 
-            TextField {
+            FluxTextField {
                 id: branchNameField
                 Layout.fillWidth: true
-                Layout.preferredHeight: 36
                 placeholderText: "es. feature/mia-funzionalita"
-                placeholderTextColor: "#64748B"
-                color: "#F8FAFC"
-                font.pixelSize: 12
-                selectByMouse: true
-                background: Rectangle {
-                    color: "#0A0E15"
-                    radius: 8
-                    border.color: branchNameField.activeFocus ? "#38BDF8" : "#222F42"
-                    border.width: 1
-
-                    Behavior on border.color {
-                        ColorAnimation {
-                            duration: 120
-                        }
-                    }
-                }
                 onAccepted: createBtn.clicked()
             }
         }
@@ -126,7 +111,7 @@ Dialog {
         Text {
             id: branchErrorText
             text: ""
-            color: "#EF4444"
+            color: root.theme.danger
             font.pixelSize: 11
             visible: text.length > 0
             wrapMode: Text.WordWrap
@@ -159,10 +144,10 @@ Dialog {
                 Layout.preferredHeight: 34
                 leftPadding: 16
                 rightPadding: 16
-                baseColor: "#0284C7"
-                hoverColor: "#0EA5E9"
-                baseBorderColor: "#38BDF8"
-                textColor: "#FFFFFF"
+                baseColor: root.theme.accentBlue
+                hoverColor: root.theme.accentBlueHover
+                baseBorderColor: root.theme.borderFocus
+                textColor: root.theme.selectionText
                 fontBold: true
                 onClicked: {
                     const name = branchNameField.text.trim();

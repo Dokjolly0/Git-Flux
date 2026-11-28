@@ -1,10 +1,12 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../themes"
 
 Rectangle {
     id: root
-    color: "#0E1117"
+    readonly property FluxTheme theme: FluxTheme {}
+    color: theme.canvas
     implicitWidth: 1000
     implicitHeight: 700
 
@@ -635,14 +637,13 @@ Rectangle {
             anchors.topMargin: (resizerHandle.containsMouse || resizerHandle.pressed) ? 0 : 6
             anchors.bottomMargin: (resizerHandle.containsMouse || resizerHandle.pressed) ? 0 : 6
             width: (resizerHandle.containsMouse || resizerHandle.pressed) ? 2 : 1
-            color: (resizerHandle.containsMouse || resizerHandle.pressed) ? "#38BDF8" : "#2B3647"
-
-            Behavior on color { ColorAnimation { duration: 100 } }
+            color: (resizerHandle.containsMouse || resizerHandle.pressed) ? root.theme.accentCyan : root.theme.border
         }
     }
 
     component CommitFilesListBody: Item {
         id: listBody
+        readonly property FluxTheme theme: FluxTheme {}
         property var pathFiles: []
         property var treeModel: []
         property string treeScope: ""
@@ -681,10 +682,10 @@ Rectangle {
                         && (!root.isWipSelected || Boolean(root.selectedFile.isStaged) === Boolean(modelData.isStaged)))
 
                     color: isSelected
-                        ? "#1E3A8A55"
-                        : ((fileRowMouse.containsMouse || unstageBtnMouse.containsMouse || stageBtnMouse.containsMouse || discardBtnMouse.containsMouse) ? "#1F242C" : "transparent")
+                        ? Qt.alpha(listBody.theme.accentBlue, 0.33)
+                        : ((fileRowMouse.containsMouse || unstageBtnMouse.containsMouse || stageBtnMouse.containsMouse || discardBtnMouse.containsMouse) ? listBody.theme.cardHover : "transparent")
 
-                    border.color: isSelected ? "#38BDF8" : "transparent"
+                    border.color: isSelected ? listBody.theme.accentCyan : "transparent"
                     border.width: 1
 
                     MouseArea {
@@ -720,7 +721,7 @@ Rectangle {
                                 if (modelData.status === "R" || modelData.status === "C") return "⇄";
                                 return "✏️";
                             }
-                            color: "#F87171"
+                            color: listBody.theme.danger
                             font.pixelSize: 11
                             ToolTip.visible: modelData.isConflicted === true && fileRowMouse.containsMouse
                             ToolTip.text: "In conflitto: clic per risolvere"
@@ -729,7 +730,7 @@ Rectangle {
                         // Directory dimmed
                         Text {
                             text: root.getDirectory(modelData.path)
-                            color: "#64748B"
+                            color: listBody.theme.textMuted
                             font.pixelSize: 11
                             elide: Text.ElideMiddle
                             Layout.maximumWidth: Math.max(60, Math.floor(fDelegate.width * 0.45))
@@ -739,7 +740,7 @@ Rectangle {
                         // Filename highlighted
                         Text {
                             text: root.getFilename(modelData.path)
-                            color: fDelegate.isSelected ? "#38BDF8" : "#F1F5F9"
+                            color: fDelegate.isSelected ? listBody.theme.accentCyan : listBody.theme.textPrimary
                             font.bold: true
                             font.pixelSize: 11
                             elide: Text.ElideRight
@@ -752,15 +753,15 @@ Rectangle {
                             height: 16
                             implicitWidth: multiCommitPillText.implicitWidth + 10
                             radius: 8
-                            color: "#0C2A44"
-                            border.color: Qt.alpha("#38BDF8", 0.45)
+                            color: listBody.theme.infoBg
+                            border.color: Qt.alpha(listBody.theme.accentCyan, 0.45)
                             border.width: 1
 
                             Text {
                                 id: multiCommitPillText
                                 anchors.centerIn: parent
                                 text: (modelData.commitCount || 0) + " commit"
-                                color: "#38BDF8"
+                                color: listBody.theme.accentCyan
                                 font.pixelSize: 9
                                 font.bold: true
                             }
@@ -789,15 +790,15 @@ Rectangle {
                             height: 16
                             implicitWidth: untrackedPillText.implicitWidth + 10
                             radius: 8
-                            color: Qt.alpha("#10B981", 0.14)
-                            border.color: Qt.alpha("#10B981", 0.45)
+                            color: Qt.alpha(listBody.theme.accentTeal, 0.14)
+                            border.color: Qt.alpha(listBody.theme.accentTeal, 0.45)
                             border.width: 1
 
                             Text {
                                 id: untrackedPillText
                                 anchors.centerIn: parent
                                 text: "Untracked"
-                                color: "#34D399"
+                                color: listBody.theme.accentTeal
                                 font.pixelSize: 9
                                 font.bold: true
                             }
@@ -808,14 +809,14 @@ Rectangle {
                             spacing: 4
                             Text {
                                 text: "+" + (modelData.additions || 0)
-                                color: "#34D399"
+                                color: listBody.theme.accentTeal
                                 font.pixelSize: 10
                                 font.bold: true
                                 visible: (modelData.additions || 0) > 0
                             }
                             Text {
                                 text: "-" + (modelData.deletions || 0)
-                                color: "#F87171"
+                                color: listBody.theme.danger
                                 font.pixelSize: 10
                                 font.bold: true
                                 visible: (modelData.deletions || 0) > 0
@@ -838,11 +839,11 @@ Rectangle {
                                 width: 20
                                 height: 20
                                 radius: 3
-                                color: unstageBtnMouse.containsMouse ? "#EF4444" : "#374151"
+                                color: unstageBtnMouse.containsMouse ? listBody.theme.danger : listBody.theme.borderHighlight
                                 Text {
                                     anchors.centerIn: parent
                                     text: "-"
-                                    color: "#FFFFFF"
+                                    color: listBody.theme.selectionText
                                     font.bold: true
                                     font.pixelSize: 13
                                 }
@@ -871,13 +872,13 @@ Rectangle {
                                 width: 20
                                 height: 20
                                 radius: 3
-                                color: stageBtnMouse.containsMouse ? "#059669" : "#065F46"
-                                border.color: "#10B981"
+                                color: stageBtnMouse.containsMouse ? listBody.theme.success : listBody.theme.successBg
+                                border.color: listBody.theme.accentTeal
                                 border.width: 1
                                 Text {
                                     anchors.centerIn: parent
                                     text: "+"
-                                    color: "#FFFFFF"
+                                    color: listBody.theme.selectionText
                                     font.bold: true
                                     font.pixelSize: 13
                                 }
@@ -906,7 +907,7 @@ Rectangle {
                                 width: 20
                                 height: 20
                                 radius: 3
-                                color: discardBtnMouse.containsMouse ? "#7F1D1D" : "transparent"
+                                color: discardBtnMouse.containsMouse ? listBody.theme.dangerBg : "transparent"
                                 Text {
                                     anchors.centerIn: parent
                                     text: "🗑️"
@@ -966,10 +967,10 @@ Rectangle {
                         && (!root.isWipSelected || Boolean(root.selectedFile.isStaged) === Boolean(modelData.isStaged)))
 
                     color: isSelected
-                        ? "#1E3A8A55"
-                        : ((treeRowMouse.containsMouse || treeUnstageBtnMouse.containsMouse || treeStageBtnMouse.containsMouse || treeDiscardBtnMouse.containsMouse) ? "#1F242C" : "transparent")
+                        ? Qt.alpha(listBody.theme.accentBlue, 0.33)
+                        : ((treeRowMouse.containsMouse || treeUnstageBtnMouse.containsMouse || treeStageBtnMouse.containsMouse || treeDiscardBtnMouse.containsMouse) ? listBody.theme.cardHover : "transparent")
 
-                    border.color: isSelected ? "#38BDF8" : "transparent"
+                    border.color: isSelected ? listBody.theme.accentCyan : "transparent"
                     border.width: 1
 
                     MouseArea {
@@ -1002,7 +1003,7 @@ Rectangle {
                         Text {
                             visible: treeDelegate.isFolder
                             text: modelData.isCollapsed ? "▸" : "▾"
-                            color: "#94A3B8"
+                            color: listBody.theme.textMuted
                             font.pixelSize: 11
                             Layout.preferredWidth: 12
                         }
@@ -1016,7 +1017,7 @@ Rectangle {
                         Text {
                             visible: treeDelegate.isFolder
                             text: modelData.name || ""
-                            color: "#E2E8F0"
+                            color: listBody.theme.textSecondary
                             font.bold: true
                             font.pixelSize: 11
                             elide: Text.ElideRight
@@ -1028,13 +1029,13 @@ Rectangle {
                             height: 16
                             implicitWidth: folderCountText.implicitWidth + 8
                             radius: 8
-                            color: "#21262D"
+                            color: listBody.theme.surfaceElevated
 
                             Text {
                                 id: folderCountText
                                 anchors.centerIn: parent
                                 text: "" + (modelData.fileCount || 0)
-                                color: "#94A3B8"
+                                color: listBody.theme.textMuted
                                 font.pixelSize: 9
                                 font.bold: true
                             }
@@ -1051,7 +1052,7 @@ Rectangle {
                                 if (modelData.status === "R" || modelData.status === "C") return "⇄";
                                 return "✏️";
                             }
-                            color: "#F87171"
+                            color: listBody.theme.danger
                             font.pixelSize: 11
                             ToolTip.visible: conflicted && treeRowMouse.containsMouse
                             ToolTip.text: "In conflitto: clic per risolvere"
@@ -1060,7 +1061,7 @@ Rectangle {
                         Text {
                             visible: !treeDelegate.isFolder
                             text: modelData.name || ""
-                            color: treeDelegate.isSelected ? "#38BDF8" : "#F1F5F9"
+                            color: treeDelegate.isSelected ? listBody.theme.accentCyan : listBody.theme.textPrimary
                             font.bold: true
                             font.pixelSize: 11
                             elide: Text.ElideRight
@@ -1072,15 +1073,15 @@ Rectangle {
                             height: 16
                             implicitWidth: treeUntrackedText.implicitWidth + 10
                             radius: 8
-                            color: Qt.alpha("#10B981", 0.14)
-                            border.color: Qt.alpha("#10B981", 0.45)
+                            color: Qt.alpha(listBody.theme.accentTeal, 0.14)
+                            border.color: Qt.alpha(listBody.theme.accentTeal, 0.45)
                             border.width: 1
 
                             Text {
                                 id: treeUntrackedText
                                 anchors.centerIn: parent
                                 text: "Untracked"
-                                color: "#34D399"
+                                color: listBody.theme.accentTeal
                                 font.pixelSize: 9
                                 font.bold: true
                             }
@@ -1092,14 +1093,14 @@ Rectangle {
                             spacing: 4
                             Text {
                                 text: "+" + (modelData.additions || 0)
-                                color: "#34D399"
+                                color: listBody.theme.accentTeal
                                 font.pixelSize: 10
                                 font.bold: true
                                 visible: (modelData.additions || 0) > 0
                             }
                             Text {
                                 text: "-" + (modelData.deletions || 0)
-                                color: "#F87171"
+                                color: listBody.theme.danger
                                 font.pixelSize: 10
                                 font.bold: true
                                 visible: (modelData.deletions || 0) > 0
@@ -1121,11 +1122,11 @@ Rectangle {
                                 width: 20
                                 height: 20
                                 radius: 3
-                                color: treeUnstageBtnMouse.containsMouse ? "#EF4444" : "#374151"
+                                color: treeUnstageBtnMouse.containsMouse ? listBody.theme.danger : listBody.theme.borderHighlight
                                 Text {
                                     anchors.centerIn: parent
                                     text: "-"
-                                    color: "#FFFFFF"
+                                    color: listBody.theme.selectionText
                                     font.bold: true
                                     font.pixelSize: 13
                                 }
@@ -1153,13 +1154,13 @@ Rectangle {
                                 width: 20
                                 height: 20
                                 radius: 3
-                                color: treeStageBtnMouse.containsMouse ? "#059669" : "#065F46"
-                                border.color: "#10B981"
+                                color: treeStageBtnMouse.containsMouse ? listBody.theme.success : listBody.theme.successBg
+                                border.color: listBody.theme.accentTeal
                                 border.width: 1
                                 Text {
                                     anchors.centerIn: parent
                                     text: "+"
-                                    color: "#FFFFFF"
+                                    color: listBody.theme.selectionText
                                     font.bold: true
                                     font.pixelSize: 13
                                 }
@@ -1187,7 +1188,7 @@ Rectangle {
                                 width: 20
                                 height: 20
                                 radius: 3
-                                color: treeDiscardBtnMouse.containsMouse ? "#7F1D1D" : "transparent"
+                                color: treeDiscardBtnMouse.containsMouse ? listBody.theme.dangerBg : "transparent"
                                 Text {
                                     anchors.centerIn: parent
                                     text: "🗑️"
@@ -1221,7 +1222,7 @@ Rectangle {
             width: Math.max(120, parent.width - 24)
             visible: listBody.isEmpty
             text: listBody.emptyText
-            color: "#64748B"
+            color: listBody.theme.textMuted
             font.pixelSize: 11
             wrapMode: Text.WordWrap
             horizontalAlignment: Text.AlignHCenter
@@ -1230,17 +1231,18 @@ Rectangle {
 
     component WipSectionCard: Rectangle {
         id: wipCard
+        readonly property FluxTheme theme: FluxTheme {}
         property string titleText: ""
-        property color accentColor: "#F59E0B"
+        property color accentColor: theme.warning
         property int fileCount: 0
         property string extraBadgeText: ""
         property bool isExpanded: true
         property bool showActionButton: false
         property string actionText: ""
-        property color actionBgColor: "#065F46"
-        property color actionHoverColor: "#047857"
-        property color actionBorderColor: "#10B981"
-        property color actionTextColor: "#FFFFFF"
+        property color actionBgColor: theme.successBg
+        property color actionHoverColor: theme.success
+        property color actionBorderColor: theme.accentTeal
+        property color actionTextColor: theme.selectionText
         property var pathFiles: []
         property var treeModel: []
         property string treeScope: ""
@@ -1250,8 +1252,8 @@ Rectangle {
         signal actionClicked()
 
         radius: 8
-        color: "#0B1019"
-        border.color: fileCount > 0 ? Qt.alpha(accentColor, 0.38) : "#222F42"
+        color: wipCard.theme.inputBg
+        border.color: fileCount > 0 ? Qt.alpha(accentColor, 0.38) : wipCard.theme.border
         border.width: 1
         clip: true
 
@@ -1286,7 +1288,7 @@ Rectangle {
 
                     Text {
                         text: wipCard.isExpanded ? "▾" : "▸"
-                        color: "#94A3B8"
+                        color: wipCard.theme.textMuted
                         font.pixelSize: 11
                         font.bold: true
                     }
@@ -1300,7 +1302,7 @@ Rectangle {
 
                     Text {
                         text: wipCard.titleText
-                        color: "#F1F5F9"
+                        color: wipCard.theme.textPrimary
                         font.pixelSize: 11
                         font.bold: true
                         elide: Text.ElideRight
@@ -1318,7 +1320,7 @@ Rectangle {
                             id: secCountText
                             anchors.centerIn: parent
                             text: String(wipCard.fileCount)
-                            color: "#F8FAFC"
+                            color: wipCard.theme.textPrimary
                             font.pixelSize: 10
                             font.bold: true
                         }
@@ -1329,15 +1331,15 @@ Rectangle {
                         height: 18
                         implicitWidth: extraBadgeLabel.implicitWidth + 10
                         radius: 9
-                        color: Qt.alpha("#10B981", 0.14)
-                        border.color: Qt.alpha("#10B981", 0.40)
+                        color: Qt.alpha(wipCard.theme.accentTeal, 0.14)
+                        border.color: Qt.alpha(wipCard.theme.accentTeal, 0.40)
                         border.width: 1
 
                         Text {
                             id: extraBadgeLabel
                             anchors.centerIn: parent
                             text: wipCard.extraBadgeText
-                            color: "#34D399"
+                            color: wipCard.theme.accentTeal
                             font.pixelSize: 9
                             font.bold: true
                         }
@@ -1385,7 +1387,7 @@ Rectangle {
                 visible: wipCard.isExpanded
                 Layout.fillWidth: true
                 Layout.preferredHeight: 1
-                color: "#1E293B"
+                color: wipCard.theme.borderSubtle
             }
 
             CommitFilesListBody {
@@ -1989,7 +1991,7 @@ Rectangle {
                 width: 2
                 height: 36
                 radius: 1
-                color: SplitHandle.hovered || SplitHandle.pressed ? "#38BDF8" : "#1E293B"
+                color: SplitHandle.hovered || SplitHandle.pressed ? root.theme.accentCyan : root.theme.borderSubtle
             }
         }
 
@@ -2012,9 +2014,9 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.minimumHeight: 160
-                    color: "#0D121A"
+                    color: root.theme.surface
                     radius: 12
-                    border.color: "#1E293B"
+                    border.color: root.theme.borderSubtle
                     border.width: 1
                     clip: true
 
@@ -2030,8 +2032,8 @@ Rectangle {
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 36
-                    color: commitFilterInput.activeFocus ? "#161B22" : "#0F141C"
-                    border.color: commitFilterInput.activeFocus ? "#38BDF8" : "#21262D"
+                    color: commitFilterInput.activeFocus ? root.theme.surfaceElevated : root.theme.surface
+                    border.color: commitFilterInput.activeFocus ? root.theme.accentCyan : root.theme.border
                     border.width: commitFilterInput.activeFocus ? 1.5 : 1
 
                     MouseArea {
@@ -2050,7 +2052,7 @@ Rectangle {
                         Text {
                             text: "🔍"
                             font.pixelSize: 12
-                            color: commitFilterInput.activeFocus ? "#38BDF8" : "#8B949E"
+                            color: commitFilterInput.activeFocus ? root.theme.accentCyan : root.theme.textMuted
                         }
 
                         TextField {
@@ -2058,8 +2060,8 @@ Rectangle {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 28
                             placeholderText: "Filtra per messaggio, autore o hash commit... (Ctrl+F)"
-                            placeholderTextColor: "#484F58"
-                            color: "#F0F6FC"
+                            placeholderTextColor: root.theme.textPlaceholder
+                            color: root.theme.textPrimary
                             font.pixelSize: 12
                             selectByMouse: true
                             background: Rectangle {
@@ -2084,16 +2086,16 @@ Rectangle {
                             visible: commitFilterInput.text.length === 0 && !commitFilterInput.activeFocus
                             Layout.preferredHeight: 18
                             Layout.preferredWidth: ctrlFBadgeText.implicitWidth + 8
-                            color: "#1E293B"
+                            color: root.theme.cardHover
                             radius: 3
-                            border.color: "#334155"
+                            border.color: root.theme.borderHighlight
                             border.width: 1
 
                             Text {
                                 id: ctrlFBadgeText
                                 anchors.centerIn: parent
                                 text: "Ctrl+F"
-                                color: "#64748B"
+                                color: root.theme.textMuted
                                 font.pixelSize: 9
                                 font.bold: true
                             }
@@ -2106,7 +2108,7 @@ Rectangle {
                             onClicked: commitFilterInput.text = ""
                             contentItem: Text {
                                 text: "✕"
-                                color: "#8B949E"
+                                color: root.theme.textMuted
                                 font.pixelSize: 11
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
@@ -2120,9 +2122,9 @@ Rectangle {
                             visible: root.branchManager && root.branchManager.commitHistory && root.branchManager.commitHistory.searchFilter.length > 0
                             Layout.preferredHeight: 20
                             Layout.preferredWidth: filterCountText.implicitWidth + 12
-                            color: "#1E293B"
+                            color: root.theme.cardHover
                             radius: 10
-                            border.color: "#38BDF8"
+                            border.color: root.theme.accentCyan
                             border.width: 1
 
                             Text {
@@ -2130,7 +2132,7 @@ Rectangle {
                                 anchors.centerIn: parent
                                 text: (root.branchManager && root.branchManager.commitHistory) ?
                                     (root.branchManager.commitHistory.filteredCommitsCount + " / " + root.branchManager.commitHistory.totalCommitsCount) : ""
-                                color: "#38BDF8"
+                                color: root.theme.accentCyan
                                 font.pixelSize: 11
                                 font.bold: true
                             }
@@ -2140,9 +2142,9 @@ Rectangle {
                         Button {
                             Layout.preferredHeight: 24
                             background: Rectangle {
-                                color: parent.hovered ? "#334155" : ((root.branchManager && root.branchManager.fileHistoryPath !== "") ? "#1E3A8A" : "#1E293B")
+                                color: parent.hovered ? root.theme.borderHighlight : ((root.branchManager && root.branchManager.fileHistoryPath !== "") ? root.theme.infoBg : root.theme.cardHover)
                                 radius: 4
-                                border.color: (root.branchManager && root.branchManager.fileHistoryPath !== "") ? "#38BDF8" : "#334155"
+                                border.color: (root.branchManager && root.branchManager.fileHistoryPath !== "") ? root.theme.accentCyan : root.theme.borderHighlight
                                 border.width: 1
                             }
                             contentItem: RowLayout {
@@ -2152,7 +2154,7 @@ Rectangle {
                                 }
                                 Text {
                                     text: (root.branchManager && root.branchManager.fileHistoryPath !== "") ? "Cronologia attiva" : "Cronologia file (Ctrl+H)"
-                                    color: (root.branchManager && root.branchManager.fileHistoryPath !== "") ? "#38BDF8" : "#94A3B8"
+                                    color: (root.branchManager && root.branchManager.fileHistoryPath !== "") ? root.theme.accentCyan : root.theme.textMuted
                                     font.pixelSize: 10
                                     font.bold: (root.branchManager && root.branchManager.fileHistoryPath !== "")
                                 }
@@ -2167,8 +2169,8 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 36
                     visible: root.branchManager && root.branchManager.fileHistoryPath !== ""
-                    color: "#0F1A2E"
-                    border.color: "#38BDF8"
+                    color: root.theme.infoBg
+                    border.color: root.theme.accentCyan
                     border.width: 1
 
                     RowLayout {
@@ -2182,12 +2184,12 @@ Rectangle {
                         }
                         Text {
                             text: "Cronologia file:"
-                            color: "#94A3B8"
+                            color: root.theme.textMuted
                             font.pixelSize: 11
                         }
                         Text {
                             text: root.branchManager ? root.branchManager.fileHistoryPath : ""
-                            color: "#38BDF8"
+                            color: root.theme.accentCyan
                             font.bold: true
                             font.pixelSize: 11
                             elide: Text.ElideMiddle
@@ -2195,7 +2197,7 @@ Rectangle {
                         }
                         Text {
                             text: "(" + (root.branchManager && root.branchManager.commitHistory ? root.branchManager.commitHistory.totalCommitsCount : 0) + " commit trovati)"
-                            color: "#64748B"
+                            color: root.theme.textMuted
                             font.pixelSize: 10
                         }
                         Item {
@@ -2204,18 +2206,18 @@ Rectangle {
                         Button {
                             Layout.preferredHeight: 22
                             background: Rectangle {
-                                color: parent.hovered ? "#334155" : "#1E293B"
+                                color: parent.hovered ? root.theme.borderHighlight : root.theme.cardHover
                                 radius: 3
-                                border.color: "#475569"
+                                border.color: root.theme.borderHighlight
                                 border.width: 1
                             }
                             contentItem: RowLayout {
                                 spacing: 4
                                 Text {
-                                    text: "✕"; color: "#F87171"; font.bold: true; font.pixelSize: 10
+                                    text: "✕"; color: root.theme.danger; font.bold: true; font.pixelSize: 10
                                 }
                                 Text {
-                                    text: "Chiudi cronologia file"; color: "#F1F5F9"; font.pixelSize: 10
+                                    text: "Chiudi cronologia file"; color: root.theme.textPrimary; font.pixelSize: 10
                                 }
                             }
                             onClicked: {
@@ -2233,8 +2235,8 @@ Rectangle {
                     visible: root.branchManager !== null && root.branchManager.isDetached
                     Layout.fillWidth: true
                     Layout.preferredHeight: visible ? 40 : 0
-                    color: "#2A1F0A"
-                    border.color: "#B45309"
+                    color: root.theme.warningBg
+                    border.color: root.theme.warning
                     border.width: 1
 
                     RowLayout {
@@ -2245,7 +2247,7 @@ Rectangle {
 
                         Text {
                             text: "⚠"
-                            color: "#F59E0B"
+                            color: root.theme.warning
                             font.pixelSize: 16
                             font.bold: true
                         }
@@ -2256,7 +2258,7 @@ Rectangle {
 
                             Text {
                                 text: "HEAD detached: non sei su nessun branch"
-                                color: "#FBBF24"
+                                color: root.theme.warningText
                                 font.pixelSize: 12
                                 font.bold: true
                                 elide: Text.ElideRight
@@ -2264,7 +2266,7 @@ Rectangle {
                             }
                             Text {
                                 text: "I commit fatti qui non appartengono a nessun branch e andranno persi al prossimo checkout. Crea un branch o passa a uno esistente."
-                                color: "#D6B26E"
+                                color: root.theme.textSecondary
                                 font.pixelSize: 10
                                 elide: Text.ElideRight
                                 Layout.fillWidth: true
@@ -2276,15 +2278,15 @@ Rectangle {
                             Layout.preferredHeight: 24
                             implicitWidth: detachedCreateText.implicitWidth + 18
                             radius: 4
-                            color: detachedCreateMouse.containsMouse ? "#78350F" : "#451A03"
-                            border.color: "#F59E0B"
+                            color: detachedCreateMouse.containsMouse ? Qt.alpha(root.theme.warning, 0.35) : root.theme.warningBg
+                            border.color: root.theme.warning
                             border.width: 1
 
                             Text {
                                 id: detachedCreateText
                                 anchors.centerIn: parent
                                 text: "🌿 Crea branch qui"
-                                color: "#FDE68A"
+                                color: root.theme.warningText
                                 font.pixelSize: 11
                                 font.bold: true
                             }
@@ -2306,21 +2308,21 @@ Rectangle {
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 32
-                    color: "#161B22"
+                    color: root.theme.surfaceElevated
 
                     Rectangle {
                         anchors.top: parent.top
                         anchors.left: parent.left
                         anchors.right: parent.right
                         height: 1
-                        color: "#21262D"
+                        color: root.theme.border
                     }
                     Rectangle {
                         anchors.bottom: parent.bottom
                         anchors.left: parent.left
                         anchors.right: parent.right
                         height: 1
-                        color: "#21262D"
+                        color: root.theme.border
                     }
 
                     RowLayout {
@@ -2346,7 +2348,7 @@ Rectangle {
                                 horizontalAlignment: Text.AlignRight
                                 elide: Text.ElideRight
                                 text: "BRANCH / TAG"
-                                color: "#8B949E"
+                                color: root.theme.textMuted
                                 font.pixelSize: 10
                                 font.bold: true
                             }
@@ -2380,7 +2382,7 @@ Rectangle {
                                 anchors.verticalCenter: parent.verticalCenter
                                 elide: Text.ElideRight
                                 text: "GRAPH"
-                                color: "#8B949E"
+                                color: root.theme.textMuted
                                 font.pixelSize: 10
                                 font.bold: true
                             }
@@ -2414,7 +2416,7 @@ Rectangle {
                                 anchors.verticalCenter: parent.verticalCenter
                                 elide: Text.ElideRight
                                 text: "COMMIT MESSAGE"
-                                color: "#8B949E"
+                                color: root.theme.textMuted
                                 font.pixelSize: 10
                                 font.bold: true
                             }
@@ -2449,7 +2451,7 @@ Rectangle {
                                 anchors.verticalCenter: parent.verticalCenter
                                 elide: Text.ElideRight
                                 text: "AUTHOR"
-                                color: "#8B949E"
+                                color: root.theme.textMuted
                                 font.pixelSize: 10
                                 font.bold: true
                             }
@@ -2483,7 +2485,7 @@ Rectangle {
                                 spacing: 4
                                 Text {
                                     text: "COMMIT DATE / TIME"
-                                    color: "#8B949E"
+                                    color: root.theme.textMuted
                                     font.pixelSize: 10
                                     font.bold: true
                                     elide: Text.ElideRight
@@ -2501,12 +2503,12 @@ Rectangle {
                                     Rectangle {
                                         anchors.fill: parent
                                         radius: 4
-                                        color: resetColsBtn.containsMouse ? "#243247" : "transparent"
+                                        color: resetColsBtn.containsMouse ? root.theme.cardHover : "transparent"
                                     }
                                     Text {
                                         anchors.centerIn: parent
                                         text: "↺"
-                                        color: resetColsBtn.containsMouse ? "#38BDF8" : "#8B949E"
+                                        color: resetColsBtn.containsMouse ? root.theme.accentCyan : root.theme.textMuted
                                         font.pixelSize: 12
                                         font.bold: true
                                     }
@@ -2637,13 +2639,13 @@ Rectangle {
                         }
 
                         color: commitRow.isHoveredTargetRow
-                            ? "#1E3A8A55"
+                            ? Qt.alpha(root.theme.accentBlue, 0.33)
                             : (isSelected
-                                ? "#1A2E4C" // GitKraken blue row selection
+                                ? root.theme.infoBg
                                 : (commitRow.isMultiRawSelected
-                                    ? "#131F3388" // Selected cross-branch commit temporarily excluded by branch filter
-                                    : (rowHover.hovered ? "#161B2288" : "transparent")))
-                        border.color: commitRow.isHoveredTargetRow ? "#38BDF8" : "transparent"
+                                    ? Qt.alpha(root.theme.surfaceElevated, 0.7)
+                                    : (rowHover.hovered ? Qt.alpha(root.theme.surfaceElevated, 0.55) : "transparent")))
+                        border.color: commitRow.isHoveredTargetRow ? root.theme.accentCyan : "transparent"
                         border.width: commitRow.isHoveredTargetRow ? 1.5 : 0
 
                         // Active left border accent on selection
@@ -2652,7 +2654,7 @@ Rectangle {
                             anchors.top: parent.top
                             anchors.bottom: parent.bottom
                             width: 3
-                            color: commitRow.isSelected ? "#38BDF8" : "#64748B"
+                            color: commitRow.isSelected ? root.theme.accentCyan : root.theme.textMuted
                             visible: commitRow.isSelected || commitRow.isMultiRawSelected
                         }
 
@@ -2756,11 +2758,11 @@ Rectangle {
                                             property bool isHoveredTarget: (root.hoveredTargetBranch !== "" && root.draggingBranchName !== "" && root.isSameBranchRef(root.hoveredTargetBranch, modelData.name))
                                             property bool isBeingDragged: (root.draggingBranchName !== "" && root.draggingBranchName === modelData.name)
                                             color: branchBadge.isHoveredTarget
-                                                ? "#2563EB"
-                                                : (modelData.bgColor || "#0E7490")
+                                                ? root.theme.accentBlue
+                                                : (modelData.bgColor || root.theme.accentCyan)
                                             border.color: branchBadge.isHoveredTarget
-                                                ? "#93C5FD"
-                                                : (modelData.borderColor || "#06B6D4")
+                                                ? root.theme.infoText
+                                                : (modelData.borderColor || root.theme.accentCyan)
                                             border.width: branchBadge.isHoveredTarget ? 2 : 1
                                             opacity: branchBadge.isBeingDragged ? 0.45 : 1.0
                                             scale: branchBadge.isHoveredTarget ? 1.08 : 1.0
@@ -2780,7 +2782,7 @@ Rectangle {
                                                 anchors.centerIn: parent
                                                 width: parent.width - 8
                                                 text: branchBadge.isHoveredTarget ? ("🔀 " + (modelData.name || "")) : (modelData.label || modelData.name || "")
-                                                color: branchBadge.isHoveredTarget ? "#FFFFFF" : (modelData.fgColor || "#FFFFFF")
+                                                color: branchBadge.isHoveredTarget ? root.theme.selectionText : (modelData.fgColor || root.theme.selectionText)
                                                 font.pixelSize: 11
                                                 font.bold: true
                                                 elide: Text.ElideMiddle
@@ -2822,15 +2824,15 @@ Rectangle {
                                         height: 22
                                         width: moreText.implicitWidth + 12
                                         radius: 4
-                                        color: moreMouse.containsMouse || extraRefsPopup.opened ? "#334155" : "#1E293B"
-                                        border.color: "#475569"
+                                        color: moreMouse.containsMouse || extraRefsPopup.opened ? root.theme.borderHighlight : root.theme.cardHover
+                                        border.color: root.theme.borderHighlight
                                         border.width: 1
 
                                         Text {
                                             id: moreText
                                             anchors.centerIn: parent
                                             text: "+" + branchTagCol.extraDecs.length
-                                            color: "#CBD5E1"
+                                            color: root.theme.textSecondary
                                             font.pixelSize: 11
                                             font.bold: true
                                         }
@@ -2881,8 +2883,8 @@ Rectangle {
                                                 }
                                             }
                                             background: Rectangle {
-                                                color: "#0D1117"
-                                                border.color: "#30363D"
+                                                color: root.theme.canvas
+                                                border.color: root.theme.borderHighlight
                                                 border.width: 1
                                                 radius: 6
                                             }
@@ -2892,7 +2894,7 @@ Rectangle {
 
                                                 Text {
                                                     text: "Riferimenti (" + branchTagCol.allDecs.length + ")"
-                                                    color: "#8B949E"
+                                                    color: root.theme.textMuted
                                                     font.pixelSize: 10
                                                     font.bold: true
                                                     bottomPadding: 2
@@ -2907,8 +2909,8 @@ Rectangle {
                                                         height: 22
                                                         width: Math.min(360, extraText.implicitWidth + 14)
                                                         radius: 4
-                                                        color: modelData.bgColor || "#0E7490"
-                                                        border.color: (extraMouse.containsMouse || isPrimary) ? "#FFFFFF" : (modelData.borderColor || "#06B6D4")
+                                                        color: modelData.bgColor || root.theme.accentBlue
+                                                        border.color: (extraMouse.containsMouse || isPrimary) ? root.theme.selectionText : (modelData.borderColor || root.theme.accentCyan)
                                                         border.width: isPrimary ? 2 : 1
 
                                                         Text {
@@ -2918,7 +2920,7 @@ Rectangle {
                                                             anchors.leftMargin: 7
                                                             width: parent.width - 14
                                                             text: modelData.label || modelData.name || ""
-                                                            color: modelData.fgColor || "#FFFFFF"
+                                                            color: modelData.fgColor || root.theme.selectionText
                                                             font.pixelSize: 11
                                                             font.bold: true
                                                             elide: Text.ElideMiddle
@@ -2953,7 +2955,7 @@ Rectangle {
 
                                                 Text {
                                                     text: "Doppio clic: checkout · Clic destro: azioni"
-                                                    color: "#6E7681"
+                                                    color: root.theme.textPlaceholder
                                                     font.pixelSize: 9
                                                     topPadding: 2
                                                 }
@@ -2976,8 +2978,8 @@ Rectangle {
                                         height: 22
                                         width: visible ? desiredWidth : 0
                                         radius: 4
-                                        color: commitRow.inferredBranchBgColor || "#0F172ACC"
-                                        border.color: commitRow.inferredBranchColor || commitRow.graphColor || "#06B6D4"
+                                        color: commitRow.inferredBranchBgColor || Qt.alpha(root.theme.surfaceElevated, 0.8)
+                                        border.color: commitRow.inferredBranchColor || commitRow.graphColor || root.theme.accentCyan
                                         border.width: 1
                                         opacity: 0.88
                                         clip: true
@@ -2987,7 +2989,7 @@ Rectangle {
                                             anchors.centerIn: parent
                                             width: Math.max(0, parent.width - 8)
                                             text: "🌿 " + commitRow.inferredBranch
-                                            color: "#E2E8F0"
+                                            color: root.theme.textSecondary
                                             font.pixelSize: 11
                                             font.weight: Font.DemiBold
                                             elide: Text.ElideMiddle
@@ -3006,10 +3008,10 @@ Rectangle {
                                     anchors.verticalCenter: parent.verticalCenter
                                     height: 2
                                     color: commitRow.isStash
-                                        ? "#F59E0B"
+                                        ? root.theme.warning
                                         : (branchTagCol.allDecs.length > 0
-                                            ? (commitRow.graphColor || "#06B6D4")
-                                            : (commitRow.inferredBranchColor || commitRow.graphColor || "#06B6D4"))
+                                            ? (commitRow.graphColor || root.theme.accentCyan)
+                                            : (commitRow.inferredBranchColor || commitRow.graphColor || root.theme.accentCyan))
                                     opacity: (branchTagCol.allDecs.length > 0) ? 1.0 : 0.45
                                     visible: branchTagCol.allDecs.length > 0 || hoverBranchBadge.visible
                                 }
@@ -3030,10 +3032,10 @@ Rectangle {
                                     height: 18
                                     width: visible ? (commitCountText.implicitWidth + 12) : 0
                                     radius: 9
-                                    color: "#161B22"
+                                    color: root.theme.surfaceElevated
                                     border.color: isHoverCount
-                                        ? (commitRow.inferredBranchColor || commitRow.graphColor || "#06B6D4")
-                                        : (commitRow.graphColor || "#06B6D4")
+                                        ? (commitRow.inferredBranchColor || commitRow.graphColor || root.theme.accentCyan)
+                                        : (commitRow.graphColor || root.theme.accentCyan)
                                     border.width: 1
                                     opacity: isHoverCount ? 0.85 : 1.0
                                     z: 5
@@ -3042,7 +3044,7 @@ Rectangle {
                                         id: commitCountText
                                         anchors.centerIn: parent
                                         text: commitCountBadge.displayCount + " commit"
-                                        color: "#CBD5E1"
+                                        color: root.theme.textSecondary
                                         font.pixelSize: 10
                                         font.weight: Font.Medium
                                     }
@@ -3070,10 +3072,10 @@ Rectangle {
                                     width: 10
                                     height: 2
                                     color: commitRow.isStash
-                                        ? "#F59E0B"
+                                        ? root.theme.warning
                                         : (commitCountBadge.isHoverCount
-                                            ? (commitRow.inferredBranchColor || commitRow.graphColor || "#06B6D4")
-                                            : (commitRow.graphColor || "#06B6D4"))
+                                            ? (commitRow.inferredBranchColor || commitRow.graphColor || root.theme.accentCyan)
+                                            : (commitRow.graphColor || root.theme.accentCyan))
                                     opacity: commitCountBadge.isHoverCount ? 0.45 : 1.0
                                     visible: commitCountBadge.visible
                                 }
@@ -3112,7 +3114,7 @@ Rectangle {
                                         // Horizontal connecting line from Col 1 into node
                                         if (commitRow.structuredDecorations && commitRow.structuredDecorations.length > 0) {
                                             ctx.setLineDash(commitRow.isStash ? [3, 3] : []);
-                                            ctx.strokeStyle = commitRow.isStash ? "#F59E0B" : (commitRow.graphColor || "#06B6D4");
+                                            ctx.strokeStyle = commitRow.isStash ? root.theme.warning.toString() : (commitRow.graphColor || root.theme.accentCyan.toString());
                                             ctx.beginPath();
                                             ctx.moveTo(0, centerY);
                                             ctx.lineTo(laneX(commitLane), centerY);
@@ -3122,7 +3124,7 @@ Rectangle {
                                         for (let i = 0; i < routes.length; ++i) {
                                             const r = routes[i];
                                             ctx.setLineDash(r.dashed === true ? [4, 3] : []);
-                                            ctx.strokeStyle = r.color || "#06B6D4";
+                                            ctx.strokeStyle = r.color || root.theme.accentCyan.toString();
                                             ctx.beginPath();
 
                                             const x1 = laneX(r.fromLane);
@@ -3164,7 +3166,7 @@ Rectangle {
                                     width: Math.max(0, 14 + (commitRow.graphLane !== undefined ? commitRow.graphLane : 0) * 22)
                                     height: 2
                                     anchors.verticalCenter: parent.verticalCenter
-                                    color: commitRow.inferredBranchColor || commitRow.graphColor || "#06B6D4"
+                                    color: commitRow.inferredBranchColor || commitRow.graphColor || root.theme.accentCyan
                                     opacity: 0.45
                                 }
 
@@ -3176,13 +3178,13 @@ Rectangle {
                                     width: 20
                                     height: 20
                                     radius: 10
-                                    color: "#78350F"
-                                    border.color: "#F59E0B"
+                                    color: root.theme.warningBg
+                                    border.color: root.theme.warning
                                     border.width: 2
                                     Text {
                                         anchors.centerIn: parent
                                         text: "✎"
-                                        color: "#FEF3C7"
+                                        color: root.theme.warningText
                                         font.pixelSize: 10
                                         font.bold: true
                                     }
@@ -3196,8 +3198,8 @@ Rectangle {
                                     width: 20
                                     height: 20
                                     radius: 5
-                                    color: "#451A03"
-                                    border.color: commitRow.isSelected ? "#FDE68A" : "#F59E0B"
+                                    color: root.theme.warningBg
+                                    border.color: commitRow.isSelected ? root.theme.selectionText : root.theme.warning
                                     border.width: commitRow.isSelected ? 2 : 1.5
                                     Text {
                                         anchors.centerIn: parent
@@ -3207,76 +3209,23 @@ Rectangle {
                                 }
 
                                 // 1. Standard Commit Node: Circular Avatar or Initials (22x22)
-                                Rectangle {
+                                FluxAvatarBadge {
                                     visible: !commitRow.isMerge && !commitRow.isStash && commitRow.sha !== "WIP"
                                     x: (14 + (commitRow.graphLane !== undefined ? commitRow.graphLane : 0) * 22) - 11
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: 22
                                     height: 22
-                                    radius: 11
-                                    color: commitRow.graphColor || "#06B6D4"
-                                    border.color: commitRow.isSelected ? "#38BDF8" : (commitRow.graphColor || "#1E293B")
-                                    border.width: commitRow.isSelected ? 2 : 1.5
-
-                                    Image {
-                                        id: nodeAvatarImg
-                                        anchors.fill: parent
-                                        source: commitRow.authorAvatarUrl || ""
-                                        fillMode: Image.PreserveAspectCrop
-                                        smooth: true
-                                        mipmap: true
-                                    }
-
-                                    Canvas {
-                                        anchors.fill: parent
-                                        visible: nodeAvatarImg.status === Image.Ready
-                                        property string maskBg: commitRow.isHoveredTargetRow
-                                            ? "#132043"
-                                            : (commitRow.isSelected
-                                                ? "#1A2E4C"
-                                                : (rowMouse.containsMouse ? "#12161E" : "#0E1117"))
-                                        property string ringColor: commitRow.isSelected ? "#38BDF8" : (commitRow.graphColor || "#1E293B")
-                                        property real ringWidth: commitRow.isSelected ? 2.0 : 1.5
-                                        onMaskBgChanged: requestPaint()
-                                        onRingColorChanged: requestPaint()
-                                        onRingWidthChanged: requestPaint()
-                                        onVisibleChanged: if (visible) requestPaint()
-                                        onAvailableChanged: if (available) requestPaint()
-                                        onPaint: {
-                                            const ctx = getContext("2d");
-                                            ctx.reset();
-                                            const cx = width / 2;
-                                            const cy = height / 2;
-                                            const r = Math.min(width, height) / 2 - 0.5;
-
-                                            ctx.globalCompositeOperation = "source-over";
-                                            ctx.fillStyle = maskBg;
-                                            ctx.fillRect(0, 0, width, height);
-
-                                            ctx.globalCompositeOperation = "destination-out";
-                                            ctx.beginPath();
-                                            ctx.arc(cx, cy, r, 0, Math.PI * 2, false);
-                                            ctx.closePath();
-                                            ctx.fillStyle = "#000000";
-                                            ctx.fill();
-
-                                            ctx.globalCompositeOperation = "source-over";
-                                            ctx.beginPath();
-                                            ctx.arc(cx, cy, r - ringWidth / 2 + 0.5, 0, Math.PI * 2, false);
-                                            ctx.strokeStyle = ringColor;
-                                            ctx.lineWidth = ringWidth;
-                                            ctx.stroke();
-                                        }
-                                    }
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: commitRow.authorInitials || "??"
-                                        color: "#FFFFFF"
-                                        font.pixelSize: 9
-                                        font.bold: true
-                                        visible: nodeAvatarImg.status !== Image.Ready
-                                    }
+                                    avatarUrl: commitRow.authorAvatarUrl || ""
+                                    initials: commitRow.authorInitials || "??"
+                                    avatarColor: commitRow.graphColor || root.theme.accentCyan
+                                    maskColor: commitRow.isHoveredTargetRow
+                                        ? root.theme.infoBg
+                                        : (commitRow.isSelected
+                                            ? root.theme.infoBg
+                                            : (rowMouse.containsMouse ? root.theme.surfaceElevated : root.theme.canvas))
+                                    ringColor: commitRow.isSelected ? root.theme.accentCyan : (commitRow.graphColor || root.theme.borderSubtle)
+                                    ringWidth: commitRow.isSelected ? 2.0 : 1.5
+                                    initialsFontSize: 9
                                 }
 
                                 // 2. Merge Commit Node: Small Dot (10x10) in lane color
@@ -3287,8 +3236,8 @@ Rectangle {
                                     width: 10
                                     height: 10
                                     radius: 5
-                                    color: commitRow.graphColor || "#06B6D4"
-                                    border.color: commitRow.isSelected ? "#FFFFFF" : "#0E1117"
+                                    color: commitRow.graphColor || root.theme.accentCyan
+                                    border.color: commitRow.isSelected ? root.theme.selectionText : root.theme.canvas
                                     border.width: commitRow.isSelected ? 2 : 1
                                 }
                             }
@@ -3309,10 +3258,10 @@ Rectangle {
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: commitRow.subject || "(Nessun messaggio)"
                                     color: (commitRow.sha === "WIP")
-                                        ? "#F59E0B"
+                                        ? root.theme.warning
                                         : (commitRow.isStash
-                                            ? (commitRow.isSelected ? "#FDE68A" : "#FBBF24")
-                                            : (commitRow.isSelected ? "#FFFFFF" : "#E2E8F0"))
+                                            ? (commitRow.isSelected ? root.theme.selectionText : root.theme.warningText)
+                                            : (commitRow.isSelected ? root.theme.selectionText : root.theme.textPrimary))
                                     font.bold: (commitRow.sha === "WIP") || commitRow.isStash || commitRow.isSelected
                                     font.italic: (commitRow.sha === "WIP") || commitRow.isStash
                                     font.pixelSize: 12
@@ -3336,7 +3285,7 @@ Rectangle {
                                     anchors.rightMargin: 8
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: (commitRow.sha === "WIP") ? "Modifiche locali" : (commitRow.authorName || "")
-                                    color: (commitRow.sha === "WIP") ? "#F59E0B" : "#94A3B8"
+                                    color: (commitRow.sha === "WIP") ? root.theme.warning : root.theme.textSecondary
                                     font.pixelSize: 11
                                     elide: Text.ElideRight
                                 }
@@ -3358,7 +3307,7 @@ Rectangle {
                                     anchors.rightMargin: 10
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: (commitRow.sha === "WIP") ? "Adesso" : (commitRow.authorDateFormatted || commitRow.authorDate || "")
-                                    color: "#94A3B8"
+                                    color: root.theme.textSecondary
                                     font.pixelSize: 11
                                     elide: Text.ElideRight
                                 }
@@ -3373,7 +3322,7 @@ Rectangle {
                         y: 0
                         height: commitTableListView.height
                         width: 1
-                        color: "#38BDF8"
+                        color: root.theme.info
                         opacity: 0.55
                         x: {
                             if (root.activeResizingCol === "branch") return root.effBranchTagWidth;
@@ -3400,21 +3349,23 @@ Rectangle {
                             }
                             Text {
                                 text: "Nessun commit trovato per questo repository."
-                                color: "#F0F6FC"
+                                color: root.theme.textPrimary
                                 font.pixelSize: 13
                                 font.bold: true
                                 horizontalAlignment: Text.AlignHCenter
                                 Layout.alignment: Qt.AlignHCenter
                             }
-                            Button {
+                            FluxActionButton {
                                 Layout.alignment: Qt.AlignHCenter
                                 text: "🔄 Ricarica cronologia"
-                                contentItem: Text {
-                                    text: "🔄 Ricarica cronologia"; color: "#38BDF8"; font.bold: true; font.pixelSize: 11
-                                }
-                                background: Rectangle {
-                                    color: parent.hovered ? "#1E293B" : "#0F172A"; radius: 4; border.color: "#38BDF8"
-                                }
+                                baseColor: root.theme.surface
+                                hoverColor: root.theme.cardHover
+                                baseBorderColor: root.theme.info
+                                hoverBorderColor: root.theme.info
+                                textColor: root.theme.info
+                                hoverTextColor: root.theme.info
+                                fontPixelSize: 11
+                                fontBold: true
                                 onClicked: if (root.branchManager) root.branchManager.refresh();
                             }
                         }
@@ -3606,8 +3557,8 @@ Rectangle {
                     visible: root.isMultiSelectMode && root.selectedFile !== null && (root.activeDiffFileCommits.length > 0 || (root.branchManager && root.branchManager.isMultiSelectContiguousRange))
                     Layout.fillWidth: true
                     Layout.preferredHeight: 36
-                    color: "#0B1220"
-                    border.color: "#1E293B"
+                    color: root.theme.surface
+                    border.color: root.theme.borderSubtle
                     border.width: 1
 
                     Flickable {
@@ -3627,7 +3578,7 @@ Rectangle {
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "Confronto:"
-                                color: "#64748B"
+                                color: root.theme.textMuted
                                 font.pixelSize: 11
                                 font.bold: true
                             }
@@ -3638,15 +3589,15 @@ Rectangle {
                                 height: 24
                                 width: totalDiffChipText.implicitWidth + 16
                                 radius: 12
-                                color: root.activeDiffCommitSha === "" ? "#0C4A6E" : (totalDiffChipMa.containsMouse ? "#172536" : "#111927")
-                                border.color: root.activeDiffCommitSha === "" ? "#38BDF8" : "#263549"
+                                color: root.activeDiffCommitSha === "" ? root.theme.infoBg : (totalDiffChipMa.containsMouse ? root.theme.cardHover : root.theme.surfaceElevated)
+                                border.color: root.activeDiffCommitSha === "" ? root.theme.accentCyan : root.theme.border
                                 border.width: 1
 
                                 Text {
                                     id: totalDiffChipText
                                     anchors.centerIn: parent
                                     text: "∑ Diff totale (" + (root.branchManager ? root.branchManager.effectiveSelectedCommitsCount : 0) + " commit)"
-                                    color: root.activeDiffCommitSha === "" ? "#E0F2FE" : "#94A3B8"
+                                    color: root.activeDiffCommitSha === "" ? root.theme.infoText : root.theme.textMuted
                                     font.pixelSize: 11
                                     font.bold: root.activeDiffCommitSha === ""
                                 }
@@ -3675,8 +3626,8 @@ Rectangle {
                                     height: 24
                                     width: Math.min(240, chipInnerRow.implicitWidth + 16)
                                     radius: 12
-                                    color: commitAttrChip.isActiveChip ? "#1E3A5F" : (chipMa.containsMouse ? "#172536" : "#111927")
-                                    border.color: commitAttrChip.isActiveChip ? "#38BDF8" : "#263549"
+                                    color: commitAttrChip.isActiveChip ? root.theme.infoBg : (chipMa.containsMouse ? root.theme.cardHover : root.theme.surfaceElevated)
+                                    border.color: commitAttrChip.isActiveChip ? root.theme.accentCyan : root.theme.border
                                     border.width: 1
 
                                     Row {
@@ -3685,14 +3636,14 @@ Rectangle {
                                         spacing: 5
                                         Text {
                                             text: commitAttrChip.modelData.shortSha || ""
-                                            color: commitAttrChip.isActiveChip ? "#38BDF8" : "#7DD3FC"
+                                            color: commitAttrChip.isActiveChip ? root.theme.accentCyan : root.theme.infoText
                                             font.family: "monospace"
                                             font.pixelSize: 10
                                             font.bold: true
                                         }
                                         Text {
                                             text: commitAttrChip.modelData.subject || ""
-                                            color: commitAttrChip.isActiveChip ? "#F8FAFC" : "#CBD5E1"
+                                            color: commitAttrChip.isActiveChip ? root.theme.textPrimary : root.theme.textSecondary
                                             font.pixelSize: 10
                                             elide: Text.ElideRight
                                             width: Math.min(implicitWidth, 155)
@@ -3746,8 +3697,8 @@ Rectangle {
                         width: 44
                         height: 2
                         radius: 1
-                        color: (resizeHandleMa.containsMouse || resizeHandleMa.pressed) ? "#38BDF8" : "#1E293B"
-                        Behavior on color { ColorAnimation { duration: 110 } }
+                        color: (resizeHandleMa.containsMouse || resizeHandleMa.pressed) ? root.theme.accentCyan : root.theme.borderSubtle
+                        Behavior on color { ColorAnimation { duration: root.theme.animFast } }
                     }
 
                     MouseArea {
@@ -3798,9 +3749,9 @@ Rectangle {
             SplitView.preferredWidth: 420
             SplitView.minimumWidth: 350
             SplitView.maximumWidth: 650
-            color: "#101622"
+            color: root.theme.surface
             radius: 12
-            border.color: "#1E293B"
+            border.color: root.theme.borderSubtle
             border.width: 1
             clip: true
 
@@ -3819,7 +3770,7 @@ Rectangle {
                     }
                     Text {
                         text: "Seleziona un commit per visualizzarne dettagli e file modificati."
-                        color: "#64748B"
+                        color: root.theme.textMuted
                         font.pixelSize: 12
                         horizontalAlignment: Text.AlignHCenter
                     }
@@ -3850,8 +3801,8 @@ Rectangle {
                             Layout.preferredHeight: 22
                             implicitWidth: multiBadgeText.implicitWidth + 14
                             radius: 11
-                            color: "#0C2A44"
-                            border.color: "#38BDF8"
+                            color: root.theme.infoBg
+                            border.color: root.theme.accentCyan
                             border.width: 1
 
                             Text {
@@ -3866,7 +3817,7 @@ Rectangle {
                                     }
                                     return eff + " commit selezionati";
                                 }
-                                color: "#38BDF8"
+                                color: root.theme.accentCyan
                                 font.pixelSize: 11
                                 font.bold: true
                             }
@@ -3878,13 +3829,13 @@ Rectangle {
                             visible: root.multiCommitSummary !== null
                             Text {
                                 text: "+" + (root.multiCommitSummary ? (root.multiCommitSummary.totalAdditions || 0) : 0)
-                                color: "#34D399"
+                                color: root.theme.accentTeal
                                 font.pixelSize: 11
                                 font.bold: true
                             }
                             Text {
                                 text: "-" + (root.multiCommitSummary ? (root.multiCommitSummary.totalDeletions || 0) : 0)
-                                color: "#F87171"
+                                color: root.theme.danger
                                 font.pixelSize: 11
                                 font.bold: true
                             }
@@ -3903,14 +3854,14 @@ Rectangle {
                             Layout.preferredWidth: 24
                             Layout.preferredHeight: 24
                             radius: 4
-                            color: clearMultiMa.containsMouse ? "#1E293B" : "transparent"
-                            border.color: clearMultiMa.containsMouse ? "#475569" : "transparent"
+                            color: clearMultiMa.containsMouse ? root.theme.cardHover : "transparent"
+                            border.color: clearMultiMa.containsMouse ? root.theme.borderHighlight : "transparent"
                             border.width: 1
 
                             Text {
                                 anchors.centerIn: parent
                                 text: "✕"
-                                color: "#94A3B8"
+                                color: root.theme.textMuted
                                 font.pixelSize: 11
                                 font.bold: true
                             }
@@ -3941,8 +3892,8 @@ Rectangle {
                             height: 24
                             width: 162
                             radius: 5
-                            color: "#0D1117"
-                            border.color: "#30363D"
+                            color: root.theme.canvas
+                            border.color: root.theme.borderHighlight
                             border.width: 1
 
                             RowLayout {
@@ -3953,11 +3904,11 @@ Rectangle {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
                                     radius: 4
-                                    color: root.multiSelectViewMode === "total" ? "#2563EB" : (msTotalMa.containsMouse ? "#1F242C" : "transparent")
+                                    color: root.multiSelectViewMode === "total" ? root.theme.accentBlue : (msTotalMa.containsMouse ? root.theme.cardHover : "transparent")
                                     Text {
                                         anchors.centerIn: parent
                                         text: "∑ Totale"
-                                        color: root.multiSelectViewMode === "total" ? "#FFFFFF" : "#94A3B8"
+                                        color: root.multiSelectViewMode === "total" ? root.theme.selectionText : root.theme.textMuted
                                         font.pixelSize: 11
                                         font.bold: root.multiSelectViewMode === "total"
                                     }
@@ -3976,11 +3927,11 @@ Rectangle {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
                                     radius: 4
-                                    color: root.multiSelectViewMode === "by_commit" ? "#2563EB" : (msByCommitMa.containsMouse ? "#1F242C" : "transparent")
+                                    color: root.multiSelectViewMode === "by_commit" ? root.theme.accentBlue : (msByCommitMa.containsMouse ? root.theme.cardHover : "transparent")
                                     Text {
                                         anchors.centerIn: parent
                                         text: "Per commit"
-                                        color: root.multiSelectViewMode === "by_commit" ? "#FFFFFF" : "#94A3B8"
+                                        color: root.multiSelectViewMode === "by_commit" ? root.theme.selectionText : root.theme.textMuted
                                         font.pixelSize: 11
                                         font.bold: root.multiSelectViewMode === "by_commit"
                                     }
@@ -4008,8 +3959,8 @@ Rectangle {
                             height: 24
                             width: branchFilterRow.implicitWidth + 16
                             radius: 5
-                            color: branchFilterPill.isFilterOn ? "#083529" : (branchFilterMa.containsMouse ? "#1E293B" : "#111827")
-                            border.color: branchFilterPill.isFilterOn ? "#10B981" : "#334155"
+                            color: branchFilterPill.isFilterOn ? root.theme.successBg : (branchFilterMa.containsMouse ? root.theme.cardHover : root.theme.surfaceElevated)
+                            border.color: branchFilterPill.isFilterOn ? root.theme.accentTeal : root.theme.border
                             border.width: 1
                             opacity: branchFilterPill.canToggleFilter ? 1.0 : 0.92
 
@@ -4019,13 +3970,13 @@ Rectangle {
                                 spacing: 5
                                 Text {
                                     text: branchFilterPill.isFilterOn ? "✓" : "○"
-                                    color: branchFilterPill.isFilterOn ? "#34D399" : "#94A3B8"
+                                    color: branchFilterPill.isFilterOn ? root.theme.accentTeal : root.theme.textMuted
                                     font.pixelSize: 10
                                     font.bold: true
                                 }
                                 Text {
                                     text: "Solo " + branchFilterPill.branchLabel
-                                    color: branchFilterPill.isFilterOn ? "#6EE7B7" : "#CBD5E1"
+                                    color: branchFilterPill.isFilterOn ? root.theme.successText : root.theme.textSecondary
                                     font.pixelSize: 11
                                     font.bold: branchFilterPill.isFilterOn
                                 }
@@ -4056,8 +4007,8 @@ Rectangle {
                             height: 24
                             width: crossBranchRow.implicitWidth + 16
                             radius: 5
-                            color: crossBranchPill.isCrossOn ? "#2B1547" : (crossBranchMa.containsMouse ? "#1E293B" : "#111827")
-                            border.color: crossBranchPill.isCrossOn ? "#A855F7" : "#334155"
+                            color: crossBranchPill.isCrossOn ? Qt.alpha(root.theme.accentPurple, 0.22) : (crossBranchMa.containsMouse ? root.theme.cardHover : root.theme.surfaceElevated)
+                            border.color: crossBranchPill.isCrossOn ? root.theme.accentPurple : root.theme.border
                             border.width: 1
 
                             Row {
@@ -4066,12 +4017,12 @@ Rectangle {
                                 spacing: 5
                                 Text {
                                     text: "⎇"
-                                    color: crossBranchPill.isCrossOn ? "#C084FC" : "#94A3B8"
+                                    color: crossBranchPill.isCrossOn ? root.theme.accentPurple : root.theme.textMuted
                                     font.pixelSize: 11
                                 }
                                 Text {
                                     text: "Cross-branch"
-                                    color: crossBranchPill.isCrossOn ? "#E9D5FF" : "#CBD5E1"
+                                    color: crossBranchPill.isCrossOn ? root.theme.textPrimary : root.theme.textSecondary
                                     font.pixelSize: 11
                                     font.bold: crossBranchPill.isCrossOn
                                 }
@@ -4105,7 +4056,7 @@ Rectangle {
                             text: (root.branchManager && root.branchManager.isMultiSelectContiguousRange)
                                 ? "Diff netto cumulativo (range --first-parent)"
                                 : "Aggregazione multi-commit (non contigui)"
-                            color: "#64748B"
+                            color: root.theme.textMuted
                             font.pixelSize: 10
                             elide: Text.ElideRight
                             Layout.fillWidth: true
@@ -4113,7 +4064,7 @@ Rectangle {
 
                         Text {
                             text: root.multiCommitsListExpanded ? "Nascondi commit ▴" : "Mostra commit ▾"
-                            color: expandCommitsMa.containsMouse ? "#7DD3FC" : "#38BDF8"
+                            color: expandCommitsMa.containsMouse ? root.theme.infoText : root.theme.accentCyan
                             font.pixelSize: 10
                             font.bold: true
                             MouseArea {
@@ -4132,8 +4083,8 @@ Rectangle {
                         Layout.fillWidth: true
                         Layout.preferredHeight: Math.min(140, multiCommitPreviewList.contentHeight + 8)
                         radius: 6
-                        color: "#0B111B"
-                        border.color: "#1E293B"
+                        color: root.theme.inputBg
+                        border.color: root.theme.borderSubtle
                         border.width: 1
                         clip: true
 
@@ -4153,27 +4104,27 @@ Rectangle {
 
                                 Text {
                                     text: previewRow.modelData.shortSha || ""
-                                    color: "#38BDF8"
+                                    color: root.theme.accentCyan
                                     font.family: "monospace"
                                     font.pixelSize: 10
                                     font.bold: true
                                 }
                                 Text {
                                     text: previewRow.modelData.subject || ""
-                                    color: "#E2E8F0"
+                                    color: root.theme.textSecondary
                                     font.pixelSize: 11
                                     elide: Text.ElideRight
                                     Layout.fillWidth: true
                                 }
                                 Text {
                                     text: "+" + (previewRow.modelData.totalAdditions || 0)
-                                    color: "#34D399"
+                                    color: root.theme.accentTeal
                                     font.pixelSize: 10
                                     visible: (previewRow.modelData.totalAdditions || 0) > 0
                                 }
                                 Text {
                                     text: "-" + (previewRow.modelData.totalDeletions || 0)
-                                    color: "#F87171"
+                                    color: root.theme.danger
                                     font.pixelSize: 10
                                     visible: (previewRow.modelData.totalDeletions || 0) > 0
                                 }
@@ -4197,13 +4148,13 @@ Rectangle {
                             text: root.isStashSelected
                                 ? ("📦 " + (root.selectedCommit.stashSelector || "stash@{0}") + ":")
                                 : "commit: "
-                            color: root.isStashSelected ? "#F59E0B" : "#8B949E"
+                            color: root.isStashSelected ? root.theme.warning : root.theme.textMuted
                             font.pixelSize: 12
                             font.bold: root.isStashSelected
                         }
                         Text {
                             text: root.selectedCommit ? root.selectedCommit.shortSha : ""
-                            color: "#E2E8F0"
+                            color: root.theme.textSecondary
                             font.family: "monospace"
                             font.pixelSize: 12
                             font.bold: true
@@ -4219,15 +4170,15 @@ Rectangle {
                             Layout.preferredHeight: 24
                             implicitWidth: popStashQuickText.implicitWidth + 16
                             radius: 4
-                            color: popStashQuickMouse.containsMouse ? "#065F46" : "#064E3B"
-                            border.color: "#10B981"
+                            color: popStashQuickMouse.containsMouse ? root.theme.success : root.theme.successBg
+                            border.color: root.theme.accentTeal
                             border.width: 1
 
                             Text {
                                 id: popStashQuickText
                                 anchors.centerIn: parent
                                 text: "↩ Pop"
-                                color: "#6EE7B7"
+                                color: root.theme.successText
                                 font.pixelSize: 11
                                 font.bold: true
                             }
@@ -4252,15 +4203,15 @@ Rectangle {
                             Layout.preferredHeight: 24
                             implicitWidth: applyStashQuickText.implicitWidth + 16
                             radius: 4
-                            color: applyStashQuickMouse.containsMouse ? "#1E3A5F" : "#152232"
-                            border.color: "#38BDF8"
+                            color: applyStashQuickMouse.containsMouse ? root.theme.cardHover : root.theme.infoBg
+                            border.color: root.theme.accentCyan
                             border.width: 1
 
                             Text {
                                 id: applyStashQuickText
                                 anchors.centerIn: parent
                                 text: "📋 Apply"
-                                color: "#7DD3FC"
+                                color: root.theme.infoText
                                 font.pixelSize: 11
                                 font.bold: true
                             }
@@ -4285,15 +4236,15 @@ Rectangle {
                             Layout.preferredHeight: 24
                             implicitWidth: dropStashQuickText.implicitWidth + 16
                             radius: 4
-                            color: dropStashQuickMouse.containsMouse ? "#7F1D1D" : "#450A0A"
-                            border.color: "#EF4444"
+                            color: dropStashQuickMouse.containsMouse ? root.theme.danger : root.theme.dangerBg
+                            border.color: root.theme.danger
                             border.width: 1
 
                             Text {
                                 id: dropStashQuickText
                                 anchors.centerIn: parent
                                 text: "🗑 Drop"
-                                color: "#FCA5A5"
+                                color: root.theme.dangerText
                                 font.pixelSize: 11
                                 font.bold: true
                             }
@@ -4318,15 +4269,15 @@ Rectangle {
                             Layout.preferredHeight: 24
                             implicitWidth: editMsgText.implicitWidth + 18
                             radius: 4
-                            color: editMsgMouse.containsMouse ? "#1E293B" : "#161B22"
-                            border.color: "#A855F7"
+                            color: editMsgMouse.containsMouse ? root.theme.cardHover : root.theme.surfaceElevated
+                            border.color: root.theme.accentPurple
                             border.width: 1
 
                             Text {
                                 id: editMsgText
                                 anchors.centerIn: parent
                                 text: "✏ Modifica"
-                                color: "#C084FC"
+                                color: root.theme.accentPurple
                                 font.pixelSize: 11
                                 font.bold: true
                             }
@@ -4348,8 +4299,8 @@ Rectangle {
                             Layout.preferredHeight: 24
                             implicitWidth: createBranchHereText.implicitWidth + 18
                             radius: 4
-                            color: createBranchHereMouse.containsMouse ? "#1E293B" : "#161B22"
-                            border.color: "#3B82F6"
+                            color: createBranchHereMouse.containsMouse ? root.theme.cardHover : root.theme.surfaceElevated
+                            border.color: root.theme.accentBlue
                             border.width: 1
 
                             RowLayout {
@@ -4362,7 +4313,7 @@ Rectangle {
                                 Text {
                                     id: createBranchHereText
                                     text: "Crea branch qui"
-                                    color: "#60A5FA"
+                                    color: root.theme.infoText
                                     font.pixelSize: 11
                                     font.bold: true
                                 }
@@ -4387,7 +4338,7 @@ Rectangle {
                     // Commit Message (large bold title) — double-click to edit
                     Text {
                         text: root.selectedCommit ? root.selectedCommit.subject : ""
-                        color: "#FFFFFF"
+                        color: root.theme.textPrimary
                         font.pixelSize: 14
                         font.bold: true
                         wrapMode: Text.Wrap
@@ -4419,9 +4370,9 @@ Rectangle {
                             readOnly: true
                             selectByMouse: true
                             text: (root.selectedCommit && root.selectedCommit.body) ? root.selectedCommit.body.replace(/\s+$/, "") : ""
-                            color: "#94A3B8"
-                            selectionColor: "#1E3A8A"
-                            selectedTextColor: "#FFFFFF"
+                            color: root.theme.textMuted
+                            selectionColor: root.theme.selectionBg
+                            selectedTextColor: root.theme.selectionText
                             font.pixelSize: 11
                             wrapMode: TextEdit.Wrap
                         }
@@ -4432,8 +4383,8 @@ Rectangle {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 52
                         radius: 8
-                        color: "#0D1117"
-                        border.color: "#21262D"
+                        color: root.theme.canvas
+                        border.color: root.theme.border
                         border.width: 1
 
                         RowLayout {
@@ -4442,63 +4393,16 @@ Rectangle {
                             spacing: 12
 
                             // Circular Author Avatar
-                            Rectangle {
+                            FluxAvatarBadge {
                                 width: 36
                                 height: 36
-                                radius: 18
-                                color: root.selectedCommit ? (root.selectedCommit.authorColor || "#6366F1") : "#6366F1"
-                                border.color: "#30363D"
-                                border.width: 1
-
-                                Image {
-                                    id: cardAvatarImg
-                                    anchors.fill: parent
-                                    source: root.selectedCommit ? (root.selectedCommit.authorAvatarUrl || "") : ""
-                                    fillMode: Image.PreserveAspectCrop
-                                    smooth: true
-                                    mipmap: true
-                                }
-
-                                Canvas {
-                                    anchors.fill: parent
-                                    visible: cardAvatarImg.status === Image.Ready
-                                    onVisibleChanged: if (visible) requestPaint()
-                                    onAvailableChanged: if (available) requestPaint()
-                                    onPaint: {
-                                        const ctx = getContext("2d");
-                                        ctx.reset();
-                                        const cx = width / 2;
-                                        const cy = height / 2;
-                                        const r = Math.min(width, height) / 2 - 0.5;
-
-                                        ctx.globalCompositeOperation = "source-over";
-                                        ctx.fillStyle = "#0D1117";
-                                        ctx.fillRect(0, 0, width, height);
-
-                                        ctx.globalCompositeOperation = "destination-out";
-                                        ctx.beginPath();
-                                        ctx.arc(cx, cy, r, 0, Math.PI * 2, false);
-                                        ctx.closePath();
-                                        ctx.fillStyle = "#000000";
-                                        ctx.fill();
-
-                                        ctx.globalCompositeOperation = "source-over";
-                                        ctx.beginPath();
-                                        ctx.arc(cx, cy, r, 0, Math.PI * 2, false);
-                                        ctx.strokeStyle = "#30363D";
-                                        ctx.lineWidth = 1;
-                                        ctx.stroke();
-                                    }
-                                }
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: root.selectedCommit ? (root.selectedCommit.authorInitials || "??") : "??"
-                                    color: "#FFFFFF"
-                                    font.pixelSize: 12
-                                    font.bold: true
-                                    visible: cardAvatarImg.status !== Image.Ready
-                                }
+                                avatarUrl: root.selectedCommit ? (root.selectedCommit.authorAvatarUrl || "") : ""
+                                initials: root.selectedCommit ? (root.selectedCommit.authorInitials || "??") : "??"
+                                avatarColor: root.selectedCommit ? (root.selectedCommit.authorColor || root.theme.accentPurple) : root.theme.accentPurple
+                                maskColor: root.theme.canvas
+                                ringColor: root.theme.borderHighlight
+                                ringWidth: 1
+                                initialsFontSize: 12
                             }
 
                             // Author Name & Date & Committer
@@ -4507,7 +4411,7 @@ Rectangle {
                                 spacing: 2
                                 Text {
                                     text: root.selectedCommit ? root.selectedCommit.authorName : ""
-                                    color: "#FFFFFF"
+                                    color: root.theme.textPrimary
                                     font.bold: true
                                     font.pixelSize: 13
                                     elide: Text.ElideRight
@@ -4521,7 +4425,7 @@ Rectangle {
                                         }
                                         return authored;
                                     }
-                                    color: "#8B949E"
+                                    color: root.theme.textMuted
                                     font.pixelSize: 11
                                     elide: Text.ElideRight
                                 }
@@ -4532,7 +4436,7 @@ Rectangle {
                                 spacing: 4
                                 Text {
                                     text: "parent:"
-                                    color: "#8B949E"
+                                    color: root.theme.textMuted
                                     font.pixelSize: 11
                                 }
                                 Text {
@@ -4541,7 +4445,7 @@ Rectangle {
                                         const p = root.selectedCommit.parents[0];
                                         return p.length > 7 ? p.substring(0, 7) : p;
                                     }
-                                    color: "#38BDF8"
+                                    color: root.theme.accentCyan
                                     font.family: "monospace"
                                     font.pixelSize: 11
                                 }
@@ -4559,7 +4463,7 @@ Rectangle {
 
                         Text {
                             text: coAuthorsSection.coAuthors.length === 1 ? "CO-AUTORE" : ("CO-AUTORI (" + coAuthorsSection.coAuthors.length + ")")
-                            color: "#8B949E"
+                            color: root.theme.textMuted
                             font.pixelSize: 10
                             font.bold: true
                         }
@@ -4571,66 +4475,21 @@ Rectangle {
                                 Layout.fillWidth: true
                                 spacing: 8
 
-                                Rectangle {
+                                FluxAvatarBadge {
                                     Layout.preferredWidth: 24
                                     Layout.preferredHeight: 24
-                                    radius: 12
-                                    color: modelData.color || "#6366F1"
-                                    border.color: "#30363D"
-                                    border.width: 1
-
-                                    Image {
-                                        id: coAvatarImg
-                                        anchors.fill: parent
-                                        source: modelData.avatarUrl || ""
-                                        fillMode: Image.PreserveAspectCrop
-                                        smooth: true
-                                        mipmap: true
-                                    }
-
-                                    // Same circular mask technique used by the author card
-                                    Canvas {
-                                        anchors.fill: parent
-                                        visible: coAvatarImg.status === Image.Ready
-                                        onVisibleChanged: if (visible) requestPaint()
-                                        onAvailableChanged: if (available) requestPaint()
-                                        onPaint: {
-                                            const ctx = getContext("2d");
-                                            ctx.reset();
-                                            const cx = width / 2;
-                                            const cy = height / 2;
-                                            const r = Math.min(width, height) / 2 - 0.5;
-                                            ctx.globalCompositeOperation = "source-over";
-                                            ctx.fillStyle = "#161B22";
-                                            ctx.fillRect(0, 0, width, height);
-                                            ctx.globalCompositeOperation = "destination-out";
-                                            ctx.beginPath();
-                                            ctx.arc(cx, cy, r, 0, Math.PI * 2, false);
-                                            ctx.closePath();
-                                            ctx.fillStyle = "#000000";
-                                            ctx.fill();
-                                            ctx.globalCompositeOperation = "source-over";
-                                            ctx.beginPath();
-                                            ctx.arc(cx, cy, r, 0, Math.PI * 2, false);
-                                            ctx.strokeStyle = "#30363D";
-                                            ctx.lineWidth = 1;
-                                            ctx.stroke();
-                                        }
-                                    }
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: modelData.initials || "??"
-                                        color: "#FFFFFF"
-                                        font.pixelSize: 9
-                                        font.bold: true
-                                        visible: coAvatarImg.status !== Image.Ready
-                                    }
+                                    avatarUrl: modelData.avatarUrl || ""
+                                    initials: modelData.initials || "??"
+                                    avatarColor: modelData.color || root.theme.accentPurple
+                                    maskColor: root.theme.surfaceElevated
+                                    ringColor: root.theme.borderHighlight
+                                    ringWidth: 1
+                                    initialsFontSize: 9
                                 }
 
                                 Text {
                                     text: modelData.name || ""
-                                    color: "#E2E8F0"
+                                    color: root.theme.textSecondary
                                     font.pixelSize: 12
                                     font.bold: true
                                     elide: Text.ElideRight
@@ -4639,7 +4498,7 @@ Rectangle {
 
                                 Text {
                                     text: modelData.email || ""
-                                    color: "#8B949E"
+                                    color: root.theme.textMuted
                                     font.pixelSize: 11
                                     elide: Text.ElideRight
                                     Layout.fillWidth: true
@@ -4661,11 +4520,11 @@ Rectangle {
                             width: 10
                             height: 10
                             radius: 5
-                            color: "#F59E0B"
+                            color: root.theme.warning
                         }
                         Text {
                             text: "// WIP (Work In Progress)"
-                            color: "#F59E0B"
+                            color: root.theme.warning
                             font.bold: true
                             font.pixelSize: 15
                         }
@@ -4673,7 +4532,7 @@ Rectangle {
 
                     Text {
                         text: "Modifiche locali non committate nell'area di lavoro (Working Directory). Metti in staging i file e crea il commit qui sotto."
-                        color: "#94A3B8"
+                        color: root.theme.textMuted
                         font.pixelSize: 11
                         Layout.fillWidth: true
                     }
@@ -4683,7 +4542,7 @@ Rectangle {
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 1
-                    color: "#21262D"
+                    color: root.theme.border
                 }
 
                 // ==========================================
@@ -4698,8 +4557,8 @@ Rectangle {
                         height: 24
                         implicitWidth: totalChipRow.implicitWidth + 14
                         radius: 4
-                        color: root.fileCategoryFilter === "all" ? "#1E293B" : "#0D1117"
-                        border.color: root.fileCategoryFilter === "all" ? "#38BDF8" : "#30363D"
+                        color: root.fileCategoryFilter === "all" ? root.theme.cardHover : root.theme.canvas
+                        border.color: root.fileCategoryFilter === "all" ? root.theme.accentCyan : root.theme.borderHighlight
                         border.width: 1
 
                         RowLayout {
@@ -4711,7 +4570,7 @@ Rectangle {
                             }
                             Text {
                                 text: root.totalFilesCount + " file"
-                                color: root.fileCategoryFilter === "all" ? "#F1F5F9" : "#94A3B8"
+                                color: root.fileCategoryFilter === "all" ? root.theme.textPrimary : root.theme.textMuted
                                 font.bold: true
                                 font.pixelSize: 11
                             }
@@ -4730,8 +4589,8 @@ Rectangle {
                         height: 24
                         implicitWidth: modChipRow.implicitWidth + 14
                         radius: 4
-                        color: root.fileCategoryFilter === "M" ? "#854D0E" : "#1A170F"
-                        border.color: root.fileCategoryFilter === "M" ? "#F59E0B" : "#451A03"
+                        color: root.fileCategoryFilter === "M" ? root.theme.warningBg : root.theme.canvas
+                        border.color: root.fileCategoryFilter === "M" ? root.theme.warning : Qt.alpha(root.theme.warning, 0.4)
                         border.width: 1
 
                         RowLayout {
@@ -4743,7 +4602,7 @@ Rectangle {
                             }
                             Text {
                                 text: root.modifiedFilesCount + " mod"
-                                color: "#FBBF24"
+                                color: root.theme.warningText
                                 font.bold: true
                                 font.pixelSize: 11
                             }
@@ -4764,8 +4623,8 @@ Rectangle {
                         height: 24
                         implicitWidth: addChipRow.implicitWidth + 14
                         radius: 4
-                        color: root.fileCategoryFilter === "A" ? "#064E3B" : "#0F1A15"
-                        border.color: root.fileCategoryFilter === "A" ? "#10B981" : "#064E3B"
+                        color: root.fileCategoryFilter === "A" ? root.theme.successBg : root.theme.canvas
+                        border.color: root.fileCategoryFilter === "A" ? root.theme.accentTeal : Qt.alpha(root.theme.success, 0.4)
                         border.width: 1
 
                         RowLayout {
@@ -4777,7 +4636,7 @@ Rectangle {
                             }
                             Text {
                                 text: root.addedFilesCount + " creati"
-                                color: "#34D399"
+                                color: root.theme.accentTeal
                                 font.bold: true
                                 font.pixelSize: 11
                             }
@@ -4798,8 +4657,8 @@ Rectangle {
                         height: 24
                         implicitWidth: delChipRow.implicitWidth + 14
                         radius: 4
-                        color: root.fileCategoryFilter === "D" ? "#7F1D1D" : "#1C1113"
-                        border.color: root.fileCategoryFilter === "D" ? "#EF4444" : "#7F1D1D"
+                        color: root.fileCategoryFilter === "D" ? root.theme.dangerBg : root.theme.canvas
+                        border.color: root.fileCategoryFilter === "D" ? root.theme.danger : Qt.alpha(root.theme.danger, 0.4)
                         border.width: 1
 
                         RowLayout {
@@ -4811,7 +4670,7 @@ Rectangle {
                             }
                             Text {
                                 text: root.deletedFilesCount + " del"
-                                color: "#F87171"
+                                color: root.theme.danger
                                 font.bold: true
                                 font.pixelSize: 11
                             }
@@ -4832,8 +4691,8 @@ Rectangle {
                         height: 24
                         implicitWidth: renChipRow.implicitWidth + 14
                         radius: 4
-                        color: root.fileCategoryFilter === "R" ? "#0C4A6E" : "#0C1B24"
-                        border.color: root.fileCategoryFilter === "R" ? "#38BDF8" : "#075985"
+                        color: root.fileCategoryFilter === "R" ? root.theme.infoBg : root.theme.canvas
+                        border.color: root.fileCategoryFilter === "R" ? root.theme.accentCyan : Qt.alpha(root.theme.info, 0.4)
                         border.width: 1
 
                         RowLayout {
@@ -4845,7 +4704,7 @@ Rectangle {
                             }
                             Text {
                                 text: root.renamedFilesCount + " rinominati"
-                                color: "#38BDF8"
+                                color: root.theme.accentCyan
                                 font.bold: true
                                 font.pixelSize: 11
                             }
@@ -4874,8 +4733,8 @@ Rectangle {
                         Layout.preferredHeight: 24
                         Layout.preferredWidth: 140
                         radius: 4
-                        color: "#0D1117"
-                        border.color: "#30363D"
+                        color: root.theme.canvas
+                        border.color: root.theme.borderHighlight
 
                         RowLayout {
                             anchors.fill: parent
@@ -4886,11 +4745,11 @@ Rectangle {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 radius: 4
-                                color: root.fileViewMode === "path" ? "#2563EB" : (pathTabMouse.containsMouse ? "#1F242C" : "transparent")
+                                color: root.fileViewMode === "path" ? root.theme.accentBlue : (pathTabMouse.containsMouse ? root.theme.cardHover : "transparent")
                                 Text {
                                     anchors.centerIn: parent
                                     text: "☰ Path"
-                                    color: root.fileViewMode === "path" ? "#FFFFFF" : "#94A3B8"
+                                    color: root.fileViewMode === "path" ? root.theme.selectionText : root.theme.textMuted
                                     font.pixelSize: 11
                                     font.bold: root.fileViewMode === "path"
                                 }
@@ -4908,11 +4767,11 @@ Rectangle {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 radius: 4
-                                color: root.fileViewMode === "tree" ? "#2563EB" : (treeTabMouse.containsMouse ? "#1F242C" : "transparent")
+                                color: root.fileViewMode === "tree" ? root.theme.accentBlue : (treeTabMouse.containsMouse ? root.theme.cardHover : "transparent")
                                 Text {
                                     anchors.centerIn: parent
                                     text: "🌲 Tree"
-                                    color: root.fileViewMode === "tree" ? "#FFFFFF" : "#94A3B8"
+                                    color: root.fileViewMode === "tree" ? root.theme.selectionText : root.theme.textMuted
                                     font.pixelSize: 11
                                     font.bold: root.fileViewMode === "tree"
                                 }
@@ -4940,15 +4799,15 @@ Rectangle {
                         Layout.preferredHeight: 24
                         implicitWidth: discardAllText.implicitWidth + 14
                         radius: 4
-                        color: discardAllMouse.containsMouse ? "#B91C1C" : "#7F1D1D"
-                        border.color: "#EF4444"
+                        color: discardAllMouse.containsMouse ? root.theme.danger : root.theme.dangerBg
+                        border.color: root.theme.danger
                         border.width: 1
 
                         Text {
                             id: discardAllText
                             anchors.centerIn: parent
                             text: "🗑️ Discard All"
-                            color: "#FFFFFF"
+                            color: root.theme.selectionText
                             font.pixelSize: 10
                             font.bold: true
                         }
@@ -4976,15 +4835,15 @@ Rectangle {
                         Layout.preferredHeight: 24
                         implicitWidth: expText.implicitWidth + 14
                         radius: 4
-                        color: expMouse.containsMouse ? "#1E293B" : "#0D1117"
-                        border.color: "#30363D"
+                        color: expMouse.containsMouse ? root.theme.cardHover : root.theme.canvas
+                        border.color: root.theme.borderHighlight
                         border.width: 1
 
                         Text {
                             id: expText
                             anchors.centerIn: parent
                             text: root.hasCollapsedFolders ? "⊞ Espandi" : "⊟ Comprimi"
-                            color: "#94A3B8"
+                            color: root.theme.textMuted
                             font.pixelSize: 10
                             font.bold: true
                         }
@@ -5009,8 +4868,8 @@ Rectangle {
                         Layout.preferredHeight: 24
                         implicitWidth: sortText.implicitWidth + 14
                         radius: 4
-                        color: sortMouse.containsMouse ? "#1E293B" : "#0D1117"
-                        border.color: root.fileSortOrder !== "git" ? "#38BDF8" : "#30363D"
+                        color: sortMouse.containsMouse ? root.theme.cardHover : root.theme.canvas
+                        border.color: root.fileSortOrder !== "git" ? root.theme.accentCyan : root.theme.borderHighlight
                         border.width: 1
 
                         Text {
@@ -5021,7 +4880,7 @@ Rectangle {
                                 if (root.fileSortOrder === "name_desc") return "⇅ Z-A";
                                 return "⇅ Git";
                             }
-                            color: root.fileSortOrder !== "git" ? "#38BDF8" : "#94A3B8"
+                            color: root.fileSortOrder !== "git" ? root.theme.accentCyan : root.theme.textMuted
                             font.pixelSize: 10
                             font.bold: true
                         }
@@ -5041,8 +4900,8 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 30
                     radius: 5
-                    color: "#0B0E14"
-                    border.color: fileSearchInput.activeFocus ? "#38BDF8" : "#30363D"
+                    color: root.theme.inputBg
+                    border.color: fileSearchInput.activeFocus ? root.theme.accentCyan : root.theme.borderHighlight
                     border.width: 1
 
                     RowLayout {
@@ -5054,7 +4913,7 @@ Rectangle {
                         Text {
                             text: "🔍"
                             font.pixelSize: 11
-                            color: "#64748B"
+                            color: root.theme.textMuted
                         }
 
                         TextInput {
@@ -5062,7 +4921,7 @@ Rectangle {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             verticalAlignment: TextInput.AlignVCenter
-                            color: "#F0F6FC"
+                            color: root.theme.textPrimary
                             font.pixelSize: 11
                             clip: true
                             selectByMouse: true
@@ -5076,7 +4935,7 @@ Rectangle {
 
                             Text {
                                 text: "Filtra file modificati..."
-                                color: "#64748B"
+                                color: root.theme.textMuted
                                 font.pixelSize: 11
                                 visible: fileSearchInput.text === "" && !fileSearchInput.activeFocus
                                 anchors.verticalCenter: parent.verticalCenter
@@ -5088,13 +4947,13 @@ Rectangle {
                             Layout.preferredWidth: 16
                             Layout.preferredHeight: 16
                             radius: 8
-                            color: clearSearchMouse.containsMouse ? "#334155" : "transparent"
+                            color: clearSearchMouse.containsMouse ? root.theme.borderHighlight : "transparent"
                             visible: fileSearchInput.text !== ""
 
                             Text {
                                 anchors.centerIn: parent
                                 text: "✕"
-                                color: "#94A3B8"
+                                color: root.theme.textMuted
                                 font.pixelSize: 10
                                 font.bold: true
                             }
@@ -5151,8 +5010,8 @@ Rectangle {
                         width: multiCommitBreakdownList.width
                         height: groupCardCol.implicitHeight + 12
                         radius: 6
-                        color: "#0D131F"
-                        border.color: "#1E293B"
+                        color: root.theme.surface
+                        border.color: root.theme.borderSubtle
                         border.width: 1
 
                         ColumnLayout {
@@ -5168,7 +5027,7 @@ Rectangle {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 30
                                 radius: 4
-                                color: groupHeaderMa.containsMouse ? "#162033" : "#111827"
+                                color: groupHeaderMa.containsMouse ? root.theme.cardHover : root.theme.surfaceElevated
 
                                 RowLayout {
                                     anchors.fill: parent
@@ -5178,19 +5037,19 @@ Rectangle {
 
                                     Text {
                                         text: groupCard.isCollapsed ? "▸" : "▾"
-                                        color: "#64748B"
+                                        color: root.theme.textMuted
                                         font.pixelSize: 10
                                     }
                                     Rectangle {
                                         Layout.preferredHeight: 18
                                         implicitWidth: grpShaTxt.implicitWidth + 10
                                         radius: 4
-                                        color: "#0C2A44"
+                                        color: root.theme.infoBg
                                         Text {
                                             id: grpShaTxt
                                             anchors.centerIn: parent
                                             text: groupCard.modelData.shortSha || ""
-                                            color: "#38BDF8"
+                                            color: root.theme.accentCyan
                                             font.family: "monospace"
                                             font.pixelSize: 10
                                             font.bold: true
@@ -5198,7 +5057,7 @@ Rectangle {
                                     }
                                     Text {
                                         text: groupCard.modelData.subject || ""
-                                        color: "#F1F5F9"
+                                        color: root.theme.textPrimary
                                         font.pixelSize: 11
                                         font.bold: true
                                         elide: Text.ElideRight
@@ -5206,19 +5065,19 @@ Rectangle {
                                     }
                                     Text {
                                         text: groupCard.visibleGroupFiles.length + " file"
-                                        color: "#64748B"
+                                        color: root.theme.textMuted
                                         font.pixelSize: 10
                                     }
                                     Text {
                                         text: "+" + (groupCard.modelData.totalAdditions || 0)
-                                        color: "#34D399"
+                                        color: root.theme.accentTeal
                                         font.pixelSize: 10
                                         font.bold: true
                                         visible: (groupCard.modelData.totalAdditions || 0) > 0
                                     }
                                     Text {
                                         text: "-" + (groupCard.modelData.totalDeletions || 0)
-                                        color: "#F87171"
+                                        color: root.theme.danger
                                         font.pixelSize: 10
                                         font.bold: true
                                         visible: (groupCard.modelData.totalDeletions || 0) > 0
@@ -5260,7 +5119,7 @@ Rectangle {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: 26
                                     radius: 4
-                                    color: grpFileRow.isSelectedHere ? "#1A2E4C" : (grpFileMa.containsMouse ? "#151F30" : "transparent")
+                                    color: grpFileRow.isSelectedHere ? root.theme.infoBg : (grpFileMa.containsMouse ? root.theme.cardHover : "transparent")
 
                                     RowLayout {
                                         anchors.fill: parent
@@ -5274,20 +5133,20 @@ Rectangle {
                                             radius: 3
                                             color: {
                                                 const st = (grpFileRow.modelData.status || "M");
-                                                if (st === "A" || st === "C") return "#064E3B";
-                                                if (st === "D") return "#450A0A";
-                                                if (st === "R") return "#0C4A6E";
-                                                return "#451A03";
+                                                if (st === "A" || st === "C") return root.theme.successBg;
+                                                if (st === "D") return root.theme.dangerBg;
+                                                if (st === "R") return root.theme.infoBg;
+                                                return root.theme.warningBg;
                                             }
                                             Text {
                                                 anchors.centerIn: parent
                                                 text: grpFileRow.modelData.status || "M"
                                                 color: {
                                                     const st = (grpFileRow.modelData.status || "M");
-                                                    if (st === "A" || st === "C") return "#34D399";
-                                                    if (st === "D") return "#F87171";
-                                                    if (st === "R") return "#38BDF8";
-                                                    return "#FBBF24";
+                                                    if (st === "A" || st === "C") return root.theme.accentTeal;
+                                                    if (st === "D") return root.theme.danger;
+                                                    if (st === "R") return root.theme.accentCyan;
+                                                    return root.theme.warning;
                                                 }
                                                 font.pixelSize: 9
                                                 font.bold: true
@@ -5296,7 +5155,7 @@ Rectangle {
 
                                         Text {
                                             text: root.getDirectory(grpFileRow.modelData.path)
-                                            color: "#64748B"
+                                            color: root.theme.textMuted
                                             font.pixelSize: 10
                                             elide: Text.ElideMiddle
                                             Layout.maximumWidth: Math.max(40, Math.floor(grpFileRow.width * 0.38))
@@ -5305,7 +5164,7 @@ Rectangle {
 
                                         Text {
                                             text: root.getFilename(grpFileRow.modelData.path)
-                                            color: grpFileRow.isSelectedHere ? "#38BDF8" : "#E2E8F0"
+                                            color: grpFileRow.isSelectedHere ? root.theme.accentCyan : root.theme.textSecondary
                                             font.pixelSize: 11
                                             font.bold: true
                                             elide: Text.ElideRight
@@ -5314,7 +5173,7 @@ Rectangle {
 
                                         Text {
                                             text: "+" + (grpFileRow.modelData.additions || 0)
-                                            color: "#34D399"
+                                            color: root.theme.accentTeal
                                             font.pixelSize: 10
                                             font.bold: true
                                             visible: (grpFileRow.modelData.additions || 0) > 0
@@ -5322,7 +5181,7 @@ Rectangle {
 
                                         Text {
                                             text: "-" + (grpFileRow.modelData.deletions || 0)
-                                            color: "#F87171"
+                                            color: root.theme.danger
                                             font.pixelSize: 10
                                             font.bold: true
                                             visible: (grpFileRow.modelData.deletions || 0) > 0
@@ -5344,7 +5203,7 @@ Rectangle {
                             Text {
                                 visible: !groupCard.isCollapsed && groupCard.visibleGroupFiles.length === 0
                                 text: "Nessun file corrispondente al filtro"
-                                color: "#64748B"
+                                color: root.theme.textMuted
                                 font.pixelSize: 10
                                 Layout.leftMargin: 16
                             }
@@ -5397,7 +5256,7 @@ Rectangle {
                             width: Math.min(96, Math.max(40, parent.width * 0.30))
                             height: (SplitHandle.hovered || SplitHandle.pressed) ? 4 : 3
                             radius: 2
-                            color: (SplitHandle.hovered || SplitHandle.pressed) ? "#38BDF8" : "#2B3647"
+                            color: (SplitHandle.hovered || SplitHandle.pressed) ? root.theme.accentCyan : root.theme.border
 
                             Behavior on color { ColorAnimation { duration: 100 } }
                         }
@@ -5419,16 +5278,16 @@ Rectangle {
                         SplitView.preferredHeight: root.wipUnstagedExpanded ? 180 : 34
 
                         titleText: "Modifiche Unstaged / Untracked"
-                        accentColor: "#F59E0B"
+                        accentColor: root.theme.warning
                         fileCount: root.wipUnstagedPathFiles.length
                         extraBadgeText: untrackedInTree > 0 ? (untrackedInTree + " untracked") : ""
                         isExpanded: root.wipUnstagedExpanded
                         showActionButton: root.wipUnstagedTotalCount > 0
                         actionText: "+ Stage All"
-                        actionBgColor: "#065F46"
-                        actionHoverColor: "#047857"
-                        actionBorderColor: "#10B981"
-                        actionTextColor: "#FFFFFF"
+                        actionBgColor: root.theme.successBg
+                        actionHoverColor: root.theme.success
+                        actionBorderColor: root.theme.accentTeal
+                        actionTextColor: root.theme.selectionText
                         pathFiles: root.wipUnstagedPathFiles
                         treeModel: root.wipUnstagedTreeItems
                         treeScope: "wip-unstaged:"
@@ -5463,15 +5322,15 @@ Rectangle {
                         SplitView.preferredHeight: root.wipStagedExpanded ? 180 : 34
 
                         titleText: "Modifiche in Staging"
-                        accentColor: "#10B981"
+                        accentColor: root.theme.accentTeal
                         fileCount: root.wipStagedPathFiles.length
                         isExpanded: root.wipStagedExpanded
                         showActionButton: root.wipStagedTotalCount > 0
                         actionText: "- Unstage All"
-                        actionBgColor: "#1F2937"
-                        actionHoverColor: "#374151"
-                        actionBorderColor: "#4B5563"
-                        actionTextColor: "#E2E8F0"
+                        actionBgColor: root.theme.surfaceElevated
+                        actionHoverColor: root.theme.borderHighlight
+                        actionBorderColor: root.theme.borderHighlight
+                        actionTextColor: root.theme.textSecondary
                         pathFiles: root.wipStagedPathFiles
                         treeModel: root.wipStagedTreeItems
                         treeScope: "wip-staged:"
@@ -5508,8 +5367,8 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: commitBoxCol.implicitHeight + 20
                     radius: 10
-                    color: "#0B1019"
-                    border.color: "#222F42"
+                    color: root.theme.inputBg
+                    border.color: root.theme.border
                     border.width: 1
 
                     ColumnLayout {
@@ -5519,26 +5378,12 @@ Rectangle {
                         spacing: 8
 
                         // Commit Title / Summary
-                        TextField {
+                        FluxTextField {
                             id: wipSummaryField
                             Layout.fillWidth: true
                             Layout.preferredHeight: 34
                             placeholderText: "Riepilogo commit (es: feat: nuova funzionalità)"
-                            placeholderTextColor: "#64748B"
-                            color: "#FFFFFF"
                             font.pixelSize: 11
-                            selectByMouse: true
-                            background: Rectangle {
-                                color: "#121A27"
-                                radius: 8
-                                border.color: wipSummaryField.activeFocus ? "#38BDF8" : "#243247"
-                                border.width: 1
-                                Behavior on border.color {
-                                    ColorAnimation {
-                                        duration: 120
-                                    }
-                                }
-                            }
                         }
 
                         // Commit Description (multiline optional)
@@ -5547,19 +5392,19 @@ Rectangle {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 52
                             placeholderText: "Descrizione dettagliata (opzionale)..."
-                            placeholderTextColor: "#64748B"
-                            color: "#E2E8F0"
+                            placeholderTextColor: root.theme.textMuted
+                            color: root.theme.textSecondary
                             font.pixelSize: 10
                             wrapMode: Text.Wrap
                             selectByMouse: true
                             background: Rectangle {
-                                color: "#121A27"
+                                color: root.theme.card
                                 radius: 8
-                                border.color: wipDescriptionField.activeFocus ? "#38BDF8" : "#243247"
+                                border.color: wipDescriptionField.activeFocus ? root.theme.accentCyan : root.theme.border
                                 border.width: 1
                                 Behavior on border.color {
                                     ColorAnimation {
-                                        duration: 120
+                                        duration: root.theme.animFast
                                     }
                                 }
                             }
@@ -5574,13 +5419,13 @@ Rectangle {
                             enabled: wipSummaryField.text.trim().length > 0 && root.totalFilesCount > 0
 
                             background: Rectangle {
-                                color: !wipCommitButton.enabled ? "#161F2E" : (wipCommitButton.hovered ? "#10B981" : "#059669")
+                                color: !wipCommitButton.enabled ? root.theme.surfaceElevated : (wipCommitButton.hovered ? root.theme.accentTeal : root.theme.success)
                                 radius: 8
-                                border.color: wipCommitButton.enabled ? "#34D399" : "#222F42"
+                                border.color: wipCommitButton.enabled ? root.theme.accentTeal : root.theme.border
                                 border.width: 1
                                 Behavior on color {
                                     ColorAnimation {
-                                        duration: 120
+                                        duration: root.theme.animFast
                                     }
                                 }
                             }
@@ -5590,7 +5435,7 @@ Rectangle {
                                 spacing: 6
                                 Text {
                                     text: "✓"
-                                    color: wipCommitButton.enabled ? "#FFFFFF" : "#64748B"
+                                    color: wipCommitButton.enabled ? root.theme.selectionText : root.theme.textMuted
                                     font.bold: true
                                     font.pixelSize: 12
                                 }
@@ -5602,7 +5447,7 @@ Rectangle {
                                         }
                                         return "Metti in staging e crea commit (" + root.totalFilesCount + " file)";
                                     }
-                                    color: wipCommitButton.enabled ? "#FFFFFF" : "#64748B"
+                                    color: wipCommitButton.enabled ? root.theme.selectionText : root.theme.textMuted
                                     font.bold: true
                                     font.pixelSize: 11
                                 }
@@ -5628,8 +5473,8 @@ Rectangle {
         width: Math.max(160, dragGhostLabel.implicitWidth + 32)
         height: 28
         radius: 6
-        color: (root.hoveredTargetBranch !== "") ? "#1E40AF" : "#0E7490"
-        border.color: (root.hoveredTargetBranch !== "") ? "#60A5FA" : "#38BDF8"
+        color: (root.hoveredTargetBranch !== "") ? root.theme.accentBlue : root.theme.infoBg
+        border.color: (root.hoveredTargetBranch !== "") ? root.theme.infoText : root.theme.accentCyan
         border.width: (root.hoveredTargetBranch !== "") ? 2 : 1.5
         opacity: 0.95
 
@@ -5662,7 +5507,7 @@ Rectangle {
                 text: (root.hoveredTargetBranch !== "")
                     ? (root.draggingBranchName + " ➔ " + root.hoveredTargetBranch + " (Rilascia per unire)")
                     : (root.draggingBranchName + " (Trascina su un altro branch)")
-                color: "#FFFFFF"
+                color: root.theme.selectionText
                 font.pixelSize: 11
                 font.bold: true
                 elide: Text.ElideRight
@@ -6106,164 +5951,59 @@ Rectangle {
             newBranchNameField.forceActiveFocus();
         }
 
-        background: Rectangle {
-            color: "#111824"
-            radius: 14
-            border.color: "#28374E"
-            border.width: 1
+        background: FluxModalBackground {}
 
-            Rectangle {
-                z: -2
-                anchors.fill: parent
-                anchors.margins: -8
-                radius: 20
-                color: "#000000"
-                opacity: 0.30
-            }
-            Rectangle {
-                z: -1
-                anchors.fill: parent
-                anchors.margins: -2
-                radius: 16
-                color: "#000000"
-                opacity: 0.40
-            }
-        }
-
-        header: Rectangle {
-            color: "#161F2E"
-            height: 44
-            radius: 14
-
-            Rectangle {
-                anchors.bottom: parent.bottom
-                width: parent.width
-                height: 14
-                color: "#161F2E"
-            }
-
-            Rectangle {
-                anchors.bottom: parent.bottom
-                width: parent.width
-                height: 1
-                color: "#222F42"
-            }
-
-            Text {
-                anchors.centerIn: parent
-                text: "✏ Rinomina Branch: " + renameBranchModal.targetBranch
-                color: "#F8FAFC"
-                font.bold: true
-                font.pixelSize: 12
-            }
+        header: FluxModalHeader {
+            titleText: "✏ Rinomina Branch: " + renameBranchModal.targetBranch
+            onCloseRequested: renameBranchModal.close()
         }
 
         contentItem: ColumnLayout {
             spacing: 8
-            TextField {
+            FluxTextField {
                 id: newBranchNameField
                 Layout.fillWidth: true
                 Layout.preferredHeight: 36
-                color: "#F8FAFC"
-                font.pixelSize: 12
-                selectByMouse: true
-                background: Rectangle {
-                    color: "#0A0E15"
-                    radius: 8
-                    border.color: newBranchNameField.activeFocus ? "#38BDF8" : "#222F42"
-                    border.width: 1
-                }
                 onAccepted: confirmRenameBtn.clicked()
             }
             Text {
                 id: renameErrorText
-                color: "#EF4444"
+                color: root.theme.danger
                 font.pixelSize: 11
                 visible: text.length > 0
             }
         }
 
-        footer: Rectangle {
-            color: "#161F2E"
-            height: 50
-            radius: 14
-
-            Rectangle {
-                anchors.top: parent.top
-                width: parent.width
-                height: 14
-                color: "#161F2E"
+        footer: FluxModalFooter {
+            horizontalMargin: 14
+            Item {
+                Layout.fillWidth: true
             }
-
-            Rectangle {
-                anchors.top: parent.top
-                width: parent.width
-                height: 1
-                color: "#222F42"
+            FluxActionButton {
+                text: "Annulla"
+                Layout.preferredHeight: 32
+                onClicked: renameBranchModal.close()
             }
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.rightMargin: 14
-                spacing: 8
-                Item {
-                    Layout.fillWidth: true
-                }
-                Button {
-                    text: "Annulla"
-                    Layout.preferredHeight: 32
-                    leftPadding: 14
-                    rightPadding: 14
-                    hoverEnabled: true
-                    background: Rectangle {
-                        color: parent.hovered ? "#1E2B3E" : "#151E2C"
-                        radius: 8
-                        border.color: "#28374E"
-                        border.width: 1
+            FluxActionButton {
+                id: confirmRenameBtn
+                text: "✓ Rinomina"
+                variant: "primary"
+                fontBold: true
+                Layout.preferredHeight: 32
+                leftPadding: 16
+                rightPadding: 16
+                onClicked: {
+                    const newName = newBranchNameField.text.trim();
+                    if (!newName || newName === renameBranchModal.targetBranch) {
+                        renameBranchModal.close();
+                        return;
                     }
-                    contentItem: Text {
-                        text: "Annulla"
-                        color: "#CBD5E1"
-                        font.pixelSize: 11
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    onClicked: renameBranchModal.close()
-                }
-                Button {
-                    id: confirmRenameBtn
-                    text: "✓ Rinomina"
-                    Layout.preferredHeight: 32
-                    leftPadding: 16
-                    rightPadding: 16
-                    hoverEnabled: true
-                    background: Rectangle {
-                        color: parent.hovered ? "#0EA5E9" : "#0284C7"
-                        radius: 8
-                        border.color: "#38BDF8"
-                        border.width: 1
-                    }
-                    contentItem: Text {
-                        text: "✓ Rinomina"
-                        color: "#FFFFFF"
-                        font.bold: true
-                        font.pixelSize: 11
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    onClicked: {
-                        const newName = newBranchNameField.text.trim();
-                        if (!newName || newName === renameBranchModal.targetBranch) {
-                            renameBranchModal.close();
-                            return;
-                        }
-                        if (root.branchManager) {
-                            if (root.pendingRenameOperationId !== 0) return;
-                            if (root.branchManager.renameBranch(renameBranchModal.targetBranch, newName)) {
-                                root.pendingRenameOperationId = root.branchManager.lastOperationId;
-                            } else {
-                                renameErrorText.text = root.branchManager.statusMessage;
-                            }
+                    if (root.branchManager) {
+                        if (root.pendingRenameOperationId !== 0) return;
+                        if (root.branchManager.renameBranch(renameBranchModal.targetBranch, newName)) {
+                            root.pendingRenameOperationId = root.branchManager.lastOperationId;
+                        } else {
+                            renameErrorText.text = root.branchManager.statusMessage;
                         }
                     }
                 }
@@ -6274,16 +6014,13 @@ Rectangle {
     // ==========================================
     // DELETE BRANCH CONFIRM DIALOG
     // ==========================================
-    Dialog {
+    FluxConfirmDialog {
         id: deleteBranchConfirmDialog
         title: "Conferma Eliminazione Branch"
-        modal: true
-        width: 400
-        height: 195
-        padding: 16
-        topPadding: 14
-        bottomPadding: 14
-        anchors.centerIn: Overlay.overlay
+        headerText: "🗑 Elimina Branch"
+        messageText: "Sei sicuro di voler eliminare definitivamente il branch '" + targetBranch + "'?"
+        confirmText: "🗑 Elimina"
+        destructive: true
 
         property string targetBranch: ""
 
@@ -6292,86 +6029,22 @@ Rectangle {
             open();
         }
 
-        background: Rectangle {
-            color: "#111824"; radius: 14; border.color: "#28374E"; border.width: 1
-            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
-            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
-        }
-        header: Rectangle {
-            color: "#161F2E"; height: 44; radius: 14
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
-            Text {
-                anchors.centerIn: parent; text: "🗑 Elimina Branch"; color: "#F87171"; font.bold: true; font.pixelSize: 12
-            }
-        }
-        contentItem: Text {
-            text: "Sei sicuro di voler eliminare definitivamente il branch '" + deleteBranchConfirmDialog.targetBranch + "'?"
-            color: "#F8FAFC"; font.pixelSize: 12; wrapMode: Text.WordWrap
-        }
-        footer: Rectangle {
-            color: "#161F2E"; height: 50; radius: 14
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
-            RowLayout {
-                anchors.fill: parent; anchors.rightMargin: 14; spacing: 8
-                Item {
-                    Layout.fillWidth: true
-                }
-                Button {
-                    text: "Annulla"
-                    Layout.preferredHeight: 32
-                    leftPadding: 14
-                    rightPadding: 14
-                    hoverEnabled: true
-                    background: Rectangle {
-                        color: parent.hovered ? "#1E2B3E" : "#151E2C"
-                        radius: 8
-                        border.color: "#28374E"
-                        border.width: 1
-                    }
-                    contentItem: Text {
-                        text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-                    }
-                    onClicked: deleteBranchConfirmDialog.close()
-                }
-                Button {
-                    text: "Elimina"
-                    Layout.preferredHeight: 32
-                    leftPadding: 16
-                    rightPadding: 16
-                    hoverEnabled: true
-                    background: Rectangle {
-                        color: parent.hovered ? "#DC2626" : "#991B1B"
-                        radius: 8
-                        border.color: "#EF4444"
-                        border.width: 1
-                    }
-                    contentItem: Text {
-                        text: "🗑 Elimina"; color: "#FFFFFF"; font.bold: true; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-                    }
-                    onClicked: {
-                        if (root.branchManager) root.branchManager.deleteBranch(deleteBranchConfirmDialog.targetBranch, false);
-                        deleteBranchConfirmDialog.close();
-                    }
-                }
-            }
+        onConfirmed: {
+            if (root.branchManager) root.branchManager.deleteBranch(targetBranch, false);
+            close();
         }
     }
 
     // ==========================================
     // DELETE TAG CONFIRM DIALOG
     // ==========================================
-    Dialog {
+    FluxConfirmDialog {
         id: deleteTagConfirmDialog
         title: "Conferma Eliminazione Tag"
-        modal: true
-        width: 400
-        height: 195
-        padding: 16
-        topPadding: 14
-        bottomPadding: 14
-        anchors.centerIn: Overlay.overlay
+        headerText: "🗑 Elimina Tag"
+        messageText: "Sei sicuro di voler eliminare il tag '" + targetTag + "'?"
+        confirmText: "🗑 Elimina"
+        destructive: true
 
         property string targetTag: ""
 
@@ -6380,68 +6053,9 @@ Rectangle {
             open();
         }
 
-        background: Rectangle {
-            color: "#111824"; radius: 14; border.color: "#28374E"; border.width: 1
-            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
-            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
-        }
-        header: Rectangle {
-            color: "#161F2E"; height: 44; radius: 14
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
-            Text {
-                anchors.centerIn: parent; text: "🗑 Elimina Tag"; color: "#F87171"; font.bold: true; font.pixelSize: 12
-            }
-        }
-        contentItem: Text {
-            text: "Sei sicuro di voler eliminare il tag '" + deleteTagConfirmDialog.targetTag + "'?"
-            color: "#F8FAFC"; font.pixelSize: 12; wrapMode: Text.WordWrap
-        }
-        footer: Rectangle {
-            color: "#161F2E"; height: 50; radius: 14
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
-            RowLayout {
-                anchors.fill: parent; anchors.rightMargin: 14; spacing: 8
-                Item {
-                    Layout.fillWidth: true
-                }
-                Button {
-                    Layout.preferredHeight: 32
-                    leftPadding: 14
-                    rightPadding: 14
-                    hoverEnabled: true
-                    background: Rectangle {
-                        color: parent.hovered ? "#1E2B3E" : "#151E2C"
-                        radius: 8
-                        border.color: "#28374E"
-                        border.width: 1
-                    }
-                    contentItem: Text {
-                        text: "Annulla"; color: "#CBD5E1"; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-                    }
-                    onClicked: deleteTagConfirmDialog.close()
-                }
-                Button {
-                    Layout.preferredHeight: 32
-                    leftPadding: 16
-                    rightPadding: 16
-                    hoverEnabled: true
-                    background: Rectangle {
-                        color: parent.hovered ? "#DC2626" : "#991B1B"
-                        radius: 8
-                        border.color: "#EF4444"
-                        border.width: 1
-                    }
-                    contentItem: Text {
-                        text: "🗑 Elimina"; color: "#FFFFFF"; font.bold: true; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-                    }
-                    onClicked: {
-                        if (root.branchManager) root.branchManager.deleteTag(deleteTagConfirmDialog.targetTag);
-                        deleteTagConfirmDialog.close();
-                    }
-                }
-            }
+        onConfirmed: {
+            if (root.branchManager) root.branchManager.deleteTag(targetTag);
+            close();
         }
     }
 
@@ -6549,77 +6163,38 @@ Rectangle {
             }
         }
 
-        background: Rectangle {
-            color: "#111824"
-            radius: 14
-            border.color: "#28374E"
-            border.width: 1
-            Rectangle { z: -2; anchors.fill: parent; anchors.margins: -8; radius: 20; color: "#000000"; opacity: 0.30 }
-            Rectangle { z: -1; anchors.fill: parent; anchors.margins: -2; radius: 16; color: "#000000"; opacity: 0.40 }
-        }
+        background: FluxModalBackground {}
 
-        header: Rectangle {
-            color: "#161F2E"
-            height: 44
-            radius: 14
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#222F42" }
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-
-                Text {
-                    text: "📄 Cronologia File (File History)"
-                    color: "#F8FAFC"
-                    font.bold: true
-                    font.pixelSize: 13
-                }
-
-                Rectangle {
-                    color: "#0F2942"
-                    radius: 6
-                    border.color: "#38BDF8"
-                    border.width: 1
-                    implicitWidth: 52
-                    implicitHeight: 20
-                    Text {
-                        anchors.centerIn: parent
-                        text: "Ctrl+H"
-                        color: "#38BDF8"
-                        font.pixelSize: 10
-                        font.bold: true
-                    }
-                }
-
-                Item {
-                    Layout.fillWidth: true
-                }
-
-                Text {
-                    text: (fileHistoryModal.allRepoFiles.length) + " file tracciati"
-                    color: "#64748B"
-                    font.pixelSize: 11
-                }
-            }
+        header: FluxModalHeader {
+            titleText: "📄 Cronologia File (File History) • Ctrl+H"
+            onCloseRequested: fileHistoryModal.close()
         }
 
         contentItem: ColumnLayout {
             spacing: 10
 
-            Text {
-                text: "Seleziona o cerca un file per esaminarne l'intera storia dei commit e visualizzarne i diff:"
-                color: "#94A3B8"
-                font.pixelSize: 11
+            RowLayout {
+                Layout.fillWidth: true
+                Text {
+                    text: "Seleziona o cerca un file per esaminarne l'intera storia dei commit e visualizzarne i diff:"
+                    color: root.theme.textMuted
+                    font.pixelSize: 11
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
+                Text {
+                    text: (fileHistoryModal.allRepoFiles.length) + " file tracciati"
+                    color: root.theme.textMuted
+                    font.pixelSize: 11
+                }
             }
 
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 36
                 radius: 6
-                color: "#020617"
-                border.color: fileHistorySearchField.activeFocus ? "#38BDF8" : "#334155"
+                color: root.theme.inputBg
+                border.color: fileHistorySearchField.activeFocus ? root.theme.accentCyan : root.theme.border
                 border.width: 1
 
                 RowLayout {
@@ -6631,14 +6206,15 @@ Rectangle {
                     Text {
                         text: "🔍"
                         font.pixelSize: 12
-                        color: "#64748B"
+                        color: root.theme.textMuted
                     }
 
                     TextField {
                         id: fileHistorySearchField
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        color: "#F8FAFC"
+                        color: root.theme.textPrimary
+                        placeholderTextColor: root.theme.textPlaceholder
                         font.pixelSize: 12
                         background: Item {
                         }
@@ -6684,7 +6260,7 @@ Rectangle {
                         onClicked: fileHistorySearchField.text = ""
                         contentItem: Text {
                             text: "✕"
-                            color: "#8B949E"
+                            color: root.theme.textMuted
                             font.pixelSize: 11
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
@@ -6700,8 +6276,8 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 radius: 6
-                color: "#090D16"
-                border.color: "#1E293B"
+                color: root.theme.canvas
+                border.color: root.theme.borderSubtle
                 border.width: 1
                 clip: true
 
@@ -6722,8 +6298,8 @@ Rectangle {
                         height: 32
                         radius: 4
                         property bool isCurrent: fileHistoryResultsList.currentIndex === index
-                        color: isCurrent ? "#1E3A8A" : (fileItemMouse.containsMouse ? "#1E293B" : "transparent")
-                        border.color: isCurrent ? "#38BDF8" : "transparent"
+                        color: isCurrent ? root.theme.infoBg : (fileItemMouse.containsMouse ? root.theme.cardHover : "transparent")
+                        border.color: isCurrent ? root.theme.accentCyan : "transparent"
                         border.width: 1
 
                         RowLayout {
@@ -6740,7 +6316,7 @@ Rectangle {
                             // Directory prefix (dimmed)
                             Text {
                                 text: root.getDirectory(modelData)
-                                color: "#64748B"
+                                color: root.theme.textMuted
                                 font.pixelSize: 11
                                 elide: Text.ElideMiddle
                                 Layout.maximumWidth: Math.floor(fileItemRect.width * 0.45)
@@ -6750,7 +6326,7 @@ Rectangle {
                             // Filename (highlighted)
                             Text {
                                 text: root.getFilename(modelData)
-                                color: fileItemRect.isCurrent ? "#38BDF8" : "#F1F5F9"
+                                color: fileItemRect.isCurrent ? root.theme.accentCyan : root.theme.textPrimary
                                 font.bold: true
                                 font.pixelSize: 11
                                 elide: Text.ElideRight
@@ -6773,7 +6349,7 @@ Rectangle {
                     Text {
                         anchors.centerIn: parent
                         text: "Nessun file trovato"
-                        color: "#64748B"
+                        color: root.theme.textMuted
                         font.pixelSize: 12
                         visible: fileHistoryModal.filteredRepoFiles.length === 0
                     }
@@ -6781,73 +6357,35 @@ Rectangle {
             }
         }
 
-        footer: Rectangle {
-            color: "#161F2E"
-            height: 52
-            radius: 14
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 14; color: "#161F2E" }
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#222F42" }
+        footer: FluxModalFooter {
+            footerHeight: 52
+            buttonSpacing: 10
 
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                spacing: 10
+            Text {
+                text: "Suggerimento: usa i tasti ↑ ↓ per navigare e Invio per selezionare"
+                color: root.theme.textMuted
+                font.pixelSize: 10
+            }
 
-                Text {
-                    text: "Suggerimento: usa i tasti ↑ ↓ per navigare e Invio per selezionare"
-                    color: "#64748B"
-                    font.pixelSize: 10
-                }
+            Item {
+                Layout.fillWidth: true
+            }
 
-                Item {
-                    Layout.fillWidth: true
-                }
+            FluxActionButton {
+                text: "Annulla"
+                Layout.preferredHeight: 32
+                onClicked: fileHistoryModal.close()
+            }
 
-                Button {
-                    text: "Annulla"
-                    Layout.preferredHeight: 32
-                    leftPadding: 14
-                    rightPadding: 14
-                    hoverEnabled: true
-                    background: Rectangle {
-                        color: parent.hovered ? "#1E2B3E" : "#151E2C"
-                        radius: 8
-                        border.color: "#28374E"
-                        border.width: 1
-                    }
-                    contentItem: Text {
-                        text: "Annulla"
-                        color: "#CBD5E1"
-                        font.pixelSize: 11
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    onClicked: fileHistoryModal.close()
-                }
-
-                Button {
-                    Layout.preferredHeight: 32
-                    leftPadding: 16
-                    rightPadding: 16
-                    hoverEnabled: true
-                    enabled: (fileHistoryResultsList.currentIndex >= 0 && fileHistoryResultsList.currentIndex < fileHistoryModal.filteredRepoFiles.length) || fileHistorySearchField.text.trim().length > 0
-                    onClicked: fileHistoryModal.confirmSelection()
-                    background: Rectangle {
-                        color: parent.enabled ? (parent.hovered ? "#0EA5E9" : "#0284C7") : "#161F2E"
-                        radius: 8
-                        border.color: parent.enabled ? "#38BDF8" : "#222F42"
-                        border.width: 1
-                    }
-                    contentItem: Text {
-                        text: "📄 Mostra Cronologia"
-                        color: parent.enabled ? "#FFFFFF" : "#475569"
-                        font.bold: true
-                        font.pixelSize: 11
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                }
+            FluxActionButton {
+                text: "📄 Mostra Cronologia"
+                variant: "primary"
+                fontBold: true
+                Layout.preferredHeight: 32
+                leftPadding: 16
+                rightPadding: 16
+                enabled: (fileHistoryResultsList.currentIndex >= 0 && fileHistoryResultsList.currentIndex < fileHistoryModal.filteredRepoFiles.length) || fileHistorySearchField.text.trim().length > 0
+                onClicked: fileHistoryModal.confirmSelection()
             }
         }
     }

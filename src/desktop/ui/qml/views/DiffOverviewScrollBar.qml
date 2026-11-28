@@ -1,13 +1,15 @@
 import QtQuick
 import QtQuick.Controls
+import "../themes"
 
 Item {
     id: root
+    readonly property FluxTheme theme: FluxTheme {}
 
     property Flickable flickable: null
     property var markers: []
-    property color oldColor: "#EF4444"
-    property color newColor: "#10B981"
+    property color oldColor: theme.danger
+    property color newColor: theme.success
     property int minThumbHeight: 26
     property int minMarkerHeight: 3
 
@@ -50,7 +52,7 @@ Item {
     // Track background
     Rectangle {
         anchors.fill: parent
-        color: "#090D14"
+        color: root.theme.inputBg
 
         // Left border separating the overview bar from diff content
         Rectangle {
@@ -58,7 +60,7 @@ Item {
             anchors.top: parent.top
             anchors.bottom: parent.bottom
             width: 1
-            color: "#1E293B"
+            color: root.theme.borderSubtle
         }
 
         // Center divider between Old (before commit, left half) and New (after commit, right half)
@@ -67,7 +69,7 @@ Item {
             anchors.top: parent.top
             anchors.bottom: parent.bottom
             width: 1
-            color: "#1E293B"
+            color: root.theme.borderSubtle
         }
     }
 
@@ -136,8 +138,8 @@ Item {
                 : Qt.rgba(0.58, 0.64, 0.72, 0.14))
         border.width: 1
         border.color: barMouseArea.isDragging
-            ? "#00E5FF"
-            : (barMouseArea.containsMouse ? "#38BDF8" : "#475569")
+            ? root.theme.accentCyan
+            : (barMouseArea.containsMouse ? root.theme.borderFocus : root.theme.textPlaceholder)
 
         Behavior on border.color {
             ColorAnimation {

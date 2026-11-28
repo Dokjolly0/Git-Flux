@@ -1,9 +1,11 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../themes"
 
 Dialog {
     id: root
+    readonly property FluxTheme theme: FluxTheme {}
     title: "Risolutore Conflitti a 3 Vie"
     modal: true
     width: 920
@@ -33,9 +35,9 @@ Dialog {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 46
-            color: "#161F2E"
+            color: root.theme.headerBg
             radius: 10
-            border.color: "#243247"
+            border.color: root.theme.border
             border.width: 1
 
             RowLayout {
@@ -46,7 +48,7 @@ Dialog {
 
                 Text {
                     text: "⚔ Risoluzione Conflitti:"
-                    color: "#F8FAFC"
+                    color: root.theme.textPrimary
                     font.bold: true
                     font.pixelSize: 13
                 }
@@ -54,7 +56,7 @@ Dialog {
                 Text {
                     text: !root.conflictResolver ? ""
                         : (root.conflictResolver.isLoading ? "⏳ Caricamento del file..." : root.conflictResolver.currentFilePath)
-                    color: "#38BDF8"
+                    color: root.theme.borderFocus
                     font.bold: true
                     font.pixelSize: 13
                     elide: Text.ElideMiddle
@@ -66,8 +68,8 @@ Dialog {
                     Layout.preferredHeight: 24
                     implicitWidth: hunkProgressText.implicitWidth + 16
                     radius: 12
-                    color: (root.conflictResolver && root.conflictResolver.allResolved) ? "#064E3B" : "#451A03"
-                    border.color: (root.conflictResolver && root.conflictResolver.allResolved) ? "#10B981" : "#F59E0B"
+                    color: (root.conflictResolver && root.conflictResolver.allResolved) ? root.theme.successBg : root.theme.warningBg
+                    border.color: (root.conflictResolver && root.conflictResolver.allResolved) ? root.theme.success : root.theme.warning
                     border.width: 1
 
                     Text {
@@ -77,28 +79,25 @@ Dialog {
                             if (!root.conflictResolver) return "0 / 0 risolti";
                             return root.conflictResolver.resolvedHunks + " / " + root.conflictResolver.totalHunks + " risolti";
                         }
-                        color: (root.conflictResolver && root.conflictResolver.allResolved) ? "#34D399" : "#FDBA74"
+                        color: (root.conflictResolver && root.conflictResolver.allResolved) ? root.theme.successText : root.theme.warningText
                         font.bold: true
                         font.pixelSize: 11
                     }
                 }
 
-                Button {
+                FluxActionButton {
                     text: "✕"
                     Layout.preferredWidth: 26
                     Layout.preferredHeight: 26
-                    hoverEnabled: true
-                    background: Rectangle {
-                        radius: 7
-                        color: parent.hovered ? "#243247" : "transparent"
-                    }
-                    contentItem: Text {
-                        text: "✕"
-                        color: parent.hovered ? "#F8FAFC" : "#94A3B8"
-                        font.bold: true
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
+                    leftPadding: 0
+                    rightPadding: 0
+                    cornerRadius: 7
+                    baseColor: "transparent"
+                    hoverColor: root.theme.cardHover
+                    baseBorderColor: "transparent"
+                    textColor: root.theme.textSecondary
+                    hoverTextColor: root.theme.textPrimary
+                    fontBold: true
                     onClicked: root.close()
                 }
             }
@@ -110,9 +109,9 @@ Dialog {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            color: "#0D131D"
+            color: root.theme.inputBg
             radius: 10
-            border.color: "#222F42"
+            border.color: root.theme.border
             border.width: 1
             clip: true
 
@@ -133,9 +132,9 @@ Dialog {
                 delegate: Rectangle {
                     width: hunksListView.width - 16
                     implicitHeight: cardLayout.implicitHeight + 22
-                    color: "#121A27"
+                    color: root.theme.surfaceElevated
                     radius: 10
-                    border.color: model.isResolved ? "#059669" : "#DC2626"
+                    border.color: model.isResolved ? root.theme.success : root.theme.danger
                     border.width: 1
 
                     ColumnLayout {
@@ -153,7 +152,7 @@ Dialog {
 
                             Text {
                                 text: "Hunk #" + (model.hunkIndex + 1) + " (Linea " + model.startLine + ")"
-                                color: "#F8FAFC"
+                                color: root.theme.textPrimary
                                 font.bold: true
                                 font.pixelSize: 12
                             }
@@ -161,16 +160,16 @@ Dialog {
                             Rectangle {
                                 Layout.preferredHeight: 20
                                 implicitWidth: statusHunkText.implicitWidth + 12
-                                radius: 6
-                                color: model.isResolved ? "#064E3B" : "#3B1219"
-                                border.color: model.isResolved ? "#10B981" : "#EF4444"
+                                radius: root.theme.radiusXs
+                                color: model.isResolved ? root.theme.successBg : root.theme.dangerBg
+                                border.color: model.isResolved ? root.theme.success : root.theme.danger
                                 border.width: 1
 
                                 Text {
                                     id: statusHunkText
                                     anchors.centerIn: parent
                                     text: model.isResolved ? "✓ Risolto" : "⚠ Da Risolvere"
-                                    color: model.isResolved ? "#6EE7B7" : "#FCA5A5"
+                                    color: model.isResolved ? root.theme.successText : root.theme.dangerText
                                     font.bold: true
                                     font.pixelSize: 10
                                 }
@@ -187,7 +186,7 @@ Dialog {
                                     if (model.chosenSide === 3) return "Scelto: Custom";
                                     return "Nessuna selezione";
                                 }
-                                color: "#94A3B8"
+                                color: root.theme.textSecondary
                                 font.pixelSize: 11
                             }
                         }
@@ -201,9 +200,9 @@ Dialog {
                             Rectangle {
                                 Layout.fillWidth: true
                                 implicitHeight: 130
-                                color: model.chosenSide === 1 ? "#063B2C" : "#162030"
-                                radius: 8
-                                border.color: model.chosenSide === 1 ? "#10B981" : "#243247"
+                                color: model.chosenSide === 1 ? root.theme.successBg : root.theme.card
+                                radius: root.theme.radiusSm
+                                border.color: model.chosenSide === 1 ? root.theme.success : root.theme.border
                                 border.width: model.chosenSide === 1 ? 2 : 1
 
                                 ColumnLayout {
@@ -215,38 +214,26 @@ Dialog {
                                         Layout.fillWidth: true
                                         Text {
                                             text: "◀ Ours (Locale / HEAD)"
-                                            color: "#34D399"
+                                            color: root.theme.successText
                                             font.bold: true
                                             font.pixelSize: 11
                                         }
                                         Item {
                                             Layout.fillWidth: true
                                         }
-                                        Button {
+                                        FluxActionButton {
                                             text: "Scegli Ours"
                                             Layout.preferredHeight: 24
                                             leftPadding: 10
                                             rightPadding: 10
-                                            hoverEnabled: true
-                                            background: Rectangle {
-                                                color: parent.hovered ? "#10B981" : "#065F46"
-                                                radius: 6
-                                                border.color: "#34D399"
-                                                border.width: 1
-                                                Behavior on color {
-                                                    ColorAnimation {
-                                                        duration: 110
-                                                    }
-                                                }
-                                            }
-                                            contentItem: Text {
-                                                text: parent.text
-                                                color: "#FFFFFF"
-                                                font.pixelSize: 10
-                                                font.bold: true
-                                                horizontalAlignment: Text.AlignHCenter
-                                                verticalAlignment: Text.AlignVCenter
-                                            }
+                                            cornerRadius: root.theme.radiusXs
+                                            fontPixelSize: 10
+                                            fontBold: true
+                                            baseColor: root.theme.successBg
+                                            hoverColor: root.theme.success
+                                            baseBorderColor: root.theme.successText
+                                            textColor: root.theme.selectionText
+                                            animDuration: 110
                                             onClicked: {
                                                 if (root.conflictResolver) {
                                                     root.conflictResolver.resolveHunk(model.hunkIndex, 1);
@@ -263,7 +250,7 @@ Dialog {
                                         TextArea {
                                             text: model.oursContent
                                             readOnly: true
-                                            color: "#E2E8F0"
+                                            color: root.theme.textPrimary
                                             font.family: (typeof gfMonoFont !== "undefined" && gfMonoFont) ? gfMonoFont : "Consolas"
                                             font.pixelSize: 11
                                             background: null
@@ -276,9 +263,9 @@ Dialog {
                             Rectangle {
                                 Layout.fillWidth: true
                                 implicitHeight: 130
-                                color: model.chosenSide === 2 ? "#1E1B4B" : "#162030"
-                                radius: 8
-                                border.color: model.chosenSide === 2 ? "#818CF8" : "#243247"
+                                color: model.chosenSide === 2 ? root.theme.infoBg : root.theme.card
+                                radius: root.theme.radiusSm
+                                border.color: model.chosenSide === 2 ? root.theme.accentPurple : root.theme.border
                                 border.width: model.chosenSide === 2 ? 2 : 1
 
                                 ColumnLayout {
@@ -290,38 +277,26 @@ Dialog {
                                         Layout.fillWidth: true
                                         Text {
                                             text: "Theirs (In arrivo / Remote) ▶"
-                                            color: "#A5B4FC"
+                                            color: root.theme.accentPurple
                                             font.bold: true
                                             font.pixelSize: 11
                                         }
                                         Item {
                                             Layout.fillWidth: true
                                         }
-                                        Button {
+                                        FluxActionButton {
                                             text: "Scegli Theirs"
                                             Layout.preferredHeight: 24
                                             leftPadding: 10
                                             rightPadding: 10
-                                            hoverEnabled: true
-                                            background: Rectangle {
-                                                color: parent.hovered ? "#6366F1" : "#3730A3"
-                                                radius: 6
-                                                border.color: "#818CF8"
-                                                border.width: 1
-                                                Behavior on color {
-                                                    ColorAnimation {
-                                                        duration: 110
-                                                    }
-                                                }
-                                            }
-                                            contentItem: Text {
-                                                text: parent.text
-                                                color: "#FFFFFF"
-                                                font.pixelSize: 10
-                                                font.bold: true
-                                                horizontalAlignment: Text.AlignHCenter
-                                                verticalAlignment: Text.AlignVCenter
-                                            }
+                                            cornerRadius: root.theme.radiusXs
+                                            fontPixelSize: 10
+                                            fontBold: true
+                                            baseColor: Qt.alpha(root.theme.accentPurple, 0.35)
+                                            hoverColor: root.theme.accentPurple
+                                            baseBorderColor: root.theme.accentPurple
+                                            textColor: root.theme.selectionText
+                                            animDuration: 110
                                             onClicked: {
                                                 if (root.conflictResolver) {
                                                     root.conflictResolver.resolveHunk(model.hunkIndex, 2);
@@ -338,7 +313,7 @@ Dialog {
                                         TextArea {
                                             text: model.theirsContent
                                             readOnly: true
-                                            color: "#E2E8F0"
+                                            color: root.theme.textPrimary
                                             font.family: (typeof gfMonoFont !== "undefined" && gfMonoFont) ? gfMonoFont : "Consolas"
                                             font.pixelSize: 11
                                             background: null
@@ -352,9 +327,9 @@ Dialog {
                         Rectangle {
                             Layout.fillWidth: true
                             implicitHeight: customExpandCheck.checked ? 110 : 32
-                            color: model.chosenSide === 3 ? "#431407" : "#0F1623"
-                            radius: 8
-                            border.color: model.chosenSide === 3 ? "#F97316" : "#222F42"
+                            color: model.chosenSide === 3 ? root.theme.warningBg : root.theme.surface
+                            radius: root.theme.radiusSm
+                            border.color: model.chosenSide === 3 ? root.theme.warning : root.theme.border
                             border.width: model.chosenSide === 3 ? 2 : 1
 
                             ColumnLayout {
@@ -374,27 +349,19 @@ Dialog {
                                         Layout.fillWidth: true
                                     }
 
-                                    Button {
+                                    FluxActionButton {
                                         visible: customExpandCheck.checked
                                         text: "Salva come Risoluzione Personalizzata"
                                         Layout.preferredHeight: 24
                                         leftPadding: 10
                                         rightPadding: 10
-                                        hoverEnabled: true
-                                        background: Rectangle {
-                                            color: parent.hovered ? "#EA580C" : "#C2410C"
-                                            radius: 6
-                                            border.color: "#FB923C"
-                                            border.width: 1
-                                        }
-                                        contentItem: Text {
-                                            text: parent.text
-                                            color: "#FFFFFF"
-                                            font.pixelSize: 10
-                                            font.bold: true
-                                            horizontalAlignment: Text.AlignHCenter
-                                            verticalAlignment: Text.AlignVCenter
-                                        }
+                                        cornerRadius: root.theme.radiusXs
+                                        fontPixelSize: 10
+                                        fontBold: true
+                                        baseColor: root.theme.warningBg
+                                        hoverColor: root.theme.warning
+                                        baseBorderColor: root.theme.warningText
+                                        textColor: root.theme.selectionText
                                         onClicked: {
                                             if (root.conflictResolver) {
                                                 root.conflictResolver.resolveHunk(model.hunkIndex, 3, customInput.text);
@@ -413,12 +380,14 @@ Dialog {
                                     TextArea {
                                         id: customInput
                                         text: model.customContent.length > 0 ? model.customContent : (model.chosenSide === 1 ? model.oursContent : model.theirsContent)
-                                        color: "#F1F5F9"
+                                        color: root.theme.textPrimary
+                                        selectionColor: root.theme.selectionBg
+                                        selectedTextColor: root.theme.selectionText
                                         font.family: (typeof gfMonoFont !== "undefined" && gfMonoFont) ? gfMonoFont : "Consolas"
                                         font.pixelSize: 11
                                         background: Rectangle {
-                                            color: "#0A0E15"
-                                            radius: 6
+                                            color: root.theme.inputBg
+                                            radius: root.theme.radiusXs
                                         }
                                     }
                                 }
@@ -445,7 +414,7 @@ Dialog {
             Text {
                 Layout.fillWidth: true
                 text: (root.conflictResolver && root.conflictResolver.hasError) ? ("⚠ " + root.conflictResolver.errorMessage) : ""
-                color: "#EF4444"
+                color: root.theme.danger
                 font.pixelSize: 11
                 elide: Text.ElideRight
             }
@@ -456,33 +425,20 @@ Dialog {
                 onClicked: root.close()
             }
 
-            Button {
+            FluxActionButton {
                 id: applyBtn
                 text: "✓ Applica Risoluzione e Salva"
                 Layout.preferredHeight: 34
                 leftPadding: 16
                 rightPadding: 16
                 enabled: root.conflictResolver && root.conflictResolver.allResolved
-                hoverEnabled: true
-                background: Rectangle {
-                    color: applyBtn.enabled ? (applyBtn.hovered ? "#10B981" : "#059669") : "#161F2E"
-                    radius: 8
-                    border.color: applyBtn.enabled ? "#34D399" : "#222F42"
-                    border.width: 1
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: 120
-                        }
-                    }
-                }
-                contentItem: Text {
-                    text: parent.text
-                    color: applyBtn.enabled ? "#FFFFFF" : "#475569"
-                    font.bold: true
-                    font.pixelSize: 11
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
+                baseColor: root.theme.successBg
+                hoverColor: root.theme.success
+                disabledColor: root.theme.surface
+                baseBorderColor: root.theme.successText
+                disabledBorderColor: root.theme.border
+                textColor: root.theme.selectionText
+                fontBold: true
                 onClicked: {
                     if (root.conflictResolver) {
                         // Asynchronous: the dialog closes on resolutionApplied (errors stay visible).

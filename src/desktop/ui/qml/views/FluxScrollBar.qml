@@ -1,8 +1,11 @@
 import QtQuick
 import QtQuick.Controls
+import "../themes"
 
 ScrollBar {
     id: control
+
+    readonly property FluxTheme theme: FluxTheme {}
 
     policy: ScrollBar.AsNeeded
     hoverEnabled: true
@@ -38,8 +41,8 @@ ScrollBar {
         visible: control.needed
 
         color: control.pressed
-            ? "#00E5FF"
-            : (control.hovered ? "#38BDF8" : "#475569")
+            ? control.theme.accentCyan
+            : (control.hovered ? control.theme.borderFocus : control.theme.textPlaceholder)
         opacity: control.active ? 0.85 : 0.35
 
         Behavior on opacity {

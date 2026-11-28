@@ -1,10 +1,12 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../themes"
 
 Rectangle {
     id: root
-    color: "#0D1117"
+    readonly property FluxTheme theme: FluxTheme {}
+    color: theme.canvas
 
     property var sessionVm: null
     property var diffViewer: (sessionVm && sessionVm.diffViewer) ? sessionVm.diffViewer : null
@@ -68,7 +70,7 @@ Rectangle {
     property string savedScrollFileKey: ""
 
     readonly property color gridLineColor: Qt.rgba(0.58, 0.64, 0.72, 0.14)
-    readonly property color gutterBorderColor: "#1E293B"
+    readonly property color gutterBorderColor: theme.borderSubtle
 
     // Shared text selection state (supports single-line, multi-line & off-screen copy)
     property string selTarget: "" // "inline", "split-left", "split-right", "hunk", "blame"
@@ -307,8 +309,8 @@ Rectangle {
         activeFocusOnPress: false
         persistentSelection: true
         textFormat: TextEdit.RichText
-        selectionColor: "#264F78"
-        selectedTextColor: "#F8FAFC"
+        selectionColor: root.theme.selectionBg
+        selectedTextColor: root.theme.selectionText
         leftPadding: 0
         rightPadding: 0
         topPadding: 0
@@ -340,7 +342,7 @@ Rectangle {
             y: 0
             width: 6
             height: Math.max(14, codeEdit.implicitHeight)
-            color: "#264F78"
+            color: root.theme.selectionBg
         }
 
         Connections {
@@ -549,8 +551,8 @@ Rectangle {
         signal scrollRequested(real newValue)
 
         height: 10
-        color: "#0F141C"
-        border.color: "#1E293B"
+        color: root.theme.surface
+        border.color: root.theme.borderSubtle
         border.width: 1
         radius: 4
         visible: maxScroll > 0
@@ -576,8 +578,8 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             radius: 3
             color: hThumbArea.isDragging
-                ? "#00E5FF"
-                : (hThumbArea.containsMouse || trackMouseArea.containsMouse ? "#38BDF8" : "#475569")
+                ? root.theme.accentCyan
+                : (hThumbArea.containsMouse || trackMouseArea.containsMouse ? root.theme.borderFocus : root.theme.textPlaceholder)
             opacity: (hThumbArea.isDragging || hThumbArea.containsMouse || trackMouseArea.containsMouse) ? 0.95 : 0.65
 
             readonly property real trackWidth: hbar.width
@@ -626,9 +628,9 @@ Rectangle {
         Rectangle {
             height: 20
             width: plus15Text.implicitWidth + 14
-            radius: 6
-            color: plus15Mouse.containsMouse ? "#1E3A5F" : "#132235"
-            border.color: plus15Mouse.containsMouse ? "#38BDF8" : "#283B54"
+            radius: root.theme.radiusXs
+            color: plus15Mouse.containsMouse ? root.theme.surfaceGlass : root.theme.infoBg
+            border.color: plus15Mouse.containsMouse ? root.theme.borderFocus : root.theme.borderHighlight
             border.width: 1
 
             Behavior on color {
@@ -641,7 +643,7 @@ Rectangle {
                 id: plus15Text
                 anchors.centerIn: parent
                 text: "+15 righe"
-                color: "#7DD3FC"
+                color: root.theme.infoText
                 font.pixelSize: 9
                 font.bold: true
             }
@@ -657,9 +659,9 @@ Rectangle {
         Rectangle {
             height: 20
             width: fullCtxText.implicitWidth + 14
-            radius: 6
-            color: fullCtxMouse.containsMouse ? "#1E3A5F" : "#132235"
-            border.color: fullCtxMouse.containsMouse ? "#38BDF8" : "#283B54"
+            radius: root.theme.radiusXs
+            color: fullCtxMouse.containsMouse ? root.theme.surfaceGlass : root.theme.infoBg
+            border.color: fullCtxMouse.containsMouse ? root.theme.borderFocus : root.theme.borderHighlight
             border.width: 1
 
             Behavior on color {
@@ -672,7 +674,7 @@ Rectangle {
                 id: fullCtxText
                 anchors.centerIn: parent
                 text: "File completo"
-                color: "#38BDF8"
+                color: root.theme.borderFocus
                 font.pixelSize: 9
                 font.bold: true
             }
@@ -700,8 +702,8 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 46
-            color: "#111722"
-            border.color: "#1E293B"
+            color: root.theme.headerBg
+            border.color: root.theme.borderSubtle
             border.width: 1
 
             RowLayout {
@@ -718,13 +720,13 @@ Rectangle {
                     rightPadding: 11
                     hoverEnabled: true
                     background: Rectangle {
-                        color: parent.hovered ? "#1E2B3E" : "#151E2C"
-                        radius: 8
-                        border.color: parent.hovered ? "#38BDF8" : "#28374E"
+                        color: parent.hovered ? root.theme.cardHover : root.theme.card
+                        radius: root.theme.radiusSm
+                        border.color: parent.hovered ? root.theme.borderFocus : root.theme.borderHighlight
                         border.width: 1
                         Behavior on color {
                             ColorAnimation {
-                                duration: 120
+                                duration: root.theme.animFast
                             }
                         }
                     }
@@ -732,13 +734,13 @@ Rectangle {
                         spacing: 6
                         Text {
                             text: "←"
-                            color: "#38BDF8"
+                            color: root.theme.borderFocus
                             font.bold: true
                             font.pixelSize: 13
                         }
                         Text {
                             text: "Torna al grafo"
-                            color: "#F1F5F9"
+                            color: root.theme.textPrimary
                             font.bold: true
                             font.pixelSize: 11
                         }
@@ -754,7 +756,7 @@ Rectangle {
                         }
                         return root.diffViewer.filePath !== "" ? root.diffViewer.filePath : "Nessun file selezionato";
                     }
-                    color: "#F1F5F9"
+                    color: root.theme.textPrimary
                     font.bold: true
                     font.pixelSize: 13
                     elide: Text.ElideMiddle
@@ -767,15 +769,15 @@ Rectangle {
                     visible: Boolean(root.diffViewer && root.diffViewer.isLoading)
                     Layout.preferredHeight: 22
                     implicitWidth: loadingBadgeTxt.implicitWidth + 14
-                    radius: 6
-                    color: "#152336"
-                    border.color: "#38BDF8"
+                    radius: root.theme.radiusXs
+                    color: root.theme.infoBg
+                    border.color: root.theme.borderFocus
                     border.width: 1
                     Text {
                         id: loadingBadgeTxt
                         anchors.centerIn: parent
                         text: "⏳ Caricamento..."
-                        color: "#7DD3FC"
+                        color: root.theme.infoText
                         font.pixelSize: 10
                         font.bold: true
                     }
@@ -786,14 +788,14 @@ Rectangle {
                     visible: root.diffViewer && !root.diffViewer.isEmpty
                     Layout.preferredHeight: 22
                     implicitWidth: typeText.implicitWidth + 14
-                    radius: 6
+                    radius: root.theme.radiusXs
                     color: {
                         if (!root.diffViewer) return "transparent";
-                        if (root.diffViewer.isNewFile) return "#065F46";
-                        if (root.diffViewer.isDeletedFile) return "#7F1D1D";
-                        if (root.diffViewer.isRenamed) return "#1E3A8A";
-                        if (root.diffViewer.isBinary) return "#475569";
-                        return "#78350F";
+                        if (root.diffViewer.isNewFile) return root.theme.success;
+                        if (root.diffViewer.isDeletedFile) return root.theme.danger;
+                        if (root.diffViewer.isRenamed) return root.theme.accentBlue;
+                        if (root.diffViewer.isBinary) return root.theme.textMuted;
+                        return root.theme.warning;
                     }
 
                     Text {
@@ -807,7 +809,7 @@ Rectangle {
                             if (root.diffViewer.isBinary) return (root.diffViewer.formatBadge && root.diffViewer.formatBadge.length > 0) ? root.diffViewer.formatBadge : "BINARY";
                             return "MODIFIED";
                         }
-                        color: "#FFFFFF"
+                        color: root.theme.selectionText
                         font.pixelSize: 10
                         font.bold: true
                     }
@@ -820,15 +822,15 @@ Rectangle {
                              root.diffViewer.formatBadge && root.diffViewer.formatBadge.length > 0
                     Layout.preferredHeight: 22
                     implicitWidth: fmtBadgeTxt.implicitWidth + 12
-                    radius: 6
-                    color: "#1E293B"
-                    border.color: "#334155"
+                    radius: root.theme.radiusXs
+                    color: root.theme.cardHover
+                    border.color: root.theme.borderHighlight
                     border.width: 1
                     Text {
                         id: fmtBadgeTxt
                         anchors.centerIn: parent
                         text: root.diffViewer ? root.diffViewer.formatBadge : ""
-                        color: "#38BDF8"
+                        color: root.theme.borderFocus
                         font.pixelSize: 10
                         font.bold: true
                     }
@@ -839,9 +841,9 @@ Rectangle {
                     visible: root.diffViewer && !root.diffViewer.isEmpty && root.diffViewer.languageName && root.diffViewer.languageName.length > 0
                     Layout.preferredHeight: 22
                     implicitWidth: langRow.implicitWidth + 14
-                    radius: 6
-                    color: "#151F2E"
-                    border.color: "#26354A"
+                    radius: root.theme.radiusXs
+                    color: root.theme.surfaceElevated
+                    border.color: root.theme.borderHighlight
                     border.width: 1
 
                     RowLayout {
@@ -854,7 +856,7 @@ Rectangle {
                         }
                         Text {
                             text: root.diffViewer ? root.diffViewer.languageName : ""
-                            color: "#38BDF8"
+                            color: root.theme.borderFocus
                             font.pixelSize: 10
                             font.bold: true
                         }
@@ -866,9 +868,9 @@ Rectangle {
                     visible: root.isMarkdown && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary
                     Layout.preferredHeight: 28
                     implicitWidth: mdToggleRow.implicitWidth + 6
-                    color: "#0A0E15"
-                    radius: 8
-                    border.color: "#222F42"
+                    color: root.theme.inputBg
+                    radius: root.theme.radiusSm
+                    border.color: root.theme.border
                     border.width: 1
 
                     RowLayout {
@@ -884,9 +886,9 @@ Rectangle {
                             hoverEnabled: true
                             readonly property bool active: !root.showingMarkdownPreview
                             background: Rectangle {
-                                color: mdDiffSourceBtn.active ? "#152336" : (mdDiffSourceBtn.hovered ? "#141D2B" : "transparent")
-                                radius: 6
-                                border.color: mdDiffSourceBtn.active ? "#38BDF8" : "transparent"
+                                color: mdDiffSourceBtn.active ? root.theme.infoBg : (mdDiffSourceBtn.hovered ? root.theme.card : "transparent")
+                                radius: root.theme.radiusXs
+                                border.color: mdDiffSourceBtn.active ? root.theme.borderFocus : "transparent"
                                 border.width: 1
                                 Behavior on color {
                                     ColorAnimation {
@@ -896,7 +898,7 @@ Rectangle {
                             }
                             contentItem: Text {
                                 text: "<> Diff"
-                                color: mdDiffSourceBtn.active ? "#38BDF8" : "#94A3B8"
+                                color: mdDiffSourceBtn.active ? root.theme.borderFocus : root.theme.textSecondary
                                 font.pixelSize: 11
                                 font.bold: mdDiffSourceBtn.active
                             }
@@ -911,9 +913,9 @@ Rectangle {
                             hoverEnabled: true
                             readonly property bool active: root.showingMarkdownPreview
                             background: Rectangle {
-                                color: mdPreviewBtn.active ? "#063B2C" : (mdPreviewBtn.hovered ? "#141D2B" : "transparent")
-                                radius: 6
-                                border.color: mdPreviewBtn.active ? "#34D399" : "transparent"
+                                color: mdPreviewBtn.active ? root.theme.successBg : (mdPreviewBtn.hovered ? root.theme.card : "transparent")
+                                radius: root.theme.radiusXs
+                                border.color: mdPreviewBtn.active ? root.theme.successText : "transparent"
                                 border.width: 1
                                 Behavior on color {
                                     ColorAnimation {
@@ -923,7 +925,7 @@ Rectangle {
                             }
                             contentItem: Text {
                                 text: "👁 Anteprima"
-                                color: mdPreviewBtn.active ? "#6EE7B7" : "#94A3B8"
+                                color: mdPreviewBtn.active ? root.theme.successText : root.theme.textSecondary
                                 font.pixelSize: 11
                                 font.bold: mdPreviewBtn.active
                             }
@@ -937,9 +939,9 @@ Rectangle {
                     visible: root.isSvgPreviewable && root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary
                     Layout.preferredHeight: 28
                     implicitWidth: svgToggleRow.implicitWidth + 6
-                    color: "#0A0E15"
-                    radius: 8
-                    border.color: "#222F42"
+                    color: root.theme.inputBg
+                    radius: root.theme.radiusSm
+                    border.color: root.theme.border
                     border.width: 1
 
                     RowLayout {
@@ -955,14 +957,14 @@ Rectangle {
                             hoverEnabled: true
                             readonly property bool active: !root.showingRichPreview
                             background: Rectangle {
-                                color: svgDiffSourceBtn.active ? "#152336" : (svgDiffSourceBtn.hovered ? "#141D2B" : "transparent")
-                                radius: 6
-                                border.color: svgDiffSourceBtn.active ? "#38BDF8" : "transparent"
+                                color: svgDiffSourceBtn.active ? root.theme.infoBg : (svgDiffSourceBtn.hovered ? root.theme.card : "transparent")
+                                radius: root.theme.radiusXs
+                                border.color: svgDiffSourceBtn.active ? root.theme.borderFocus : "transparent"
                                 border.width: 1
                             }
                             contentItem: Text {
                                 text: "<> Codice"
-                                color: svgDiffSourceBtn.active ? "#38BDF8" : "#94A3B8"
+                                color: svgDiffSourceBtn.active ? root.theme.borderFocus : root.theme.textSecondary
                                 font.pixelSize: 11
                                 font.bold: svgDiffSourceBtn.active
                             }
@@ -977,14 +979,14 @@ Rectangle {
                             hoverEnabled: true
                             readonly property bool active: root.showingRichPreview
                             background: Rectangle {
-                                color: svgPreviewBtn.active ? "#063B2C" : (svgPreviewBtn.hovered ? "#141D2B" : "transparent")
-                                radius: 6
-                                border.color: svgPreviewBtn.active ? "#34D399" : "transparent"
+                                color: svgPreviewBtn.active ? root.theme.successBg : (svgPreviewBtn.hovered ? root.theme.card : "transparent")
+                                radius: root.theme.radiusXs
+                                border.color: svgPreviewBtn.active ? root.theme.successText : "transparent"
                                 border.width: 1
                             }
                             contentItem: Text {
                                 text: "🖼 Anteprima"
-                                color: svgPreviewBtn.active ? "#6EE7B7" : "#94A3B8"
+                                color: svgPreviewBtn.active ? root.theme.successText : root.theme.textSecondary
                                 font.pixelSize: 11
                                 font.bold: svgPreviewBtn.active
                             }
@@ -1003,9 +1005,9 @@ Rectangle {
                     rightPadding: 10
                     hoverEnabled: true
                     background: Rectangle {
-                        color: (root.diffViewer && root.diffViewer.isFullContext) ? "#152336" : (contextBtn.hovered ? "#192436" : "#111824")
+                        color: (root.diffViewer && root.diffViewer.isFullContext) ? root.theme.infoBg : (contextBtn.hovered ? root.theme.cardHover : root.theme.surface)
                         radius: 7
-                        border.color: (root.diffViewer && root.diffViewer.isFullContext) ? "#38BDF8" : "#243247"
+                        border.color: (root.diffViewer && root.diffViewer.isFullContext) ? root.theme.borderFocus : root.theme.borderHighlight
                         border.width: 1
                         Behavior on color {
                             ColorAnimation {
@@ -1017,7 +1019,7 @@ Rectangle {
                         spacing: 4
                         Text {
                             text: "↕"
-                            color: "#38BDF8"
+                            color: root.theme.borderFocus
                             font.pixelSize: 11
                             font.bold: true
                         }
@@ -1027,13 +1029,13 @@ Rectangle {
                                 if (root.diffViewer.isFullContext) return "File completo";
                                 return "Contesto: " + root.diffViewer.contextLines;
                             }
-                            color: (root.diffViewer && root.diffViewer.isFullContext) ? "#7DD3FC" : "#CBD5E1"
+                            color: (root.diffViewer && root.diffViewer.isFullContext) ? root.theme.infoText : root.theme.textPrimary
                             font.pixelSize: 11
                             font.bold: root.diffViewer && root.diffViewer.isFullContext
                         }
                         Text {
                             text: "▾"
-                            color: "#64748B"
+                            color: root.theme.textMuted
                             font.pixelSize: 9
                         }
                     }
@@ -1088,9 +1090,9 @@ Rectangle {
                     rightPadding: 10
                     hoverEnabled: true
                     background: Rectangle {
-                        color: root.effectiveWrap ? "#152336" : (wrapBtn.hovered ? "#192436" : "#111824")
+                        color: root.effectiveWrap ? root.theme.infoBg : (wrapBtn.hovered ? root.theme.cardHover : root.theme.surface)
                         radius: 7
-                        border.color: root.effectiveWrap ? "#38BDF8" : "#243247"
+                        border.color: root.effectiveWrap ? root.theme.borderFocus : root.theme.borderHighlight
                         border.width: 1
                         Behavior on color {
                             ColorAnimation {
@@ -1100,7 +1102,7 @@ Rectangle {
                     }
                     contentItem: Text {
                         text: "↩ A capo"
-                        color: root.effectiveWrap ? "#38BDF8" : "#94A3B8"
+                        color: root.effectiveWrap ? root.theme.borderFocus : root.theme.textSecondary
                         font.pixelSize: 11
                         font.bold: root.effectiveWrap
                     }
@@ -1118,9 +1120,9 @@ Rectangle {
                     visible: root.diffViewer && !root.diffViewer.isEmpty && !root.diffViewer.isBinary && !root.showingMarkdownPreview && !root.showingRichPreview
                     Layout.preferredHeight: 28
                     implicitWidth: viewModeRow.implicitWidth + 6
-                    radius: 8
-                    color: "#0A0E15"
-                    border.color: "#222F42"
+                    radius: root.theme.radiusSm
+                    color: root.theme.inputBg
+                    border.color: root.theme.border
                     border.width: 1
 
                     RowLayout {
@@ -1137,9 +1139,9 @@ Rectangle {
                             hoverEnabled: true
                             readonly property bool isCurrent: root.diffViewer ? root.diffViewer.viewMode === "inline" : false
                             background: Rectangle {
-                                color: inlineBtn.isCurrent ? "#152336" : (inlineBtn.hovered ? "#141D2B" : "transparent")
-                                radius: 6
-                                border.color: inlineBtn.isCurrent ? "#38BDF8" : "transparent"
+                                color: inlineBtn.isCurrent ? root.theme.infoBg : (inlineBtn.hovered ? root.theme.card : "transparent")
+                                radius: root.theme.radiusXs
+                                border.color: inlineBtn.isCurrent ? root.theme.borderFocus : "transparent"
                                 border.width: 1
                                 Behavior on color {
                                     ColorAnimation {
@@ -1154,7 +1156,7 @@ Rectangle {
                                 }
                                 Text {
                                     text: "Inline"
-                                    color: inlineBtn.isCurrent ? "#38BDF8" : "#94A3B8"
+                                    color: inlineBtn.isCurrent ? root.theme.borderFocus : root.theme.textSecondary
                                     font.pixelSize: 11
                                     font.bold: inlineBtn.isCurrent
                                 }
@@ -1173,9 +1175,9 @@ Rectangle {
                             hoverEnabled: true
                             readonly property bool isCurrent: root.diffViewer ? (root.diffViewer.viewMode === "split" || root.diffViewer.viewMode === "") : true
                             background: Rectangle {
-                                color: splitBtn.isCurrent ? "#152336" : (splitBtn.hovered ? "#141D2B" : "transparent")
-                                radius: 6
-                                border.color: splitBtn.isCurrent ? "#38BDF8" : "transparent"
+                                color: splitBtn.isCurrent ? root.theme.infoBg : (splitBtn.hovered ? root.theme.card : "transparent")
+                                radius: root.theme.radiusXs
+                                border.color: splitBtn.isCurrent ? root.theme.borderFocus : "transparent"
                                 border.width: 1
                                 Behavior on color {
                                     ColorAnimation {
@@ -1190,7 +1192,7 @@ Rectangle {
                                 }
                                 Text {
                                     text: "Split"
-                                    color: splitBtn.isCurrent ? "#38BDF8" : "#94A3B8"
+                                    color: splitBtn.isCurrent ? root.theme.borderFocus : root.theme.textSecondary
                                     font.pixelSize: 11
                                     font.bold: splitBtn.isCurrent
                                 }
@@ -1209,9 +1211,9 @@ Rectangle {
                             hoverEnabled: true
                             readonly property bool isCurrent: root.diffViewer ? root.diffViewer.viewMode === "hunk" : false
                             background: Rectangle {
-                                color: hunkBtn.isCurrent ? "#152336" : (hunkBtn.hovered ? "#141D2B" : "transparent")
-                                radius: 6
-                                border.color: hunkBtn.isCurrent ? "#38BDF8" : "transparent"
+                                color: hunkBtn.isCurrent ? root.theme.infoBg : (hunkBtn.hovered ? root.theme.card : "transparent")
+                                radius: root.theme.radiusXs
+                                border.color: hunkBtn.isCurrent ? root.theme.borderFocus : "transparent"
                                 border.width: 1
                                 Behavior on color {
                                     ColorAnimation {
@@ -1226,7 +1228,7 @@ Rectangle {
                                 }
                                 Text {
                                     text: "Hunk"
-                                    color: hunkBtn.isCurrent ? "#38BDF8" : "#94A3B8"
+                                    color: hunkBtn.isCurrent ? root.theme.borderFocus : root.theme.textSecondary
                                     font.pixelSize: 11
                                     font.bold: hunkBtn.isCurrent
                                 }
@@ -1245,9 +1247,9 @@ Rectangle {
                             hoverEnabled: true
                             readonly property bool isCurrent: root.diffViewer ? root.diffViewer.viewMode === "blame" : false
                             background: Rectangle {
-                                color: blameBtn.isCurrent ? "#152336" : (blameBtn.hovered ? "#141D2B" : "transparent")
-                                radius: 6
-                                border.color: blameBtn.isCurrent ? "#38BDF8" : "transparent"
+                                color: blameBtn.isCurrent ? root.theme.infoBg : (blameBtn.hovered ? root.theme.card : "transparent")
+                                radius: root.theme.radiusXs
+                                border.color: blameBtn.isCurrent ? root.theme.borderFocus : "transparent"
                                 border.width: 1
                                 Behavior on color {
                                     ColorAnimation {
@@ -1262,7 +1264,7 @@ Rectangle {
                                 }
                                 Text {
                                     text: "Blame"
-                                    color: blameBtn.isCurrent ? "#38BDF8" : "#94A3B8"
+                                    color: blameBtn.isCurrent ? root.theme.borderFocus : root.theme.textSecondary
                                     font.pixelSize: 11
                                     font.bold: blameBtn.isCurrent
                                 }
@@ -1281,14 +1283,14 @@ Rectangle {
 
                     Text {
                         text: root.diffViewer ? ("+" + root.diffViewer.additionsCount) : "+0"
-                        color: "#34D399"
+                        color: root.theme.successText
                         font.bold: true
                         font.pixelSize: 12
                     }
 
                     Text {
                         text: root.diffViewer ? ("-" + root.diffViewer.deletionsCount) : "-0"
-                        color: "#F87171"
+                        color: root.theme.dangerText
                         font.bold: true
                         font.pixelSize: 12
                     }
@@ -1310,7 +1312,7 @@ Rectangle {
                 text: (root.diffViewer && root.diffViewer.isLoading)
                     ? "Caricamento del diff..."
                     : "Seleziona un file per visualizzarne il diff o il blame"
-                color: "#64748B"
+                color: root.theme.textMuted
                 font.pixelSize: 13
             }
 
@@ -1396,13 +1398,13 @@ Rectangle {
                                 Rectangle {
                                     width: 44
                                     height: parent.height
-                                    color: "#090D13"
+                                    color: root.theme.inputBg
                                     Text {
                                         anchors.fill: parent
                                         anchors.rightMargin: 6
                                         anchors.topMargin: 2
                                         text: model.oldLineNumber || ""
-                                        color: "#64748B"
+                                        color: root.theme.textMuted
                                         font.family: root.monoFont
                                         font.pixelSize: 11
                                         horizontalAlignment: Text.AlignRight
@@ -1421,13 +1423,13 @@ Rectangle {
                                 Rectangle {
                                     width: 44
                                     height: parent.height
-                                    color: "#0B1017"
+                                    color: root.theme.surface
                                     Text {
                                         anchors.fill: parent
                                         anchors.rightMargin: 6
                                         anchors.topMargin: 2
                                         text: model.newLineNumber || ""
-                                        color: "#64748B"
+                                        color: root.theme.textMuted
                                         font.family: root.monoFont
                                         font.pixelSize: 11
                                         horizontalAlignment: Text.AlignRight
@@ -1510,43 +1512,10 @@ Rectangle {
                         }
                     }
 
-                    WheelHandler {
-                        target: null
-                        orientation: Qt.Horizontal
-                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
-                        onWheel: (event) => {
-                            if (root.inlineMaxScroll <= 0) return;
-                            let dx = 0;
-                            if (event.pixelDelta && event.pixelDelta.x !== 0) {
-                                dx = event.pixelDelta.x;
-                            } else if (event.angleDelta && event.angleDelta.x !== 0) {
-                                dx = event.angleDelta.x;
-                            }
-                            if (dx !== 0) {
-                                root.horizontalScrollX = Math.max(0, Math.min(root.inlineMaxScroll, root.horizontalScrollX - dx));
-                                event.accepted = true;
-                            }
-                        }
-                    }
-
-                    WheelHandler {
-                        target: null
-                        orientation: Qt.Vertical
-                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
-                        acceptedModifiers: Qt.ShiftModifier
-                        onWheel: (event) => {
-                            if (root.inlineMaxScroll <= 0) return;
-                            let dy = 0;
-                            if (event.pixelDelta && event.pixelDelta.y !== 0) {
-                                dy = event.pixelDelta.y;
-                            } else if (event.angleDelta && event.angleDelta.y !== 0) {
-                                dy = event.angleDelta.y;
-                            }
-                            if (dy !== 0) {
-                                root.horizontalScrollX = Math.max(0, Math.min(root.inlineMaxScroll, root.horizontalScrollX - dy));
-                                event.accepted = true;
-                            }
-                        }
+                    DiffHorizontalWheelHandler {
+                        maxScroll: root.inlineMaxScroll
+                        scrollX: root.horizontalScrollX
+                        onScrolledTo: (nextX) => { root.horizontalScrollX = nextX; }
                     }
                 }
 
@@ -1596,8 +1565,8 @@ Rectangle {
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 24
-                    color: "#0F172A"
-                    border.color: "#1E293B"
+                    color: root.theme.surface
+                    border.color: root.theme.borderSubtle
                     border.width: 1
 
                     RowLayout {
@@ -1611,7 +1580,7 @@ Rectangle {
                             Text {
                                 anchors.centerIn: parent
                                 text: "Originale (Base)"
-                                color: "#EF4444"
+                                color: root.theme.danger
                                 font.pixelSize: 11
                                 font.bold: true
                             }
@@ -1620,7 +1589,7 @@ Rectangle {
                         Rectangle {
                             width: 1
                             Layout.fillHeight: true
-                            color: "#334155"
+                            color: root.theme.borderHighlight
                         }
 
                         Rectangle {
@@ -1630,7 +1599,7 @@ Rectangle {
                             Text {
                                 anchors.centerIn: parent
                                 text: "Modificato (Head)"
-                                color: "#10B981"
+                                color: root.theme.success
                                 font.pixelSize: 11
                                 font.bold: true
                             }
@@ -1640,14 +1609,14 @@ Rectangle {
                         Rectangle {
                             Layout.preferredWidth: splitOverviewBar.width
                             Layout.fillHeight: true
-                            color: "#090D14"
+                            color: root.theme.inputBg
 
                             Rectangle {
                                 anchors.left: parent.left
                                 anchors.top: parent.top
                                 anchors.bottom: parent.bottom
                                 width: 1
-                                color: "#1E293B"
+                                color: root.theme.borderSubtle
                             }
 
                             Rectangle {
@@ -1655,7 +1624,7 @@ Rectangle {
                                 anchors.top: parent.top
                                 anchors.bottom: parent.bottom
                                 width: 1
-                                color: "#1E293B"
+                                color: root.theme.borderSubtle
                             }
 
                             Text {
@@ -1663,7 +1632,7 @@ Rectangle {
                                 width: Math.floor(parent.width / 2) - 1
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "-"
-                                color: "#EF4444"
+                                color: root.theme.danger
                                 font.pixelSize: 10
                                 font.bold: true
                                 horizontalAlignment: Text.AlignHCenter
@@ -1674,7 +1643,7 @@ Rectangle {
                                 width: parent.width - x
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "+"
-                                color: "#10B981"
+                                color: root.theme.success
                                 font.pixelSize: 10
                                 font.bold: true
                                 horizontalAlignment: Text.AlignHCenter
@@ -1730,14 +1699,14 @@ Rectangle {
                                 : (root.effectiveWrap
                                     ? Math.max(20, leftCodeText.implicitHeight + 6, rightCodeText.implicitHeight + 6)
                                     : 20)
-                            color: "#0D1117"
+                            color: root.theme.canvas
 
                             // Hunk banner across entire row
                             Rectangle {
                                 anchors.fill: parent
                                 visible: splitRow.isHeaderRow
-                                color: "#1E293B"
-                                border.color: "#334155"
+                                color: root.theme.cardHover
+                                border.color: root.theme.borderHighlight
                                 border.width: 1
 
                                 Text {
@@ -1747,7 +1716,7 @@ Rectangle {
                                     anchors.rightMargin: 8
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: modelData.hunkHeader || ""
-                                    color: "#38BDF8"
+                                    color: root.theme.borderFocus
                                     font.family: root.monoFont
                                     font.pixelSize: 10
                                     font.bold: true
@@ -1783,13 +1752,13 @@ Rectangle {
                                         Rectangle {
                                             Layout.preferredWidth: 40
                                             Layout.fillHeight: true
-                                            color: leftColumn.isEmptySide ? "transparent" : "#090D13"
+                                            color: leftColumn.isEmptySide ? "transparent" : root.theme.inputBg
                                             Text {
                                                 anchors.fill: parent
                                                 anchors.rightMargin: 6
                                                 anchors.topMargin: 2
                                                 text: modelData.leftLine || ""
-                                                color: "#64748B"
+                                                color: root.theme.textMuted
                                                 font.family: root.monoFont
                                                 font.pixelSize: 10
                                                 horizontalAlignment: Text.AlignRight
@@ -1822,7 +1791,7 @@ Rectangle {
                                                     : Math.max(splitRow.leftTextAreaWidth - 6, root.maxCodeWidth)
                                                 height: implicitHeight
                                                 text: modelData.leftRichContent || modelData.leftContent || ""
-                                                color: modelData.leftFgColor || "#CBD5E1"
+                                                color: modelData.leftFgColor || root.theme.textPrimary
                                                 font.pixelSize: 11
                                                 wrapMode: root.effectiveWrap ? TextEdit.WrapAtWordBoundaryOrAnywhere : TextEdit.NoWrap
                                             }
@@ -1845,7 +1814,7 @@ Rectangle {
                                 Rectangle {
                                     width: 1
                                     Layout.fillHeight: true
-                                    color: "#1E293B"
+                                    color: root.theme.borderSubtle
                                 }
 
                                 // RIGHT COLUMN (Modified / Addition)
@@ -1863,13 +1832,13 @@ Rectangle {
                                         Rectangle {
                                             Layout.preferredWidth: 40
                                             Layout.fillHeight: true
-                                            color: rightColumn.isEmptySide ? "transparent" : "#0B1017"
+                                            color: rightColumn.isEmptySide ? "transparent" : root.theme.surface
                                             Text {
                                                 anchors.fill: parent
                                                 anchors.rightMargin: 6
                                                 anchors.topMargin: 2
                                                 text: modelData.rightLine || ""
-                                                color: "#64748B"
+                                                color: root.theme.textMuted
                                                 font.family: root.monoFont
                                                 font.pixelSize: 10
                                                 horizontalAlignment: Text.AlignRight
@@ -1902,7 +1871,7 @@ Rectangle {
                                                     : Math.max(splitRow.rightTextAreaWidth - 6, root.maxCodeWidth)
                                                 height: implicitHeight
                                                 text: modelData.rightRichContent || modelData.rightContent || ""
-                                                color: modelData.rightFgColor || "#CBD5E1"
+                                                color: modelData.rightFgColor || root.theme.textPrimary
                                                 font.pixelSize: 11
                                                 wrapMode: root.effectiveWrap ? TextEdit.WrapAtWordBoundaryOrAnywhere : TextEdit.NoWrap
                                             }
@@ -1923,43 +1892,10 @@ Rectangle {
                             }
                         }
 
-                        WheelHandler {
-                            target: null
-                            orientation: Qt.Horizontal
-                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
-                            onWheel: (event) => {
-                                if (root.splitMaxScroll <= 0) return;
-                                let dx = 0;
-                                if (event.pixelDelta && event.pixelDelta.x !== 0) {
-                                    dx = event.pixelDelta.x;
-                                } else if (event.angleDelta && event.angleDelta.x !== 0) {
-                                    dx = event.angleDelta.x;
-                                }
-                                if (dx !== 0) {
-                                    root.horizontalScrollX = Math.max(0, Math.min(root.splitMaxScroll, root.horizontalScrollX - dx));
-                                    event.accepted = true;
-                                }
-                            }
-                        }
-
-                        WheelHandler {
-                            target: null
-                            orientation: Qt.Vertical
-                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
-                            acceptedModifiers: Qt.ShiftModifier
-                            onWheel: (event) => {
-                                if (root.splitMaxScroll <= 0) return;
-                                let dy = 0;
-                                if (event.pixelDelta && event.pixelDelta.y !== 0) {
-                                    dy = event.pixelDelta.y;
-                                } else if (event.angleDelta && event.angleDelta.y !== 0) {
-                                    dy = event.angleDelta.y;
-                                }
-                                if (dy !== 0) {
-                                    root.horizontalScrollX = Math.max(0, Math.min(root.splitMaxScroll, root.horizontalScrollX - dy));
-                                    event.accepted = true;
-                                }
-                            }
+                        DiffHorizontalWheelHandler {
+                            maxScroll: root.splitMaxScroll
+                            scrollX: root.horizontalScrollX
+                            onScrolledTo: (nextX) => { root.horizontalScrollX = nextX; }
                         }
                     }
 
@@ -2041,9 +1977,9 @@ Rectangle {
                         x: 12
                         width: hunkListView.width - 24
                         implicitHeight: hunkCol.implicitHeight + 16
-                        color: "#161B22"
-                        radius: 6
-                        border.color: "#30363D"
+                        color: root.theme.surface
+                        radius: root.theme.radiusXs
+                        border.color: root.theme.border
                         border.width: 1
 
                         ColumnLayout {
@@ -2056,9 +1992,9 @@ Rectangle {
                             Rectangle {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 30
-                                color: "#0D1117"
+                                color: root.theme.canvas
                                 radius: 4
-                                border.color: "#21262D"
+                                border.color: root.theme.borderSubtle
 
                                 RowLayout {
                                     anchors.fill: parent
@@ -2071,7 +2007,7 @@ Rectangle {
                                     }
                                     Text {
                                         text: modelData.header || ""
-                                        color: "#38BDF8"
+                                        color: root.theme.borderFocus
                                         font.family: root.monoFont
                                         font.pixelSize: 11
                                         font.bold: true
@@ -2112,7 +2048,7 @@ Rectangle {
                                                     Layout.alignment: root.effectiveWrap ? Qt.AlignTop : Qt.AlignVCenter
                                                     Layout.topMargin: root.effectiveWrap ? 2 : 0
                                                     text: modelData.oldLineNumber || ""
-                                                    color: "#64748B"
+                                                    color: root.theme.textMuted
                                                     font.family: root.monoFont
                                                     font.pixelSize: 10
                                                     horizontalAlignment: Text.AlignRight
@@ -2123,7 +2059,7 @@ Rectangle {
                                                     Layout.alignment: root.effectiveWrap ? Qt.AlignTop : Qt.AlignVCenter
                                                     Layout.topMargin: root.effectiveWrap ? 2 : 0
                                                     text: modelData.newLineNumber || ""
-                                                    color: "#64748B"
+                                                    color: root.theme.textMuted
                                                     font.family: root.monoFont
                                                     font.pixelSize: 10
                                                     horizontalAlignment: Text.AlignRight
@@ -2144,7 +2080,7 @@ Rectangle {
                                                         if (modelData.kind === "deletion") return "-";
                                                         return " ";
                                                     }
-                                                    color: modelData.fgColor || "#CBD5E1"
+                                                    color: modelData.fgColor || root.theme.textPrimary
                                                     font.family: root.monoFont
                                                     font.pixelSize: 11
                                                     font.bold: true
@@ -2167,7 +2103,7 @@ Rectangle {
                                                             : Math.max(hunkCardDelegate.hunkTextAreaWidth, root.maxCodeWidth)
                                                         height: implicitHeight
                                                         text: modelData.richContent || modelData.content || ""
-                                                        color: modelData.fgColor || "#CBD5E1"
+                                                        color: modelData.fgColor || root.theme.textPrimary
                                                         font.pixelSize: 11
                                                         wrapMode: root.effectiveWrap ? TextEdit.WrapAtWordBoundaryOrAnywhere : TextEdit.NoWrap
                                                     }
@@ -2343,7 +2279,7 @@ Rectangle {
                         readonly property alias codeEdit: blameCodeText
                         width: blameListView.width
                         height: 22
-                        color: index % 2 === 0 ? "#0D1117" : "#111827"
+                        color: index % 2 === 0 ? root.theme.canvas : root.theme.surface
 
                         RowLayout {
                             anchors.fill: parent
@@ -2353,8 +2289,8 @@ Rectangle {
                             Rectangle {
                                 Layout.preferredWidth: 310
                                 Layout.fillHeight: true
-                                color: "#0B0F19"
-                                border.color: "#1E293B"
+                                color: root.theme.inputBg
+                                border.color: root.theme.borderSubtle
                                 border.width: 1
 
                                 RowLayout {
@@ -2363,61 +2299,20 @@ Rectangle {
                                     anchors.rightMargin: 6
                                     spacing: 6
 
-                                    // Author Avatar / Circle
-                                    Rectangle {
+                                    FluxAvatarBadge {
                                         Layout.preferredWidth: 16
                                         Layout.preferredHeight: 16
-                                        radius: 8
-                                        color: modelData.color || "#6366F1"
-
-                                        Image {
-                                            id: blameAvatarImg
-                                            anchors.fill: parent
-                                            source: modelData.avatarUrl || ""
-                                            fillMode: Image.PreserveAspectCrop
-                                            smooth: true
-                                            mipmap: true
-                                        }
-
-                                        Canvas {
-                                            anchors.fill: parent
-                                            visible: blameAvatarImg.status === Image.Ready
-                                            onVisibleChanged: if (visible) requestPaint()
-                                            onAvailableChanged: if (available) requestPaint()
-                                            onPaint: {
-                                                const ctx = getContext("2d");
-                                                ctx.reset();
-                                                const cx = width / 2;
-                                                const cy = height / 2;
-                                                const r = Math.min(width, height) / 2 - 0.5;
-
-                                                ctx.globalCompositeOperation = "source-over";
-                                                ctx.fillStyle = "#0B0F19";
-                                                ctx.fillRect(0, 0, width, height);
-
-                                                ctx.globalCompositeOperation = "destination-out";
-                                                ctx.beginPath();
-                                                ctx.arc(cx, cy, r, 0, Math.PI * 2, false);
-                                                ctx.closePath();
-                                                ctx.fillStyle = "#000000";
-                                                ctx.fill();
-                                            }
-                                        }
-
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: modelData.initials || "??"
-                                            color: "#FFFFFF"
-                                            font.pixelSize: 8
-                                            font.bold: true
-                                            visible: blameAvatarImg.status !== Image.Ready
-                                        }
+                                        avatarUrl: modelData.avatarUrl || ""
+                                        initials: modelData.initials || "??"
+                                        avatarColor: modelData.color || root.theme.accentPurple
+                                        maskColor: root.theme.inputBg
+                                        initialsFontSize: 8
                                     }
 
                                     // Short SHA
                                     Text {
                                         text: modelData.shortSha || ""
-                                        color: "#38BDF8"
+                                        color: root.theme.borderFocus
                                         font.family: root.monoFont
                                         font.pixelSize: 10
                                         Layout.preferredWidth: 54
@@ -2426,7 +2321,7 @@ Rectangle {
                                     // Author Name
                                     Text {
                                         text: modelData.author || ""
-                                        color: "#CBD5E1"
+                                        color: root.theme.textPrimary
                                         font.pixelSize: 10
                                         elide: Text.ElideRight
                                         Layout.fillWidth: true
@@ -2435,14 +2330,14 @@ Rectangle {
                                     // Date
                                     Text {
                                         text: modelData.date || ""
-                                        color: "#64748B"
+                                        color: root.theme.textMuted
                                         font.pixelSize: 10
                                     }
 
                                     // Line Number
                                     Text {
                                         text: modelData.lineNumber || ""
-                                        color: "#94A3B8"
+                                        color: root.theme.textSecondary
                                         font.family: root.monoFont
                                         font.pixelSize: 10
                                         Layout.preferredWidth: 28
@@ -2466,7 +2361,7 @@ Rectangle {
                                     height: implicitHeight
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: modelData.richContent || modelData.content || ""
-                                    color: "#F1F5F9"
+                                    color: root.theme.textPrimary
                                     font.pixelSize: 11
                                     wrapMode: TextEdit.NoWrap
                                 }
@@ -2484,43 +2379,10 @@ Rectangle {
                         }
                     }
 
-                    WheelHandler {
-                        target: null
-                        orientation: Qt.Horizontal
-                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
-                        onWheel: (event) => {
-                            if (root.blameMaxScroll <= 0) return;
-                            let dx = 0;
-                            if (event.pixelDelta && event.pixelDelta.x !== 0) {
-                                dx = event.pixelDelta.x;
-                            } else if (event.angleDelta && event.angleDelta.x !== 0) {
-                                dx = event.angleDelta.x;
-                            }
-                            if (dx !== 0) {
-                                root.horizontalScrollX = Math.max(0, Math.min(root.blameMaxScroll, root.horizontalScrollX - dx));
-                                event.accepted = true;
-                            }
-                        }
-                    }
-
-                    WheelHandler {
-                        target: null
-                        orientation: Qt.Vertical
-                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
-                        acceptedModifiers: Qt.ShiftModifier
-                        onWheel: (event) => {
-                            if (root.blameMaxScroll <= 0) return;
-                            let dy = 0;
-                            if (event.pixelDelta && event.pixelDelta.y !== 0) {
-                                dy = event.pixelDelta.y;
-                            } else if (event.angleDelta && event.angleDelta.y !== 0) {
-                                dy = event.angleDelta.y;
-                            }
-                            if (dy !== 0) {
-                                root.horizontalScrollX = Math.max(0, Math.min(root.blameMaxScroll, root.horizontalScrollX - dy));
-                                event.accepted = true;
-                            }
-                        }
+                    DiffHorizontalWheelHandler {
+                        maxScroll: root.blameMaxScroll
+                        scrollX: root.horizontalScrollX
+                        onScrolledTo: (nextX) => { root.horizontalScrollX = nextX; }
                     }
                 }
 

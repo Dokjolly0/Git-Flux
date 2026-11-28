@@ -1,9 +1,11 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../themes"
 
 Dialog {
     id: root
+    readonly property FluxTheme theme: FluxTheme {}
     title: "Gestione Branch & Sincronizzazione Remota"
     modal: true
     width: 660
@@ -29,9 +31,9 @@ Dialog {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 46
-            color: "#0D131D"
+            color: root.theme.inputBg
             radius: 10
-            border.color: "#222F42"
+            border.color: root.theme.border
             border.width: 1
 
             RowLayout {
@@ -42,41 +44,24 @@ Dialog {
 
                 Text {
                     text: (root.branchManager && root.branchManager.remoteUrl) ? ("Remote: " + root.branchManager.remoteUrl) : "Remote origin:"
-                    color: "#94A3B8"
+                    color: root.theme.textSecondary
                     font.bold: true
                     font.pixelSize: 11
                     elide: Text.ElideMiddle
                     Layout.maximumWidth: 250
                 }
 
-                Button {
+                FluxActionButton {
                     visible: root.branchManager && root.branchManager.remoteUrl && root.branchManager.remoteUrl.startsWith("http")
                     text: "🔑 Passa a SSH"
                     Layout.preferredHeight: 30
                     leftPadding: 10
                     rightPadding: 10
-                    hoverEnabled: true
+                    hoverBorderColor: root.theme.borderFocus
+                    textColor: root.theme.borderFocus
+                    fontBold: true
                     ToolTip.text: "Converti l'URL in formato SSH (git@...) per autenticarti senza prompt di password"
                     ToolTip.visible: hovered
-                    background: Rectangle {
-                        color: parent.hovered ? "#1E2B3E" : "#151E2C"
-                        radius: 8
-                        border.color: parent.hovered ? "#38BDF8" : "#28374E"
-                        border.width: 1
-                        Behavior on color {
-                            ColorAnimation {
-                                duration: 120
-                            }
-                        }
-                    }
-                    contentItem: Text {
-                        text: parent.text
-                        color: "#38BDF8"
-                        font.pixelSize: 11
-                        font.bold: true
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
                     onClicked: {
                         if (root.branchManager) root.branchManager.convertRemoteToSsh("origin");
                     }
@@ -87,8 +72,6 @@ Dialog {
                     Layout.preferredHeight: 30
                     leftPadding: 12
                     rightPadding: 12
-                    hoverBorderColor: "#344966"
-                    textColor: "#E2E8F0"
                     fontBold: true
                     onClicked: {
                         if (root.branchManager) root.branchManager.fetchRemote("origin");
@@ -100,39 +83,22 @@ Dialog {
                     Layout.preferredHeight: 30
                     leftPadding: 12
                     rightPadding: 12
-                    hoverBorderColor: "#344966"
-                    textColor: "#E2E8F0"
                     fontBold: true
                     onClicked: {
                         if (root.branchManager) root.branchManager.pullRemote("origin");
                     }
                 }
 
-                Button {
+                FluxActionButton {
                     text: "⬆ Push"
                     Layout.preferredHeight: 30
                     leftPadding: 12
                     rightPadding: 12
-                    hoverEnabled: true
-                    background: Rectangle {
-                        color: parent.hovered ? "#0EA5E9" : "#0284C7"
-                        radius: 8
-                        border.color: "#38BDF8"
-                        border.width: 1
-                        Behavior on color {
-                            ColorAnimation {
-                                duration: 120
-                            }
-                        }
-                    }
-                    contentItem: Text {
-                        text: parent.text
-                        color: "#FFFFFF"
-                        font.pixelSize: 11
-                        font.bold: true
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
+                    baseColor: root.theme.accentBlue
+                    hoverColor: root.theme.accentBlueHover
+                    baseBorderColor: root.theme.borderFocus
+                    textColor: root.theme.selectionText
+                    fontBold: true
                     onClicked: {
                         if (root.branchManager) root.branchManager.pushRemote("origin", false);
                     }
@@ -143,30 +109,18 @@ Dialog {
                 }
 
                 // If merge conflicts are present, show Abort button
-                Button {
+                FluxActionButton {
                     visible: root.branchManager && root.branchManager.hasConflicts
                     text: "⚠ Annulla Merge (Abort)"
                     Layout.preferredHeight: 30
                     leftPadding: 12
                     rightPadding: 12
-                    hoverEnabled: true
-                    background: Rectangle {
-                        color: parent.hovered ? "#EF4444" : "#DC2626"
-                        radius: 8
-                        Behavior on color {
-                            ColorAnimation {
-                                duration: 120
-                            }
-                        }
-                    }
-                    contentItem: Text {
-                        text: parent.text
-                        color: "#FFFFFF"
-                        font.bold: true
-                        font.pixelSize: 11
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
+                    baseColor: root.theme.dangerBg
+                    hoverColor: root.theme.danger
+                    baseBorderColor: root.theme.danger
+                    textColor: root.theme.dangerText
+                    hoverTextColor: root.theme.selectionText
+                    fontBold: true
                     onClicked: {
                         if (root.branchManager) root.branchManager.abortMerge();
                     }
@@ -178,9 +132,9 @@ Dialog {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            color: "#0D131D"
+            color: root.theme.inputBg
             radius: 10
-            border.color: "#222F42"
+            border.color: root.theme.border
             border.width: 1
             clip: true
 
@@ -200,13 +154,13 @@ Dialog {
                 delegate: Rectangle {
                     width: branchList.width
                     height: 46
-                    radius: 8
+                    radius: root.theme.radiusSm
                     color: model.isCurrent
-                        ? "#13263B"
-                        : (listMouse.containsMouse ? "#172233" : "#101723")
+                        ? root.theme.infoBg
+                        : (listMouse.containsMouse ? root.theme.cardHover : root.theme.surfaceElevated)
                     border.color: model.isCurrent
-                        ? "#1E4066"
-                        : (listMouse.containsMouse ? "#283952" : "#1B2536")
+                        ? root.theme.accentBlue
+                        : (listMouse.containsMouse ? root.theme.borderHighlight : root.theme.borderSubtle)
                     border.width: 1
 
                     Behavior on color {
@@ -225,12 +179,12 @@ Dialog {
                             Layout.preferredWidth: 22
                             Layout.preferredHeight: 22
                             radius: 7
-                            color: model.isCurrent ? "#064E3B" : "#182232"
+                            color: model.isCurrent ? root.theme.successBg : root.theme.card
 
                             Text {
                                 anchors.centerIn: parent
                                 text: model.isCurrent ? "✓" : "⎇"
-                                color: model.isCurrent ? "#34D399" : "#94A3B8"
+                                color: model.isCurrent ? root.theme.successText : root.theme.textSecondary
                                 font.bold: true
                                 font.pixelSize: 12
                             }
@@ -242,7 +196,7 @@ Dialog {
 
                             Text {
                                 text: model.shortName
-                                color: model.isCurrent ? "#38BDF8" : "#F8FAFC"
+                                color: model.isCurrent ? root.theme.borderFocus : root.theme.textPrimary
                                 font.bold: model.isCurrent
                                 font.pixelSize: 12
                                 elide: Text.ElideRight
@@ -253,7 +207,7 @@ Dialog {
                                 text: (model.upstream.length > 0 ? "upstream: " + model.upstream : "locale") +
                                     (model.ahead > 0 ? " ↑" + model.ahead : "") +
                                     (model.behind > 0 ? " ↓" + model.behind : "")
-                                color: "#64748B"
+                                color: root.theme.textMuted
                                 font.pixelSize: 10
                             }
                         }
@@ -266,12 +220,12 @@ Dialog {
                             leftPadding: 10
                             rightPadding: 10
                             cornerRadius: 7
-                            baseColor: "#182334"
-                            hoverColor: "#0284C7"
-                            baseBorderColor: "#29384D"
-                            hoverBorderColor: "#38BDF8"
-                            textColor: "#E2E8F0"
-                            hoverTextColor: "#FFFFFF"
+                            baseColor: root.theme.surfaceGlass
+                            hoverColor: root.theme.accentBlue
+                            baseBorderColor: root.theme.borderHighlight
+                            hoverBorderColor: root.theme.borderFocus
+                            textColor: root.theme.textPrimary
+                            hoverTextColor: root.theme.selectionText
                             fontBold: true
                             animDuration: 110
                             onClicked: {
@@ -287,12 +241,12 @@ Dialog {
                             leftPadding: 10
                             rightPadding: 10
                             cornerRadius: 7
-                            baseColor: "#182334"
-                            hoverColor: "#10B981"
-                            baseBorderColor: "#29384D"
-                            hoverBorderColor: "#34D399"
-                            textColor: "#E2E8F0"
-                            hoverTextColor: "#FFFFFF"
+                            baseColor: root.theme.surfaceGlass
+                            hoverColor: root.theme.success
+                            baseBorderColor: root.theme.borderHighlight
+                            hoverBorderColor: root.theme.successText
+                            textColor: root.theme.textPrimary
+                            hoverTextColor: root.theme.selectionText
                             fontBold: true
                             animDuration: 110
                             onClicked: {
@@ -301,29 +255,19 @@ Dialog {
                         }
 
                         // Delete button
-                        Button {
+                        FluxActionButton {
                             visible: !model.isCurrent
                             text: "🗑"
                             Layout.preferredHeight: 26
                             Layout.preferredWidth: 28
-                            hoverEnabled: true
-                            background: Rectangle {
-                                color: parent.hovered ? "#3B1219" : "#182334"
-                                radius: 7
-                                border.color: parent.hovered ? "#EF4444" : "#29384D"
-                                border.width: 1
-                                Behavior on color {
-                                    ColorAnimation {
-                                        duration: 110
-                                    }
-                                }
-                            }
-                            contentItem: Text {
-                                text: parent.text
-                                font.pixelSize: 11
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
+                            leftPadding: 0
+                            rightPadding: 0
+                            cornerRadius: 7
+                            baseColor: root.theme.surfaceGlass
+                            hoverColor: root.theme.dangerBg
+                            baseBorderColor: root.theme.borderHighlight
+                            hoverBorderColor: root.theme.danger
+                            animDuration: 110
                             onClicked: {
                                 if (root.branchManager) root.branchManager.deleteBranch(model.name, false);
                             }
@@ -348,7 +292,7 @@ Dialog {
             Text {
                 Layout.fillWidth: true
                 text: root.branchManager ? root.branchManager.statusMessage : ""
-                color: "#94A3B8"
+                color: root.theme.textSecondary
                 font.pixelSize: 11
                 elide: Text.ElideRight
             }
@@ -358,7 +302,6 @@ Dialog {
                 Layout.preferredHeight: 32
                 leftPadding: 16
                 rightPadding: 16
-                textColor: "#E2E8F0"
                 fontBold: true
                 onClicked: root.close()
             }

@@ -344,6 +344,13 @@ if (GF_BUILD_DESKTOP)
             src/desktop/ui/qml/views/FluxCheckBox.qml
             src/desktop/ui/qml/views/FluxModalBackground.qml
             src/desktop/ui/qml/views/FluxModalHeader.qml
+            src/desktop/ui/qml/views/FluxModalFooter.qml
+            src/desktop/ui/qml/views/FluxConfirmDialog.qml
+            src/desktop/ui/qml/views/FluxTextField.qml
+            src/desktop/ui/qml/views/FluxAvatarBadge.qml
+            src/desktop/ui/qml/views/FluxSplitButton.qml
+            src/desktop/ui/qml/views/FluxColorSwatchRow.qml
+            src/desktop/ui/qml/views/DiffHorizontalWheelHandler.qml
             src/desktop/ui/qml/views/FluxActionButton.qml
             src/desktop/ui/qml/views/FluxBranchOpWatcher.qml
             src/desktop/ui/qml/views/SmoothWheelScroller.qml

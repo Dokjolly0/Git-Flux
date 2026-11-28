@@ -1,9 +1,11 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../themes"
 
 Dialog {
     id: root
+    readonly property FluxTheme theme: FluxTheme {}
     title: "Modifica Messaggio Commit"
     modal: true
     width: Math.min(580, Overlay.overlay ? Overlay.overlay.width - 48 : 580)
@@ -102,8 +104,8 @@ Dialog {
             Layout.preferredHeight: 44
             implicitHeight: 44
             radius: 10
-            color: "#0D131D"
-            border.color: "#222F42"
+            color: root.theme.inputBg
+            border.color: root.theme.border
             border.width: 1
 
             RowLayout {
@@ -116,16 +118,16 @@ Dialog {
                     Layout.preferredHeight: 22
                     implicitWidth: shaText.implicitWidth + 14
                     implicitHeight: 22
-                    radius: 6
-                    color: Qt.alpha("#A855F7", 0.16)
-                    border.color: Qt.alpha("#A855F7", 0.55)
+                    radius: root.theme.radiusXs
+                    color: Qt.alpha(root.theme.accentPurple, 0.16)
+                    border.color: Qt.alpha(root.theme.accentPurple, 0.55)
                     border.width: 1
 
                     Text {
                         id: shaText
                         anchors.centerIn: parent
                         text: root.targetSha.length > 0 ? root.targetSha.substring(0, 7) : "HEAD"
-                        color: "#D8B4FE"
+                        color: root.theme.accentPurple
                         font.pixelSize: 11
                         font.bold: true
                         font.family: "monospace"
@@ -136,16 +138,16 @@ Dialog {
                     Layout.preferredHeight: 22
                     implicitWidth: scopePillText.implicitWidth + 12
                     implicitHeight: 22
-                    radius: 6
-                    color: root.isHead ? Qt.alpha("#38BDF8", 0.14) : Qt.alpha("#F59E0B", 0.14)
-                    border.color: root.isHead ? Qt.alpha("#38BDF8", 0.45) : Qt.alpha("#F59E0B", 0.45)
+                    radius: root.theme.radiusXs
+                    color: root.isHead ? Qt.alpha(root.theme.info, 0.14) : Qt.alpha(root.theme.warning, 0.14)
+                    border.color: root.isHead ? Qt.alpha(root.theme.info, 0.45) : Qt.alpha(root.theme.warning, 0.45)
                     border.width: 1
 
                     Text {
                         id: scopePillText
                         anchors.centerIn: parent
                         text: root.isHead ? "HEAD (Amend)" : "Rebase Branch"
-                        color: root.isHead ? "#7DD3FC" : "#FCD34D"
+                        color: root.isHead ? root.theme.infoText : root.theme.warningText
                         font.pixelSize: 10
                         font.bold: true
                     }
@@ -155,7 +157,7 @@ Dialog {
                     text: root.authorName.length > 0
                         ? (root.authorName + (root.commitDate.length > 0 ? (" · " + root.commitDate) : ""))
                         : root.commitDate
-                    color: "#94A3B8"
+                    color: root.theme.textSecondary
                     font.pixelSize: 11
                     elide: Text.ElideRight
                     Layout.fillWidth: true
@@ -175,7 +177,7 @@ Dialog {
 
                 Text {
                     text: "Titolo del commit"
-                    color: "#F8FAFC"
+                    color: root.theme.textPrimary
                     font.pixelSize: 12
                     font.bold: true
                 }
@@ -190,11 +192,11 @@ Dialog {
                     implicitHeight: 20
                     radius: 10
                     color: root.isOverRecommendedLength
-                        ? Qt.alpha("#F59E0B", 0.16)
-                        : Qt.alpha("#64748B", 0.16)
+                        ? Qt.alpha(root.theme.warning, 0.16)
+                        : Qt.alpha(root.theme.textMuted, 0.16)
                     border.color: root.isOverRecommendedLength
-                        ? Qt.alpha("#F59E0B", 0.55)
-                        : Qt.alpha("#64748B", 0.35)
+                        ? Qt.alpha(root.theme.warning, 0.55)
+                        : Qt.alpha(root.theme.textMuted, 0.35)
                     border.width: 1
 
                     Text {
@@ -203,38 +205,24 @@ Dialog {
                         text: root.isOverRecommendedLength
                             ? (subjectField.text.length + " / 72 (consigliati ≤ 72)")
                             : (subjectField.text.length + " / 72 caratteri")
-                        color: root.isOverRecommendedLength ? "#FCD34D" : "#94A3B8"
+                        color: root.isOverRecommendedLength ? root.theme.warningText : root.theme.textSecondary
                         font.pixelSize: 10
                         font.bold: root.isOverRecommendedLength
                     }
                 }
             }
 
-            TextField {
+            FluxTextField {
                 id: subjectField
                 Layout.fillWidth: true
                 Layout.preferredHeight: 38
                 implicitHeight: 38
-                color: "#F8FAFC"
                 font.pixelSize: 13
                 font.bold: true
                 placeholderText: "Es. feat(ui): migliora layout modale commit"
-                placeholderTextColor: "#64748B"
-                selectByMouse: true
+                focusBorderColor: root.theme.accentPurple
+                borderColor: root.isOverRecommendedLength ? Qt.alpha(root.theme.warning, 0.55) : root.theme.border
                 enabled: !root.isSaving
-
-                background: Rectangle {
-                    color: "#0A0E15"
-                    radius: 8
-                    border.color: subjectField.activeFocus
-                        ? "#A855F7"
-                        : (root.isOverRecommendedLength ? Qt.alpha("#F59E0B", 0.55) : "#222F42")
-                    border.width: 1
-
-                    Behavior on border.color {
-                        ColorAnimation { duration: 120 }
-                    }
-                }
 
                 Keys.onReturnPressed: bodyArea.forceActiveFocus()
                 Keys.onEnterPressed: bodyArea.forceActiveFocus()
@@ -252,14 +240,14 @@ Dialog {
 
                 Text {
                     text: "Descrizione"
-                    color: "#F8FAFC"
+                    color: root.theme.textPrimary
                     font.pixelSize: 12
                     font.bold: true
                 }
 
                 Text {
                     text: "(opzionale · dettagli e motivazione)"
-                    color: "#64748B"
+                    color: root.theme.textMuted
                     font.pixelSize: 11
                 }
             }
@@ -268,13 +256,13 @@ Dialog {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 144
                 implicitHeight: 144
-                color: "#0A0E15"
-                radius: 8
-                border.color: bodyArea.activeFocus ? "#A855F7" : "#222F42"
+                color: root.theme.inputBg
+                radius: root.theme.radiusSm
+                border.color: bodyArea.activeFocus ? root.theme.accentPurple : root.theme.border
                 border.width: 1
 
                 Behavior on border.color {
-                    ColorAnimation { duration: 120 }
+                    ColorAnimation { duration: root.theme.animFast }
                 }
 
                 ScrollView {
@@ -287,8 +275,10 @@ Dialog {
                     TextArea {
                         id: bodyArea
                         placeholderText: "Aggiungi una descrizione estesa delle modifiche..."
-                        placeholderTextColor: "#64748B"
-                        color: "#E2E8F0"
+                        placeholderTextColor: root.theme.textMuted
+                        color: root.theme.textPrimary
+                        selectionColor: root.theme.selectionBg
+                        selectedTextColor: root.theme.selectionText
                         font.pixelSize: 12
                         wrapMode: TextEdit.Wrap
                         selectByMouse: true
@@ -313,8 +303,8 @@ Dialog {
             Layout.preferredHeight: warnRow.implicitHeight + 16
             implicitHeight: warnRow.implicitHeight + 16
             radius: 9
-            color: root.isHead ? "#131C2B" : "#251A09"
-            border.color: root.isHead ? "#263B59" : "#92400E"
+            color: root.isHead ? root.theme.infoBg : root.theme.warningBg
+            border.color: root.isHead ? root.theme.borderHighlight : root.theme.warning
             border.width: 1
 
             RowLayout {
@@ -333,7 +323,7 @@ Dialog {
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
                     font.pixelSize: 11
-                    color: root.isHead ? "#93C5FD" : "#FCD34D"
+                    color: root.isHead ? root.theme.infoText : root.theme.warningText
                     text: root.isHead
                         ? "Questo è l'ultimo commit del branch (HEAD): verrà eseguito un amend generando un nuovo SHA. Se è già stato pushato servirà un force push."
                         : "Questo commit precede altri commit del branch: verrà eseguito un rebase che aggiornerà gli SHA di questo commit e di tutti i successivi (i file non cambiano). Se già pushati servirà un force push."
@@ -345,69 +335,47 @@ Dialog {
         Text {
             id: errorText
             Layout.fillWidth: true
-            color: "#F87171"
+            color: root.theme.dangerText
             font.pixelSize: 11
             wrapMode: Text.WordWrap
             visible: text.length > 0
         }
     }
 
-    footer: Rectangle {
-        color: "#161F2E"
-        implicitHeight: 54
-        height: 54
-        radius: 14
+    footer: FluxModalFooter {
+        footerHeight: 54
+        horizontalMargin: 18
+        buttonSpacing: 10
 
-        Rectangle {
-            anchors.top: parent.top
-            width: parent.width
-            height: 14
-            color: "#161F2E"
+        Text {
+            text: "Ctrl+Invio per salvare · Esc per annullare"
+            color: root.theme.textMuted
+            font.pixelSize: 11
+            Layout.fillWidth: true
+            elide: Text.ElideRight
         }
 
-        Rectangle {
-            anchors.top: parent.top
-            width: parent.width
-            height: 1
-            color: "#222F42"
+        FluxActionButton {
+            text: "Annulla"
+            Layout.preferredHeight: 34
+            fontPixelSize: 12
+            enabled: !root.isSaving
+            onClicked: root.close()
         }
 
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 18
-            anchors.rightMargin: 18
-            spacing: 10
-
-            Text {
-                text: "Ctrl+Invio per salvare · Esc per annullare"
-                color: "#64748B"
-                font.pixelSize: 11
-                Layout.fillWidth: true
-                elide: Text.ElideRight
-            }
-
-            FluxActionButton {
-                text: "Annulla"
-                Layout.preferredHeight: 34
-                fontPixelSize: 12
-                enabled: !root.isSaving
-                onClicked: root.close()
-            }
-
-            FluxActionButton {
-                text: root.isSaving
-                    ? "Salvataggio..."
-                    : (root.isHead ? "✓ Salva Modifiche" : "✓ Salva e Riscrivi")
-                Layout.preferredHeight: 34
-                enabled: root.canSubmit
-                baseColor: "#7E22CE"
-                hoverColor: "#9333EA"
-                baseBorderColor: "#A855F7"
-                textColor: "#FFFFFF"
-                fontPixelSize: 12
-                fontBold: true
-                onClicked: root.submit()
-            }
+        FluxActionButton {
+            text: root.isSaving
+                ? "Salvataggio..."
+                : (root.isHead ? "✓ Salva Modifiche" : "✓ Salva e Riscrivi")
+            Layout.preferredHeight: 34
+            enabled: root.canSubmit
+            baseColor: root.theme.accentPurple
+            hoverColor: Qt.lighter(root.theme.accentPurple, 1.15)
+            baseBorderColor: root.theme.accentPurple
+            textColor: root.theme.selectionText
+            fontPixelSize: 12
+            fontBold: true
+            onClicked: root.submit()
         }
     }
 }

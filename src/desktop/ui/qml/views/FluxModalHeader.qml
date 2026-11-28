@@ -1,32 +1,35 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../themes"
 
 Rectangle {
     id: root
 
+    readonly property FluxTheme theme: FluxTheme {}
+
     property string titleText: ""
-    property color titleColor: "#F8FAFC"
+    property color titleColor: theme.textPrimary
 
     signal closeRequested()
 
-    color: "#161F2E"
+    color: theme.headerBg
     implicitHeight: 46
     height: 46
-    radius: 14
+    radius: theme.radiusLg
 
     Rectangle {
         anchors.bottom: parent.bottom
         width: parent.width
-        height: 14
-        color: "#161F2E"
+        height: root.radius
+        color: root.color
     }
 
     Rectangle {
         anchors.bottom: parent.bottom
         width: parent.width
         height: 1
-        color: "#222F42"
+        color: theme.border
     }
 
     RowLayout {
@@ -38,7 +41,7 @@ Rectangle {
             text: root.titleText
             color: root.titleColor
             font.bold: true
-            font.pixelSize: 13
+            font.pixelSize: theme.fontBody
         }
 
         Item {
@@ -52,11 +55,11 @@ Rectangle {
             hoverEnabled: true
             background: Rectangle {
                 radius: 7
-                color: closeBtn.hovered ? "#243247" : "transparent"
+                color: closeBtn.hovered ? root.theme.cardHover : "transparent"
             }
             contentItem: Text {
                 text: "✕"
-                color: closeBtn.hovered ? "#F8FAFC" : "#94A3B8"
+                color: closeBtn.hovered ? root.theme.textPrimary : root.theme.textSecondary
                 font.bold: true
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter

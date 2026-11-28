@@ -2,9 +2,11 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import "../themes"
 
 Dialog {
     id: root
+    readonly property FluxTheme theme: FluxTheme {}
     title: "Crea Git Worktree"
     modal: true
     width: 500
@@ -62,9 +64,9 @@ Dialog {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 36
-            color: "#0D131D"
+            color: root.theme.inputBg
             radius: 9
-            border.color: "#222F42"
+            border.color: root.theme.border
             border.width: 1
 
             RowLayout {
@@ -75,13 +77,13 @@ Dialog {
 
                 Text {
                     text: "Punto di partenza:"
-                    color: "#94A3B8"
+                    color: root.theme.textSecondary
                     font.pixelSize: 11
                 }
 
                 Text {
                     text: root.commitOrBranch.length > 0 ? root.commitOrBranch : "HEAD"
-                    color: "#38BDF8"
+                    color: root.theme.borderFocus
                     font.bold: true
                     font.pixelSize: 11
                     font.family: "monospace"
@@ -98,7 +100,7 @@ Dialog {
 
             Text {
                 text: "Percorso cartella del Worktree:"
-                color: "#CBD5E1"
+                color: root.theme.textSecondary
                 font.pixelSize: 11
                 font.bold: true
             }
@@ -107,56 +109,18 @@ Dialog {
                 Layout.fillWidth: true
                 spacing: 8
 
-                TextField {
+                FluxTextField {
                     id: pathField
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 36
-                    color: "#F8FAFC"
-                    font.pixelSize: 12
                     placeholderText: "/percorso/nuovo-worktree..."
-                    placeholderTextColor: "#64748B"
-                    selectByMouse: true
-
-                    background: Rectangle {
-                        color: "#0A0E15"
-                        radius: 8
-                        border.color: pathField.activeFocus ? "#38BDF8" : "#222F42"
-                        border.width: 1
-
-                        Behavior on border.color {
-                            ColorAnimation {
-                                duration: 120
-                            }
-                        }
-                    }
-
                     onAccepted: createBtn.clicked()
                 }
 
-                Button {
+                FluxActionButton {
+                    text: "📂 Sfoglia"
                     Layout.preferredHeight: 36
                     Layout.preferredWidth: 96
-                    hoverEnabled: true
-                    background: Rectangle {
-                        color: parent.hovered ? "#1E2B3E" : "#151E2C"
-                        radius: 8
-                        border.color: "#28374E"
-                        border.width: 1
-
-                        Behavior on color {
-                            ColorAnimation {
-                                duration: 120
-                            }
-                        }
-                    }
-                    contentItem: Text {
-                        text: "📂 Sfoglia"
-                        color: "#E2E8F0"
-                        font.pixelSize: 11
-                        font.bold: true
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
+                    fontBold: true
                     onClicked: folderDialog.open()
                 }
             }
@@ -164,7 +128,7 @@ Dialog {
 
         Text {
             text: "Un worktree permette di lavorare contemporaneamente su più branch o commit in directory separate."
-            color: "#64748B"
+            color: root.theme.textMuted
             font.pixelSize: 10
             wrapMode: Text.WordWrap
             Layout.fillWidth: true
@@ -173,73 +137,52 @@ Dialog {
         Text {
             id: errorText
             Layout.fillWidth: true
-            color: "#EF4444"
+            color: root.theme.danger
             font.pixelSize: 11
             visible: text.length > 0
             wrapMode: Text.WordWrap
         }
     }
 
-    footer: Rectangle {
-        color: "#161F2E"
-        height: 54
-        radius: 14
+    footer: FluxModalFooter {
+        footerHeight: 54
+        horizontalMargin: 18
+        buttonSpacing: 10
 
-        Rectangle {
-            anchors.top: parent.top
-            width: parent.width
-            height: 14
-            color: "#161F2E"
+        Item {
+            Layout.fillWidth: true
         }
 
-        Rectangle {
-            anchors.top: parent.top
-            width: parent.width
-            height: 1
-            color: "#222F42"
+        FluxActionButton {
+            text: "Annulla"
+            Layout.preferredHeight: 34
+            fontPixelSize: 12
+            onClicked: root.close()
         }
 
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 18
-            anchors.rightMargin: 18
-            spacing: 10
-
-            Item {
-                Layout.fillWidth: true
-            }
-
-            FluxActionButton {
-                text: "Annulla"
-                Layout.preferredHeight: 34
-                fontPixelSize: 12
-                onClicked: root.close()
-            }
-
-            FluxActionButton {
-                id: createBtn
-                text: "📁 Crea Worktree"
-                Layout.preferredHeight: 34
-                Layout.preferredWidth: 146
-                enabled: pathField.text.trim().length > 0
-                baseColor: "#0284C7"
-                hoverColor: "#0EA5E9"
-                baseBorderColor: "#38BDF8"
-                textColor: "#FFFFFF"
-                fontPixelSize: 12
-                fontBold: true
-                onClicked: {
-                    const path = pathField.text.trim();
-                    if (!path) {
-                        errorText.text = "Specificare un percorso valido per il worktree";
-                        return;
-                    }
-                    if (root.branchManager && root.pendingOperationId === 0) {
-                        if (root.branchManager.createWorktree(path, root.commitOrBranch)) {
-                            root.pendingOperationId = root.branchManager.lastOperationId;
-                        } else {
-                            errorText.text = root.branchManager.statusMessage;
-                        }
+        FluxActionButton {
+            id: createBtn
+            text: "📁 Crea Worktree"
+            Layout.preferredHeight: 34
+            Layout.preferredWidth: 146
+            enabled: pathField.text.trim().length > 0
+            baseColor: root.theme.accentBlue
+            hoverColor: root.theme.accentBlueHover
+            baseBorderColor: root.theme.borderFocus
+            textColor: root.theme.selectionText
+            fontPixelSize: 12
+            fontBold: true
+            onClicked: {
+                const path = pathField.text.trim();
+                if (!path) {
+                    errorText.text = "Specificare un percorso valido per il worktree";
+                    return;
+                }
+                if (root.branchManager && root.pendingOperationId === 0) {
+                    if (root.branchManager.createWorktree(path, root.commitOrBranch)) {
+                        root.pendingOperationId = root.branchManager.lastOperationId;
+                    } else {
+                        errorText.text = root.branchManager.statusMessage;
                     }
                 }
             }
