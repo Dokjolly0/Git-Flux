@@ -335,18 +335,48 @@ if (GF_BUILD_DESKTOP)
             src/desktop/ui/qml/main.qml
             src/desktop/ui/qml/themes/FluxTheme.qml
             src/desktop/ui/qml/views/HomeHubView.qml
+            src/desktop/ui/qml/views/MultiGroupDots.qml
+            src/desktop/ui/qml/views/HomeTopBar.qml
+            src/desktop/ui/qml/views/RepoCardDelegate.qml
+            src/desktop/ui/qml/views/GroupCardDelegate.qml
+            src/desktop/ui/qml/views/WorkspaceCardDelegate.qml
+            src/desktop/ui/qml/views/HomeHubDialogs.qml
             src/desktop/ui/qml/views/QuickOpenModal.qml
             src/desktop/ui/qml/views/WorkspaceSessionView.qml
+            src/desktop/ui/qml/views/SessionTabBar.qml
             src/desktop/ui/qml/views/DiffViewerPanel.qml
             src/desktop/ui/qml/views/DiffOverviewScrollBar.qml
+            src/desktop/ui/qml/views/DiffCodeText.qml
+            src/desktop/ui/qml/views/DiffHScrollBar.qml
+            src/desktop/ui/qml/views/DiffHunkExpandActions.qml
+            src/desktop/ui/qml/views/DiffListSelectionMouseArea.qml
+            src/desktop/ui/qml/views/DiffToolbar.qml
+            src/desktop/ui/qml/views/DiffInlineView.qml
+            src/desktop/ui/qml/views/DiffSplitView.qml
+            src/desktop/ui/qml/views/DiffHunkView.qml
+            src/desktop/ui/qml/views/DiffBlameView.qml
             src/desktop/ui/qml/views/MarkdownPreviewView.qml
+            src/desktop/ui/qml/views/MarkdownToolbar.qml
+            src/desktop/ui/qml/views/MarkdownTocSidebar.qml
             src/desktop/ui/qml/views/RichFilePreviewView.qml
+            src/desktop/ui/qml/views/RichPreviewPillButton.qml
+            src/desktop/ui/qml/views/ImageDiffPreview.qml
+            src/desktop/ui/qml/views/ArchiveDiffView.qml
+            src/desktop/ui/qml/views/BinaryMetadataView.qml
+            src/desktop/ui/qml/views/HexDiffView.qml
             src/desktop/ui/qml/views/BranchSwitcherDropdown.qml
             src/desktop/ui/qml/views/BranchManagerModal.qml
             src/desktop/ui/qml/views/CreateBranchModal.qml
             src/desktop/ui/qml/views/StashManagerModal.qml
             src/desktop/ui/qml/views/ConflictResolverModal.qml
             src/desktop/ui/qml/views/CommitHistoryPanel.qml
+            src/desktop/ui/qml/views/CommitFilesPane.qml
+            src/desktop/ui/qml/views/WipSectionCard.qml
+            src/desktop/ui/qml/views/WipCommitBox.qml
+            src/desktop/ui/qml/views/CommitGraphTable.qml
+            src/desktop/ui/qml/views/CommitInspectorPane.qml
+            src/desktop/ui/qml/views/CommitGraphMenus.qml
+            src/desktop/ui/qml/views/FileHistoryModal.qml
             src/desktop/ui/qml/views/FluxScrollBar.qml
             src/desktop/ui/qml/views/FluxMenu.qml
             src/desktop/ui/qml/views/FluxMenuItem.qml
@@ -366,6 +396,11 @@ if (GF_BUILD_DESKTOP)
             src/desktop/ui/qml/views/SmoothWheelScroller.qml
             src/desktop/ui/qml/views/SmoothScrollRegistry.js
             src/desktop/ui/qml/views/CloneRepositoryModal.qml
+            src/desktop/ui/qml/views/RemoteAccessGuide.qml
+            src/desktop/ui/qml/views/CustomServerPopup.qml
+            src/desktop/ui/qml/views/ProviderSidebar.qml
+            src/desktop/ui/qml/views/TokenConfigCard.qml
+            src/desktop/ui/qml/views/RemoteRepoPicker.qml
             src/desktop/ui/qml/views/BatchProgressModal.qml
             src/desktop/ui/qml/views/PullRequestModal.qml
             src/desktop/ui/qml/views/CreateTagModal.qml
@@ -373,6 +408,9 @@ if (GF_BUILD_DESKTOP)
             src/desktop/ui/qml/views/EditCommitMessageModal.qml
             src/desktop/ui/qml/views/ForcePushConfirmModal.qml
             src/desktop/ui/qml/views/TerminalCompletionPopup.qml
+            src/desktop/ui/qml/views/TerminalTextPane.qml
+            src/desktop/ui/qml/views/TerminalTabDialogs.qml
+            src/desktop/ui/qml/views/TerminalTabMenus.qml
             src/desktop/ui/qml/views/TerminalDockPanel.qml
             RESOURCES
             assets/logo.png

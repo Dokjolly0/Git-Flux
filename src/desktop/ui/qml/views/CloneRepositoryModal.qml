@@ -23,7 +23,6 @@ Dialog {
     property var profilesVm: (typeof gitProfilesVm !== "undefined") ? gitProfilesVm : null
 
     property bool showTokenConfig: false
-    property bool showTokenText: false
     property bool showRepoPicker: false
     property string selectedRepoFullName: ""
     property bool selectedRepoIsPrivate: false
@@ -34,13 +33,9 @@ Dialog {
 
     // Re-points the URL field at the selected repository after a protocol change (SSH <-> HTTPS).
     function refreshSelectedRepoUrl() {
-        if (!root.profilesVm || root.selectedRepoFullName.length === 0) return;
-        for (let i = 0; i < repoListView.count; ++i) {
-            const r = root.profilesVm.remoteReposModel.getRepoAt(i);
-            if (r.fullName === root.selectedRepoFullName) {
-                urlField.text = r.activeCloneUrl;
-                break;
-            }
+        const nextUrl = repoPicker ? repoPicker.activeUrlForRepo(root.selectedRepoFullName) : "";
+        if (nextUrl.length > 0) {
+            urlField.text = nextUrl;
         }
     }
 
@@ -109,206 +104,6 @@ Dialog {
         }
     }
 
-    // Step-by-step "how to fix it" card for a remote access problem (SSH key, host key, token...).
-    // `guide` is GitProfilesViewModel.troubleshootingGuide(); `logText` is the raw ssh/git output.
-    component RemoteAccessGuide: ColumnLayout {
-        id: guideRoot
-        readonly property FluxTheme theme: FluxTheme {}
-        property var guide: ({})
-        property string host: ""
-        property string logText: ""
-        property bool showSummary: true
-        property string feedback: ""
-        property bool showLog: false
-        // Injected by the user: inline components can't see the ids of the enclosing file.
-        property var profilesVm: null
-        property var actionHandler: null // function(action, host) -> feedback text
-        spacing: 8
-
-        Timer {
-            id: feedbackTimer
-            interval: 2500
-            onTriggered: guideRoot.feedback = ""
-        }
-
-        function act(action) {
-            guideRoot.feedback = guideRoot.actionHandler ? guideRoot.actionHandler(action, guideRoot.host) : "";
-            if (guideRoot.feedback.length > 0) feedbackTimer.restart();
-        }
-
-        Text {
-            visible: guideRoot.showSummary && (guideRoot.guide.summary || "").length > 0
-            text: guideRoot.guide.summary || ""
-            color: guideRoot.theme.textSecondary
-            font.pixelSize: 11
-            wrapMode: Text.Wrap
-            Layout.fillWidth: true
-        }
-
-        Repeater {
-            model: guideRoot.guide.steps || []
-
-            delegate: RowLayout {
-                required property var modelData
-                required property int index
-                Layout.fillWidth: true
-                spacing: 8
-
-                Rectangle {
-                    Layout.alignment: Qt.AlignTop
-                    Layout.preferredWidth: 20
-                    Layout.preferredHeight: 20
-                    radius: 10
-                    color: guideRoot.theme.infoBg
-                    Text {
-                        anchors.centerIn: parent
-                        text: index + 1
-                        color: guideRoot.theme.infoText
-                        font.pixelSize: 10
-                        font.bold: true
-                    }
-                }
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 4
-
-                    Text {
-                        text: modelData.title
-                        color: guideRoot.theme.textPrimary
-                        font.pixelSize: 12
-                        font.bold: true
-                        wrapMode: Text.Wrap
-                        Layout.fillWidth: true
-                    }
-
-                    SelectableText {
-                        visible: (modelData.detail || "").length > 0
-                        text: modelData.detail || ""
-                        color: guideRoot.theme.textMuted
-                        Layout.fillWidth: true
-                    }
-
-                    // Copyable command / snippet
-                    Rectangle {
-                        visible: (modelData.command || "").length > 0
-                        Layout.fillWidth: true
-                        implicitHeight: cmdRow.implicitHeight + 10
-                        radius: 4
-                        color: guideRoot.theme.canvas
-                        border.color: guideRoot.theme.borderSubtle
-
-                        RowLayout {
-                            id: cmdRow
-                            anchors.fill: parent
-                            anchors.margins: 5
-                            spacing: 6
-
-                            SelectableText {
-                                text: modelData.command || ""
-                                font.family: "monospace"
-                                color: guideRoot.theme.infoText
-                                Layout.fillWidth: true
-                            }
-
-                            GuideButton {
-                                text: "Copia"
-                                Layout.alignment: Qt.AlignTop
-                                onClicked: {
-                                    if (guideRoot.profilesVm) guideRoot.profilesVm.copyToClipboard(modelData.command);
-                                    guideRoot.feedback = "Comando copiato negli appunti";
-                                    feedbackTimer.restart();
-                                }
-                            }
-                        }
-                    }
-
-                    RowLayout {
-                        visible: (modelData.url || "").length > 0 || (modelData.action || "").length > 0
-                        spacing: 6
-
-                        GuideButton {
-                            visible: (modelData.action || "").length > 0
-                            text: modelData.actionLabel || ""
-                            accent: guideRoot.theme.accentTeal
-                            onClicked: guideRoot.act(modelData.action)
-                        }
-
-                        GuideButton {
-                            visible: (modelData.url || "").length > 0
-                            text: (modelData.urlLabel || "Apri") + " ↗"
-                            onClicked: Qt.openUrlExternally(modelData.url)
-                        }
-                    }
-                }
-            }
-        }
-
-        // Raw output, selectable and copyable
-        RowLayout {
-            visible: guideRoot.logText.length > 0
-            spacing: 6
-
-            GuideButton {
-                text: guideRoot.showLog ? "Nascondi log" : "Mostra log"
-                accent: guideRoot.theme.textMuted
-                onClicked: guideRoot.showLog = !guideRoot.showLog
-            }
-
-            GuideButton {
-                text: "Copia log"
-                accent: guideRoot.theme.textMuted
-                onClicked: {
-                    if (guideRoot.profilesVm) guideRoot.profilesVm.copyToClipboard(guideRoot.logText);
-                    guideRoot.feedback = "Log copiato negli appunti";
-                    feedbackTimer.restart();
-                }
-            }
-
-            Text {
-                visible: guideRoot.feedback.length > 0
-                text: "✔ " + guideRoot.feedback
-                color: guideRoot.theme.successText
-                font.pixelSize: 11
-            }
-        }
-
-        Text {
-            visible: guideRoot.logText.length === 0 && guideRoot.feedback.length > 0
-            text: "✔ " + guideRoot.feedback
-            color: guideRoot.theme.successText
-            font.pixelSize: 11
-        }
-
-        Rectangle {
-            visible: guideRoot.showLog && guideRoot.logText.length > 0
-            Layout.fillWidth: true
-            Layout.preferredHeight: Math.min(logEdit.implicitHeight + 12, 140)
-            radius: 4
-            color: guideRoot.theme.canvas
-            border.color: guideRoot.theme.borderSubtle
-
-            Flickable {
-                id: logFlick
-                anchors.fill: parent
-                anchors.margins: 6
-                clip: true
-                contentWidth: width
-                contentHeight: logEdit.implicitHeight
-                boundsBehavior: Flickable.StopAtBounds
-                ScrollBar.vertical: FluxScrollBar {}
-
-                SelectableText {
-                    id: logEdit
-                    width: logFlick.width
-                    text: guideRoot.logText
-                    font.family: "monospace"
-                    color: guideRoot.theme.dangerText
-                }
-            }
-        }
-    }
-
     Connections {
         target: root.profilesVm
         function onSelectedProtocolChanged() {
@@ -359,11 +154,11 @@ Dialog {
         urlMissing = false;
         dirNameField.propertyModified = false;
 
-        if (typeof searchField !== "undefined" && searchField) {
-            searchField.text = "";
+        if (repoPicker) {
+            repoPicker.clearSearch();
         }
-        if (typeof tokenSecretInput !== "undefined" && tokenSecretInput) {
-            tokenSecretInput.text = "";
+        if (tokenConfigCard) {
+            tokenConfigCard.clearTokenInput();
         }
 
         if (root.profilesVm) {
@@ -456,191 +251,15 @@ Dialog {
         return false;
     }
 
-    // -------------------------------------------------------------
-    // ADD CUSTOM SERVER POPUP (Gitea / Forgejo / Codeberg / self-hosted)
-    // -------------------------------------------------------------
-    Popup {
+    CustomServerPopup {
         id: customServerPopup
-        parent: Overlay.overlay
-        anchors.centerIn: parent
-        width: 460
-        modal: true
-        focus: true
-        padding: 0
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-
-        property bool showToken: false
-
-        function openForNew() {
-            customNameField.text = "";
-            customHostField.text = "";
-            customApiField.text = "";
-            customUserField.text = "";
-            customTokenField.text = "";
-            customServerPopup.showToken = false;
-            customServerPopup.open();
-            customHostField.forceActiveFocus();
-        }
-
-        function submit() {
-            if (!root.profilesVm || customHostField.text.trim().length === 0) return;
-            root.profilesVm.addCustomProfile(
-                customHostField.text,
-                customNameField.text,
-                customTokenField.text,
-                customApiField.text,
-                customUserField.text
-            );
-            customTokenField.text = "";
-            customServerPopup.close();
+        profilesVm: root.profilesVm
+        onServerAdded: {
             root.selectedRepoFullName = "";
             root.selectedRepoIsPrivate = false;
             urlField.text = "";
             root.showTokenConfig = false;
             root.showRepoPicker = true;
-        }
-
-        background: Rectangle {
-            color: root.theme.surfaceElevated
-            radius: root.theme.radiusMd
-            border.color: root.theme.borderFocus
-            border.width: 1
-        }
-
-        contentItem: ColumnLayout {
-            spacing: 10
-
-            Item { Layout.preferredHeight: 4 }
-
-            RowLayout {
-                Layout.leftMargin: 16
-                Layout.rightMargin: 16
-                spacing: 8
-
-                Image {
-                    source: "qrc:/qt/qml/GitFlux/Desktop/assets/icons/providers/server.png"
-                    Layout.preferredWidth: 16
-                    Layout.preferredHeight: 16
-                    Layout.alignment: Qt.AlignVCenter
-                    fillMode: Image.PreserveAspectFit
-                    smooth: true
-                    mipmap: true
-                }
-
-                Text {
-                    text: "Aggiungi server Git personalizzato"
-                    color: root.theme.textPrimary
-                    font.bold: true
-                    font.pixelSize: 14
-                }
-            }
-
-            Text {
-                Layout.leftMargin: 16
-                Layout.rightMargin: 16
-                Layout.fillWidth: true
-                text: "Gitea, Forgejo, Codeberg o qualsiasi istanza compatibile con l'API /api/v1. Il token è opzionale: senza token vengono elencati solo i repository pubblici."
-                color: root.theme.textMuted
-                font.pixelSize: 11
-                wrapMode: Text.Wrap
-            }
-
-            GridLayout {
-                Layout.leftMargin: 16
-                Layout.rightMargin: 16
-                Layout.fillWidth: true
-                columns: 2
-                columnSpacing: 10
-                rowSpacing: 8
-
-                Text { text: "Host *"; color: root.theme.textSecondary; font.pixelSize: 11; font.bold: true }
-                FluxTextField {
-                    id: customHostField
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 32
-                    placeholderText: "gitea.example.com o https://192.168.1.30:3000"
-                    onAccepted: customNameField.forceActiveFocus()
-                    // A full URL with a port/path is most likely the API base: reuse it.
-                    onEditingFinished: {
-                        const t = text.trim();
-                        if (customApiField.text.trim().length === 0 && t.indexOf("://") > 0) {
-                            customApiField.text = t;
-                        }
-                    }
-                }
-
-                Text { text: "Nome"; color: root.theme.textSecondary; font.pixelSize: 11; font.bold: true }
-                FluxTextField {
-                    id: customNameField
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 32
-                    placeholderText: "Es. Gitea di casa (default: host)"
-                    onAccepted: customApiField.forceActiveFocus()
-                }
-
-                Text { text: "URL API"; color: root.theme.textSecondary; font.pixelSize: 11; font.bold: true }
-                FluxTextField {
-                    id: customApiField
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 32
-                    placeholderText: "Default: https://<host> (+ /api/v1)"
-                    onAccepted: customUserField.forceActiveFocus()
-                }
-
-                Text { text: "Username"; color: root.theme.textSecondary; font.pixelSize: 11; font.bold: true }
-                FluxTextField {
-                    id: customUserField
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 32
-                    placeholderText: "Opzionale"
-                    onAccepted: customTokenField.forceActiveFocus()
-                }
-
-                Text { text: "Token"; color: root.theme.textSecondary; font.pixelSize: 11; font.bold: true }
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 6
-                    FluxTextField {
-                        id: customTokenField
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 32
-                        placeholderText: "Access Token (opzionale)"
-                        echoMode: customServerPopup.showToken ? TextInput.Normal : TextInput.Password
-                        onAccepted: customServerPopup.submit()
-                    }
-                    FluxActionButton {
-                        text: customServerPopup.showToken ? "🙈" : "👁️"
-                        Layout.preferredWidth: 32
-                        Layout.preferredHeight: 32
-                        onClicked: customServerPopup.showToken = !customServerPopup.showToken
-                    }
-                }
-            }
-
-            RowLayout {
-                Layout.leftMargin: 16
-                Layout.rightMargin: 16
-                Layout.bottomMargin: 14
-                Layout.topMargin: 4
-                Layout.fillWidth: true
-                spacing: 8
-
-                Item { Layout.fillWidth: true }
-
-                FluxActionButton {
-                    text: "Annulla"
-                    Layout.preferredHeight: 32
-                    onClicked: customServerPopup.close()
-                }
-
-                FluxActionButton {
-                    text: "＋ Aggiungi server"
-                    variant: "primary"
-                    Layout.preferredHeight: 32
-                    enabled: customHostField.text.trim().length > 0
-                    onClicked: customServerPopup.submit()
-                }
-            }
         }
     }
 
@@ -670,159 +289,21 @@ Dialog {
             Layout.fillWidth: true
             spacing: 0
 
-            // -------------------------------------------------------------
-            // LEFT SIDEBAR: Stacked list of Git Servers/Providers (GitKraken)
-            // -------------------------------------------------------------
-            Rectangle {
+            // LEFT SIDEBAR: Stacked list of Git Servers/Providers
+            ProviderSidebar {
                 Layout.preferredWidth: 210
                 Layout.fillHeight: true
-                color: root.theme.canvas
-                border.color: root.theme.borderSubtle
-                border.width: 1
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    spacing: 0
-
-                    // Sidebar Section Label
-                    Item {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 34
-                        Text {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 16
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "SERVIZI & PROVIDER"
-                            color: root.theme.textMuted
-                            font.pixelSize: 10
-                            font.bold: true
-                            font.letterSpacing: 0.8
-                        }
-                    }
-
-                    // Stacked Vertical List of Providers
-                    ListView {
-                        id: providerListView
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        clip: true
-                        interactive: false
-                        spacing: 3
-                        model: root.profilesVm ? root.profilesVm.profiles : []
-
-                        delegate: Rectangle {
-                            id: providerItem
-                            width: providerListView.width - 12
-                            x: 6
-                            height: 40
-                            radius: 8
-
-                            readonly property bool isSelected: root.profilesVm && (root.profilesVm.activeProfileId === modelData.id)
-
-                            color: isSelected ? root.theme.infoBg : (providerMouse.containsMouse ? root.theme.cardHover : "transparent")
-                            border.color: isSelected ? root.theme.borderFocus : (providerMouse.containsMouse ? root.theme.border : "transparent")
-                            border.width: 1
-
-                            Behavior on color {
-                                ColorAnimation {
-                                    duration: root.theme.animFast
-                                }
-                            }
-
-                            // Active Left Indicator Pill
-                            Rectangle {
-                                x: 3
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 3
-                                height: 18
-                                radius: 1.5
-                                color: root.theme.accentCyan
-                                visible: providerItem.isSelected
-                            }
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 16
-                                anchors.rightMargin: 12
-                                spacing: 10
-
-                                Image {
-                                    source: modelData.iconSource ? modelData.iconSource : ""
-                                    Layout.preferredWidth: 18
-                                    Layout.preferredHeight: 18
-                                    Layout.alignment: Qt.AlignVCenter
-                                    fillMode: Image.PreserveAspectFit
-                                    smooth: true
-                                    mipmap: true
-                                    opacity: providerItem.isSelected ? 1.0 : (providerMouse.containsMouse ? 0.95 : 0.85)
-                                }
-
-                                Text {
-                                    text: modelData.displayName
-                                    color: providerItem.isSelected ? root.theme.textPrimary : (providerMouse.containsMouse ? root.theme.textPrimary : root.theme.textMuted)
-                                    font.pixelSize: 12
-                                    font.bold: providerItem.isSelected
-                                    elide: Text.ElideRight
-                                    Layout.fillWidth: true
-                                }
-
-                                // Status Dot: Green if SSH or Token configured
-                                Rectangle {
-                                    visible: modelData.id !== "url"
-                                    width: 7
-                                    height: 7
-                                    radius: 3.5
-                                    color: (modelData.hasSsh || modelData.hasToken) ? root.theme.success : root.theme.borderHighlight
-                                }
-                            }
-
-                            MouseArea {
-                                id: providerMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (root.profilesVm) {
-                                        root.profilesVm.selectProfile(modelData.id);
-                                        root.selectedRepoFullName = "";
-                                        root.selectedRepoIsPrivate = false;
-                                        urlField.text = "";
-                                        root.showRepoPicker = (modelData.id !== "url");
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Add a self-hosted server (Gitea / Forgejo / Codeberg...)
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 6
-                        Layout.rightMargin: 6
-                        Layout.bottomMargin: 8
-                        Layout.preferredHeight: 36
-                        radius: 8
-                        color: addServerMouse.containsMouse ? root.theme.cardHover : "transparent"
-                        border.color: addServerMouse.containsMouse ? root.theme.accentCyan : root.theme.border
-                        border.width: 1
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "＋ Server personalizzato"
-                            color: addServerMouse.containsMouse ? root.theme.accentCyan : root.theme.textMuted
-                            font.pixelSize: 11
-                            font.bold: true
-                        }
-
-                        MouseArea {
-                            id: addServerMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: customServerPopup.openForNew()
-                        }
+                profilesVm: root.profilesVm
+                onProfileSelected: function(profileId) {
+                    if (root.profilesVm) {
+                        root.profilesVm.selectProfile(profileId);
+                        root.selectedRepoFullName = "";
+                        root.selectedRepoIsPrivate = false;
+                        urlField.text = "";
+                        root.showRepoPicker = (profileId !== "url");
                     }
                 }
+                onAddCustomServerRequested: customServerPopup.openForNew()
             }
 
             // -------------------------------------------------------------
@@ -1111,566 +592,41 @@ Dialog {
                         }
                     }
 
-                    // ---------------------------------------------------------
-                    // B. EXPANDABLE TOKEN CONFIGURATION CARD (Argon2id + AES)
-                    // ---------------------------------------------------------
-                    Rectangle {
+                    // B. EXPANDABLE TOKEN CONFIGURATION CARD & STATUS BANNERS
+                    TokenConfigCard {
+                        id: tokenConfigCard
                         Layout.fillWidth: true
-                        visible: root.showTokenConfig && root.profilesVm && (root.profilesVm.activeProfileId !== "url")
-                        implicitHeight: tokenConfigCol.implicitHeight + 16
-                        color: root.theme.canvas
-                        radius: 6
-                        border.color: root.theme.accentCyan
-                        border.width: 1
-
-                        ColumnLayout {
-                            id: tokenConfigCol
-                            anchors.fill: parent
-                            anchors.margins: 10
-                            spacing: 8
-
-                            Text {
-                                text: "🔒 Configura Personal Access Token (PAT) per " + (root.profilesVm ? root.profilesVm.activeProfileDisplayName : "")
-                                color: root.theme.textPrimary
-                                font.bold: true
-                                font.pixelSize: 12
-                            }
-
-                            Text {
-                                text: root.profilesVm && root.profilesVm.activeProfileId === "bitbucket"
-                                    ? "Bitbucket ha deprecato le App Password a Luglio 2026. Crea un 'API token with scopes' su id.atlassian.com selezionando l'app Bitbucket e lo scope 'read:repository:bitbucket'."
-                                    : "Il token viene crittografato sul database locale con Argon2id (KDF) e AES-256-GCM. Sblocca tutti i repository privati e delle organizzazioni."
-                                color: root.theme.textMuted
-                                font.pixelSize: 11
-                                wrapMode: Text.Wrap
-                                Layout.fillWidth: true
-                            }
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 8
-
-                                FluxTextField {
-                                    id: tokenUsernameInput
-                                    Layout.preferredWidth: 160
-                                    Layout.preferredHeight: 32
-                                    placeholderText: root.profilesVm && root.profilesVm.activeProfileId === "bitbucket"
-                                        ? "Email Atlassian"
-                                        : "Username (es. Dokjolly0)"
-                                    text: root.profilesVm ? root.profilesVm.activeProfileUsername : ""
-                                    Keys.onReturnPressed: tokenSecretInput.forceActiveFocus()
-                                    onAccepted: tokenSecretInput.forceActiveFocus()
-                                }
-
-                                FluxTextField {
-                                    id: tokenSecretInput
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: 32
-                                    placeholderText: root.profilesVm && root.profilesVm.activeProfileId === "bitbucket"
-                                        ? "Atlassian Scoped API Token (ATATT...)"
-                                        : "Personal Access Token (ghp_... o API token)"
-                                    echoMode: root.showTokenText ? TextInput.Normal : TextInput.Password
-                                    Keys.onReturnPressed: saveTokenBtn.clicked()
-                                    onAccepted: saveTokenBtn.clicked()
-                                }
-
-                                FluxActionButton {
-                                    text: root.showTokenText ? "🙈" : "👁️"
-                                    Layout.preferredWidth: 32
-                                    Layout.preferredHeight: 32
-                                    onClicked: root.showTokenText = !root.showTokenText
-                                }
-
-                                FluxActionButton {
-                                    id: saveTokenBtn
-                                    text: "💾 Salva e Carica"
-                                    variant: "primary"
-                                    Layout.preferredHeight: 32
-                                    enabled: tokenSecretInput.text.trim().length > 0 || tokenUsernameInput.text.trim().length > 0
-                                    onClicked: {
-                                        if (root.profilesVm) {
-                                            root.profilesVm.saveProfileToken(
-                                                root.profilesVm.activeProfileId,
-                                                tokenSecretInput.text,
-                                                tokenUsernameInput.text
-                                            );
-                                            tokenSecretInput.text = "";
-                                            root.showTokenConfig = false;
-                                        }
-                                    }
-                                }
-
-                                FluxActionButton {
-                                    visible: Boolean(root.profilesVm && root.profilesVm.activeProfileHasToken)
-                                    text: "🗑 Rimuovi"
-                                    variant: "danger"
-                                    Layout.preferredHeight: 32
-                                    onClicked: {
-                                        if (root.profilesVm) {
-                                            root.profilesVm.clearProfileToken(root.profilesVm.activeProfileId);
-                                            root.showTokenConfig = false;
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        profilesVm: root.profilesVm
+                        showTokenConfig: root.showTokenConfig
+                        onRequestShowTokenConfig: root.showTokenConfig = true
+                        onRequestHideTokenConfig: root.showTokenConfig = false
                     }
 
-                    // Informative Banner: Public consultation mode (no token configured)
-                    Rectangle {
-                        Layout.fillWidth: true
-                        visible: Boolean(root.profilesVm && root.profilesVm.activeProfileId !== "url" && !root.profilesVm.activeProfileHasToken && !root.showTokenConfig)
-                        implicitHeight: tokenTipLayout.implicitHeight + 14
-                        color: root.theme.infoBg
-                        radius: 6
-                        border.color: root.theme.info
-                        border.width: 1
-
-                        RowLayout {
-                            id: tokenTipLayout
-                            anchors.fill: parent
-                            anchors.margins: 8
-                            spacing: 10
-                            Text {
-                                text: "💡"
-                                font.pixelSize: 15
-                            }
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                spacing: 2
-                                Text {
-                                    text: "Consultazione pubblica: visualizzazione limitata ai soli repository pubblici"
-                                    color: root.theme.accentCyan
-                                    font.bold: true
-                                    font.pixelSize: 11
-                                }
-                                Text {
-                                    text: "Git Flux è collegato al tuo account, ma senza un Personal Access Token (PAT) GitHub restituisce solo le repo pubbliche. Per mostrare anche i repository privati e aziendali, inserisci un token."
-                                    color: root.theme.infoText
-                                    font.pixelSize: 11
-                                    wrapMode: Text.Wrap
-                                    Layout.fillWidth: true
-                                }
-                            }
-                            FluxActionButton {
-                                text: "🔑 Inserisci Token"
-                                variant: "primary"
-                                Layout.preferredHeight: 28
-                                onClicked: root.showTokenConfig = true
-                            }
-                        }
-                    }
-
-                    // Success Banner: Token is active (public + private repos unlocked)
-                    Rectangle {
-                        Layout.fillWidth: true
-                        visible: Boolean(root.profilesVm && root.profilesVm.activeProfileId !== "url" && root.profilesVm.activeProfileHasToken && !root.showTokenConfig)
-                        implicitHeight: authTipLayout.implicitHeight + 14
-                        color: root.theme.successBg
-                        radius: 6
-                        border.color: root.theme.success
-                        border.width: 1
-
-                        RowLayout {
-                            id: authTipLayout
-                            anchors.fill: parent
-                            anchors.margins: 8
-                            spacing: 8
-                            Text {
-                                text: "🔒"
-                                font.pixelSize: 14
-                            }
-                            Text {
-                                text: "Token PAT attivo (Argon2id + AES-256): accesso a tutti i repository pubblici e privati abilitato."
-                                color: root.theme.successText
-                                font.bold: true
-                                font.pixelSize: 11
-                                Layout.fillWidth: true
-                            }
-                            FluxActionButton {
-                                text: "Modifica"
-                                variant: "success"
-                                Layout.preferredHeight: 24
-                                onClicked: root.showTokenConfig = true
-                            }
-                        }
-                    }
-
-                    // ---------------------------------------------------------
-                    // C. REPOSITORY SELECTOR & EXPANDABLE LIST (GitKraken Clean)
-                    // ---------------------------------------------------------
-                    ColumnLayout {
+                    // C. REPOSITORY SELECTOR & EXPANDABLE LIST
+                    RemoteRepoPicker {
+                        id: repoPicker
                         Layout.fillWidth: true
                         visible: root.profilesVm ? (root.profilesVm.activeProfileId !== "url") : false
-                        spacing: 6
-
-                        Text {
-                            text: "Repository da Clonare:"
-                            color: root.theme.textMuted
-                            font.pixelSize: 12
-                            font.bold: true
+                        profilesVm: root.profilesVm
+                        selectedRepoFullName: root.selectedRepoFullName
+                        selectedRepoIsPrivate: root.selectedRepoIsPrivate
+                        selectedUrlText: urlField.text
+                        showRepoPicker: root.showRepoPicker
+                        repoTouched: root.repoTouched
+                        onTogglePickerRequested: {
+                            root.repoTouched = true;
+                            root.showRepoPicker = !root.showRepoPicker;
                         }
-
-                        // Compact Clickable Selector Box
-                        Rectangle {
-                            Layout.fillWidth: true
-                            height: 42
-                            radius: 6
-                            color: repoSelectorMouse.containsMouse ? root.theme.cardHover : root.theme.inputBg
-                            border.color: (root.repoTouched && !root.showRepoPicker && root.selectedRepoFullName.length === 0)
-                                ? root.theme.warning
-                                : (root.showRepoPicker ? root.theme.accentCyan : (root.selectedRepoFullName.length > 0 ? root.theme.accentBlue : root.theme.border))
-                            border.width: (root.showRepoPicker || (root.repoTouched && !root.showRepoPicker && root.selectedRepoFullName.length === 0)) ? 2 : 1
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 12
-                                anchors.rightMargin: 12
-                                spacing: 10
-
-                                Text {
-                                    text: root.selectedRepoFullName.length > 0 ? (root.selectedRepoIsPrivate ? "🔒" : "🌐") : "📂"
-                                    font.pixelSize: 16
-                                }
-
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 1
-
-                                    Text {
-                                        text: root.selectedRepoFullName.length > 0
-                                            ? root.selectedRepoFullName
-                                            : "Clicca per selezionare un repository da " + (root.profilesVm ? root.profilesVm.activeProfileDisplayName : "server") + "..."
-                                        color: root.selectedRepoFullName.length > 0 ? root.theme.textPrimary : root.theme.textMuted
-                                        font.pixelSize: 12
-                                        font.bold: root.selectedRepoFullName.length > 0
-                                        elide: Text.ElideRight
-                                        Layout.fillWidth: true
-                                    }
-
-                                    Text {
-                                        visible: root.selectedRepoFullName.length > 0
-                                        text: urlField.text
-                                        color: root.theme.accentCyan
-                                        font.pixelSize: 10
-                                        elide: Text.ElideRight
-                                        Layout.fillWidth: true
-                                    }
-                                }
-
-                                Rectangle {
-                                    implicitHeight: 24
-                                    implicitWidth: actionBtnText.implicitWidth + 14
-                                    radius: 4
-                                    color: root.showRepoPicker ? root.theme.accentBlue : (repoSelectorMouse.containsMouse ? root.theme.borderHighlight : root.theme.surfaceElevated)
-                                    border.color: root.showRepoPicker ? root.theme.accentCyan : root.theme.borderHighlight
-                                    Text {
-                                        id: actionBtnText
-                                        anchors.centerIn: parent
-                                        text: root.showRepoPicker
-                                            ? "Chiudi ▲"
-                                            : (root.selectedRepoFullName.length > 0 ? "Cambia ▼" : "Scegli ▼")
-                                        color: root.showRepoPicker ? root.theme.textPrimary : root.theme.textMuted
-                                        font.pixelSize: 11
-                                        font.bold: true
-                                    }
-                                }
-                            }
-
-                            MouseArea {
-                                id: repoSelectorMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    root.repoTouched = true;
-                                    root.showRepoPicker = !root.showRepoPicker;
-                                    if (root.showRepoPicker && typeof searchField !== "undefined") {
-                                        searchField.forceActiveFocus();
-                                    }
-                                }
-                            }
-                        }
-
-                        // Warning if user touched/opened repo selector and closed it without choosing
-                        Rectangle {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 32
-                            visible: root.repoTouched && !root.showRepoPicker && root.selectedRepoFullName.length === 0 && (root.profilesVm && root.profilesVm.activeProfileId !== "url")
-                            color: root.theme.warningBg
-                            radius: 6
-                            border.color: root.theme.warning
-                            border.width: 1
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 10
-                                anchors.rightMargin: 10
-                                spacing: 8
-
-                                Text {
-                                    text: "⚠️ Nessun repository selezionato. Clicca sul riquadro sopra per sceglierne uno."
-                                    color: root.theme.warningText
-                                    font.pixelSize: 11
-                                    font.bold: true
-                                    Layout.fillWidth: true
-                                }
-
-                                Button {
-                                    Layout.preferredHeight: 22
-                                    onClicked: {
-                                        root.showRepoPicker = true;
-                                        if (typeof searchField !== "undefined") searchField.forceActiveFocus();
-                                    }
-                                    contentItem: Text {
-                                        text: "Scegli ▼"; color: root.theme.warningText; font.pixelSize: 10; font.bold: true
-                                    }
-                                    background: Rectangle {
-                                        color: root.theme.warning; opacity: 0.35; radius: 4
-                                    }
-                                }
-                            }
-                        }
-
-                        // Expandable Dropdown Drawer for Repository Selection
-                        Rectangle {
-                            Layout.fillWidth: true
-                            visible: root.showRepoPicker
-                            implicitHeight: repoPickerLayout.implicitHeight + 16
-                            color: root.theme.canvas
-                            radius: 6
-                            border.color: root.theme.accentCyan
-                            border.width: 1
-
-                            onVisibleChanged: {
-                                if (visible && typeof searchField !== "undefined") {
-                                    searchField.forceActiveFocus();
-                                }
-                            }
-
-                            ColumnLayout {
-                                id: repoPickerLayout
-                                anchors.fill: parent
-                                anchors.margins: 8
-                                spacing: 6
-
-                                // Search Bar & Counter & Clear
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 8
-
-                                    FluxTextField {
-                                        id: searchField
-                                        Layout.fillWidth: true
-                                        Layout.preferredHeight: 32
-                                        placeholderText: "🔍 Cerca tra i tuoi repository (es. FinancialManager, FileHub)..."
-                                        showClearButton: true
-                                        onTextChanged: {
-                                            if (root.profilesVm && root.profilesVm.remoteReposModel) {
-                                                root.profilesVm.remoteReposModel.searchFilter = text;
-                                            }
-                                        }
-                                    }
-
-                                    // Counter Badge
-                                    Rectangle {
-                                        implicitHeight: 32
-                                        implicitWidth: countText.implicitWidth + 16
-                                        color: root.theme.surfaceElevated
-                                        radius: 6
-                                        border.color: root.theme.border
-                                        Text {
-                                            id: countText
-                                            anchors.centerIn: parent
-                                            text: {
-                                                if (!root.profilesVm || !root.profilesVm.remoteReposModel) return "0 repo";
-                                                const filtered = root.profilesVm.remoteReposModel.filteredCount;
-                                                const total = root.profilesVm.remoteReposModel.totalCount;
-                                                return filtered + " di " + total + " repo";
-                                            }
-                                            color: root.theme.accentCyan
-                                            font.pixelSize: 11
-                                            font.bold: true
-                                        }
-                                    }
-                                }
-
-                                // Loading State
-                                Rectangle {
-                                    Layout.fillWidth: true
-                                    height: 36
-                                    visible: Boolean(root.profilesVm && root.profilesVm.isFetching)
-                                    color: root.theme.surface
-                                    radius: 6
-                                    RowLayout {
-                                        anchors.centerIn: parent
-                                        spacing: 8
-                                        ProgressBar {
-                                            indeterminate: true; Layout.preferredWidth: 100
-                                        }
-                                        Text {
-                                            text: "Caricamento repository in corso..."
-                                            color: root.theme.accentCyan
-                                            font.pixelSize: 12
-                                        }
-                                    }
-                                }
-
-                                // Fetch Error Banner
-                                Rectangle {
-                                    Layout.fillWidth: true
-                                    visible: Boolean(root.profilesVm && root.profilesVm.fetchError.length > 0 && !root.profilesVm.isFetching)
-                                    implicitHeight: fetchErrText.implicitHeight + 16
-                                    color: root.theme.dangerBg
-                                    radius: 6
-                                    border.color: root.theme.danger
-                                    border.width: 1
-                                    RowLayout {
-                                        anchors.fill: parent
-                                        anchors.margins: 8
-                                        spacing: 8
-                                        Text {
-                                            id: fetchErrText
-                                            text: root.profilesVm ? root.profilesVm.fetchError : ""
-                                            color: root.theme.dangerText
-                                            font.pixelSize: 11
-                                            wrapMode: Text.Wrap
-                                            Layout.fillWidth: true
-                                        }
-                                        FluxActionButton {
-                                            text: "Inserisci Token"
-                                            variant: "danger"
-                                            Layout.preferredHeight: 24
-                                            onClicked: root.showTokenConfig = true
-                                        }
-                                    }
-                                }
-
-                                // Scrollable Remote Repository List View (height 190)
-                                Rectangle {
-                                    Layout.fillWidth: true
-                                    height: 190
-                                    color: root.theme.inputBg
-                                    radius: 6
-                                    border.color: root.theme.borderSubtle
-                                    border.width: 1
-                                    clip: true
-
-                                    ListView {
-                                        id: repoListView
-                                        SmoothWheelScroller {}
-                                        anchors.fill: parent
-                                        anchors.margins: 4
-                                        spacing: 4
-                                        model: root.profilesVm ? root.profilesVm.remoteReposModel : null
-                                        boundsBehavior: Flickable.StopAtBounds
-                                        maximumFlickVelocity: 6000
-                                        flickDeceleration: 1000
-                                        ScrollBar.vertical: FluxScrollBar {
-                                        }
-
-                                        delegate: Rectangle {
-                                            id: repoCard
-                                            width: repoListView.width - 8
-                                            height: 50
-                                            radius: 5
-
-                                            readonly property bool isSelected: root.selectedRepoFullName === model.fullName
-
-                                            color: isSelected ? root.theme.infoBg : (cardMouse.containsMouse ? root.theme.cardHover : root.theme.surface)
-                                            border.color: isSelected ? root.theme.accentCyan : (cardMouse.containsMouse ? root.theme.borderHighlight : root.theme.borderSubtle)
-                                            border.width: isSelected ? 2 : 1
-
-                                            RowLayout {
-                                                anchors.fill: parent
-                                                anchors.leftMargin: 10
-                                                anchors.rightMargin: 10
-                                                spacing: 8
-
-                                                Text {
-                                                    text: model.isPrivate ? "🔒" : "🌐"
-                                                    font.pixelSize: 13
-                                                }
-
-                                                ColumnLayout {
-                                                    Layout.fillWidth: true
-                                                    spacing: 1
-
-                                                    RowLayout {
-                                                        spacing: 6
-                                                        Text {
-                                                            text: model.fullName
-                                                            color: repoCard.isSelected ? root.theme.accentCyan : root.theme.textPrimary
-                                                            font.pixelSize: 12
-                                                            font.bold: true
-                                                            elide: Text.ElideRight
-                                                        }
-
-                                                        Text {
-                                                            visible: model.starsCount > 0
-                                                            text: "⭐ " + model.starsCount
-                                                            color: root.theme.warning
-                                                            font.pixelSize: 10
-                                                        }
-                                                    }
-
-                                                    Text {
-                                                        text: model.description.length > 0 ? model.description : (model.activeCloneUrl)
-                                                        color: root.theme.textMuted
-                                                        font.pixelSize: 11
-                                                        elide: Text.ElideRight
-                                                        Layout.fillWidth: true
-                                                    }
-                                                }
-
-                                                Text {
-                                                    visible: repoCard.isSelected
-                                                    text: "✔"
-                                                    color: root.theme.accentCyan
-                                                    font.pixelSize: 14
-                                                    font.bold: true
-                                                }
-                                            }
-
-                                            MouseArea {
-                                                id: cardMouse
-                                                anchors.fill: parent
-                                                hoverEnabled: true
-                                                cursorShape: Qt.PointingHandCursor
-                                                onClicked: {
-                                                    root.selectedRepoFullName = model.fullName;
-                                                    root.selectedRepoIsPrivate = model.isPrivate;
-                                                    let targetUrl = model.activeCloneUrl;
-                                                    if (!targetUrl || targetUrl.length === 0) {
-                                                        targetUrl = (root.profilesVm && root.profilesVm.selectedProtocol === "ssh") ? model.sshUrl : model.httpsUrl;
-                                                    }
-                                                    if (!targetUrl || targetUrl.length === 0) {
-                                                        targetUrl = model.httpsUrl ? model.httpsUrl : model.sshUrl;
-                                                    }
-                                                    urlField.text = targetUrl;
-
-                                                    const defaultName = model.fullName ? model.fullName.split("/").pop() : model.name;
-                                                    dirNameField.text = defaultName;
-                                                    dirNameField.propertyModified = true;
-                                                    root.showRepoPicker = false;
-                                                    root.repoTouched = false;
-                                                }
-                                            }
-                                        }
-
-                                        // Empty list placeholder
-                                        Text {
-                                            anchors.centerIn: parent
-                                            visible: repoListView.count === 0 && (!root.profilesVm || !root.profilesVm.isFetching)
-                                            text: searchField.text.length > 0
-                                                ? "Nessun repository trovato per '" + searchField.text + "'"
-                                                : "Nessun repository disponibile per questo account."
-                                            color: root.theme.textMuted
-                                            font.pixelSize: 12
-                                        }
-                                    }
-                                }
-                            }
+                        onOpenPickerRequested: root.showRepoPicker = true
+                        onInsertTokenRequested: root.showTokenConfig = true
+                        onRepoChosen: function(fullName, isPrivate, cloneUrl, defaultDirName) {
+                            root.selectedRepoFullName = fullName;
+                            root.selectedRepoIsPrivate = isPrivate;
+                            urlField.text = cloneUrl;
+                            dirNameField.text = defaultDirName;
+                            dirNameField.propertyModified = true;
+                            root.showRepoPicker = false;
+                            root.repoTouched = false;
                         }
                     }
 
@@ -2150,7 +1106,7 @@ Dialog {
                         } else {
                             root.repoTouched = true;
                             root.showRepoPicker = true;
-                            if (typeof searchField !== "undefined") searchField.forceActiveFocus();
+                            repoPicker.focusSearch();
                         }
                         return;
                     }

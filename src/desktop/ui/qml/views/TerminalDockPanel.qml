@@ -15,8 +15,6 @@ Rectangle {
 
     property var terminalVm: null
     property bool autoScroll: true
-    property bool programmaticScroll: false
-    property real lastContentY: 0
     property bool suppressCompletionOnTextChange: false
     readonly property bool isPagerOpen: Boolean(terminalVm && terminalVm.pagerActive)
     readonly property var currentOutputModel: terminalVm ? terminalVm.activeOutputModel : null
@@ -30,100 +28,12 @@ Rectangle {
     readonly property color effectiveActiveAccent: activeTabColor.length > 0 ? activeTabColor : defaultTabAccent
     readonly property var defaultColorPalette: fluxTheme.accentPalette
 
-    component TextEditDragAutoScroller: PointHandler {
-        id: scrollerHandler
-        required property Flickable flickable
-        required property TextEdit textEdit
-        property bool returnFocusToPromptOnEmptyClick: false
-        property bool disableAutoScrollOnUp: false
-
-        acceptedButtons: Qt.LeftButton
-        property real lastViewportX: 0
-        property real lastViewportY: 0
-        property int scrollDirection: 0
-        property real scrollSpeed: 0
-
-        function updatePointerMetrics() {
-            if (!flickable || !textEdit || !active) {
-                scrollDirection = 0;
-                scrollSpeed = 0;
-                return;
-            }
-            const dx = point.position.x - point.pressPosition.x;
-            const dy = point.position.y - point.pressPosition.y;
-            if ((dx * dx + dy * dy) < 16) {
-                scrollDirection = 0;
-                scrollSpeed = 0;
-                return;
-            }
-            const pt = flickable.mapFromItem(textEdit, point.position.x, point.position.y);
-            lastViewportX = pt.x;
-            lastViewportY = pt.y;
-
-            const edgeMargin = 14;
-            if (pt.y < edgeMargin) {
-                const overshoot = Math.max(1, edgeMargin - pt.y);
-                scrollDirection = -1;
-                scrollSpeed = Math.min(28, 4 + overshoot * 0.35);
-            } else if (pt.y > flickable.height - edgeMargin) {
-                const overshoot = Math.max(1, pt.y - (flickable.height - edgeMargin));
-                scrollDirection = 1;
-                scrollSpeed = Math.min(28, 4 + overshoot * 0.35);
-            } else {
-                scrollDirection = 0;
-                scrollSpeed = 0;
-            }
-        }
-
-        onActiveChanged: {
-            if (active) {
-                updatePointerMetrics();
-            } else {
-                scrollDirection = 0;
-                scrollSpeed = 0;
-                if (returnFocusToPromptOnEmptyClick && textEdit && textEdit.selectedText.length === 0) {
-                    cmdInput.forceActiveFocus();
-                }
-            }
-        }
-
-        onPointChanged: updatePointerMetrics()
-
-        property Timer _dragScrollTimer: Timer {
-            interval: 16
-            repeat: true
-            running: scrollerHandler.active && scrollerHandler.scrollDirection !== 0
-            onTriggered: {
-                if (!scrollerHandler.flickable || !scrollerHandler.textEdit) return;
-                const fl = scrollerHandler.flickable;
-                const te = scrollerHandler.textEdit;
-                const maxY = Math.max(0, fl.contentHeight - fl.height);
-                const nextY = Math.max(0, Math.min(maxY, fl.contentY + scrollerHandler.scrollDirection * scrollerHandler.scrollSpeed));
-                if (nextY === fl.contentY) return;
-
-                if (scrollerHandler.disableAutoScrollOnUp && scrollerHandler.scrollDirection < 0) {
-                    panelRoot.autoScroll = false;
-                    scrollBottomTimer.stop();
-                }
-
-                const anchor = (te.cursorPosition === te.selectionEnd) ? te.selectionStart : te.selectionEnd;
-                fl.contentY = nextY;
-
-                const localX = Math.max(0, Math.min(te.width, scrollerHandler.lastViewportX));
-                const clampedViewY = Math.max(0, Math.min(Math.max(0, fl.height - 1), scrollerHandler.lastViewportY));
-                const localY = fl.contentY + clampedViewY;
-                const targetPos = te.positionAt(localX, localY);
-                te.select(anchor, targetPos);
-            }
-        }
-    }
-
     function syncAttachedDocuments() {
-        if (currentOutputModel && outputTextEdit && outputTextEdit.textDocument) {
-            currentOutputModel.attachTextDocument(outputTextEdit.textDocument);
+        if (currentOutputModel && outputPane && outputPane.textDocument) {
+            currentOutputModel.attachTextDocument(outputPane.textDocument);
         }
-        if (currentPagerModel && pagerTextEdit && pagerTextEdit.textDocument) {
-            currentPagerModel.attachTextDocument(pagerTextEdit.textDocument);
+        if (currentPagerModel && pagerPane && pagerPane.textDocument) {
+            currentPagerModel.attachTextDocument(pagerPane.textDocument);
         }
     }
 
@@ -154,7 +64,7 @@ Rectangle {
 
     function focusInput() {
         if (isPagerOpen) {
-            pagerTextEdit.forceActiveFocus();
+            pagerPane.textEdit.forceActiveFocus();
         } else {
             cmdInput.forceActiveFocus();
         }
@@ -180,9 +90,7 @@ Rectangle {
         if (!tabs || index < 0 || index >= tabs.length) return;
         const tab = tabs[index];
         if (tab && tab.isRunning) {
-            closeRunningTabDialog.pendingTabIndex = index;
-            closeRunningTabDialog.pendingTabTitle = tab.title || "Terminal";
-            closeRunningTabDialog.open();
+            tabDialogs.openCloseRunning(index, tab.title || "Terminal");
             return;
         }
         terminalVm.closeTab(index);
@@ -196,10 +104,7 @@ Rectangle {
         const tabs = terminalVm.tabs;
         if (!tabs || index < 0 || index >= tabs.length) return;
         const tab = tabs[index];
-        renameTabDialog.targetTabIndex = index;
-        renameTabDialog.initialTitle = (tab && tab.title) ? tab.title : "Terminal";
-        renameTabDialog.initialColor = (tab && tab.accentColor) ? tab.accentColor : "";
-        renameTabDialog.open();
+        tabDialogs.openRename(index, (tab && tab.title) ? tab.title : "Terminal", (tab && tab.accentColor) ? tab.accentColor : "");
     }
 
     function openTabColorDialog(index) {
@@ -207,10 +112,7 @@ Rectangle {
         const tabs = terminalVm.tabs;
         if (!tabs || index < 0 || index >= tabs.length) return;
         const tab = tabs[index];
-        tabColorDialog.targetTabIndex = index;
-        tabColorDialog.targetTabTitle = (tab && tab.title) ? tab.title : "Terminal";
-        tabColorDialog.selectedColor = (tab && tab.accentColor) ? tab.accentColor : "";
-        tabColorDialog.open();
+        tabDialogs.openColorPicker(index, (tab && tab.title) ? tab.title : "Terminal", (tab && tab.accentColor) ? tab.accentColor : "");
     }
 
     function applyShellToTab(index, shellId) {
@@ -248,19 +150,15 @@ Rectangle {
     }
 
     function scrollOutputToBottom() {
-        const maxY = Math.max(0, outputFlickable.contentHeight - outputFlickable.height);
-        programmaticScroll = true;
-        outputFlickable.contentY = maxY;
-        lastContentY = outputFlickable.contentY;
-        programmaticScroll = false;
+        outputPane.scrollToBottom();
     }
 
     function scrollPagerToTop() {
-        pagerFlickable.contentY = 0;
+        pagerPane.contentY = 0;
     }
 
     function scrollPagerToBottom() {
-        pagerFlickable.contentY = Math.max(0, pagerFlickable.contentHeight - pagerFlickable.height);
+        pagerPane.scrollToBottom();
     }
 
     onIsPagerOpenChanged: {
@@ -380,7 +278,7 @@ Rectangle {
         onTriggered: {
             if (panelRoot.isPagerOpen) {
                 panelRoot.scrollPagerToTop();
-                pagerTextEdit.forceActiveFocus();
+                pagerPane.textEdit.forceActiveFocus();
             }
         }
     }
@@ -517,7 +415,7 @@ Rectangle {
                                     onClicked: function (mouse) {
                                         if (!panelRoot.terminalVm) return;
                                         if (mouse.button === Qt.RightButton) {
-                                            tabContextMenu.openForTab(termTabRect.tabIdx, termTabMa, mouse.x, mouse.y);
+                                            tabMenus.openForTab(termTabRect.tabIdx, termTabMa, mouse.x, mouse.y);
                                             return;
                                         }
                                         panelRoot.terminalVm.activeTabIndex = termTabRect.tabIdx;
@@ -599,7 +497,7 @@ Rectangle {
                                             ToolTip.text: "Cambia shell per questa scheda (attuale: " + shellBadge.shellId + ")"
                                             onClicked: {
                                                 if (panelRoot.terminalVm && shellBadge.canSwitchShell) {
-                                                    activeTabShellMenu.openForShellBadge(shellBadge);
+                                                    tabMenus.openForShellBadge(shellBadge);
                                                 }
                                             }
                                         }
@@ -965,208 +863,54 @@ Rectangle {
             Layout.fillHeight: true
             clip: true
 
-            Flickable {
-                id: outputFlickable
-                objectName: "outputFlickable"
+            TerminalTextPane {
+                id: outputPane
                 visible: !panelRoot.isPagerOpen
                 anchors.fill: parent
                 anchors.leftMargin: 8
                 anchors.rightMargin: 4
                 anchors.topMargin: 4
                 anchors.bottomMargin: 4
-                clip: true
-                interactive: false // Never steal left-mouse drag from multi-line TextEdit selection!
-                boundsBehavior: Flickable.StopAtBounds
-                contentWidth: width
-                contentHeight: Math.max(height, outputTextEdit.implicitHeight + 12)
-
-                // Smooth wheel & touchpad scrolling (works cleanly with interactive: false)
-                WheelHandler {
-                    onWheel: function (event) {
-                        const delta = (event.pixelDelta.y !== 0)
-                            ? event.pixelDelta.y
-                            : (event.angleDelta.y * 0.45);
-                        if (delta > 0) {
-                            panelRoot.autoScroll = false;
-                            scrollBottomTimer.stop();
-                        }
-                        const maxY = Math.max(0, outputFlickable.contentHeight - outputFlickable.height);
-                        outputFlickable.contentY = Math.max(0, Math.min(maxY, outputFlickable.contentY - delta));
-                        event.accepted = true;
+                terminalVm: panelRoot.terminalVm
+                pagerMode: false
+                autoScroll: panelRoot.autoScroll
+                handleTabShortcutFn: panelRoot.handleTerminalTabShortcut
+                onCopySelectionRequested: function(edit) {
+                    panelRoot.copySelectionWithFeedback(edit, "selection");
+                }
+                onCopyAllRequested: {
+                    if (panelRoot.terminalVm) {
+                        panelRoot.copyWithFeedback(panelRoot.terminalVm.copyActiveOutput(), "output");
                     }
                 }
-
-                ScrollBar.vertical: FluxScrollBar {
-                    id: outputVScrollBar
-                    policy: ScrollBar.AsNeeded
-                    onPressedChanged: {
-                        if (pressed) {
-                            panelRoot.autoScroll = false;
-                            scrollBottomTimer.stop();
-                        }
+                onClearOrCloseRequested: {
+                    if (panelRoot.terminalVm) {
+                        panelRoot.terminalVm.clearActiveOutput();
+                        cmdInput.forceActiveFocus();
                     }
                 }
-
-                onContentYChanged: {
-                    if (!panelRoot.programmaticScroll) {
-                        const maxY = Math.max(0, contentHeight - height);
-                        const nearBottom = (maxY <= 4) || (contentY >= maxY - 24);
-                        if (contentY < panelRoot.lastContentY - 1) {
-                            panelRoot.autoScroll = false;
-                            scrollBottomTimer.stop();
-                        } else if (nearBottom && !outputVScrollBar.pressed) {
-                            panelRoot.autoScroll = true;
-                        } else if (!nearBottom) {
-                            panelRoot.autoScroll = false;
-                        }
-                    }
-                    panelRoot.lastContentY = contentY;
+                onEmptyClickFocusPromptRequested: cmdInput.forceActiveFocus()
+                onAutoScrollChangedRequested: function(enabled) {
+                    panelRoot.autoScroll = enabled;
                 }
-
-                // Single unified TextEdit backed by QTextDocument: supports true multi-line drag selection & Ctrl+C copy!
-                TextEdit {
-                    id: outputTextEdit
-                    objectName: "outputTextEdit"
-                    width: Math.max(100, outputFlickable.width - 14)
-                    height: Math.max(outputFlickable.height, implicitHeight)
-                    readOnly: true
-                    selectByMouse: true
-                    selectByKeyboard: true
-                    persistentSelection: false
-                    textFormat: TextEdit.RichText
-                    wrapMode: TextEdit.WrapAnywhere
-                    color: fluxTheme.textPrimary
-                    selectionColor: fluxTheme.selectionBg
-                    selectedTextColor: fluxTheme.selectionText
-                    font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
-                    font.pixelSize: 12
-
-                    // Right-click context menu for Copy / Select All / Clear
-                    MouseArea {
-                        anchors.fill: parent
-                        acceptedButtons: Qt.RightButton
-                        onClicked: function (mouse) {
-                            outputContextMenu.popup();
-                            mouse.accepted = true;
-                        }
-                    }
-
-                    // Auto-scroll during drag selection & return focus to prompt on empty left-click
-                    TextEditDragAutoScroller {
-                        flickable: outputFlickable
-                        textEdit: outputTextEdit
-                        returnFocusToPromptOnEmptyClick: true
-                        disableAutoScrollOnUp: true
-                    }
-
-                    FluxMenu {
-                        id: outputContextMenu
-
-                        FluxMenuItem {
-                            text: "📋 Copia selezione (Ctrl+C)"
-                            enabled: outputTextEdit.selectedText.length > 0
-                            font.pixelSize: 11
-                            onClicked: panelRoot.copySelectionWithFeedback(outputTextEdit, "selection")
-                        }
-                        FluxMenuItem {
-                            text: "⧉ Copia tutto l'output"
-                            font.pixelSize: 11
-                            onClicked: {
-                                if (panelRoot.terminalVm) {
-                                    panelRoot.copyWithFeedback(panelRoot.terminalVm.copyActiveOutput(), "output");
-                                }
-                            }
-                        }
-                        FluxMenuItem {
-                            text: "☑ Seleziona tutto (Ctrl+A)"
-                            font.pixelSize: 11
-                            onClicked: {
-                                outputTextEdit.forceActiveFocus();
-                                outputTextEdit.selectAll();
-                            }
-                        }
-                        FluxMenuSeparator {}
-                        FluxMenuItem {
-                            text: "⌫ Pulisci terminale (Ctrl+L)"
-                            font.pixelSize: 11
-                            onClicked: {
-                                if (panelRoot.terminalVm) {
-                                    panelRoot.terminalVm.clearActiveOutput();
-                                    cmdInput.forceActiveFocus();
-                                }
-                            }
-                        }
-                    }
-
-                    Keys.onPressed: function (event) {
-                        if (panelRoot.handleTerminalTabShortcut(event)) return;
-                        const ctrl = (event.modifiers & Qt.ControlModifier) !== 0;
-                        const alt = (event.modifiers & Qt.AltModifier) !== 0;
-                        const shift = (event.modifiers & Qt.ShiftModifier) !== 0;
-                        const meta = (event.modifiers & Qt.MetaModifier) !== 0;
-
-                        // Ctrl+C copies when text is selected; otherwise interrupts running command
-                        if (ctrl && event.key === Qt.Key_C) {
-                            if (outputTextEdit.selectedText.length > 0) {
-                                panelRoot.copySelectionWithFeedback(outputTextEdit, "selection");
-                                event.accepted = true;
-                                return;
-                            }
-                            if (panelRoot.terminalVm && panelRoot.terminalVm.isRunning) {
-                                panelRoot.terminalVm.interruptRunningCommand();
-                                event.accepted = true;
-                                return;
-                            }
-                        }
-
-                        // Ctrl+A selects all output
-                        if (ctrl && event.key === Qt.Key_A) {
-                            outputTextEdit.selectAll();
-                            event.accepted = true;
-                            return;
-                        }
-
-                        // Ctrl+L clears terminal
-                        if (ctrl && event.key === Qt.Key_L) {
-                            if (panelRoot.terminalVm) {
-                                panelRoot.terminalVm.clearActiveOutput();
-                            }
-                            cmdInput.forceActiveFocus();
-                            event.accepted = true;
-                            return;
-                        }
-
-                        // Paste (Ctrl+V / Shift+Insert / Cmd+V) jumps to prompt and pastes
-                        if (event.matches(StandardKey.Paste) || (ctrl && event.key === Qt.Key_V)) {
-                            cmdInput.forceActiveFocus();
-                            cmdInput.paste();
-                            event.accepted = true;
-                            return;
-                        }
-
-                        // Plain Up/Down jumps to prompt and navigates command history or completions
-                        if (!ctrl && !alt && !shift && !meta &&
-                            (event.key === Qt.Key_Up || event.key === Qt.Key_Down)) {
-                            cmdInput.forceActiveFocus();
-                            panelRoot.navigateCommandHistory(event.key === Qt.Key_Up ? -1 : 1);
-                            event.accepted = true;
-                            return;
-                        }
-
-                        // Typing any printable character while output is focused jumps smoothly to prompt
-                        if (!ctrl && !alt && event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32) {
-                            cmdInput.forceActiveFocus();
-                            cmdInput.insert(cmdInput.cursorPosition, event.text);
-                            event.accepted = true;
-                            return;
-                        }
-                    }
+                onStopAutoScrollTimerRequested: scrollBottomTimer.stop()
+                onHistoryKeyRequested: function(dir) {
+                    cmdInput.forceActiveFocus();
+                    panelRoot.navigateCommandHistory(dir);
+                }
+                onPasteToPromptRequested: {
+                    cmdInput.forceActiveFocus();
+                    cmdInput.paste();
+                }
+                onPrintableCharRequested: function(ch) {
+                    cmdInput.forceActiveFocus();
+                    cmdInput.insert(cmdInput.cursorPosition, ch);
                 }
             }
 
             // Floating "Jump to bottom" button when user scrolled up
             Button {
-                visible: !panelRoot.isPagerOpen && !panelRoot.autoScroll && outputFlickable.contentHeight > outputFlickable.height + 10
+                visible: !panelRoot.isPagerOpen && !panelRoot.autoScroll && outputPane.contentHeight > outputPane.height + 10
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
                 anchors.rightMargin: 16
@@ -1198,172 +942,28 @@ Rectangle {
             // =================================================================
             // 2B. INTEGRATED `less`-STYLE PAGER VIEW (multi-line selectable, starts at line 1!)
             // =================================================================
-            Flickable {
-                id: pagerFlickable
-                objectName: "pagerFlickable"
+            TerminalTextPane {
+                id: pagerPane
                 visible: panelRoot.isPagerOpen
                 anchors.fill: parent
                 anchors.leftMargin: 8
                 anchors.rightMargin: 4
                 anchors.topMargin: 4
                 anchors.bottomMargin: 4
-                clip: true
-                interactive: false // Never steal left-mouse drag from multi-line TextEdit selection!
-                boundsBehavior: Flickable.StopAtBounds
-                contentWidth: width
-                contentHeight: Math.max(height, pagerTextEdit.implicitHeight + 12)
-
-                readonly property int topVisibleLine: {
-                    const total = panelRoot.terminalVm ? panelRoot.terminalVm.pagerLineCount : 0;
-                    if (total <= 0) return 0;
-                    const maxY = Math.max(1, contentHeight - height);
-                    const ratio = Math.max(0, Math.min(1, contentY / maxY));
-                    const approx = Math.round(ratio * Math.max(0, total - 1)) + 1;
-                    return Math.max(1, Math.min(total, approx));
+                terminalVm: panelRoot.terminalVm
+                pagerMode: true
+                handleTabShortcutFn: panelRoot.handleTerminalTabShortcut
+                onCopySelectionRequested: function(edit) {
+                    panelRoot.copySelectionWithFeedback(edit, "selection");
                 }
-
-                function scrollByDelta(dy) {
-                    const maxY = Math.max(0, contentHeight - height);
-                    contentY = Math.max(0, Math.min(maxY, contentY + dy));
-                }
-
-                WheelHandler {
-                    onWheel: function (event) {
-                        const delta = (event.pixelDelta.y !== 0)
-                            ? event.pixelDelta.y
-                            : (event.angleDelta.y * 0.45);
-                        pagerFlickable.scrollByDelta(-delta);
-                        event.accepted = true;
+                onCopyAllRequested: {
+                    if (panelRoot.terminalVm) {
+                        panelRoot.copyWithFeedback(panelRoot.terminalVm.copyPagerOutput(), "pager");
                     }
                 }
-
-                ScrollBar.vertical: FluxScrollBar {
-                    policy: ScrollBar.AsNeeded
-                }
-
-                TextEdit {
-                    id: pagerTextEdit
-                    objectName: "pagerTextEdit"
-                    width: Math.max(100, pagerFlickable.width - 14)
-                    height: Math.max(pagerFlickable.height, implicitHeight)
-                    readOnly: true
-                    selectByMouse: true
-                    selectByKeyboard: true
-                    persistentSelection: false
-                    textFormat: TextEdit.RichText
-                    wrapMode: TextEdit.WrapAnywhere
-                    color: fluxTheme.textPrimary
-                    selectionColor: fluxTheme.selectionBg
-                    selectedTextColor: fluxTheme.selectionText
-                    font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
-                    font.pixelSize: 12
-
-                    MouseArea {
-                        anchors.fill: parent
-                        acceptedButtons: Qt.RightButton
-                        onClicked: function (mouse) {
-                            pagerContextMenu.popup();
-                            mouse.accepted = true;
-                        }
-                    }
-
-                    // Auto-scroll pager during drag selection past top/bottom edges
-                    TextEditDragAutoScroller {
-                        flickable: pagerFlickable
-                        textEdit: pagerTextEdit
-                    }
-
-                    FluxMenu {
-                        id: pagerContextMenu
-
-                        FluxMenuItem {
-                            text: "📋 Copia selezione (Ctrl+C)"
-                            enabled: pagerTextEdit.selectedText.length > 0
-                            font.pixelSize: 11
-                            onClicked: panelRoot.copySelectionWithFeedback(pagerTextEdit, "selection")
-                        }
-                        FluxMenuItem {
-                            text: "⧉ Copia tutto il pager"
-                            font.pixelSize: 11
-                            onClicked: {
-                                if (panelRoot.terminalVm) {
-                                    panelRoot.copyWithFeedback(panelRoot.terminalVm.copyPagerOutput(), "pager");
-                                }
-                            }
-                        }
-                        FluxMenuItem {
-                            text: "☑ Seleziona tutto (Ctrl+A)"
-                            font.pixelSize: 11
-                            onClicked: pagerTextEdit.selectAll()
-                        }
-                        FluxMenuSeparator {}
-                        FluxMenuItem {
-                            text: "✕ Chiudi pager (q)"
-                            font.pixelSize: 11
-                            onClicked: {
-                                if (panelRoot.terminalVm) {
-                                    panelRoot.terminalVm.closePager();
-                                }
-                            }
-                        }
-                    }
-
-                    Keys.onPressed: function (event) {
-                        if (panelRoot.handleTerminalTabShortcut(event)) return;
-                        if (!panelRoot.terminalVm) return;
-                        const key = event.key;
-                        const ctrl = (event.modifiers & Qt.ControlModifier) !== 0;
-
-                        // Ctrl+C copies selection if any text is selected; otherwise closes pager
-                        if (ctrl && key === Qt.Key_C) {
-                            event.accepted = true;
-                            if (pagerTextEdit.selectedText.length > 0) {
-                                panelRoot.copySelectionWithFeedback(pagerTextEdit, "selection");
-                            } else {
-                                panelRoot.terminalVm.closePager();
-                            }
-                            return;
-                        }
-                        if (ctrl && key === Qt.Key_A) {
-                            event.accepted = true;
-                            pagerTextEdit.selectAll();
-                            return;
-                        }
-                        if (key === Qt.Key_Q || key === Qt.Key_Escape) {
-                            event.accepted = true;
-                            panelRoot.terminalVm.closePager();
-                            return;
-                        }
-                        if (key === Qt.Key_Down || key === Qt.Key_J || key === Qt.Key_Return || key === Qt.Key_Enter) {
-                            event.accepted = true;
-                            pagerFlickable.scrollByDelta(26);
-                            return;
-                        }
-                        if (key === Qt.Key_Up || key === Qt.Key_K) {
-                            event.accepted = true;
-                            pagerFlickable.scrollByDelta(-26);
-                            return;
-                        }
-                        if (key === Qt.Key_Space || key === Qt.Key_PageDown || key === Qt.Key_F) {
-                            event.accepted = true;
-                            pagerFlickable.scrollByDelta(Math.max(120, pagerFlickable.height * 0.85));
-                            return;
-                        }
-                        if (key === Qt.Key_B || key === Qt.Key_PageUp) {
-                            event.accepted = true;
-                            pagerFlickable.scrollByDelta(-Math.max(120, pagerFlickable.height * 0.85));
-                            return;
-                        }
-                        if (key === Qt.Key_Home || (key === Qt.Key_G && !(event.modifiers & Qt.ShiftModifier))) {
-                            event.accepted = true;
-                            panelRoot.scrollPagerToTop();
-                            return;
-                        }
-                        if (key === Qt.Key_End || (key === Qt.Key_G && (event.modifiers & Qt.ShiftModifier))) {
-                            event.accepted = true;
-                            panelRoot.scrollPagerToBottom();
-                            return;
-                        }
+                onClearOrCloseRequested: {
+                    if (panelRoot.terminalVm) {
+                        panelRoot.terminalVm.closePager();
                     }
                 }
             }
@@ -1450,7 +1050,7 @@ Rectangle {
                 }
 
                 Text {
-                    text: "Riga " + pagerFlickable.topVisibleLine + " / " + (panelRoot.terminalVm ? panelRoot.terminalVm.pagerLineCount : 0)
+                    text: "Riga " + pagerPane.topVisibleLine + " / " + (panelRoot.terminalVm ? panelRoot.terminalVm.pagerLineCount : 0)
                     color: fluxTheme.borderFocus
                     font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
                     font.pixelSize: 11
@@ -1475,7 +1075,7 @@ Rectangle {
                     fontBold: true
                     onClicked: {
                         panelRoot.scrollPagerToTop();
-                        pagerTextEdit.forceActiveFocus();
+                        pagerPane.textEdit.forceActiveFocus();
                     }
                 }
 
@@ -1489,7 +1089,7 @@ Rectangle {
                     fontBold: true
                     onClicked: {
                         panelRoot.scrollPagerToBottom();
-                        pagerTextEdit.forceActiveFocus();
+                        pagerPane.textEdit.forceActiveFocus();
                     }
                 }
 
@@ -1889,421 +1489,26 @@ Rectangle {
         }
     }
 
-    // =========================================================================
-    // 5. CONFIRMATION DIALOG WHEN CLOSING A TAB WITH A RUNNING COMMAND
-    // =========================================================================
-    Dialog {
-        id: closeRunningTabDialog
-        objectName: "closeRunningTabDialog"
-        property int pendingTabIndex: -1
-        property string pendingTabTitle: ""
+    TerminalTabDialogs {
+        id: tabDialogs
+        terminalVm: panelRoot.terminalVm
+        defaultTabAccent: panelRoot.defaultTabAccent
+        defaultColorPalette: panelRoot.defaultColorPalette
+        onFocusInputRequested: panelRoot.focusInput()
+    }
 
-        anchors.centerIn: Overlay.overlay
-        width: 430
-        modal: true
-        padding: 18
-        header: null
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-
-        onOpened: cancelCloseTabBtn.forceActiveFocus()
-        onClosed: {
-            pendingTabIndex = -1;
-            if (panelRoot.terminalVm && panelRoot.terminalVm.isVisible) {
+    TerminalTabMenus {
+        id: tabMenus
+        terminalVm: panelRoot.terminalVm
+        onRenameTabRequested: function(idx) { panelRoot.openRenameTabDialog(idx); }
+        onColorTabRequested: function(idx) { panelRoot.openTabColorDialog(idx); }
+        onNewTabRequested: {
+            if (panelRoot.terminalVm) {
+                panelRoot.terminalVm.createTab("");
                 panelRoot.focusInput();
             }
         }
-
-        background: FluxModalBackground {}
-
-        contentItem: ColumnLayout {
-            spacing: 14
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 12
-
-                Rectangle {
-                    width: 36
-                    height: 36
-                    radius: 10
-                    color: fluxTheme.warningBg
-                    border.color: fluxTheme.warning
-                    border.width: 1
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "⚠"
-                        color: fluxTheme.warningText
-                        font.pixelSize: 16
-                    }
-                }
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 3
-
-                    Text {
-                        text: "Comando in esecuzione"
-                        color: fluxTheme.textPrimary
-                        font.pixelSize: 14
-                        font.bold: true
-                    }
-
-                    Text {
-                        text: "Nella scheda \"" + closeRunningTabDialog.pendingTabTitle + "\" c'è ancora un processo attivo.\nVuoi terminarlo e chiudere la scheda?"
-                        color: fluxTheme.textSecondary
-                        font.pixelSize: 12
-                        wrapMode: Text.WordWrap
-                        Layout.fillWidth: true
-                    }
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-
-                Item { Layout.fillWidth: true }
-
-                FluxActionButton {
-                    id: cancelCloseTabBtn
-                    objectName: "cancelCloseTabBtn"
-                    text: "Annulla"
-                    Layout.preferredHeight: 30
-                    onClicked: closeRunningTabDialog.close()
-                }
-
-                FluxActionButton {
-                    id: confirmCloseTabBtn
-                    objectName: "confirmCloseTabBtn"
-                    text: "Termina e chiudi"
-                    Layout.preferredHeight: 30
-                    baseColor: fluxTheme.dangerBg
-                    hoverColor: fluxTheme.danger
-                    baseBorderColor: fluxTheme.danger
-                    textColor: fluxTheme.dangerText
-                    hoverTextColor: fluxTheme.selectionText
-                    fontBold: true
-                    onClicked: {
-                        const idx = closeRunningTabDialog.pendingTabIndex;
-                        closeRunningTabDialog.close();
-                        if (panelRoot.terminalVm && idx >= 0 && idx < panelRoot.terminalVm.tabs.length) {
-                            panelRoot.terminalVm.closeTab(idx);
-                            if (panelRoot.terminalVm.isVisible) {
-                                panelRoot.focusInput();
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // =========================================================================
-    // 6. TAB CONTEXT MENU, ACTIVE-TAB SHELL SWITCHER & RENAME DIALOG
-    // =========================================================================
-    FluxMenu {
-        id: tabContextMenu
-        objectName: "tabContextMenu"
-        property int targetTabIndex: -1
-        readonly property string targetTabShellId: {
-            if (!panelRoot.terminalVm || targetTabIndex < 0) return "";
-            const tabs = panelRoot.terminalVm.tabs;
-            if (!tabs || targetTabIndex >= tabs.length) return "";
-            return tabs[targetTabIndex].shellId || "";
-        }
-
-        function openForTab(index, sourceItem, localX, localY) {
-            targetTabIndex = index;
-            popup(sourceItem, localX, localY);
-        }
-
-        FluxMenuItem {
-            objectName: "tabMenuRenameItem"
-            text: "✏ Rinomina scheda..."
-            font.pixelSize: 11
-            onClicked: panelRoot.openRenameTabDialog(tabContextMenu.targetTabIndex)
-        }
-
-        FluxMenuItem {
-            objectName: "tabMenuColorItem"
-            text: "🎨 Colore scheda..."
-            font.pixelSize: 11
-            onClicked: panelRoot.openTabColorDialog(tabContextMenu.targetTabIndex)
-        }
-
-        FluxMenuItem {
-            objectName: "tabMenuNewTabItem"
-            text: "＋ Nuova scheda"
-            font.pixelSize: 11
-            onClicked: {
-                if (panelRoot.terminalVm) {
-                    panelRoot.terminalVm.createTab("");
-                    panelRoot.focusInput();
-                }
-            }
-        }
-
-        FluxMenuSeparator {
-            visible: Boolean(panelRoot.terminalVm && panelRoot.terminalVm.availableShells.length > 1)
-        }
-
-        Repeater {
-            model: (panelRoot.terminalVm && panelRoot.terminalVm.availableShells.length > 1)
-                ? panelRoot.terminalVm.availableShells
-                : []
-
-            FluxMenuItem {
-                required property var modelData
-                readonly property bool isCurrentShell: Boolean(modelData && modelData.id === tabContextMenu.targetTabShellId)
-                objectName: modelData ? ("tabMenuShell_" + modelData.id) : ""
-                text: (isCurrentShell ? "✓ " : "   ") + "Shell: " + (modelData ? modelData.displayName : "")
-                font.pixelSize: 11
-                font.bold: isCurrentShell
-                onClicked: {
-                    if (modelData) {
-                        panelRoot.applyShellToTab(tabContextMenu.targetTabIndex, modelData.id);
-                    }
-                }
-            }
-        }
-
-        FluxMenuSeparator {}
-
-        FluxMenuItem {
-            objectName: "tabMenuCloseItem"
-            text: "✕ Chiudi scheda"
-            font.pixelSize: 11
-            onClicked: panelRoot.requestCloseTab(tabContextMenu.targetTabIndex)
-        }
-    }
-
-    FluxMenu {
-        id: activeTabShellMenu
-        objectName: "activeTabShellMenu"
-
-        function openForShellBadge(badgeItem) {
-            if (!badgeItem) return;
-            popup(badgeItem, 0, badgeItem.height + 4);
-        }
-
-        Repeater {
-            model: panelRoot.terminalVm ? panelRoot.terminalVm.availableShells : []
-
-            FluxMenuItem {
-                required property var modelData
-                readonly property bool isCurrentShell: Boolean(
-                    panelRoot.terminalVm && modelData && modelData.id === panelRoot.terminalVm.activeShellId
-                )
-                objectName: modelData ? ("shellBadgeMenuItem_" + modelData.id) : ""
-                text: (isCurrentShell ? "✓ " : "   ") + (modelData ? modelData.displayName : "")
-                font.pixelSize: 11
-                font.bold: isCurrentShell
-                onClicked: {
-                    if (panelRoot.terminalVm && modelData) {
-                        panelRoot.applyShellToTab(panelRoot.terminalVm.activeTabIndex, modelData.id);
-                    }
-                }
-            }
-        }
-    }
-
-    Dialog {
-        id: renameTabDialog
-        objectName: "renameTabDialog"
-        property int targetTabIndex: -1
-        property string initialTitle: ""
-        property string initialColor: ""
-
-        anchors.centerIn: Overlay.overlay
-        width: 410
-        modal: true
-        padding: 18
-        header: null
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-
-        function submitRename() {
-            const trimmed = renameTabInput.text.trim();
-            if (trimmed.length === 0) return;
-            const idx = targetTabIndex;
-            const nextColor = renameColorSwatches.selectedColor;
-            close();
-            if (panelRoot.terminalVm && idx >= 0) {
-                panelRoot.terminalVm.renameTab(idx, trimmed);
-                panelRoot.terminalVm.setTabColor(idx, nextColor);
-            }
-        }
-
-        onOpened: {
-            renameTabInput.text = initialTitle;
-            renameColorSwatches.selectedColor = initialColor;
-            renameTabInput.forceActiveFocus();
-            renameTabInput.selectAll();
-        }
-        onClosed: {
-            targetTabIndex = -1;
-            if (panelRoot.terminalVm && panelRoot.terminalVm.isVisible) {
-                panelRoot.focusInput();
-            }
-        }
-
-        background: FluxModalBackground {}
-
-        contentItem: ColumnLayout {
-            spacing: 12
-
-            Text {
-                text: "✏ Rinomina e personalizza scheda"
-                color: fluxTheme.textPrimary
-                font.pixelSize: 13
-                font.bold: true
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 34
-                radius: 7
-                color: fluxTheme.inputBg
-                border.color: renameTabInput.activeFocus ? fluxTheme.borderFocus : fluxTheme.borderHighlight
-                border.width: 1
-
-                TextInput {
-                    id: renameTabInput
-                    objectName: "renameTabInput"
-                    anchors.fill: parent
-                    anchors.leftMargin: 10
-                    anchors.rightMargin: 10
-                    verticalAlignment: TextInput.AlignVCenter
-                    color: fluxTheme.textPrimary
-                    selectionColor: fluxTheme.selectionBg
-                    selectedTextColor: fluxTheme.selectionText
-                    font.pixelSize: 12
-                    selectByMouse: true
-                    clip: true
-
-                    Keys.onReturnPressed: renameTabDialog.submitRename()
-                    Keys.onEnterPressed: renameTabDialog.submitRename()
-                    Keys.onEscapePressed: renameTabDialog.close()
-                }
-            }
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 6
-
-                Text {
-                    text: "Colore scheda"
-                    color: fluxTheme.textSecondary
-                    font.pixelSize: 11
-                }
-
-                FluxColorSwatchRow {
-                    id: renameColorSwatches
-                    showDefaultOption: true
-                    swatchSize: 22
-                    defaultAccentColor: panelRoot.defaultTabAccent
-                    paletteColors: (panelRoot.terminalVm && panelRoot.terminalVm.tabColorPalette && panelRoot.terminalVm.tabColorPalette.length > 0)
-                        ? panelRoot.terminalVm.tabColorPalette
-                        : panelRoot.defaultColorPalette
-                    objectNamePrefix: "renameTabSwatch_"
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-
-                Item { Layout.fillWidth: true }
-
-                FluxActionButton {
-                    id: cancelRenameTabBtn
-                    objectName: "cancelRenameTabBtn"
-                    text: "Annulla"
-                    Layout.preferredHeight: 30
-                    onClicked: renameTabDialog.close()
-                }
-
-                FluxActionButton {
-                    id: confirmRenameTabBtn
-                    objectName: "confirmRenameTabBtn"
-                    text: "Salva"
-                    enabled: renameTabInput.text.trim().length > 0
-                    Layout.preferredHeight: 30
-                    baseColor: fluxTheme.infoBg
-                    hoverColor: fluxTheme.surfaceGlass
-                    baseBorderColor: fluxTheme.borderFocus
-                    textColor: fluxTheme.textPrimary
-                    fontBold: true
-                    onClicked: renameTabDialog.submitRename()
-                }
-            }
-        }
-    }
-
-    Dialog {
-        id: tabColorDialog
-        objectName: "tabColorDialog"
-        property int targetTabIndex: -1
-        property string targetTabTitle: ""
-        property string selectedColor: ""
-
-        anchors.centerIn: Overlay.overlay
-        width: 400
-        modal: true
-        padding: 18
-        header: null
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-
-        onOpened: colorPickerSwatches.selectedColor = selectedColor
-        onClosed: {
-            targetTabIndex = -1;
-            if (panelRoot.terminalVm && panelRoot.terminalVm.isVisible) {
-                panelRoot.focusInput();
-            }
-        }
-
-        background: FluxModalBackground {}
-
-        contentItem: ColumnLayout {
-            spacing: 12
-
-            Text {
-                text: "🎨 Colore scheda: " + tabColorDialog.targetTabTitle
-                color: fluxTheme.textPrimary
-                font.pixelSize: 13
-                font.bold: true
-                elide: Text.ElideRight
-                Layout.fillWidth: true
-            }
-
-            FluxColorSwatchRow {
-                id: colorPickerSwatches
-                showDefaultOption: true
-                swatchSize: 22
-                defaultAccentColor: panelRoot.defaultTabAccent
-                paletteColors: (panelRoot.terminalVm && panelRoot.terminalVm.tabColorPalette && panelRoot.terminalVm.tabColorPalette.length > 0)
-                    ? panelRoot.terminalVm.tabColorPalette
-                    : panelRoot.defaultColorPalette
-                objectNamePrefix: "quickTabSwatch_"
-                onColorPicked: function (hexColor) {
-                    const idx = tabColorDialog.targetTabIndex;
-                    tabColorDialog.close();
-                    if (panelRoot.terminalVm && idx >= 0) {
-                        panelRoot.terminalVm.setTabColor(idx, hexColor);
-                    }
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-
-                FluxActionButton {
-                    text: "Chiudi"
-                    Layout.preferredHeight: 28
-                    onClicked: tabColorDialog.close()
-                }
-            }
-        }
+        onApplyShellRequested: function(idx, shellId) { panelRoot.applyShellToTab(idx, shellId); }
+        onCloseTabRequested: function(idx) { panelRoot.requestCloseTab(idx); }
     }
 }

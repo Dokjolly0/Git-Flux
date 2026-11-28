@@ -103,246 +103,31 @@ Rectangle {
         // ==========================================
         // MARKDOWN PREVIEW SUB-TOOLBAR
         // ==========================================
-        Rectangle {
+        MarkdownToolbar {
             Layout.fillWidth: true
             Layout.preferredHeight: 36
-            color: theme.surface
-            border.color: theme.border
-            border.width: 1
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 12
-                spacing: 8
-
-                // TOC Drawer Toggle
-                Button {
-                    id: tocBtn
-                    Layout.preferredHeight: 26
-                    leftPadding: 9
-                    rightPadding: 9
-                    hoverEnabled: true
-                    enabled: root.diffViewer && root.diffViewer.markdownToc && root.diffViewer.markdownToc.length > 0
-                    opacity: enabled ? 1.0 : 0.45
-                    background: Rectangle {
-                        color: root.showToc ? theme.infoBg : (tocBtn.hovered ? theme.cardHover : theme.surface)
-                        radius: 7
-                        border.color: root.showToc ? theme.accentCyan : theme.border
-                        border.width: 1
-                        Behavior on color {
-                            ColorAnimation {
-                                duration: theme.animFast
-                            }
-                        }
-                    }
-                    contentItem: RowLayout {
-                        spacing: 5
-                        Text {
-                            text: "📑"; font.pixelSize: 10
-                        }
-                        Text {
-                            text: {
-                                const tocCount = (root.diffViewer && root.diffViewer.markdownToc) ? root.diffViewer.markdownToc.length : 0;
-                                return "Indice" + (tocCount > 0 ? (" (" + tocCount + ")") : "");
-                            }
-                            color: root.showToc ? theme.accentCyan : theme.textSecondary
-                            font.pixelSize: 11
-                            font.bold: root.showToc
-                        }
-                    }
-                    onClicked: root.showToc = !root.showToc
+            diffViewer: root.diffViewer
+            showToc: root.showToc
+            fullWidth: root.fullWidth
+            zoomScale: root.zoomScale
+            copiedWholeFile: root.copiedWholeFile
+            changedBlocksCount: root.changedBlocksCount
+            onToggleTocRequested: root.showToc = !root.showToc
+            onJumpToNextChangeRequested: {
+                if (root.diffViewer && !root.diffViewer.showMarkdownRichDiff) {
+                    root.diffViewer.setShowMarkdownRichDiff(true);
                 }
-
-                // Rich Diff Toggle & Jump to Next Change
-                Button {
-                    id: richDiffBtn
-                    Layout.preferredHeight: 26
-                    leftPadding: 9
-                    rightPadding: 9
-                    hoverEnabled: true
-                    readonly property bool isActive: root.diffViewer ? root.diffViewer.showMarkdownRichDiff : true
-                    background: Rectangle {
-                        color: richDiffBtn.isActive ? theme.successBg : (richDiffBtn.hovered ? theme.cardHover : theme.surface)
-                        radius: 7
-                        border.color: richDiffBtn.isActive ? theme.accentTeal : theme.border
-                        border.width: 1
-                        Behavior on color {
-                            ColorAnimation {
-                                duration: theme.animFast
-                            }
-                        }
-                    }
-                    contentItem: RowLayout {
-                        spacing: 5
-                        Rectangle {
-                            Layout.preferredWidth: 7
-                            Layout.preferredHeight: 7
-                            radius: 3.5
-                            color: richDiffBtn.isActive ? theme.accentTeal : theme.textMuted
-                        }
-                        Text {
-                            text: "Rich Diff" + (root.changedBlocksCount > 0 ? (" (" + root.changedBlocksCount + ")") : "")
-                            color: richDiffBtn.isActive ? theme.successText : theme.textMuted
-                            font.pixelSize: 11
-                            font.bold: richDiffBtn.isActive
-                        }
-                    }
-                    onClicked: {
-                        if (root.diffViewer) {
-                            root.diffViewer.setShowMarkdownRichDiff(!root.diffViewer.showMarkdownRichDiff);
-                        }
-                    }
-                }
-
-                Button {
-                    id: nextChangeBtn
-                    visible: root.changedBlocksCount > 0
-                    Layout.preferredHeight: 26
-                    leftPadding: 9
-                    rightPadding: 9
-                    hoverEnabled: true
-                    background: Rectangle {
-                        color: nextChangeBtn.hovered ? theme.cardHover : theme.surface
-                        radius: 7
-                        border.color: theme.border
-                        border.width: 1
-                        Behavior on color {
-                            ColorAnimation {
-                                duration: theme.animFast
-                            }
-                        }
-                    }
-                    contentItem: Text {
-                        text: "↓ Prossima modifica"
-                        color: theme.accentCyan
-                        font.pixelSize: 11
-                        font.bold: true
-                    }
-                    onClicked: {
-                        if (root.diffViewer && !root.diffViewer.showMarkdownRichDiff) {
-                            root.diffViewer.setShowMarkdownRichDiff(true);
-                        }
-                        root.jumpToNextChange();
-                    }
-                }
-
-                Item {
-                    Layout.fillWidth: true
-                }
-
-                // Width Toggle (GitHub Centered vs Full Width)
-                Button {
-                    id: widthToggleBtn
-                    Layout.preferredHeight: 26
-                    leftPadding: 9
-                    rightPadding: 9
-                    hoverEnabled: true
-                    background: Rectangle {
-                        color: widthToggleBtn.hovered ? theme.cardHover : theme.surface
-                        radius: 7
-                        border.color: theme.border
-                        border.width: 1
-                        Behavior on color {
-                            ColorAnimation {
-                                duration: theme.animFast
-                            }
-                        }
-                    }
-                    contentItem: Text {
-                        text: root.fullWidth ? "↔ Larghezza lettore" : "↔ Espandi pagina"
-                        color: theme.textSecondary
-                        font.pixelSize: 11
-                    }
-                    onClicked: root.fullWidth = !root.fullWidth
-                }
-
-                // Zoom Controls
-                Rectangle {
-                    Layout.preferredHeight: 26
-                    implicitWidth: zoomRow.implicitWidth + 8
-                    color: theme.inputBg
-                    radius: 7
-                    border.color: theme.border
-                    border.width: 1
-
-                    RowLayout {
-                        id: zoomRow
-                        anchors.centerIn: parent
-                        spacing: 2
-
-                        Button {
-                            id: zoomOutBtn
-                            Layout.preferredWidth: 22
-                            Layout.preferredHeight: 20
-                            background: Rectangle {
-                                color: zoomOutBtn.hovered ? theme.cardHover : "transparent"
-                                radius: 3
-                            }
-                            contentItem: Text {
-                                text: "A-"
-                                color: theme.textSecondary
-                                font.pixelSize: 10
-                                font.bold: true
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                            onClicked: root.zoomScale = Math.max(0.8, Math.round((root.zoomScale - 0.1) * 10) / 10)
-                        }
-
-                        Text {
-                            text: Math.round(root.zoomScale * 100) + "%"
-                            color: theme.textMuted
-                            font.pixelSize: 10
-                            Layout.preferredWidth: 34
-                            horizontalAlignment: Text.AlignHCenter
-                        }
-
-                        Button {
-                            id: zoomInBtn
-                            Layout.preferredWidth: 22
-                            Layout.preferredHeight: 20
-                            background: Rectangle {
-                                color: zoomInBtn.hovered ? theme.cardHover : "transparent"
-                                radius: 3
-                            }
-                            contentItem: Text {
-                                text: "A+"
-                                color: theme.textSecondary
-                                font.pixelSize: 10
-                                font.bold: true
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                            onClicked: root.zoomScale = Math.min(1.5, Math.round((root.zoomScale + 0.1) * 10) / 10)
-                        }
-                    }
-                }
-
-                // Copy Full Markdown Source
-                Button {
-                    id: copyMdBtn
-                    Layout.preferredHeight: 24
-                    enabled: root.diffViewer && root.diffViewer.markdownSource && root.diffViewer.markdownSource.length > 0
-                    background: Rectangle {
-                        color: root.copiedWholeFile ? theme.successBg : (copyMdBtn.hovered ? theme.cardHover : theme.surfaceElevated)
-                        radius: 4
-                        border.color: root.copiedWholeFile ? theme.accentTeal : theme.borderHighlight
-                        border.width: 1
-                    }
-                    contentItem: Text {
-                        text: root.copiedWholeFile ? "✓ Copiato!" : "📋 Copia .md"
-                        color: root.copiedWholeFile ? theme.successText : theme.textSecondary
-                        font.pixelSize: 11
-                        font.bold: root.copiedWholeFile
-                    }
-                    onClicked: {
-                        if (root.diffViewer && root.diffViewer.markdownSource) {
-                            root.diffViewer.copyToClipboard(root.diffViewer.markdownSource);
-                            root.copiedWholeFile = true;
-                            copyWholeTimer.restart();
-                        }
-                    }
+                root.jumpToNextChange();
+            }
+            onToggleFullWidthRequested: root.fullWidth = !root.fullWidth
+            onZoomDeltaRequested: function(delta) {
+                root.zoomScale = Math.max(0.8, Math.min(1.5, Math.round((root.zoomScale + delta) * 10) / 10));
+            }
+            onCopyWholeRequested: {
+                if (root.diffViewer && root.diffViewer.markdownSource) {
+                    root.diffViewer.copyToClipboard(root.diffViewer.markdownSource);
+                    root.copiedWholeFile = true;
+                    copyWholeTimer.restart();
                 }
             }
         }
@@ -386,73 +171,13 @@ Rectangle {
             spacing: 0
 
             // TOC Sidebar
-            Rectangle {
+            MarkdownTocSidebar {
                 visible: root.showToc
                 Layout.preferredWidth: 235
                 Layout.fillHeight: true
-                color: theme.canvas
-                border.color: theme.border
-                border.width: 1
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    spacing: 0
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 32
-                        color: theme.surface
-                        border.color: theme.border
-                        border.width: 1
-
-                        Text {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 12
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "SOMMARIO DOCUMENTO"
-                            color: theme.textMuted
-                            font.pixelSize: 10
-                            font.bold: true
-                        }
-                    }
-
-                    ListView {
-                        SmoothWheelScroller {}
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        clip: true
-                        model: root.diffViewer ? root.diffViewer.markdownToc : null
-                        boundsBehavior: Flickable.StopAtBounds
-                        ScrollBar.vertical: FluxScrollBar {
-                        }
-
-                        delegate: Rectangle {
-                            width: ListView.view.width
-                            height: 28
-                            color: tocItemMouse.containsMouse ? theme.surfaceElevated : "transparent"
-
-                            Text {
-                                anchors.left: parent.left
-                                anchors.leftMargin: 10 + Math.max(0, (modelData.level - 1)) * 12
-                                anchors.right: parent.right
-                                anchors.rightMargin: 10
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: modelData.title || ""
-                                color: modelData.level <= 2 ? theme.textPrimary : theme.textMuted
-                                font.pixelSize: modelData.level === 1 ? 12 : 11
-                                font.bold: modelData.level <= 2
-                                elide: Text.ElideRight
-                            }
-
-                            MouseArea {
-                                id: tocItemMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.jumpToBlock(modelData.blockIndex)
-                            }
-                        }
-                    }
+                diffViewer: root.diffViewer
+                onBlockJumpRequested: function(blockIdx) {
+                    root.jumpToBlock(blockIdx);
                 }
             }
 
