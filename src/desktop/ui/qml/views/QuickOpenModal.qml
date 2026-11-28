@@ -20,6 +20,13 @@ Item {
         root.closed();
     }
 
+    Connections {
+        target: quickOpenVm
+        function onQuickSessionStarted(repoIds) {
+            root.sessionStarted(repoIds);
+        }
+    }
+
     // Darkened backdrop
     Rectangle {
         anchors.fill: parent
