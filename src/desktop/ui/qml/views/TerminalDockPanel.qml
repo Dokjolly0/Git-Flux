@@ -184,6 +184,25 @@ Rectangle {
         }
     }
 
+    function openRenameTabDialog(index) {
+        if (!terminalVm) return;
+        const tabs = terminalVm.tabs;
+        if (!tabs || index < 0 || index >= tabs.length) return;
+        const tab = tabs[index];
+        renameTabDialog.targetTabIndex = index;
+        renameTabDialog.initialTitle = (tab && tab.title) ? tab.title : "Terminal";
+        renameTabDialog.open();
+    }
+
+    function applyShellToTab(index, shellId) {
+        if (!terminalVm || !shellId) return;
+        if (index >= 0 && index !== terminalVm.activeTabIndex) {
+            terminalVm.activeTabIndex = index;
+        }
+        terminalVm.setActiveTabShell(shellId);
+        focusInput();
+    }
+
     function handleTerminalTabShortcut(event) {
         if (!terminalVm) return false;
         const ctrl = (event.modifiers & Qt.ControlModifier) !== 0;
@@ -464,13 +483,23 @@ Rectangle {
 
                                 MouseArea {
                                     id: termTabMa
+                                    objectName: "termTabMouseArea_" + termTabRect.tabIdx
                                     anchors.fill: parent
+                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        if (panelRoot.terminalVm) {
-                                            panelRoot.terminalVm.activeTabIndex = termTabRect.tabIdx;
-                                            cmdInput.forceActiveFocus();
+                                    onClicked: function (mouse) {
+                                        if (!panelRoot.terminalVm) return;
+                                        if (mouse.button === Qt.RightButton) {
+                                            tabContextMenu.openForTab(termTabRect.tabIdx, termTabMa, mouse.x, mouse.y);
+                                            return;
+                                        }
+                                        panelRoot.terminalVm.activeTabIndex = termTabRect.tabIdx;
+                                        cmdInput.forceActiveFocus();
+                                    }
+                                    onDoubleClicked: function (mouse) {
+                                        if (mouse.button === Qt.LeftButton) {
+                                            panelRoot.openRenameTabDialog(termTabRect.tabIdx);
                                         }
                                     }
                                 }
@@ -495,18 +524,54 @@ Rectangle {
                                     }
 
                                     Text {
+                                        objectName: "termTabTitle_" + termTabRect.tabIdx
                                         text: termTabRect.modelData ? (termTabRect.modelData.title || "Terminal") : "Terminal"
                                         color: termTabRect.isActive ? "#F8FAFC" : "#94A3B8"
                                         font.pixelSize: 11
                                         font.bold: termTabRect.isActive
                                     }
 
-                                    Text {
-                                        visible: termTabRect.isActive && termTabRect.modelData && termTabRect.modelData.shellId && termTabRect.modelData.shellId !== "auto"
-                                        text: termTabRect.modelData ? termTabRect.modelData.shellId : ""
-                                        color: "#64748B"
-                                        font.pixelSize: 9
-                                        font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
+                                    Rectangle {
+                                        id: shellBadge
+                                        objectName: termTabRect.isActive ? "activeTabShellBadge" : ""
+                                        readonly property string shellId: (termTabRect.modelData && termTabRect.modelData.shellId)
+                                            ? termTabRect.modelData.shellId
+                                            : "auto"
+                                        readonly property bool canSwitchShell: Boolean(
+                                            panelRoot.terminalVm && panelRoot.terminalVm.availableShells.length > 1
+                                        )
+                                        visible: termTabRect.isActive && (canSwitchShell || (shellId.length > 0 && shellId !== "auto"))
+                                        Layout.preferredHeight: 16
+                                        implicitWidth: shellBadgeText.implicitWidth + (canSwitchShell ? 10 : 4)
+                                        radius: 4
+                                        color: canSwitchShell && shellBadgeMa.containsMouse ? "#1E3554" : (canSwitchShell ? "#0E1A2B" : "transparent")
+                                        border.color: canSwitchShell && shellBadgeMa.containsMouse ? "#38BDF8" : (canSwitchShell ? "#253A57" : "transparent")
+                                        border.width: canSwitchShell ? 1 : 0
+
+                                        Text {
+                                            id: shellBadgeText
+                                            anchors.centerIn: parent
+                                            text: shellBadge.canSwitchShell ? (shellBadge.shellId + " ▾") : shellBadge.shellId
+                                            color: shellBadge.canSwitchShell && shellBadgeMa.containsMouse ? "#7DD3FC" : "#94A3B8"
+                                            font.pixelSize: 9
+                                            font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
+                                        }
+
+                                        MouseArea {
+                                            id: shellBadgeMa
+                                            z: 2
+                                            anchors.fill: parent
+                                            enabled: shellBadge.canSwitchShell
+                                            hoverEnabled: true
+                                            cursorShape: shellBadge.canSwitchShell ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                            ToolTip.visible: shellBadge.canSwitchShell && containsMouse
+                                            ToolTip.text: "Cambia shell per questa scheda (attuale: " + shellBadge.shellId + ")"
+                                            onClicked: {
+                                                if (panelRoot.terminalVm && shellBadge.canSwitchShell) {
+                                                    activeTabShellMenu.openForShellBadge(shellBadge);
+                                                }
+                                            }
+                                        }
                                     }
 
                                     MouseArea {
@@ -1917,6 +1982,214 @@ Rectangle {
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // 6. TAB CONTEXT MENU, ACTIVE-TAB SHELL SWITCHER & RENAME DIALOG
+    // =========================================================================
+    FluxMenu {
+        id: tabContextMenu
+        objectName: "tabContextMenu"
+        property int targetTabIndex: -1
+        readonly property string targetTabShellId: {
+            if (!panelRoot.terminalVm || targetTabIndex < 0) return "";
+            const tabs = panelRoot.terminalVm.tabs;
+            if (!tabs || targetTabIndex >= tabs.length) return "";
+            return tabs[targetTabIndex].shellId || "";
+        }
+
+        function openForTab(index, sourceItem, localX, localY) {
+            targetTabIndex = index;
+            popup(sourceItem, localX, localY);
+        }
+
+        FluxMenuItem {
+            objectName: "tabMenuRenameItem"
+            text: "✏ Rinomina scheda..."
+            font.pixelSize: 11
+            onClicked: panelRoot.openRenameTabDialog(tabContextMenu.targetTabIndex)
+        }
+
+        FluxMenuItem {
+            objectName: "tabMenuNewTabItem"
+            text: "＋ Nuova scheda"
+            font.pixelSize: 11
+            onClicked: {
+                if (panelRoot.terminalVm) {
+                    panelRoot.terminalVm.createTab("");
+                    panelRoot.focusInput();
+                }
+            }
+        }
+
+        FluxMenuSeparator {
+            visible: Boolean(panelRoot.terminalVm && panelRoot.terminalVm.availableShells.length > 1)
+        }
+
+        Repeater {
+            model: (panelRoot.terminalVm && panelRoot.terminalVm.availableShells.length > 1)
+                ? panelRoot.terminalVm.availableShells
+                : []
+
+            FluxMenuItem {
+                required property var modelData
+                readonly property bool isCurrentShell: Boolean(modelData && modelData.id === tabContextMenu.targetTabShellId)
+                objectName: modelData ? ("tabMenuShell_" + modelData.id) : ""
+                text: (isCurrentShell ? "✓ " : "   ") + "Shell: " + (modelData ? modelData.displayName : "")
+                font.pixelSize: 11
+                font.bold: isCurrentShell
+                onClicked: {
+                    if (modelData) {
+                        panelRoot.applyShellToTab(tabContextMenu.targetTabIndex, modelData.id);
+                    }
+                }
+            }
+        }
+
+        FluxMenuSeparator {}
+
+        FluxMenuItem {
+            objectName: "tabMenuCloseItem"
+            text: "✕ Chiudi scheda"
+            font.pixelSize: 11
+            onClicked: panelRoot.requestCloseTab(tabContextMenu.targetTabIndex)
+        }
+    }
+
+    FluxMenu {
+        id: activeTabShellMenu
+        objectName: "activeTabShellMenu"
+
+        function openForShellBadge(badgeItem) {
+            if (!badgeItem) return;
+            popup(badgeItem, 0, badgeItem.height + 4);
+        }
+
+        Repeater {
+            model: panelRoot.terminalVm ? panelRoot.terminalVm.availableShells : []
+
+            FluxMenuItem {
+                required property var modelData
+                readonly property bool isCurrentShell: Boolean(
+                    panelRoot.terminalVm && modelData && modelData.id === panelRoot.terminalVm.activeShellId
+                )
+                objectName: modelData ? ("shellBadgeMenuItem_" + modelData.id) : ""
+                text: (isCurrentShell ? "✓ " : "   ") + (modelData ? modelData.displayName : "")
+                font.pixelSize: 11
+                font.bold: isCurrentShell
+                onClicked: {
+                    if (panelRoot.terminalVm && modelData) {
+                        panelRoot.applyShellToTab(panelRoot.terminalVm.activeTabIndex, modelData.id);
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: renameTabDialog
+        objectName: "renameTabDialog"
+        property int targetTabIndex: -1
+        property string initialTitle: ""
+
+        anchors.centerIn: Overlay.overlay
+        width: 390
+        modal: true
+        padding: 18
+        header: null
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        function submitRename() {
+            const trimmed = renameTabInput.text.trim();
+            if (trimmed.length === 0) return;
+            const idx = targetTabIndex;
+            close();
+            if (panelRoot.terminalVm && idx >= 0) {
+                panelRoot.terminalVm.renameTab(idx, trimmed);
+            }
+        }
+
+        onOpened: {
+            renameTabInput.text = initialTitle;
+            renameTabInput.forceActiveFocus();
+            renameTabInput.selectAll();
+        }
+        onClosed: {
+            targetTabIndex = -1;
+            if (panelRoot.terminalVm && panelRoot.terminalVm.isVisible) {
+                panelRoot.focusInput();
+            }
+        }
+
+        background: FluxModalBackground {}
+
+        contentItem: ColumnLayout {
+            spacing: 12
+
+            Text {
+                text: "✏ Rinomina scheda terminale"
+                color: "#F8FAFC"
+                font.pixelSize: 13
+                font.bold: true
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 34
+                radius: 7
+                color: "#090E16"
+                border.color: renameTabInput.activeFocus ? "#38BDF8" : "#253750"
+                border.width: 1
+
+                TextInput {
+                    id: renameTabInput
+                    objectName: "renameTabInput"
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    verticalAlignment: TextInput.AlignVCenter
+                    color: "#F8FAFC"
+                    selectionColor: "#1D4ED8"
+                    selectedTextColor: "#FFFFFF"
+                    font.pixelSize: 12
+                    selectByMouse: true
+                    clip: true
+
+                    Keys.onReturnPressed: renameTabDialog.submitRename()
+                    Keys.onEnterPressed: renameTabDialog.submitRename()
+                    Keys.onEscapePressed: renameTabDialog.close()
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                Item { Layout.fillWidth: true }
+
+                FluxActionButton {
+                    id: cancelRenameTabBtn
+                    objectName: "cancelRenameTabBtn"
+                    text: "Annulla"
+                    Layout.preferredHeight: 30
+                    onClicked: renameTabDialog.close()
+                }
+
+                FluxActionButton {
+                    id: confirmRenameTabBtn
+                    objectName: "confirmRenameTabBtn"
+                    text: "Salva"
+                    enabled: renameTabInput.text.trim().length > 0
+                    Layout.preferredHeight: 30
+                    baseColor: "#122B45"
+                    hoverColor: "#1E4268"
+                    baseBorderColor: "#38BDF8"
+                    textColor: "#F8FAFC"
+                    fontBold: true
+                    onClicked: renameTabDialog.submitRename()
                 }
             }
         }

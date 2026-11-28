@@ -996,4 +996,123 @@ TEST_CASE("TerminalDockPanel keeps prompt focus for Ctrl+V and Up/Down after cli
         CHECK(footerHint->property("text").toString()
               == QStringLiteral("Invio esegui  •  ↓ / Tab scegli parametro  •  Esc chiudi"));
     }
+
+    SECTION("Tab rename via double-click or context menu and active tab shell switch via badge or menu")
+    {
+        auto findQuickItemByName = [](QQuickItem* root, const QString& name) -> QQuickItem*
+        {
+            if (!root) return nullptr;
+            std::vector<QQuickItem*> stack{root};
+            while (!stack.empty())
+            {
+                QQuickItem* cur = stack.back();
+                stack.pop_back();
+                if (cur->objectName() == name) return cur;
+                const auto children = cur->childItems();
+                for (QQuickItem* child : children)
+                {
+                    stack.push_back(child);
+                }
+            }
+            return nullptr;
+        };
+
+        auto* tabMa0 = findQuickItemByName(panelItem, QStringLiteral("termTabMouseArea_0"));
+        auto* renameDialog = panelObj->findChild<QObject*>(QStringLiteral("renameTabDialog"));
+        auto* renameInput = findQuickItemByName(panelItem, QStringLiteral("renameTabInput"));
+        if (!renameInput) renameInput = panelObj->findChild<QQuickItem*>(QStringLiteral("renameTabInput"));
+        auto* tabMenu = panelObj->findChild<QObject*>(QStringLiteral("tabContextMenu"));
+        auto* tabMenuRename = findQuickItemByName(panelItem, QStringLiteral("tabMenuRenameItem"));
+        if (!tabMenuRename) tabMenuRename = panelObj->findChild<QQuickItem*>(QStringLiteral("tabMenuRenameItem"));
+        REQUIRE(tabMa0 != nullptr);
+        REQUIRE(renameDialog != nullptr);
+        REQUIRE(renameInput != nullptr);
+        REQUIRE(tabMenu != nullptr);
+        REQUIRE(tabMenuRename != nullptr);
+
+        // 1. Double-click on tab 0 opens rename dialog and updates tab title on Enter
+        QTest::mouseDClick(&window, Qt::LeftButton, Qt::NoModifier, centerInWindow(tabMa0));
+        QCoreApplication::processEvents();
+        REQUIRE(renameDialog->property("opened").toBool());
+        CHECK(renameInput->hasActiveFocus());
+
+        renameInput->setProperty("text", QStringLiteral("Build"));
+        QTest::keyClick(&window, Qt::Key_Return);
+        QCoreApplication::processEvents();
+        CHECK_FALSE(renameDialog->property("opened").toBool());
+        REQUIRE(vm.tabs().size() == 1);
+        CHECK(vm.tabs().at(0).toMap().value(QStringLiteral("title")).toString() == QStringLiteral("Build"));
+        auto* title0 = findQuickItemByName(panelItem, QStringLiteral("termTabTitle_0"));
+        REQUIRE(title0 != nullptr);
+        CHECK(title0->property("text").toString() == QStringLiteral("Build"));
+        CHECK(cmdInput->hasActiveFocus());
+
+        // 2. Right-click on tab 0 opens context menu -> Rename updates title to "Server"
+        tabMa0 = findQuickItemByName(panelItem, QStringLiteral("termTabMouseArea_0"));
+        REQUIRE(tabMa0 != nullptr);
+        REQUIRE(QTest::qWaitFor([&]() { return tabMa0->height() > 10.0; }, 1000));
+        QTest::mouseClick(&window, Qt::RightButton, Qt::NoModifier, centerInWindow(tabMa0));
+        REQUIRE(QTest::qWaitFor([&]() { return tabMenu->property("opened").toBool(); }, 1000));
+
+        QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, centerInWindow(tabMenuRename));
+        QCoreApplication::processEvents();
+        REQUIRE(renameDialog->property("opened").toBool());
+        renameInput->setProperty("text", QStringLiteral("Server"));
+        auto* confirmRenameBtn = panelObj->findChild<QQuickItem*>(QStringLiteral("confirmRenameTabBtn"));
+        REQUIRE(confirmRenameBtn != nullptr);
+        QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, centerInWindow(confirmRenameBtn));
+        QCoreApplication::processEvents();
+        CHECK(vm.tabs().at(0).toMap().value(QStringLiteral("title")).toString() == QStringLiteral("Server"));
+
+        // 3. Switch active tab shell via shell badge and via tab context menu (when >= 2 shells available)
+        const QVariantList shells = vm.availableShells();
+        if (shells.size() > 1)
+        {
+            const QString firstShell = vm.activeShellId();
+            QString otherShell;
+            for (const QVariant& sv : shells)
+            {
+                const QString sid = sv.toMap().value(QStringLiteral("id")).toString();
+                if (!sid.isEmpty() && sid != firstShell)
+                {
+                    otherShell = sid;
+                    break;
+                }
+            }
+            REQUIRE_FALSE(otherShell.isEmpty());
+
+            auto* shellBadge = findQuickItemByName(panelItem, QStringLiteral("activeTabShellBadge"));
+            auto* shellMenu = panelObj->findChild<QObject*>(QStringLiteral("activeTabShellMenu"));
+            REQUIRE(shellBadge != nullptr);
+            REQUIRE(shellMenu != nullptr);
+            CHECK(shellBadge->isVisible());
+            REQUIRE(QTest::qWaitFor([&]() { return shellBadge->height() > 10.0 && shellBadge->width() > 10.0; }, 1000));
+
+            QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, centerInWindow(shellBadge));
+            REQUIRE(QTest::qWaitFor([&]() { return shellMenu->property("opened").toBool(); }, 1000));
+
+            auto* shellMenuContent = shellMenu->property("contentItem").value<QQuickItem*>();
+            auto* otherShellItem = findQuickItemByName(shellMenuContent, QStringLiteral("shellBadgeMenuItem_") + otherShell);
+            REQUIRE(otherShellItem != nullptr);
+            QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, centerInWindow(otherShellItem));
+            QCoreApplication::processEvents();
+            CHECK(vm.activeShellId() == otherShell);
+            CHECK(cmdInput->hasActiveFocus());
+
+            // Switch back via tab right-click context menu
+            tabMa0 = findQuickItemByName(panelItem, QStringLiteral("termTabMouseArea_0"));
+            REQUIRE(tabMa0 != nullptr);
+            REQUIRE(QTest::qWaitFor([&]() { return tabMa0->height() > 10.0; }, 1000));
+            QTest::mouseClick(&window, Qt::RightButton, Qt::NoModifier, centerInWindow(tabMa0));
+            REQUIRE(QTest::qWaitFor([&]() { return tabMenu->property("opened").toBool(); }, 1000));
+
+            auto* tabMenuContent = tabMenu->property("contentItem").value<QQuickItem*>();
+            auto* backShellItem = findQuickItemByName(tabMenuContent, QStringLiteral("tabMenuShell_") + firstShell);
+            REQUIRE(backShellItem != nullptr);
+            QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, centerInWindow(backShellItem));
+            QCoreApplication::processEvents();
+            CHECK(vm.activeShellId() == firstShell);
+            CHECK(cmdInput->hasActiveFocus());
+        }
+    }
 }
