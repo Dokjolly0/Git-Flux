@@ -63,6 +63,20 @@ Rectangle {
         }
     }
 
+    function navigateCommandHistory(direction) {
+        if (!terminalVm) return;
+        if (terminalVm.hasCompletions) {
+            completionPopup.moveSelection(direction);
+        } else {
+            suppressCompletionOnTextChange = true;
+            cmdInput.text = (direction < 0)
+                ? terminalVm.historyPrevious(cmdInput.text)
+                : terminalVm.historyNext();
+            cmdInput.cursorPosition = cmdInput.text.length;
+            suppressCompletionOnTextChange = false;
+        }
+    }
+
     function scrollOutputToBottom() {
         const maxY = Math.max(0, outputFlickable.contentHeight - outputFlickable.height);
         programmaticScroll = true;
@@ -724,6 +738,7 @@ Rectangle {
                 // Single unified TextEdit backed by QTextDocument: supports true multi-line drag selection & Ctrl+C copy!
                 TextEdit {
                     id: outputTextEdit
+                    objectName: "outputTextEdit"
                     width: Math.max(100, outputFlickable.width - 14)
                     height: Math.max(outputFlickable.height, implicitHeight)
                     readOnly: true
@@ -745,6 +760,16 @@ Rectangle {
                         onClicked: function (mouse) {
                             outputContextMenu.popup();
                             mouse.accepted = true;
+                        }
+                    }
+
+                    // Return focus to the prompt after a left-click that does not select text
+                    PointHandler {
+                        acceptedButtons: Qt.LeftButton
+                        onActiveChanged: {
+                            if (!active && outputTextEdit.selectedText.length === 0) {
+                                cmdInput.forceActiveFocus();
+                            }
                         }
                     }
 
@@ -790,6 +815,8 @@ Rectangle {
                     Keys.onPressed: function (event) {
                         const ctrl = (event.modifiers & Qt.ControlModifier) !== 0;
                         const alt = (event.modifiers & Qt.AltModifier) !== 0;
+                        const shift = (event.modifiers & Qt.ShiftModifier) !== 0;
+                        const meta = (event.modifiers & Qt.MetaModifier) !== 0;
 
                         // Ctrl+C copies when text is selected; otherwise interrupts running command
                         if (ctrl && event.key === Qt.Key_C) {
@@ -818,6 +845,23 @@ Rectangle {
                                 panelRoot.terminalVm.clearActiveOutput();
                             }
                             cmdInput.forceActiveFocus();
+                            event.accepted = true;
+                            return;
+                        }
+
+                        // Paste (Ctrl+V / Shift+Insert / Cmd+V) jumps to prompt and pastes
+                        if (event.matches(StandardKey.Paste) || (ctrl && event.key === Qt.Key_V)) {
+                            cmdInput.forceActiveFocus();
+                            cmdInput.paste();
+                            event.accepted = true;
+                            return;
+                        }
+
+                        // Plain Up/Down jumps to prompt and navigates command history or completions
+                        if (!ctrl && !alt && !shift && !meta &&
+                            (event.key === Qt.Key_Up || event.key === Qt.Key_Down)) {
+                            cmdInput.forceActiveFocus();
+                            panelRoot.navigateCommandHistory(event.key === Qt.Key_Up ? -1 : 1);
                             event.accepted = true;
                             return;
                         }
@@ -1326,6 +1370,7 @@ Rectangle {
 
                     TextInput {
                         id: cmdInput
+                        objectName: "cmdInput"
                         anchors.fill: parent
                         verticalAlignment: TextInput.AlignVCenter
                         color: "#F8FAFC"
@@ -1388,28 +1433,12 @@ Rectangle {
 
                         Keys.onUpPressed: function (event) {
                             event.accepted = true;
-                            if (!panelRoot.terminalVm) return;
-                            if (panelRoot.terminalVm.hasCompletions) {
-                                completionPopup.moveSelection(-1);
-                            } else {
-                                panelRoot.suppressCompletionOnTextChange = true;
-                                cmdInput.text = panelRoot.terminalVm.historyPrevious(cmdInput.text);
-                                cmdInput.cursorPosition = cmdInput.text.length;
-                                panelRoot.suppressCompletionOnTextChange = false;
-                            }
+                            panelRoot.navigateCommandHistory(-1);
                         }
 
                         Keys.onDownPressed: function (event) {
                             event.accepted = true;
-                            if (!panelRoot.terminalVm) return;
-                            if (panelRoot.terminalVm.hasCompletions) {
-                                completionPopup.moveSelection(1);
-                            } else {
-                                panelRoot.suppressCompletionOnTextChange = true;
-                                cmdInput.text = panelRoot.terminalVm.historyNext();
-                                cmdInput.cursorPosition = cmdInput.text.length;
-                                panelRoot.suppressCompletionOnTextChange = false;
-                            }
+                            panelRoot.navigateCommandHistory(1);
                         }
 
                         function handleEnterKey(event) {

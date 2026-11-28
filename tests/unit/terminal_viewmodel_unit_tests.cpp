@@ -6,11 +6,18 @@
 #include "infrastructure/git/native/native_git_executor.hpp"
 #include "infrastructure/terminal/native_terminal_process_runner.hpp"
 
+#include <QClipboard>
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
+#include <QQmlComponent>
+#include <QQmlEngine>
+#include <QQuickItem>
+#include <QQuickStyle>
+#include <QQuickWindow>
 #include <QSignalSpy>
 #include <QTemporaryDir>
+#include <QTest>
 #include <filesystem>
 
 using namespace gf::desktop;
@@ -32,6 +39,7 @@ namespace
                 qputenv("QT_PLUGIN_PATH", "C:/Qt/6.6.2/msvc2019_64/plugins");
             }
             qputenv("QT_QPA_PLATFORM", "offscreen");
+            QQuickStyle::setStyle(QStringLiteral("Basic"));
             new QGuiApplication(s_argc, s_argv);
         }
     }
@@ -518,5 +526,172 @@ TEST_CASE("TerminalSessionViewModel manages multi-tab per-repo state, cd, comple
             REQUIRE(execRes.value(QStringLiteral("accepted")).toBool());
             REQUIRE(execRes.value(QStringLiteral("executeNow")).toBool());
         }
+    }
+}
+
+TEST_CASE("TerminalDockPanel keeps prompt focus for Ctrl+V and Up/Down after clicking output without selection", "[qml][ui][terminal]")
+{
+    ensureTerminalTestQtApp();
+
+    const auto discovery = gf::infra::git::GitDiscovery::discover();
+    REQUIRE(discovery.has_value());
+    const auto gitExe = discovery->directBinaryPath.empty() ? discovery->discoveredInPath : discovery->directBinaryPath;
+
+    gf::infra::git::NativeGitCommandExecutor gitExec(gitExe);
+    gf::infra::terminal::NativeTerminalProcessRunner runner(gitExe);
+    GitCatalogService catalog(&gitExec);
+
+    QTemporaryDir tempRoot;
+    REQUIRE(tempRoot.isValid());
+
+    TerminalSessionViewModel vm(&runner, &catalog, &gitExec);
+    vm.setActiveRepository(QStringLiteral("id-qml"), QStringLiteral("QmlRepo"), tempRoot.path(), QStringLiteral("main"));
+    vm.setIsVisible(true);
+    vm.executeCommand(QStringLiteral("echo alpha_line beta_line gamma_line"));
+    REQUIRE(vm.waitForIdle(5000));
+    vm.executeCommand(QStringLiteral("echo second_cmd"));
+    REQUIRE(vm.waitForIdle(5000));
+
+    const auto qmlPath = std::filesystem::path(__FILE__).parent_path().parent_path().parent_path()
+        / "src" / "desktop" / "ui" / "qml" / "views" / "TerminalDockPanel.qml";
+    QQmlEngine engine;
+    QQmlComponent component(&engine, QUrl::fromLocalFile(QString::fromStdString(qmlPath.string())));
+    INFO("QML errors: " << component.errorString().toStdString());
+    REQUIRE(component.isReady());
+
+    std::unique_ptr<QObject> panelObj(component.create());
+    REQUIRE(panelObj != nullptr);
+    auto* panelItem = qobject_cast<QQuickItem*>(panelObj.get());
+    REQUIRE(panelItem != nullptr);
+
+    QQuickWindow window;
+    window.resize(900, 420);
+    panelItem->setParentItem(window.contentItem());
+    panelItem->setSize(QSizeF(900, 420));
+    panelObj->setProperty("terminalVm", QVariant::fromValue(static_cast<QObject*>(&vm)));
+    window.show();
+    window.requestActivate();
+    QCoreApplication::processEvents();
+    REQUIRE(QTest::qWaitForWindowActive(&window));
+
+    auto* outputEdit = panelItem->findChild<QQuickItem*>(QStringLiteral("outputTextEdit"));
+    auto* cmdInput = panelItem->findChild<QQuickItem*>(QStringLiteral("cmdInput"));
+    REQUIRE(outputEdit != nullptr);
+    REQUIRE(cmdInput != nullptr);
+    REQUIRE(outputEdit->property("text").toString().contains(QStringLiteral("alpha_line")));
+
+    auto centerInWindow = [](QQuickItem* item, qreal rx = 0.5, qreal ry = 0.5) -> QPoint
+    {
+        const QPointF p = item->mapToScene(QPointF(item->width() * rx, item->height() * ry));
+        return QPoint(static_cast<int>(p.x()), static_cast<int>(p.y()));
+    };
+
+    SECTION("Single click on output without selecting text returns focus to prompt for Up/Down and Ctrl+V")
+    {
+        QMetaObject::invokeMethod(panelObj.get(), "focusInput");
+        QCoreApplication::processEvents();
+        REQUIRE(cmdInput->hasActiveFocus());
+
+        // Single click in the middle/empty area of outputTextEdit
+        const QPoint clickPt = centerInWindow(outputEdit, 0.5, 0.7);
+        QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, clickPt);
+        QCoreApplication::processEvents();
+
+        CHECK(outputEdit->property("selectedText").toString().isEmpty());
+        CHECK(cmdInput->hasActiveFocus());
+        CHECK_FALSE(outputEdit->hasActiveFocus());
+
+        // Up/Down navigates command history
+        QTest::keyClick(&window, Qt::Key_Up);
+        QCoreApplication::processEvents();
+        CHECK(cmdInput->property("text").toString() == QStringLiteral("echo second_cmd"));
+
+        QTest::keyClick(&window, Qt::Key_Up);
+        QCoreApplication::processEvents();
+        CHECK(cmdInput->property("text").toString() == QStringLiteral("echo alpha_line beta_line gamma_line"));
+
+        QTest::keyClick(&window, Qt::Key_Down);
+        QCoreApplication::processEvents();
+        CHECK(cmdInput->property("text").toString() == QStringLiteral("echo second_cmd"));
+
+        QTest::keyClick(&window, Qt::Key_Down);
+        QCoreApplication::processEvents();
+        CHECK(cmdInput->property("text").toString().isEmpty());
+
+        // Ctrl+V pastes into cmdInput
+        QGuiApplication::clipboard()->setText(QStringLiteral("git status"));
+        QTest::keyClick(&window, Qt::Key_V, Qt::ControlModifier);
+        QCoreApplication::processEvents();
+        CHECK(cmdInput->property("text").toString() == QStringLiteral("git status"));
+    }
+
+    SECTION("Drag selection keeps output focused for Ctrl+C, while Ctrl+V and Up/Down still jump to prompt")
+    {
+        const QPoint startPt = outputEdit->mapToScene(QPointF(10, 12)).toPoint();
+        const QPoint endPt = outputEdit->mapToScene(QPointF(260, 48)).toPoint();
+        QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, startPt);
+        QTest::mouseMove(&window, endPt, 10);
+        QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, endPt);
+        QCoreApplication::processEvents();
+
+        const QString selected = outputEdit->property("selectedText").toString();
+        REQUIRE_FALSE(selected.isEmpty());
+        CHECK(outputEdit->hasActiveFocus());
+
+        // Ctrl+C copies the selected output text
+        QGuiApplication::clipboard()->setText(QStringLiteral("stale"));
+        QTest::keyClick(&window, Qt::Key_C, Qt::ControlModifier);
+        QCoreApplication::processEvents();
+        const QString copiedText = QGuiApplication::clipboard()->text();
+        QString normalizedSelected = selected;
+        normalizedSelected.replace(QChar(0x2029), QLatin1Char('\n'));
+        normalizedSelected.replace(QChar(0x00A0), QLatin1Char(' '));
+        CHECK(copiedText == normalizedSelected);
+        CHECK(copiedText.contains(QStringLiteral("alpha_line beta_line gamma_line")));
+        CHECK(outputEdit->hasActiveFocus());
+
+        // Shift+Up extends keyboard selection inside outputEdit rather than jumping to prompt
+        QTest::keyClick(&window, Qt::Key_Up, Qt::ShiftModifier);
+        QCoreApplication::processEvents();
+        CHECK(outputEdit->hasActiveFocus());
+
+        // Clicking inside the output without dragging clears selection and returns focus to prompt
+        QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, startPt);
+        QCoreApplication::processEvents();
+        CHECK(outputEdit->property("selectedText").toString().isEmpty());
+        CHECK(cmdInput->hasActiveFocus());
+
+        // Double-clicking a word selects it and keeps focus on outputEdit
+        QTest::mouseDClick(&window, Qt::LeftButton, Qt::NoModifier, startPt);
+        QCoreApplication::processEvents();
+        CHECK_FALSE(outputEdit->property("selectedText").toString().isEmpty());
+        CHECK(outputEdit->hasActiveFocus());
+
+        // Select all via Ctrl+A (output keeps focus), then Up arrow jumps to prompt history
+        outputEdit->forceActiveFocus();
+        QCoreApplication::processEvents();
+        QTest::keyClick(&window, Qt::Key_A, Qt::ControlModifier);
+        QCoreApplication::processEvents();
+        REQUIRE_FALSE(outputEdit->property("selectedText").toString().isEmpty());
+        REQUIRE(outputEdit->hasActiveFocus());
+
+        QTest::keyClick(&window, Qt::Key_Up);
+        QCoreApplication::processEvents();
+        CHECK(cmdInput->hasActiveFocus());
+        CHECK(cmdInput->property("text").toString() == QStringLiteral("echo second_cmd"));
+
+        // Focus output again with Ctrl+A, then Ctrl+V jumps to prompt and pastes
+        cmdInput->setProperty("text", QString());
+        outputEdit->forceActiveFocus();
+        QCoreApplication::processEvents();
+        QTest::keyClick(&window, Qt::Key_A, Qt::ControlModifier);
+        QCoreApplication::processEvents();
+        REQUIRE(outputEdit->hasActiveFocus());
+
+        QGuiApplication::clipboard()->setText(QStringLiteral("git diff --stat"));
+        QTest::keyClick(&window, Qt::Key_V, Qt::ControlModifier);
+        QCoreApplication::processEvents();
+        CHECK(cmdInput->hasActiveFocus());
+        CHECK(cmdInput->property("text").toString() == QStringLiteral("git diff --stat"));
     }
 }
