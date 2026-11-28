@@ -197,7 +197,13 @@ gf_apply_compiler_warnings(gf_process_utils)
 add_library(gf_git_cli_native STATIC
         src/infrastructure/git/git_discovery.cpp
         src/infrastructure/git/native/native_git_executor.cpp
-        src/infrastructure/git/native/native_repository_git_ops.cpp
+        src/infrastructure/git/native/native_git_status_staging_ops.cpp
+        src/infrastructure/git/native/native_git_diff_ops.cpp
+        src/infrastructure/git/native/native_git_history_ops.cpp
+        src/infrastructure/git/native/native_git_branch_ops.cpp
+        src/infrastructure/git/native/native_git_remote_ops.cpp
+        src/infrastructure/git/native/native_git_stash_rebase_conflict_ops.cpp
+        src/infrastructure/git/native/native_git_blob_ops.cpp
 )
 target_include_directories(gf_git_cli_native PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
