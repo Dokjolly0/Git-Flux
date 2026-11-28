@@ -61,8 +61,7 @@ namespace gf::desktop
             {TheirsContentRole, "theirsContent"},
             {ChosenSideRole, "chosenSide"},
             {CustomContentRole, "customContent"},
-            {IsResolvedRole, "isResolved"},
-            {ResolvedPreviewRole, "resolvedPreview"}
+            {IsResolvedRole, "isResolved"}
         };
     }
 

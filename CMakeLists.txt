@@ -249,7 +249,6 @@ if (GF_BUILD_DESKTOP)
             src/desktop/viewmodels/repository_list_model.cpp
             src/desktop/viewmodels/group_list_model.cpp
             src/desktop/viewmodels/workspace_list_model.cpp
-            src/desktop/viewmodels/working_tree_file_list_model.cpp
             src/desktop/viewmodels/diff_line_list_model.cpp
             src/desktop/viewmodels/diff_viewmodel.cpp
             src/desktop/viewmodels/commit_box_viewmodel.cpp

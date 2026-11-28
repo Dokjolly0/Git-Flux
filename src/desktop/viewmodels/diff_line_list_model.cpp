@@ -1,13 +1,7 @@
 #include "desktop/viewmodels/diff_line_list_model.hpp"
-#include "core/modules/syntax/syntax_highlighter.hpp"
 
 namespace gf::desktop
 {
-    namespace
-    {
-        constexpr std::size_t kMaxRenderedDiffLines = 5000;
-    } // namespace
-
     DiffLineListModel::DiffLineListModel(QObject* parent)
         : QAbstractListModel(parent)
     {
@@ -114,101 +108,6 @@ namespace gf::desktop
             {BgColorRole, "bgColor"},
             {FgColorRole, "fgColor"}
         };
-    }
-
-    void DiffLineListModel::setDiff(const gf::git::bo::FileDiff& diff,
-                                    gf::core::syntax::Language lang,
-                                    const std::vector<gf::core::syntax::MarkdownLineState>* newFileSeedStates)
-    {
-        beginResetModel();
-        m_lines.clear();
-        m_richLines.clear();
-
-        std::size_t renderedLines = 0;
-        bool truncated = false;
-        const bool isMarkdown = (lang == gf::core::syntax::Language::Markdown);
-
-        for (const auto& hunk : diff.hunks)
-        {
-            if (renderedLines >= kMaxRenderedDiffLines)
-            {
-                truncated = true;
-                break;
-            }
-            // Add hunk header line
-            m_lines.push_back(gf::git::bo::DiffLine{
-                .kind = gf::git::bo::DiffLineKind::Header,
-                .oldLineNumber = std::nullopt,
-                .newLineNumber = std::nullopt,
-                .content = hunk.header
-            });
-            m_richLines.push_back(QString::fromStdString(gf::core::syntax::SyntaxHighlighter::escapeHtml(hunk.header)));
-
-            gf::core::syntax::MarkdownLineState oldMdState{};
-            gf::core::syntax::MarkdownLineState newMdState{};
-            if (isMarkdown && newFileSeedStates != nullptr && hunk.newStartLine > 0)
-            {
-                const std::size_t seedIdx = static_cast<std::size_t>(hunk.newStartLine - 1);
-                if (seedIdx < newFileSeedStates->size())
-                {
-                    newMdState = (*newFileSeedStates)[seedIdx];
-                    oldMdState = (*newFileSeedStates)[seedIdx];
-                }
-            }
-
-            // Add all lines of the hunk
-            for (const auto& l : hunk.lines)
-            {
-                if (renderedLines >= kMaxRenderedDiffLines)
-                {
-                    truncated = true;
-                    break;
-                }
-                m_lines.push_back(l);
-                if (!isMarkdown)
-                {
-                    m_richLines.push_back(QString::fromStdString(gf::core::syntax::SyntaxHighlighter::highlightLine(l.content, lang)));
-                }
-                else if (l.kind == gf::git::bo::DiffLineKind::Deletion)
-                {
-                    m_richLines.push_back(QString::fromStdString(
-                        gf::core::syntax::SyntaxHighlighter::highlightLine(l.content, lang, oldMdState)));
-                }
-                else
-                {
-                    if (newFileSeedStates != nullptr && l.newLineNumber.has_value() && *l.newLineNumber > 0)
-                    {
-                        const std::size_t idx = static_cast<std::size_t>(*l.newLineNumber - 1);
-                        if (idx < newFileSeedStates->size())
-                        {
-                            newMdState = (*newFileSeedStates)[idx];
-                        }
-                    }
-                    m_richLines.push_back(QString::fromStdString(
-                        gf::core::syntax::SyntaxHighlighter::highlightLine(l.content, lang, newMdState)));
-                    if (l.kind == gf::git::bo::DiffLineKind::Context)
-                    {
-                        oldMdState = newMdState;
-                    }
-                }
-                ++renderedLines;
-            }
-        }
-
-        if (truncated)
-        {
-            const std::string notice =
-                "... Diff troncato a 5000 righe per preservare la reattività dell'interfaccia ...";
-            m_lines.push_back(gf::git::bo::DiffLine{
-                .kind = gf::git::bo::DiffLineKind::Header,
-                .oldLineNumber = std::nullopt,
-                .newLineNumber = std::nullopt,
-                .content = notice
-            });
-            m_richLines.push_back(QString::fromStdString(gf::core::syntax::SyntaxHighlighter::escapeHtml(notice)));
-        }
-
-        endResetModel();
     }
 
     void DiffLineListModel::setRows(std::vector<gf::git::bo::DiffLine> lines, std::vector<QString> richLines)

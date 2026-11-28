@@ -24,11 +24,9 @@ namespace gf::desktop::viewmodels
             FullNameRole,
             DescriptionRole,
             IsPrivateRole,
-            DefaultBranchRole,
             HttpsUrlRole,
             SshUrlRole,
             ActiveCloneUrlRole,
-            UpdatedAtRole,
             StarsCountRole
         };
 

@@ -113,15 +113,10 @@ namespace gf::desktop
         return m_lastError;
     }
 
-    QString HomeHubViewModel::lastSuccessMessage() const noexcept
-    {
-        return m_lastSuccessMessage;
-    }
-
     void HomeHubViewModel::clearFeedback()
     {
         setLastError(QString());
-        setLastSuccessMessage(QString());
+        setStatus(QString());
     }
 
     void HomeHubViewModel::setStatus(const QString& msg)
@@ -136,15 +131,6 @@ namespace gf::desktop
         {
             m_lastError = error;
             emit lastErrorChanged(m_lastError);
-        }
-    }
-
-    void HomeHubViewModel::setLastSuccessMessage(const QString& msg)
-    {
-        if (m_lastSuccessMessage != msg)
-        {
-            m_lastSuccessMessage = msg;
-            emit lastSuccessMessageChanged(m_lastSuccessMessage);
         }
     }
 
@@ -328,7 +314,6 @@ namespace gf::desktop
         const QString repoSavedPath = QString::fromStdString(result->localPath.string());
         const QString successMsg = QStringLiteral("Repository '%1' aggiunto con successo!").arg(repoName);
 
-        setLastSuccessMessage(successMsg);
         setStatus(successMsg);
         setLastError(QString());
 
@@ -565,7 +550,6 @@ namespace gf::desktop
 
                         m_cloneStatusMessage = successMsg;
                         emit cloneStatusMessageChanged(successMsg);
-                        setLastSuccessMessage(successMsg);
                         setStatus(successMsg);
                         setLastError(QString());
 
@@ -711,7 +695,6 @@ namespace gf::desktop
 
         const QString successMsg = QStringLiteral("Repository '%1' ricollegato con successo!").arg(
             QString::fromStdString(result->displayName));
-        setLastSuccessMessage(successMsg);
         setStatus(successMsg);
         setLastError(QString());
         refreshAll();
@@ -871,7 +854,6 @@ namespace gf::desktop
         }
 
         const QString successMsg = QStringLiteral("Workspace rinominato in: %1").arg(QString::fromStdString(res->name));
-        setLastSuccessMessage(successMsg);
         setStatus(successMsg);
         refreshAll();
         return true;
@@ -925,7 +907,7 @@ namespace gf::desktop
         const QUrl url = QUrl::fromLocalFile(path);
         if (QDesktopServices::openUrl(url))
         {
-            setLastSuccessMessage(QStringLiteral("Aperto nel gestore file: %1").arg(path));
+            setStatus(QStringLiteral("Aperto nel gestore file: %1").arg(path));
         }
         else
         {
@@ -978,7 +960,7 @@ namespace gf::desktop
                 }
                 if (started)
                 {
-                    setLastSuccessMessage(QStringLiteral("Terminale avviato in: %1").arg(path));
+                    setStatus(QStringLiteral("Terminale avviato in: %1").arg(path));
                     return;
                 }
             }
@@ -994,7 +976,7 @@ namespace gf::desktop
         if (auto* cb = QGuiApplication::clipboard())
         {
             cb->setText(text);
-            setLastSuccessMessage(QStringLiteral("Copiato negli appunti: %1").arg(text));
+            setStatus(QStringLiteral("Copiato negli appunti: %1").arg(text));
         }
     }
 
@@ -1019,7 +1001,6 @@ namespace gf::desktop
 
         const QString successMsg = QStringLiteral("Repository rinominato in: %1").arg(
             QString::fromStdString(res->displayName));
-        setLastSuccessMessage(successMsg);
         setStatus(successMsg);
         refreshAll();
         return true;
@@ -1056,7 +1037,6 @@ namespace gf::desktop
         }
 
         const QString successMsg = QStringLiteral("Gruppo rinominato in: %1").arg(QString::fromStdString(res->name));
-        setLastSuccessMessage(successMsg);
         setStatus(successMsg);
         refreshAll();
         return true;
@@ -1107,7 +1087,7 @@ namespace gf::desktop
             return false;
         }
 
-        setLastSuccessMessage(QStringLiteral("Repository aggiunto al gruppo"));
+        setStatus(QStringLiteral("Repository aggiunto al gruppo"));
         refreshAll();
         return true;
     }
@@ -1132,7 +1112,7 @@ namespace gf::desktop
             return false;
         }
 
-        setLastSuccessMessage(QStringLiteral("Repository rimosso dal gruppo"));
+        setStatus(QStringLiteral("Repository rimosso dal gruppo"));
         refreshAll();
         return true;
     }
@@ -1356,7 +1336,7 @@ namespace gf::desktop
             return false;
         }
 
-        setLastSuccessMessage(
+        setStatus(
             QStringLiteral("Repository aggiunto al workspace '%1'").arg(QString::fromStdString(ws.name)));
         refreshAll();
         emit workspacesChanged();
@@ -1381,7 +1361,7 @@ namespace gf::desktop
         auto updateRes = m_workspaceService.updateWorkspaceComposition(ws.id, ws.groupIds, ws.directRepositoryIds);
         if (!updateRes) return false;
 
-        setLastSuccessMessage(QStringLiteral("Repository rimosso dal workspace"));
+        setStatus(QStringLiteral("Repository rimosso dal workspace"));
         refreshAll();
         emit workspacesChanged();
         return true;
@@ -1429,7 +1409,7 @@ namespace gf::desktop
             return false;
         }
 
-        setLastSuccessMessage(QStringLiteral("Gruppo aggiunto al workspace '%1'").arg(QString::fromStdString(ws.name)));
+        setStatus(QStringLiteral("Gruppo aggiunto al workspace '%1'").arg(QString::fromStdString(ws.name)));
         refreshAll();
         emit workspacesChanged();
         return true;
@@ -1453,7 +1433,7 @@ namespace gf::desktop
         auto updateRes = m_workspaceService.updateWorkspaceComposition(ws.id, ws.groupIds, ws.directRepositoryIds);
         if (!updateRes) return false;
 
-        setLastSuccessMessage(QStringLiteral("Gruppo rimosso dal workspace"));
+        setStatus(QStringLiteral("Gruppo rimosso dal workspace"));
         refreshAll();
         emit workspacesChanged();
         return true;

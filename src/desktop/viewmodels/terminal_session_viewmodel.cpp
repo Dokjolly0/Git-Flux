@@ -384,7 +384,6 @@ namespace gf::desktop
             QMetaObject::invokeMethod(this, [this, alive]()
             {
                 if (!alive->load(std::memory_order_acquire)) return;
-                emit catalogReadyChanged();
                 if (!m_lastCompletionInput.isEmpty())
                 {
                     updateCompletions(m_lastCompletionInput, m_lastCompletionCursor, m_lastCompletionExplicit);
@@ -863,12 +862,6 @@ namespace gf::desktop
                     {
                         catalog->refreshAliases(rp);
                     }
-                    if (!alive->load(std::memory_order_acquire)) return;
-                    QMetaObject::invokeMethod(this, [this, alive]()
-                    {
-                        if (!alive->load(std::memory_order_acquire)) return;
-                        emit catalogReadyChanged();
-                    }, Qt::QueuedConnection);
                 });
             }
             if (m_isVisible)

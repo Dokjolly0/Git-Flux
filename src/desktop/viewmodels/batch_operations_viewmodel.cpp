@@ -146,43 +146,6 @@ namespace gf::desktop
         ));
     }
 
-    void BatchOperationsViewModel::checkStatusRepositories(const QStringList& repoIds)
-    {
-        if (repoIds.isEmpty() || m_isRunning)
-        {
-            return;
-        }
-
-        std::vector<std::string> ids;
-        ids.reserve(repoIds.size());
-        for (const auto& id : repoIds)
-        {
-            ids.push_back(id.toStdString());
-        }
-
-        auto targets = m_coordinator.resolveTargets(ids);
-        if (targets.empty())
-        {
-            emit operationFailed("Nessun repository valido selezionato");
-            return;
-        }
-
-        m_isRunning = true;
-        m_progressPercentage = 0;
-        m_currentOperationName = "Verifica Stato";
-        m_statusMessage = "Scansione working tree su repository...";
-        m_currentRepoName.clear();
-        emit isRunningChanged();
-        emit progressChanged();
-        emit statusMessageChanged();
-
-        m_currentOperationId = QString::fromStdString(m_coordinator.executeBatchStatusAsync(
-            targets,
-            makeProgressCallback(),
-            makeReportCallback()
-        ));
-    }
-
     bool BatchOperationsViewModel::cancelCurrentOperation()
     {
         if (!m_isRunning || m_currentOperationId.isEmpty())

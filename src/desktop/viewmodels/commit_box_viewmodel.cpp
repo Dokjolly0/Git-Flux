@@ -60,15 +60,6 @@ namespace gf::desktop
         }
     }
 
-    void CommitBoxViewModel::setIsAmend(bool amend)
-    {
-        if (m_isAmend != amend)
-        {
-            m_isAmend = amend;
-            emit isAmendChanged();
-        }
-    }
-
     bool CommitBoxViewModel::canCommit() const noexcept
     {
         return !m_commitMessage.trimmed().isEmpty() && !m_isBusy;
@@ -87,7 +78,6 @@ namespace gf::desktop
 
         gf::git::bo::CommitOptions options;
         options.message = m_commitMessage.toStdString();
-        options.amend = m_isAmend;
 
         if (!m_authorName.trimmed().isEmpty() && !m_authorEmail.trimmed().isEmpty())
         {
@@ -115,13 +105,8 @@ namespace gf::desktop
 
                             if (!result)
                             {
-                                m_lastErrorMessage = QString::fromStdString(result.error().message);
-                                emit lastErrorMessageChanged();
                                 return;
                             }
-
-                            m_lastErrorMessage.clear();
-                            emit lastErrorMessageChanged();
 
                             // Reset the message unless the user already started a new one meanwhile.
                             if (m_commitMessage == committedMessage)
@@ -129,8 +114,6 @@ namespace gf::desktop
                                 m_commitMessage.clear();
                                 emit commitMessageChanged();
                             }
-                            m_isAmend = false;
-                            emit isAmendChanged();
                             emit canCommitChanged();
 
                             emit commitSucceeded(QString::fromStdString(result->commitSha),
@@ -158,11 +141,7 @@ namespace gf::desktop
     void CommitBoxViewModel::clear()
     {
         m_commitMessage.clear();
-        m_isAmend = false;
-        m_lastErrorMessage.clear();
         emit commitMessageChanged();
-        emit isAmendChanged();
         emit canCommitChanged();
-        emit lastErrorMessageChanged();
     }
 } // namespace gf::desktop

@@ -179,8 +179,6 @@ namespace gf::desktop
                                                    "Model provided by HomeHubViewModel");
         qmlRegisterUncreatableType<WorkspaceListModel>("GitFlux.Desktop", 1, 0, "WorkspaceListModel",
                                                        "Model provided by HomeHubViewModel");
-        qmlRegisterUncreatableType<WorkingTreeFileListModel>("GitFlux.Desktop", 1, 0, "WorkingTreeFileListModel",
-                                                             "Model provided by WorkingTreeViewModel");
         qmlRegisterUncreatableType<DiffLineListModel>("GitFlux.Desktop", 1, 0, "DiffLineListModel",
                                                       "Model provided by DiffViewModel");
         qmlRegisterUncreatableType<BranchListModel>("GitFlux.Desktop", 1, 0, "BranchListModel",

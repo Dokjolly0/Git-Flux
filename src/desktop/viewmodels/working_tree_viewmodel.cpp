@@ -20,10 +20,6 @@ namespace gf::desktop
         : QObject(parent)
           , m_statusService(statusService)
           , m_stagingService(stagingService)
-          , m_stagedModel(this)
-          , m_unstagedModel(this)
-          , m_untrackedModel(this)
-          , m_conflictedModel(this)
           , m_ownedExecutor(std::make_unique<SerialGitExecutor>())
     {
         m_executor = m_ownedExecutor.get();
@@ -36,10 +32,6 @@ namespace gf::desktop
         : QObject(parent)
           , m_statusService(statusService)
           , m_stagingService(stagingService)
-          , m_stagedModel(this)
-          , m_unstagedModel(this)
-          , m_untrackedModel(this)
-          , m_conflictedModel(this)
           , m_executor(&executor)
     {
     }
@@ -48,18 +40,12 @@ namespace gf::desktop
 
     void WorkingTreeViewModel::clearState()
     {
-        m_stagedModel.clear();
-        m_unstagedModel.clear();
-        m_untrackedModel.clear();
-        m_conflictedModel.clear();
         m_stagedCount = 0;
         m_unstagedCount = 0;
         m_untrackedCount = 0;
-        m_conflictedCount = 0;
         m_isClean = true;
         m_branchName.clear();
         m_headOid.clear();
-        m_aheadCount = 0;
         m_isDetached = false;
         m_lastRepoPath.clear();
         m_lastStatus = {};
@@ -136,33 +122,13 @@ namespace gf::desktop
             return;
         }
 
-        const bool sameRepo = m_hasLastStatus && (m_lastRepoPath == repoPath);
-        if (!sameRepo || m_lastStatus.stagedFiles != status.stagedFiles)
-        {
-            m_stagedModel.setItems(status.stagedFiles);
-        }
-        if (!sameRepo || m_lastStatus.unstagedFiles != status.unstagedFiles)
-        {
-            m_unstagedModel.setItems(status.unstagedFiles);
-        }
-        if (!sameRepo || m_lastStatus.untrackedFiles != status.untrackedFiles)
-        {
-            m_untrackedModel.setItems(status.untrackedFiles);
-        }
-        if (!sameRepo || m_lastStatus.conflictedFiles != status.conflictedFiles)
-        {
-            m_conflictedModel.setItems(status.conflictedFiles);
-        }
-
         m_stagedCount = static_cast<int>(status.stagedCount());
         m_unstagedCount = static_cast<int>(status.unstagedCount());
         m_untrackedCount = static_cast<int>(status.untrackedCount());
-        m_conflictedCount = static_cast<int>(status.conflictedCount());
         m_isClean = status.isClean();
 
         m_branchName = QString::fromStdString(status.branch.headName);
         m_headOid = QString::fromStdString(status.branch.oid);
-        m_aheadCount = status.branch.ahead;
         m_isDetached = status.branch.detached;
 
         m_lastRepoPath = repoPath;
@@ -279,9 +245,9 @@ namespace gf::desktop
     {
         // The file list is what the user sees now (collected on the GUI thread).
         std::vector<std::string> allFiles;
-        for (const auto* model : {&m_stagedModel, &m_unstagedModel, &m_untrackedModel})
+        for (const auto* list : {&m_lastStatus.stagedFiles, &m_lastStatus.unstagedFiles, &m_lastStatus.untrackedFiles})
         {
-            for (const auto& item : model->items())
+            for (const auto& item : *list)
             {
                 allFiles.push_back(item.path);
             }
@@ -320,7 +286,7 @@ namespace gf::desktop
     QVariantList WorkingTreeViewModel::getStagedFiles() const
     {
         QVariantList list;
-        const auto& items = m_stagedModel.items();
+        const auto& items = m_lastStatus.stagedFiles;
         list.reserve(static_cast<qsizetype>(items.size()));
         for (const auto& item : items)
         {
@@ -394,9 +360,9 @@ namespace gf::desktop
                 list.append(map);
             }
         };
-        appendItems(m_unstagedModel.items(), false);
-        appendItems(m_untrackedModel.items(), true);
-        appendItems(m_conflictedModel.items(), false, true);
+        appendItems(m_lastStatus.unstagedFiles, false);
+        appendItems(m_lastStatus.untrackedFiles, true);
+        appendItems(m_lastStatus.conflictedFiles, false, true);
         return list;
     }
 

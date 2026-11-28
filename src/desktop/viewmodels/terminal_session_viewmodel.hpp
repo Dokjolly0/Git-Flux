@@ -138,13 +138,13 @@ namespace gf::desktop
         [[nodiscard]] int completionReplaceStart() const noexcept { return m_replaceStart; }
 
         Q_INVOKABLE void toggleVisible();
-        Q_INVOKABLE void setActiveRepository(const QString& repoId,
-                                             const QString& repoName,
-                                             const QString& repoPath,
-                                             const QString& branch = {});
-        Q_INVOKABLE void updateActiveBranch(const QString& repoPath, const QString& branch);
-        Q_INVOKABLE void closeRepositoryTerminals(const QString& repoId, const QString& repoPath);
-        Q_INVOKABLE void closeAllTerminals();
+        void setActiveRepository(const QString& repoId,
+                                 const QString& repoName,
+                                 const QString& repoPath,
+                                 const QString& branch = {});
+        void updateActiveBranch(const QString& repoPath, const QString& branch);
+        void closeRepositoryTerminals(const QString& repoId, const QString& repoPath);
+        void closeAllTerminals();
 
         Q_INVOKABLE int createTab(const QString& shellId = {});
         Q_INVOKABLE void closeTab(int index);
@@ -185,7 +185,6 @@ namespace gf::desktop
         void runningStateChanged();
         void pagerStateChanged();
         void completionsChanged();
-        void catalogReadyChanged();
         void focusInputRequested();
         void outputAppended();
         void gitCommandFinished(const QString& repoPath, int exitCode);

@@ -33,8 +33,6 @@ namespace gf::desktop::viewmodels
             return QString::fromStdString(item.description);
         case IsPrivateRole:
             return item.isPrivate;
-        case DefaultBranchRole:
-            return QString::fromStdString(item.defaultBranch);
         case HttpsUrlRole:
             return QString::fromStdString(item.httpsUrl);
         case SshUrlRole:
@@ -51,8 +49,6 @@ namespace gf::desktop::viewmodels
                 }
                 return QString::fromStdString(item.sshUrl);
             }
-        case UpdatedAtRole:
-            return QString::fromStdString(item.updatedAt);
         case StarsCountRole:
             return item.starsCount;
         default:
@@ -67,11 +63,9 @@ namespace gf::desktop::viewmodels
             {FullNameRole, "fullName"},
             {DescriptionRole, "description"},
             {IsPrivateRole, "isPrivate"},
-            {DefaultBranchRole, "defaultBranch"},
             {HttpsUrlRole, "httpsUrl"},
             {SshUrlRole, "sshUrl"},
             {ActiveCloneUrlRole, "activeCloneUrl"},
-            {UpdatedAtRole, "updatedAt"},
             {StarsCountRole, "starsCount"}
         };
     }

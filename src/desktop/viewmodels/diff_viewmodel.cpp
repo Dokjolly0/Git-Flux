@@ -438,7 +438,6 @@ namespace gf::desktop
     {
         releaseTemporaryFonts();
         DiffImageStore::instance().clear(m_instanceId);
-        m_hasRichPreview = false;
         m_isSvgPreviewable = false;
         m_fileKind.clear();
         m_formatBadge.clear();
@@ -460,8 +459,6 @@ namespace gf::desktop
         m_oldFileSizeText.clear();
         m_newFileSizeText.clear();
         m_fileSizeDeltaText.clear();
-        m_oldSha256.clear();
-        m_newSha256.clear();
         m_metadataRows.clear();
         m_archiveEntries.clear();
         m_archiveAddedCount = 0;
@@ -568,11 +565,6 @@ namespace gf::desktop
         if (m_preferMarkdownRendered == rendered) return;
         m_preferMarkdownRendered = rendered;
         emit markdownRenderedChanged();
-    }
-
-    void DiffViewModel::toggleMarkdownRendered()
-    {
-        setMarkdownRendered(!m_preferMarkdownRendered);
     }
 
     void DiffViewModel::setShowMarkdownRichDiff(bool show)
@@ -1322,7 +1314,6 @@ namespace gf::desktop
             m_isImage = insp.isImage;
             m_hasVisualPreview = insp.hasVisualPreview;
             m_isSvgPreviewable = insp.isSvg && insp.hasVisualPreview && !m_isBinary;
-            m_hasRichPreview = m_isBinary || m_isSvgPreviewable;
 
             m_hasOldBlob = insp.hasOldBlob;
             m_hasNewBlob = insp.hasNewBlob;
@@ -1331,8 +1322,6 @@ namespace gf::desktop
             m_oldFileSizeText = m_hasOldBlob ? DiffFileInspector::formatByteSize(m_oldFileSize) : QString();
             m_newFileSizeText = m_hasNewBlob ? DiffFileInspector::formatByteSize(m_newFileSize) : QString();
             m_fileSizeDeltaText = DiffFileInspector::formatSizeDelta(m_oldFileSize, m_newFileSize, m_hasOldBlob, m_hasNewBlob);
-            m_oldSha256 = std::move(insp.oldSha256);
-            m_newSha256 = std::move(insp.newSha256);
 
             m_oldImageWidth = insp.oldImageWidth;
             m_oldImageHeight = insp.oldImageHeight;
@@ -1384,7 +1373,6 @@ namespace gf::desktop
         }
         else if (m_isBinary)
         {
-            m_hasRichPreview = true;
             m_fileKind = QStringLiteral("binary");
             m_formatBadge = QStringLiteral("BINARY");
             m_formatDescription = QStringLiteral("File binario");

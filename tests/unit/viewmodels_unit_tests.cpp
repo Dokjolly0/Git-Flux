@@ -7,7 +7,6 @@
 #include "desktop/viewmodels/workspace_list_model.hpp"
 #include "desktop/viewmodels/home_hub_viewmodel.hpp"
 #include "desktop/viewmodels/quick_open_viewmodel.hpp"
-#include "desktop/viewmodels/working_tree_file_list_model.hpp"
 #include "desktop/viewmodels/diff_line_list_model.hpp"
 #include "desktop/services/serial_git_executor.hpp"
 #include "desktop/viewmodels/working_tree_viewmodel.hpp"
@@ -377,7 +376,7 @@ TEST_CASE (
     REQUIRE(ok1);
     CHECK(vm.repositoriesCount() == 1);
     CHECK(vm.lastError().isEmpty());
-    CHECK(vm.lastSuccessMessage().contains("repo_alpha"));
+    CHECK(vm.statusMessage().contains("repo_alpha"));
     CHECK(addedSpy.count() == 1);
 
     // 2. Adding with file:// URL prefix (as produced by FolderDialog) resolves correctly
@@ -386,7 +385,7 @@ TEST_CASE (
     REQUIRE(ok2);
     CHECK(vm.repositoriesCount() == 2);
     CHECK(vm.lastError().isEmpty());
-    CHECK(vm.lastSuccessMessage().contains("repo_beta"));
+    CHECK(vm.statusMessage().contains("repo_beta"));
 
     // 3. Adding an empty path produces error feedback
     QSignalSpy errorSpy(&vm, &HomeHubViewModel::errorOccurred);
@@ -418,7 +417,7 @@ TEST_CASE (
     // 7. Clear feedback resets feedback properties
     vm.clearFeedback();
     CHECK(vm.lastError().isEmpty());
-    CHECK(vm.lastSuccessMessage().isEmpty());
+    CHECK(vm.statusMessage().isEmpty());
 
     // 8. Extract repository name from URL helper
     CHECK(vm.extractRepoNameFromUrl("https://github.com/torvalds/linux.git") == "linux");
@@ -504,7 +503,7 @@ TEST_CASE (
 
     // 8. Copy to clipboard
     vm.copyToClipboard("/test/path");
-    CHECK(vm.lastSuccessMessage().contains("Copiato negli appunti"));
+    CHECK(vm.statusMessage().contains("Copiato negli appunti"));
 }
 
 TEST_CASE (
@@ -1089,72 +1088,44 @@ public:
 };
 
 TEST_CASE (
-"WorkingTreeFileListModel and DiffLineListModel MVVM models"
+"DiffLineListModel MVVM model"
 ,
 "[viewmodel][models]"
 )
  {
     ensureQtApp();
 
-    SECTION("WorkingTreeFileListModel handles items and roles correctly") {
-        WorkingTreeFileListModel model;
-        CHECK(model.rowCount() == 0);
-
-        std::vector<gf::git::bo::WorkingTreeFileItem> items = {
-            gf::git::bo::WorkingTreeFileItem{
-                .path = "src/app.cpp",
-                .originalPath = {},
-                .kind = gf::git::bo::FileChangeKind::Modified,
-                .statusCode = 'M'
-            },
-            gf::git::bo::WorkingTreeFileItem{
-                .path = "new_doc.md",
-                .originalPath = {},
-                .kind = gf::git::bo::FileChangeKind::Added,
-                .statusCode = 'A'
-            }
-        };
-
-        model.setItems(std::move(items));
-        REQUIRE(model.rowCount() == 2);
-
-        QModelIndex idx0 = model.index(0, 0);
-        CHECK(model.data(idx0, WorkingTreeFileListModel::PathRole).toString().toStdString() == "src/app.cpp");
-        CHECK(model.data(idx0, WorkingTreeFileListModel::KindRole).toString().toStdString() == "Modified");
-        CHECK(model.data(idx0, WorkingTreeFileListModel::StatusCodeRole).toString().toStdString() == "M");
-
-        QModelIndex idx1 = model.index(1, 0);
-        CHECK(model.data(idx1, WorkingTreeFileListModel::KindRole).toString().toStdString() == "Added");
-        CHECK(model.data(idx1, WorkingTreeFileListModel::BadgeColorRole).toString().toStdString() == "#34D399");
-
-        model.clear();
-        CHECK(model.rowCount() == 0);
-    }
-
-    SECTION("DiffLineListModel creates flat representation with line numbers") {
+    SECTION("DiffLineListModel exposes prepared rows with line numbers") {
         DiffLineListModel diffModel;
         CHECK(diffModel.rowCount() == 0);
 
-        gf::git::bo::FileDiff diff;
-        diff.oldPath = "file.txt";
-        diff.newPath = "file.txt";
-        gf::git::bo::DiffHunk hunk;
-        hunk.header = "@@ -1,2 +1,3 @@";
-        hunk.lines.push_back(gf::git::bo::DiffLine{
-            .kind = gf::git::bo::DiffLineKind::Context,
-            .oldLineNumber = 1,
-            .newLineNumber = 1,
-            .content = "line 1"
-        });
-        hunk.lines.push_back(gf::git::bo::DiffLine{
-            .kind = gf::git::bo::DiffLineKind::Addition,
-            .oldLineNumber = std::nullopt,
-            .newLineNumber = 2,
-            .content = "line 2 added"
-        });
-        diff.hunks.push_back(std::move(hunk));
+        std::vector<gf::git::bo::DiffLine> lines = {
+            gf::git::bo::DiffLine{
+                .kind = gf::git::bo::DiffLineKind::Header,
+                .oldLineNumber = std::nullopt,
+                .newLineNumber = std::nullopt,
+                .content = "@@ -1,2 +1,3 @@"
+            },
+            gf::git::bo::DiffLine{
+                .kind = gf::git::bo::DiffLineKind::Context,
+                .oldLineNumber = 1,
+                .newLineNumber = 1,
+                .content = "line 1"
+            },
+            gf::git::bo::DiffLine{
+                .kind = gf::git::bo::DiffLineKind::Addition,
+                .oldLineNumber = std::nullopt,
+                .newLineNumber = 2,
+                .content = "line 2 added"
+            }
+        };
+        std::vector<QString> richLines = {
+            QStringLiteral("@@ -1,2 +1,3 @@"),
+            QStringLiteral("line 1"),
+            QStringLiteral("line 2 added")
+        };
 
-        diffModel.setDiff(diff);
+        diffModel.setRows(std::move(lines), std::move(richLines));
         // 1 hunk header + 2 lines = 3
         REQUIRE(diffModel.rowCount() == 3);
 
@@ -1219,9 +1190,8 @@ TEST_CASE (
         CHECK(statusSpy.count() == 1);
         CHECK(refreshedSpy.count() == 1);
         CHECK(wtVm.branchName().toStdString() == "feature/phase2");
-        CHECK(wtVm.aheadCount() == 2);
         CHECK(wtVm.stagedCount() == 1);
-        CHECK(wtVm.stagedModel()->rowCount() == 1);
+        CHECK(wtVm.unstagedCount() == 1);
         CHECK_FALSE(wtVm.isClean());
 
         // The WIP file list flags unmerged paths: opening one starts the conflict resolver
@@ -3212,7 +3182,7 @@ TEST_CASE (
     // Sub-viewmodels accessors
     CHECK(sessionVm.stashManager() != nullptr);
     CHECK(sessionVm.conflictResolver() != nullptr);
-    CHECK(sessionVm.workingTree()->conflictedModel() != nullptr);
+    CHECK(sessionVm.workingTree() != nullptr);
 }
 
 class MockFsWatcherPort final : public gf::git::ports::IFsWatcherPort
@@ -3383,27 +3353,12 @@ TEST_CASE (
     }
 
     CHECK_FALSE(batchVm.isRunning());
-    CHECK(batchVm.progressPercentage() == 100);
     CHECK(batchVm.succeededCount() == 2);
     CHECK(batchVm.failedCount() == 0);
     CHECK(batchVm.lastReportItems().size() == 2);
     CHECK(completedSpy.count() >= 1);
 
-    // 2. Status Repositories
-    QStringList statusList;
-    statusList << QString::fromStdString(r1Res->id.value())
-               << QString::fromStdString(r2Res->id.value());
-    batchVm.checkStatusRepositories(statusList);
-
-    for (int i = 0; i < 50 && batchVm.isRunning(); ++i) {
-        QCoreApplication::processEvents();
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    }
-
-    CHECK_FALSE(batchVm.isRunning());
-    CHECK(batchVm.succeededCount() == 2);
-
-    // 3. Cancel batch operation test
+    // 2. Cancel batch operation test
     QStringList fetchList;
     fetchList << QString::fromStdString(r1Res->id.value())
               << QString::fromStdString(r2Res->id.value());
@@ -4106,7 +4061,7 @@ TEST_CASE (
 
         // Sticky rendered mode across non-md -> md transitions
         QSignalSpy renderedSpy(&diffVm, &DiffViewModel::markdownRenderedChanged);
-        diffVm.toggleMarkdownRendered();
+        diffVm.setMarkdownRendered(true);
         CHECK(diffVm.isMarkdownRendered());
         CHECK(renderedSpy.count() == 1);
 
@@ -5300,7 +5255,7 @@ TEST_CASE("DiffViewModel and DiffFileInspector preview images, archives, and bin
         REQUIRE(vm.waitForIdle());
 
         CHECK(vm.isBinary());
-        CHECK(vm.hasRichPreview());
+        CHECK(vm.isRichPreviewRendered());
         CHECK(vm.isImage());
         CHECK(vm.hasVisualPreview());
         CHECK(vm.fileKind() == "image");

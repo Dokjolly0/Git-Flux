@@ -127,8 +127,6 @@ namespace gf::desktop
             {IdRole, "id"},
             {NameRole, "name"},
             {ColorRole, "workspaceColor"},
-            {GroupCountRole, "groupCount"},
-            {DirectRepoCountRole, "directRepoCount"},
             {TotalRepoCountRole, "totalRepoCount"},
             {SummaryRole, "summary"},
             {LastOpenedAtRole, "lastOpenedAt"},

@@ -132,7 +132,7 @@ namespace gf::desktop
         [[nodiscard]] bool isLoadingMultiCommitFiles() const noexcept { return m_isLoadingMultiCommitFiles; }
         [[nodiscard]] int multiSelectRevision() const noexcept { return m_multiSelectRevision; }
 
-    Q_INVOKABLE void setRepositoryPath(const QString& path);
+        void setRepositoryPath(const QString& path);
     /// Requests a reload of branches, history and remotes. Requests are coalesced and the git
     /// reads run on a background thread; models are updated on the GUI thread when done.
     Q_INVOKABLE void refresh();
@@ -177,7 +177,7 @@ namespace gf::desktop
                                                               const QString& title = QString(),
                                                               const QString& body = QString()) const;
 
-    Q_INVOKABLE void setWipStatus(bool hasWip, int changedFilesCount = 0);
+        void setWipStatus(bool hasWip, int changedFilesCount = 0);
     /// Asynchronous, latest wins: the files arrive with commitFilesLoaded(commitSha, files).
     Q_INVOKABLE void requestCommitFiles(const QString& commitSha);
 

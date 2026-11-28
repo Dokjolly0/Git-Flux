@@ -85,13 +85,7 @@ namespace gf::desktop
     QHash<int, QByteArray> TerminalOutputListModel::roleNames() const
     {
         return {
-            {LineKindRole, "lineKind"},
-            {RichHtmlRole, "richHtml"},
-            {PlainTextRole, "plainText"},
-            {PromptPrefixRole, "promptPrefix"},
-            {ExitCodeRole, "exitCode"},
-            {DurationTextRole, "durationText"},
-            {WasCancelledRole, "wasCancelled"}
+            {LineKindRole, "lineKind"}
         };
     }
 

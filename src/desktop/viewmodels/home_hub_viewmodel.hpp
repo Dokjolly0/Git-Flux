@@ -49,7 +49,6 @@ namespace gf::desktop
         Q_PROPERTY(int workspacesCount READ workspacesCount NOTIFY workspacesChanged)
         Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged)
         Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
-        Q_PROPERTY(QString lastSuccessMessage READ lastSuccessMessage NOTIFY lastSuccessMessageChanged)
 
         Q_PROPERTY(bool isCloning READ isCloning NOTIFY isCloningChanged)
         Q_PROPERTY(QString cloneStatusMessage READ cloneStatusMessage NOTIFY cloneStatusMessageChanged)
@@ -87,7 +86,6 @@ namespace gf::desktop
         [[nodiscard]] int workspacesCount() const noexcept;
         [[nodiscard]] QString statusMessage() const noexcept;
         [[nodiscard]] QString lastError() const noexcept;
-        [[nodiscard]] QString lastSuccessMessage() const noexcept;
 
         [[nodiscard]] bool isCloning() const noexcept { return m_isCloning; }
         [[nodiscard]] QString cloneStatusMessage() const noexcept { return m_cloneStatusMessage; }
@@ -193,12 +191,10 @@ namespace gf::desktop
         void workspaceOpened(const QString& workspaceId);
         void errorOccurred(const QString& message);
         void lastErrorChanged(const QString& error);
-        void lastSuccessMessageChanged(const QString& message);
 
     private:
         void setStatus(const QString& msg);
         void setLastError(const QString& error);
-        void setLastSuccessMessage(const QString& msg);
 
         gf::repositories::bl::RepositoryService& m_repoService;
         gf::groups::bl::GroupService& m_groupService;
@@ -212,7 +208,6 @@ namespace gf::desktop
         QString m_searchFilter;
         QString m_statusMessage;
         QString m_lastError;
-        QString m_lastSuccessMessage;
 
         bool m_isCloning{false};
         QString m_cloneStatusMessage;

@@ -148,7 +148,7 @@ namespace gf::desktop
     Q_INVOKABLE void closeTab(int index);
     Q_INVOKABLE void closeAllTabs();
     Q_INVOKABLE void refreshActiveTab();
-    Q_INVOKABLE void refreshTabGroups();
+        void refreshTabGroups();
     Q_INVOKABLE void checkWorkingTreeUpdates();
 
         /// Test helper: processes events until this session and its viewmodels have no git work
@@ -156,7 +156,7 @@ namespace gf::desktop
         bool waitForIdle(int timeoutMs = 10000);
 
         // Rebase (asynchronous: outcome via rebaseSucceeded)
-    Q_INVOKABLE bool startRebase(const QString& upstream, const QString& onto = {});
+        bool startRebase(const QString& upstream, const QString& onto = {});
     Q_INVOKABLE bool continueRebase();
     Q_INVOKABLE bool skipRebase();
     Q_INVOKABLE bool abortRebase();

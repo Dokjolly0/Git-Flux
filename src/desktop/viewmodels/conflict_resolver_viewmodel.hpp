@@ -55,7 +55,7 @@ namespace gf::desktop
         // Asynchronous: returns whether the read was started (the previous file is cleared at
         // once); the hunks arrive with currentFilePathChanged, failures set errorMessage. A newer
         // loadFile, clear() or setRepoPath() supersedes it.
-        Q_INVOKABLE bool loadFile(const QString& relativeFilePath);
+        bool loadFile(const QString& relativeFilePath);
     Q_INVOKABLE void resolveHunk(int hunkIndex, int side, const QString& customText = {});
         // Asynchronous: returns whether the resolution was submitted; resolutionApplied() or
         // errorMessage report the outcome.
