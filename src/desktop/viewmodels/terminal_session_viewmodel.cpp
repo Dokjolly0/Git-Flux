@@ -27,6 +27,7 @@ namespace gf::desktop
         QString previousWorkingDir;
         QString branch;
         QString shellId;
+        QString accentColor;
         std::unique_ptr<TerminalOutputListModel> outputModel;
         std::unique_ptr<TerminalOutputListModel> pagerModel;
         QStringList history;
@@ -340,6 +341,8 @@ namespace gf::desktop
         , m_gitExecutor(gitExecutor)
     {
         m_bgPool.setMaxThreadCount(2);
+        connect(this, &TerminalSessionViewModel::activeTabChanged,
+                this, &TerminalSessionViewModel::activeTabColorChanged);
     }
 
     TerminalSessionViewModel::~TerminalSessionViewModel()
@@ -453,6 +456,7 @@ namespace gf::desktop
             m[QStringLiteral("title")] = tab->title;
             m[QStringLiteral("isRunning")] = tab->isRunning;
             m[QStringLiteral("shellId")] = tab->shellId;
+            m[QStringLiteral("accentColor")] = tab->accentColor;
             m[QStringLiteral("workingDir")] = tab->currentWorkingDir;
             m[QStringLiteral("relativeDir")] = formatRelativeDir(tab->repoRootPath, tab->currentWorkingDir);
             list.append(m);
@@ -753,6 +757,26 @@ namespace gf::desktop
     {
         const auto* tab = activeTab();
         return tab ? tab->shellId : QStringLiteral("auto");
+    }
+
+    QString TerminalSessionViewModel::activeTabColor() const
+    {
+        const auto* tab = activeTab();
+        return tab ? tab->accentColor : QString();
+    }
+
+    QStringList TerminalSessionViewModel::tabColorPalette() const
+    {
+        return {
+            QStringLiteral("#38BDF8"), // Sky / Cyan
+            QStringLiteral("#A78BFA"), // Violet
+            QStringLiteral("#34D399"), // Emerald
+            QStringLiteral("#FBBF24"), // Amber
+            QStringLiteral("#FB7185"), // Rose
+            QStringLiteral("#818CF8"), // Indigo
+            QStringLiteral("#2DD4BF"), // Teal
+            QStringLiteral("#FB923C")  // Orange
+        };
     }
 
     QVariantList TerminalSessionViewModel::availableShells() const
@@ -1106,6 +1130,42 @@ namespace gf::desktop
         }
         bucket->tabs[static_cast<std::size_t>(index)]->title = trimmed;
         emit tabsChanged();
+    }
+
+    void TerminalSessionViewModel::setTabColor(const int index, const QString& hexColor)
+    {
+        auto* bucket = activeBucket();
+        if (!bucket || index < 0 || index >= static_cast<int>(bucket->tabs.size()))
+        {
+            return;
+        }
+        const QString trimmed = hexColor.trimmed();
+        if (!trimmed.isEmpty())
+        {
+            if (trimmed.size() != 7 || trimmed.front() != QLatin1Char('#'))
+            {
+                return;
+            }
+            for (int i = 1; i < 7; ++i)
+            {
+                const char16_t ch = trimmed[i].unicode();
+                const bool isHex = (ch >= u'0' && ch <= u'9')
+                                   || (ch >= u'a' && ch <= u'f')
+                                   || (ch >= u'A' && ch <= u'F');
+                if (!isHex) return;
+            }
+        }
+        auto& tab = bucket->tabs[static_cast<std::size_t>(index)];
+        if (tab->accentColor.compare(trimmed, Qt::CaseInsensitive) == 0)
+        {
+            return;
+        }
+        tab->accentColor = trimmed;
+        emit tabsChanged();
+        if (index == bucket->activeTabIndex)
+        {
+            emit activeTabColorChanged();
+        }
     }
 
     void TerminalSessionViewModel::setActiveTabShell(const QString& shellId)

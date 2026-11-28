@@ -67,6 +67,8 @@ namespace gf::desktop
         Q_PROPERTY(QString activeRelativeDir READ activeRelativeDir NOTIFY activeTabChanged)
         Q_PROPERTY(QString activeBranch READ activeBranch NOTIFY activeBranchChanged)
         Q_PROPERTY(QString activeShellId READ activeShellId NOTIFY activeTabChanged)
+        Q_PROPERTY(QString activeTabColor READ activeTabColor NOTIFY activeTabColorChanged)
+        Q_PROPERTY(QStringList tabColorPalette READ tabColorPalette CONSTANT)
         Q_PROPERTY(QVariantList availableShells READ availableShells CONSTANT)
         Q_PROPERTY(bool pagerActive READ pagerActive NOTIFY pagerStateChanged)
         Q_PROPERTY(TerminalOutputListModel* activePagerModel READ activePagerModel NOTIFY pagerStateChanged)
@@ -128,6 +130,8 @@ namespace gf::desktop
         [[nodiscard]] QString activeRelativeDir() const;
         [[nodiscard]] QString activeBranch() const;
         [[nodiscard]] QString activeShellId() const;
+        [[nodiscard]] QString activeTabColor() const;
+        [[nodiscard]] QStringList tabColorPalette() const;
         [[nodiscard]] QVariantList availableShells() const;
 
         [[nodiscard]] QString ghostText() const noexcept { return m_ghostText; }
@@ -150,6 +154,7 @@ namespace gf::desktop
         Q_INVOKABLE int createTab(const QString& shellId = {});
         Q_INVOKABLE void closeTab(int index);
         Q_INVOKABLE void renameTab(int index, const QString& newTitle);
+        Q_INVOKABLE void setTabColor(int index, const QString& hexColor);
         Q_INVOKABLE void setActiveTabShell(const QString& shellId);
         Q_INVOKABLE void setActiveInputDraft(const QString& text, int cursorPos = -1);
 
@@ -181,6 +186,7 @@ namespace gf::desktop
     signals:
         void tabsChanged();
         void activeTabChanged();
+        void activeTabColorChanged();
         void activeBranchChanged();
         void visibilityChanged();
         void maximizedChanged();

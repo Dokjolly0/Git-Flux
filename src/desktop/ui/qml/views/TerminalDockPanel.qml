@@ -22,6 +22,98 @@ Rectangle {
     property int _lastSyncedTabId: -1
     property string copiedFeedbackTarget: ""
     property string copiedFeedbackMessage: ""
+    readonly property color defaultTabAccent: "#38BDF8"
+    readonly property string activeTabColor: (terminalVm && terminalVm.activeTabColor) ? terminalVm.activeTabColor : ""
+    readonly property color effectiveActiveAccent: activeTabColor.length > 0 ? activeTabColor : defaultTabAccent
+    readonly property var defaultColorPalette: ["#38BDF8", "#A78BFA", "#34D399", "#FBBF24", "#FB7185", "#818CF8", "#2DD4BF", "#FB923C"]
+
+    component TabColorSwatchRow: RowLayout {
+        id: swatchRow
+        property string selectedColor: ""
+        property string objectNamePrefix: "tabColorSwatch_"
+        signal colorPicked(string hexColor)
+
+        readonly property var palette: (panelRoot.terminalVm && panelRoot.terminalVm.tabColorPalette && panelRoot.terminalVm.tabColorPalette.length > 0)
+            ? panelRoot.terminalVm.tabColorPalette
+            : panelRoot.defaultColorPalette
+
+        spacing: 7
+        Layout.preferredHeight: 28
+
+        Rectangle {
+            id: defaultResetPill
+            objectName: swatchRow.objectNamePrefix + "default"
+            readonly property bool isSelected: swatchRow.selectedColor.length === 0
+            Layout.preferredHeight: 22
+            implicitWidth: defaultResetText.implicitWidth + 12
+            radius: 6
+            color: isSelected ? "#152336" : (resetMa.containsMouse ? "#121C2A" : "#0B111A")
+            border.color: isSelected ? "#00E5FF" : (resetMa.containsMouse ? "#334155" : "#1E293B")
+            border.width: 1
+
+            Text {
+                id: defaultResetText
+                anchors.centerIn: parent
+                text: "Predefinito"
+                color: defaultResetPill.isSelected ? "#E2E8F0" : "#94A3B8"
+                font.pixelSize: 10
+                font.bold: defaultResetPill.isSelected
+            }
+
+            MouseArea {
+                id: resetMa
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    swatchRow.selectedColor = "";
+                    swatchRow.colorPicked("");
+                }
+            }
+        }
+
+        Repeater {
+            model: swatchRow.palette
+
+            delegate: Rectangle {
+                id: swatchRect
+                required property string modelData
+                readonly property bool isSelected: swatchRow.selectedColor.toLowerCase() === modelData.toLowerCase()
+                objectName: swatchRow.objectNamePrefix + modelData
+                width: 22
+                height: 22
+                Layout.preferredWidth: 22
+                Layout.preferredHeight: 22
+                Layout.alignment: Qt.AlignVCenter
+                radius: 11
+                color: modelData
+                border.color: isSelected ? "#F8FAFC" : (swatchMa.containsMouse ? "#CBD5E1" : "transparent")
+                border.width: isSelected ? 2 : 1
+                scale: isSelected ? 1.12 : (swatchMa.containsMouse ? 1.06 : 1.0)
+                Behavior on scale { NumberAnimation { duration: 100 } }
+
+                Text {
+                    anchors.centerIn: parent
+                    visible: swatchRect.isSelected
+                    text: "✓"
+                    color: "#0A0E15"
+                    font.pixelSize: 11
+                    font.bold: true
+                }
+
+                MouseArea {
+                    id: swatchMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        swatchRow.selectedColor = swatchRect.modelData;
+                        swatchRow.colorPicked(swatchRect.modelData);
+                    }
+                }
+            }
+        }
+    }
 
     component TextEditDragAutoScroller: PointHandler {
         id: scrollerHandler
@@ -191,7 +283,19 @@ Rectangle {
         const tab = tabs[index];
         renameTabDialog.targetTabIndex = index;
         renameTabDialog.initialTitle = (tab && tab.title) ? tab.title : "Terminal";
+        renameTabDialog.initialColor = (tab && tab.accentColor) ? tab.accentColor : "";
         renameTabDialog.open();
+    }
+
+    function openTabColorDialog(index) {
+        if (!terminalVm) return;
+        const tabs = terminalVm.tabs;
+        if (!tabs || index < 0 || index >= tabs.length) return;
+        const tab = tabs[index];
+        tabColorDialog.targetTabIndex = index;
+        tabColorDialog.targetTabTitle = (tab && tab.title) ? tab.title : "Terminal";
+        tabColorDialog.selectedColor = (tab && tab.accentColor) ? tab.accentColor : "";
+        tabColorDialog.open();
     }
 
     function applyShellToTab(index, shellId) {
@@ -462,13 +566,19 @@ Rectangle {
                                 readonly property int tabIdx: (modelData && modelData.index !== undefined) ? modelData.index : 0
                                 readonly property bool isActive: Boolean(panelRoot.terminalVm && panelRoot.terminalVm.activeTabIndex === tabIdx)
                                 readonly property bool isBusy: Boolean(modelData && modelData.isRunning)
+                                readonly property string customColor: (modelData && modelData.accentColor) ? modelData.accentColor : ""
+                                readonly property color tabAccent: customColor.length > 0 ? customColor : "#00E5FF"
 
                                 Layout.preferredHeight: 26
                                 Layout.alignment: Qt.AlignVCenter
                                 implicitWidth: termTabRow.implicitWidth + 16
                                 radius: 7
-                                color: isActive ? "#152336" : (termTabMa.containsMouse ? "#111927" : "transparent")
-                                border.color: isActive ? "#2D4A6E" : (termTabMa.containsMouse ? "#1E2B3E" : "transparent")
+                                color: customColor.length > 0
+                                    ? (isActive ? Qt.alpha(tabAccent, 0.16) : (termTabMa.containsMouse ? Qt.alpha(tabAccent, 0.10) : Qt.alpha(tabAccent, 0.05)))
+                                    : (isActive ? "#152336" : (termTabMa.containsMouse ? "#111927" : "transparent"))
+                                border.color: customColor.length > 0
+                                    ? (isActive ? Qt.alpha(tabAccent, 0.68) : (termTabMa.containsMouse ? Qt.alpha(tabAccent, 0.42) : Qt.alpha(tabAccent, 0.22)))
+                                    : (isActive ? "#2D4A6E" : (termTabMa.containsMouse ? "#1E2B3E" : "transparent"))
                                 border.width: 1
 
                                 Rectangle {
@@ -478,7 +588,7 @@ Rectangle {
                                     width: Math.max(16, parent.width - 16)
                                     height: 2
                                     radius: 1
-                                    color: "#00E5FF"
+                                    color: termTabRect.tabAccent
                                 }
 
                                 MouseArea {
@@ -510,10 +620,15 @@ Rectangle {
                                     spacing: 6
 
                                     Rectangle {
+                                        objectName: "termTabDot_" + termTabRect.tabIdx
                                         width: 6
                                         height: 6
                                         radius: 3
-                                        color: termTabRect.isBusy ? "#F59E0B" : (termTabRect.isActive ? "#00E5FF" : "#475569")
+                                        color: termTabRect.isBusy
+                                            ? "#F59E0B"
+                                            : (termTabRect.customColor.length > 0
+                                                ? termTabRect.tabAccent
+                                                : (termTabRect.isActive ? "#00E5FF" : "#475569"))
 
                                         SequentialAnimation on opacity {
                                             running: termTabRect.isBusy
@@ -1560,7 +1675,11 @@ Rectangle {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 height: promptBar.isStdinMode ? 2 : 1
-                color: promptBar.isStdinMode ? "#F59E0B" : (cmdInput.activeFocus ? "#244366" : "#1A2434")
+                color: promptBar.isStdinMode
+                    ? "#F59E0B"
+                    : (cmdInput.activeFocus
+                        ? (panelRoot.activeTabColor.length > 0 ? Qt.alpha(panelRoot.effectiveActiveAccent, 0.55) : "#244366")
+                        : (panelRoot.activeTabColor.length > 0 ? Qt.alpha(panelRoot.effectiveActiveAccent, 0.25) : "#1A2434"))
                 Behavior on color { ColorAnimation { duration: 120 } }
             }
 
@@ -1574,10 +1693,11 @@ Rectangle {
                 // Repo Name
                 Text {
                     id: promptRepoText
+                    objectName: "promptRepoText"
                     text: (panelRoot.terminalVm && panelRoot.terminalVm.activeRepoName.length > 0)
                         ? panelRoot.terminalVm.activeRepoName
                         : "repo"
-                    color: "#38BDF8"
+                    color: panelRoot.effectiveActiveAccent
                     font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
                     font.pixelSize: 12
                     font.bold: true
@@ -1585,19 +1705,22 @@ Rectangle {
 
                 // Branch Chip
                 Rectangle {
+                    id: promptBranchChip
+                    objectName: "promptBranchChip"
                     visible: Boolean(panelRoot.terminalVm && panelRoot.terminalVm.activeBranch.length > 0)
                     Layout.preferredHeight: 20
                     implicitWidth: branchChipText.implicitWidth + 12
                     radius: 5
-                    color: "#082F25"
-                    border.color: "#10B981"
+                    color: Qt.alpha(panelRoot.effectiveActiveAccent, 0.14)
+                    border.color: Qt.alpha(panelRoot.effectiveActiveAccent, 0.72)
                     border.width: 1
 
                     Text {
                         id: branchChipText
+                        objectName: "promptBranchChipText"
                         anchors.centerIn: parent
                         text: panelRoot.terminalVm ? panelRoot.terminalVm.activeBranch : ""
-                        color: "#34D399"
+                        color: panelRoot.effectiveActiveAccent
                         font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
                         font.pixelSize: 10
                         font.bold: true
@@ -1617,7 +1740,7 @@ Rectangle {
                 Text {
                     visible: !promptBar.isStdinMode
                     text: "❯"
-                    color: "#00E5FF"
+                    color: panelRoot.effectiveActiveAccent
                     font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
                     font.pixelSize: 13
                     font.bold: true
@@ -2014,6 +2137,13 @@ Rectangle {
         }
 
         FluxMenuItem {
+            objectName: "tabMenuColorItem"
+            text: "🎨 Colore scheda..."
+            font.pixelSize: 11
+            onClicked: panelRoot.openTabColorDialog(tabContextMenu.targetTabIndex)
+        }
+
+        FluxMenuItem {
             objectName: "tabMenuNewTabItem"
             text: "＋ Nuova scheda"
             font.pixelSize: 11
@@ -2094,9 +2224,10 @@ Rectangle {
         objectName: "renameTabDialog"
         property int targetTabIndex: -1
         property string initialTitle: ""
+        property string initialColor: ""
 
         anchors.centerIn: Overlay.overlay
-        width: 390
+        width: 410
         modal: true
         padding: 18
         header: null
@@ -2106,14 +2237,17 @@ Rectangle {
             const trimmed = renameTabInput.text.trim();
             if (trimmed.length === 0) return;
             const idx = targetTabIndex;
+            const nextColor = renameColorSwatches.selectedColor;
             close();
             if (panelRoot.terminalVm && idx >= 0) {
                 panelRoot.terminalVm.renameTab(idx, trimmed);
+                panelRoot.terminalVm.setTabColor(idx, nextColor);
             }
         }
 
         onOpened: {
             renameTabInput.text = initialTitle;
+            renameColorSwatches.selectedColor = initialColor;
             renameTabInput.forceActiveFocus();
             renameTabInput.selectAll();
         }
@@ -2130,7 +2264,7 @@ Rectangle {
             spacing: 12
 
             Text {
-                text: "✏ Rinomina scheda terminale"
+                text: "✏ Rinomina e personalizza scheda"
                 color: "#F8FAFC"
                 font.pixelSize: 13
                 font.bold: true
@@ -2164,6 +2298,22 @@ Rectangle {
                 }
             }
 
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 6
+
+                Text {
+                    text: "Colore scheda"
+                    color: "#94A3B8"
+                    font.pixelSize: 11
+                }
+
+                TabColorSwatchRow {
+                    id: renameColorSwatches
+                    objectNamePrefix: "renameTabSwatch_"
+                }
+            }
+
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
@@ -2190,6 +2340,67 @@ Rectangle {
                     textColor: "#F8FAFC"
                     fontBold: true
                     onClicked: renameTabDialog.submitRename()
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: tabColorDialog
+        objectName: "tabColorDialog"
+        property int targetTabIndex: -1
+        property string targetTabTitle: ""
+        property string selectedColor: ""
+
+        anchors.centerIn: Overlay.overlay
+        width: 400
+        modal: true
+        padding: 18
+        header: null
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        onOpened: colorPickerSwatches.selectedColor = selectedColor
+        onClosed: {
+            targetTabIndex = -1;
+            if (panelRoot.terminalVm && panelRoot.terminalVm.isVisible) {
+                panelRoot.focusInput();
+            }
+        }
+
+        background: FluxModalBackground {}
+
+        contentItem: ColumnLayout {
+            spacing: 12
+
+            Text {
+                text: "🎨 Colore scheda: " + tabColorDialog.targetTabTitle
+                color: "#F8FAFC"
+                font.pixelSize: 13
+                font.bold: true
+                elide: Text.ElideRight
+                Layout.fillWidth: true
+            }
+
+            TabColorSwatchRow {
+                id: colorPickerSwatches
+                objectNamePrefix: "quickTabSwatch_"
+                onColorPicked: function (hexColor) {
+                    const idx = tabColorDialog.targetTabIndex;
+                    tabColorDialog.close();
+                    if (panelRoot.terminalVm && idx >= 0) {
+                        panelRoot.terminalVm.setTabColor(idx, hexColor);
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+
+                FluxActionButton {
+                    text: "Chiudi"
+                    Layout.preferredHeight: 28
+                    onClicked: tabColorDialog.close()
                 }
             }
         }

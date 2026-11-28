@@ -586,6 +586,24 @@ TEST_CASE("TerminalDockPanel keeps prompt focus for Ctrl+V and Up/Down after cli
         return QPoint(static_cast<int>(p.x()), static_cast<int>(p.y()));
     };
 
+    auto findQuickItemByName = [](QQuickItem* root, const QString& name) -> QQuickItem*
+    {
+        if (!root) return nullptr;
+        std::vector<QQuickItem*> stack{root};
+        while (!stack.empty())
+        {
+            QQuickItem* cur = stack.back();
+            stack.pop_back();
+            if (cur->objectName() == name) return cur;
+            const auto children = cur->childItems();
+            for (QQuickItem* child : children)
+            {
+                stack.push_back(child);
+            }
+        }
+        return nullptr;
+    };
+
     SECTION("Single click on output without selecting text returns focus to prompt for Up/Down and Ctrl+V")
     {
         QMetaObject::invokeMethod(panelObj.get(), "focusInput");
@@ -999,24 +1017,6 @@ TEST_CASE("TerminalDockPanel keeps prompt focus for Ctrl+V and Up/Down after cli
 
     SECTION("Tab rename via double-click or context menu and active tab shell switch via badge or menu")
     {
-        auto findQuickItemByName = [](QQuickItem* root, const QString& name) -> QQuickItem*
-        {
-            if (!root) return nullptr;
-            std::vector<QQuickItem*> stack{root};
-            while (!stack.empty())
-            {
-                QQuickItem* cur = stack.back();
-                stack.pop_back();
-                if (cur->objectName() == name) return cur;
-                const auto children = cur->childItems();
-                for (QQuickItem* child : children)
-                {
-                    stack.push_back(child);
-                }
-            }
-            return nullptr;
-        };
-
         auto* tabMa0 = findQuickItemByName(panelItem, QStringLiteral("termTabMouseArea_0"));
         auto* renameDialog = panelObj->findChild<QObject*>(QStringLiteral("renameTabDialog"));
         auto* renameInput = findQuickItemByName(panelItem, QStringLiteral("renameTabInput"));
@@ -1114,5 +1114,106 @@ TEST_CASE("TerminalDockPanel keeps prompt focus for Ctrl+V and Up/Down after cli
             CHECK(vm.activeShellId() == firstShell);
             CHECK(cmdInput->hasActiveFocus());
         }
+    }
+
+    SECTION("Per-tab color customization via rename dialog, quick color dialog and ViewModel API")
+    {
+        REQUIRE(vm.tabColorPalette().size() >= 6);
+        CHECK(vm.activeTabColor().isEmpty());
+
+        auto* promptRepoText = findQuickItemByName(panelItem, QStringLiteral("promptRepoText"));
+        auto* promptBranchChipText = findQuickItemByName(panelItem, QStringLiteral("promptBranchChipText"));
+        REQUIRE(promptRepoText != nullptr);
+        REQUIRE(promptBranchChipText != nullptr);
+        // On first open (default color), repo name and branch chip share the same default accent (#38BDF8)
+        CHECK(promptRepoText->property("color").toString().compare(QStringLiteral("#38bdf8"), Qt::CaseInsensitive) == 0);
+        CHECK(promptBranchChipText->property("color").toString().compare(QStringLiteral("#38bdf8"), Qt::CaseInsensitive) == 0);
+
+        // Invalid color strings are ignored, valid hex colors are accepted and isolated per tab
+        vm.setTabColor(0, QStringLiteral("not-a-color"));
+        CHECK(vm.activeTabColor().isEmpty());
+
+        // Open rename dialog on tab 0, pick emerald color + save
+        auto* tabMa0 = findQuickItemByName(panelItem, QStringLiteral("termTabMouseArea_0"));
+        auto* renameDialog = panelObj->findChild<QObject*>(QStringLiteral("renameTabDialog"));
+        auto* renameInput = panelObj->findChild<QQuickItem*>(QStringLiteral("renameTabInput"));
+        REQUIRE(tabMa0 != nullptr);
+        REQUIRE(renameDialog != nullptr);
+        REQUIRE(renameInput != nullptr);
+
+        QTest::mouseDClick(&window, Qt::LeftButton, Qt::NoModifier, centerInWindow(tabMa0));
+        QCoreApplication::processEvents();
+        REQUIRE(renameDialog->property("opened").toBool());
+
+        auto* renameContent = renameDialog->property("contentItem").value<QQuickItem*>();
+        auto* emeraldSwatch = findQuickItemByName(renameContent, QStringLiteral("renameTabSwatch_#34D399"));
+        REQUIRE(emeraldSwatch != nullptr);
+        REQUIRE(QTest::qWaitFor([&]() { return emeraldSwatch->x() > 10.0 && emeraldSwatch->width() > 10.0; }, 1000));
+        QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, centerInWindow(emeraldSwatch));
+        QCoreApplication::processEvents();
+
+        renameInput->setProperty("text", QStringLiteral("Server"));
+        QTest::keyClick(&window, Qt::Key_Return);
+        QCoreApplication::processEvents();
+        INFO("after renameDialog activeTabColor=" << vm.activeTabColor().toStdString());
+        CHECK(vm.activeTabColor() == QStringLiteral("#34D399"));
+        CHECK(vm.tabs().at(0).toMap().value(QStringLiteral("accentColor")).toString() == QStringLiteral("#34D399"));
+
+        auto* dot0 = findQuickItemByName(panelItem, QStringLiteral("termTabDot_0"));
+        REQUIRE(dot0 != nullptr);
+        CHECK(dot0->property("color").toString().compare(QStringLiteral("#34d399"), Qt::CaseInsensitive) == 0);
+
+        // Create tab 2 -> starts with default empty color, while tab 0 retains #34D399
+        vm.createTab();
+        QCoreApplication::processEvents();
+        REQUIRE(vm.tabs().size() == 2);
+        CHECK(vm.activeTabIndex() == 1);
+        CHECK(vm.activeTabColor().isEmpty());
+        CHECK(vm.tabs().at(0).toMap().value(QStringLiteral("accentColor")).toString() == QStringLiteral("#34D399"));
+
+        // Right-click tab 1 -> "Colore scheda..." opens quick color dialog -> 1-click applies #FBBF24
+        auto* tabMa1 = findQuickItemByName(panelItem, QStringLiteral("termTabMouseArea_1"));
+        auto* tabMenu = panelObj->findChild<QObject*>(QStringLiteral("tabContextMenu"));
+        auto* colorDialog = panelObj->findChild<QObject*>(QStringLiteral("tabColorDialog"));
+        REQUIRE(tabMa1 != nullptr);
+        REQUIRE(tabMenu != nullptr);
+        REQUIRE(colorDialog != nullptr);
+        REQUIRE(QTest::qWaitFor([&]() { return tabMa1->height() > 10.0; }, 1000));
+
+        QTest::mouseClick(&window, Qt::RightButton, Qt::NoModifier, centerInWindow(tabMa1));
+        REQUIRE(QTest::qWaitFor([&]() { return tabMenu->property("opened").toBool(); }, 1000));
+        auto* tabMenuContent = tabMenu->property("contentItem").value<QQuickItem*>();
+        auto* tabMenuColor = findQuickItemByName(tabMenuContent, QStringLiteral("tabMenuColorItem"));
+        REQUIRE(tabMenuColor != nullptr);
+        QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, centerInWindow(tabMenuColor));
+        QCoreApplication::processEvents();
+        REQUIRE(colorDialog->property("opened").toBool());
+
+        auto* colorContent = colorDialog->property("contentItem").value<QQuickItem*>();
+        auto* amberSwatch = findQuickItemByName(colorContent, QStringLiteral("quickTabSwatch_#FBBF24"));
+        REQUIRE(amberSwatch != nullptr);
+        REQUIRE(QTest::qWaitFor([&]() { return amberSwatch->x() > 10.0 && amberSwatch->width() > 10.0; }, 1000));
+        QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, centerInWindow(amberSwatch));
+        QCoreApplication::processEvents();
+
+        INFO("after colorDialog activeTabColor=" << vm.activeTabColor().toStdString());
+        CHECK_FALSE(colorDialog->property("opened").toBool());
+        CHECK(vm.activeTabColor() == QStringLiteral("#FBBF24"));
+        CHECK(cmdInput->hasActiveFocus());
+        CHECK(promptRepoText->property("color").toString().compare(QStringLiteral("#fbbf24"), Qt::CaseInsensitive) == 0);
+        CHECK(promptBranchChipText->property("color").toString().compare(QStringLiteral("#fbbf24"), Qt::CaseInsensitive) == 0);
+
+        // Switching back to tab 0 restores its emerald color; resetting to default restores #38BDF8
+        vm.setActiveTabIndex(0);
+        QCoreApplication::processEvents();
+        CHECK(vm.activeTabColor() == QStringLiteral("#34D399"));
+        CHECK(promptRepoText->property("color").toString().compare(QStringLiteral("#34d399"), Qt::CaseInsensitive) == 0);
+        CHECK(promptBranchChipText->property("color").toString().compare(QStringLiteral("#34d399"), Qt::CaseInsensitive) == 0);
+
+        vm.setTabColor(0, QString());
+        QCoreApplication::processEvents();
+        CHECK(vm.activeTabColor().isEmpty());
+        CHECK(promptRepoText->property("color").toString().compare(QStringLiteral("#38bdf8"), Qt::CaseInsensitive) == 0);
+        CHECK(promptBranchChipText->property("color").toString().compare(QStringLiteral("#38bdf8"), Qt::CaseInsensitive) == 0);
     }
 }
