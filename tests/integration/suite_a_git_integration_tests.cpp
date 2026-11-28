@@ -4,36 +4,13 @@
 #include "core/shared/utf8_path.hpp"
 #include "fixture_generator.hpp"
 #include "infrastructure/git/git_discovery.hpp"
-#include "infrastructure/git/native/native_git_batch_session.hpp"
 #include "infrastructure/git/native/native_git_executor.hpp"
-
-#ifdef GF_HAS_QT_ADAPTER
-#include "infrastructure/git/qt/qt_git_batch_session.hpp"
-#include "infrastructure/git/qt/qt_git_executor.hpp"
-#include <QCoreApplication>
-#endif
 
 #include <atomic>
 #include <fstream>
 #include <string>
 #include <thread>
 #include <vector>
-
-namespace
-{
-#ifdef GF_HAS_QT_ADAPTER
-    void ensureQtCoreApp()
-    {
-        if (!QCoreApplication::instance())
-        {
-            static int argc = 1;
-            static char appName[] = "gf_integration_tests";
-            static char* argv[] = {appName, nullptr};
-            static QCoreApplication app(argc, argv);
-        }
-    }
-#endif
-} // namespace
 
 TEST_CASE (
 "Suite A.0 - GitDiscovery rileva eseguibile Git e risolve lo shim su Windows"
@@ -225,70 +202,7 @@ TEST_CASE (
     const auto nativeStatus = nativeExec.execute(statusCmd);
     REQUIRE(nativeStatus.has_value());
     REQUIRE(nativeStatus->succeeded());
-
-    // Extract the last 30 commit OIDs to test cat-file --batch
-    const auto revListRes = nativeExec.execute({
-        .args = {"rev-list", "--max-count=30", "HEAD"},
-        .workingDirectory = repoPath,
-        .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks
-    });
-    REQUIRE(revListRes.has_value());
-    REQUIRE(revListRes->succeeded());
-
-    std::vector<std::string> oids;
-    std::size_t pos = 0;
-    while (pos < revListRes->stdoutBytes.size()) {
-        const auto nl = revListRes->stdoutBytes.find('\n', pos);
-        if (nl == std::string::npos) {
-            break;
-        }
-        std::string line = revListRes->stdoutBytes.substr(pos, nl - pos);
-        if (!line.empty() && line.back() == '\r') {
-            line.pop_back();
-        }
-        if (!line.empty()) {
-            oids.push_back(std::move(line));
-        }
-        pos = nl + 1;
-    }
-    REQUIRE(oids.size() == 30);
-
-    gf::infra::git::NativeGitBatchSessionFactory nativeBatchFactory(gitInfo->directBinaryPath);
-    auto nativeSession = nativeBatchFactory.openSession(repoPath);
-    REQUIRE(nativeSession.has_value());
-    REQUIRE((*nativeSession)->isAlive());
-
-    std::vector<std::string> nativeContents;
-    nativeContents.reserve(oids.size());
-    for (const auto& oid : oids) {
-        auto obj = (*nativeSession)->readObject(oid);
-        REQUIRE(obj.has_value());
-        REQUIRE(obj->header.oid == oid);
-        REQUIRE(obj->header.type == "commit");
-        REQUIRE(obj->content.size() == obj->header.size);
-        nativeContents.push_back(std::move(obj->content));
-    }
-
-    // Verify non-existent object handling without terminating the pipe!
-    auto missingObj = (*nativeSession)->readObject("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef");
-    REQUIRE_FALSE(missingObj.has_value());
-    REQUIRE((*nativeSession)->isAlive());
-
-#ifdef GF_HAS_QT_ADAPTER
-    ensureQtCoreApp();
-    gf::infra::git::QtGitCommandExecutor qtExec(gitInfo->directBinaryPath);
-    const auto qtStatus = qtExec.execute(statusCmd);
-    REQUIRE (qtStatus.has_value());
-    REQUIRE (qtStatus->succeeded());
-    REQUIRE (qtStatus->stdoutBytes== nativeStatus->stdoutBytes);
-
-    gf::infra::git::QtGitBatchSessionFactory qtBatchFactory(gitInfo->directBinaryPath);
-    auto qtSession = qtBatchFactory.openSession(repoPath);
-    REQUIRE (qtSession.has_value());
-    for (std::size_t i =0; i<oids.size();++i) {
-        auto qtObj = (*qtSession)->readObject(oids[i]);
-        REQUIRE(qtObj.has_value());
-        REQUIRE(qtObj->content == nativeContents[i]);
-    }
-#endif
+    const auto parsed = gf::git::bl::PorcelainStatusParser::parse(nativeStatus->stdoutBytes);
+    REQUIRE(parsed.has_value());
+    REQUIRE_FALSE(parsed->isClean());
 }

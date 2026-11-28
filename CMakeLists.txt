@@ -56,7 +56,6 @@ target_include_directories(gf_domain INTERFACE
 add_library(gf_application STATIC
         src/core/modules/git/bl/porcelain_status_parser.cpp
         src/core/modules/git/bl/unified_diff_parser.cpp
-        src/core/modules/git/bl/operation_coordinator.cpp
         src/core/modules/git/bl/git_working_tree_service.cpp
         src/core/modules/git/bl/git_staging_service.cpp
         src/core/modules/git/bl/git_diff_service.cpp
@@ -73,7 +72,6 @@ add_library(gf_application STATIC
         src/core/modules/git/bl/fs_event_classifier.cpp
         src/core/modules/git/bl/fs_event_debouncer.cpp
         src/core/modules/git/bl/git_repository_watcher_service.cpp
-        src/core/modules/git/bl/async_git_service.cpp
         src/core/modules/git/bl/multi_repo_batch_coordinator.cpp
         src/core/modules/tasks/bl/background_task_runner.cpp
         src/core/modules/repositories/bl/repository_service.cpp
@@ -190,7 +188,6 @@ gf_apply_compiler_warnings(gf_persistence_sqlite)
 add_library(gf_git_cli_native STATIC
         src/infrastructure/git/git_discovery.cpp
         src/infrastructure/git/native/native_git_executor.cpp
-        src/infrastructure/git/native/native_git_batch_session.cpp
         src/infrastructure/git/native/native_repository_git_ops.cpp
 )
 target_include_directories(gf_git_cli_native PUBLIC
@@ -246,19 +243,6 @@ if (GF_BUILD_DESKTOP)
             qt_policy(SET QTP0004 NEW)
         endif ()
     endif ()
-
-    add_library(gf_git_cli_qt STATIC
-            src/infrastructure/git/qt/qt_git_executor.cpp
-            src/infrastructure/git/qt/qt_git_batch_session.cpp
-    )
-    target_include_directories(gf_git_cli_qt PUBLIC
-            "${CMAKE_CURRENT_SOURCE_DIR}/src"
-    )
-    target_link_libraries(gf_git_cli_qt PUBLIC
-            gf_application
-            Qt6::Core
-    )
-    gf_apply_compiler_warnings(gf_git_cli_qt)
 
     # MVVM ViewModels and Desktop Composition Root
     add_library(gf_desktop_viewmodels STATIC
@@ -513,7 +497,6 @@ if (GF_BUILD_TESTING)
             tests/integration/rebase_integration_tests.cpp
             tests/integration/conflict_integration_tests.cpp
             tests/integration/fs_watcher_integration_tests.cpp
-            tests/integration/async_git_integration_tests.cpp
             tests/integration/batch_coordinator_integration_tests.cpp
             tests/integration/terminal_integration_tests.cpp
     )
@@ -526,8 +509,6 @@ if (GF_BUILD_TESTING)
             Catch2::Catch2WithMain
     )
     if (GF_BUILD_DESKTOP)
-        target_link_libraries(gf_integration_tests PRIVATE gf_git_cli_qt)
-        target_compile_definitions(gf_integration_tests PRIVATE GF_HAS_QT_ADAPTER=1)
         gf_deploy_runtime_dlls(gf_integration_tests)
 
         # MVVM Unit Tests (ViewModels & Models with Catch2 + QSignalSpy)
@@ -558,8 +539,6 @@ if (GF_BUILD_BENCHMARKS)
             Catch2::Catch2WithMain
     )
     if (GF_BUILD_DESKTOP)
-        target_link_libraries(gf_bench_suite_a PRIVATE gf_git_cli_qt)
-        target_compile_definitions(gf_bench_suite_a PRIVATE GF_HAS_QT_ADAPTER=1)
         gf_deploy_runtime_dlls(gf_bench_suite_a)
     endif ()
     gf_apply_compiler_warnings(gf_bench_suite_a)

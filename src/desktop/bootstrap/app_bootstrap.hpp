@@ -18,7 +18,6 @@
 #include "core/modules/git/bl/git_rebase_service.hpp"
 #include "core/modules/git/bl/git_conflict_service.hpp"
 #include "core/modules/git/bl/git_repository_watcher_service.hpp"
-#include "core/modules/git/bl/async_git_service.hpp"
 #include "core/modules/git/bl/multi_repo_batch_coordinator.hpp"
 #include "core/modules/tasks/bl/background_task_runner.hpp"
 #include "core/modules/terminal/bl/git_catalog_service.hpp"
@@ -60,14 +59,8 @@ namespace gf::desktop
         void registerWithQml(QQmlApplicationEngine& engine);
 
         [[nodiscard]] HomeHubViewModel& homeHubViewModel() noexcept;
-        [[nodiscard]] QuickOpenViewModel& quickOpenViewModel() noexcept;
         [[nodiscard]] WorkspaceSessionViewModel& workspaceSessionViewModel() noexcept;
-        [[nodiscard]] TerminalSessionViewModel& terminalSessionViewModel() noexcept;
-        [[nodiscard]] BatchOperationsViewModel& batchOperationsViewModel() noexcept;
-        [[nodiscard]] viewmodels::GitProfilesViewModel& gitProfilesViewModel() noexcept;
         [[nodiscard]] ThemeManager& themeManager() noexcept;
-        [[nodiscard]] git::bl::GitRepositoryWatcherService& watcherService() noexcept;
-        [[nodiscard]] git::bl::MultiRepoBatchCoordinator& batchCoordinator() noexcept;
         [[nodiscard]] repositories::bl::RepositoryService& repositoryService() noexcept;
         [[nodiscard]] groups::bl::GroupService& groupService() noexcept;
         [[nodiscard]] workspaces::bl::WorkspaceService& workspaceService() noexcept;
@@ -104,7 +97,6 @@ namespace gf::desktop
         std::unique_ptr<infra::watcher::NativePollingFsWatcher> m_watcherPort;
         std::unique_ptr<git::bl::GitRepositoryWatcherService> m_watcherService;
         std::unique_ptr<tasks::bl::BackgroundTaskRunner> m_taskRunner;
-        std::unique_ptr<git::bl::AsyncGitService> m_asyncGitService;
         std::unique_ptr<git::bl::MultiRepoBatchCoordinator> m_batchCoordinator;
 
         std::unique_ptr<HomeHubViewModel> m_homeHubVm;

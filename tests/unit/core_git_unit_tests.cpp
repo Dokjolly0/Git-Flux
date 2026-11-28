@@ -1,19 +1,13 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "core/modules/git/bl/operation_coordinator.hpp"
 #include "core/modules/git/bl/porcelain_status_parser.hpp"
 #include "core/modules/repositories/bo/repository_id.hpp"
 #include "core/shared/strong_id.hpp"
 #include "core/shared/utf8_path.hpp"
 #include "infrastructure/git/native/native_git_executor.hpp"
 
-#include <atomic>
-#include <chrono>
 #include <string>
-#include <thread>
 #include <unordered_set>
-
-using namespace std::chrono_literals;
 
 TEST_CASE (
 "StrongId garantisce type-safety, confronto e hashing"
@@ -99,117 +93,6 @@ TEST_CASE (
 
     REQUIRE(parsed->entries[4].isUntracked);
     REQUIRE(parsed->entries[4].path == "scratch_note.txt");
-}
-
-TEST_CASE (
-"OperationCoordinator serializza mutazioni sullo stesso repo ma parallelizza repo distinti"
-,
-"[unit][coordinator]"
-)
- {
-    using gf::git::bl::OperationCoordinator;
-    using gf::git::bl::OperationKind;
-    using gf::git::bl::TaskPriority;
-    using gf::repositories::bo::RepositoryId;
-
-    OperationCoordinator coordinator(4);
-
-    std::atomic activeOnRepoA{0};
-    std::atomic maxConcurrentOnRepoA{0};
-
-    std::vector<std::future<void>> futures;
-    // 8 concurrent mutations on the SAME RepositoryId("repo-A")
-    for (int i = 0; i < 8; ++i) {
-        futures.push_back(coordinator.submit(
-            RepositoryId("repo-A"),
-            OperationKind::Mutating,
-            TaskPriority::NormalBackground,
-            [&] {
-                const int now = activeOnRepoA.fetch_add(1) + 1;
-                int prev = maxConcurrentOnRepoA.load();
-                while (now > prev && !maxConcurrentOnRepoA.compare_exchange_weak(prev, now)) {}
-                std::this_thread::sleep_for(5ms);
-                activeOnRepoA.fetch_sub(1);
-            }));
-    }
-
-    // Simultaneously, 4 passive reads on DIFFERENT repositories
-    for (int i = 0; i < 4; ++i) {
-        futures.push_back(coordinator.submit(
-            RepositoryId("other-" + std::to_string(i)),
-            OperationKind::PassiveRead,
-            TaskPriority::NormalBackground,
-            [] { std::this_thread::sleep_for(10ms); }));
-    }
-
-    for (auto& f : futures) {
-        f.get();
-    }
-
-    // On the same repo, two Mutating operations must NEVER overlap
-    REQUIRE(maxConcurrentOnRepoA.load() == 1);
-    // Globally, workers must have executed in parallel up to the ceiling of 4
-    REQUIRE(coordinator.maxObservedActiveWorkers() <= 4);
-    REQUIRE(coordinator.maxObservedActiveWorkers() >= 2);
-}
-
-TEST_CASE (
-"OperationCoordinator serve HighActiveRepo prima della coda NormalBackground"
-,
-"[unit][coordinator]"
-)
- {
-    using gf::git::bl::OperationCoordinator;
-    using gf::git::bl::OperationKind;
-    using gf::git::bl::TaskPriority;
-    using gf::repositories::bo::RepositoryId;
-
-    // Single worker to ensure deterministic scheduling order
-    OperationCoordinator coordinator(1);
-
-    std::promise<void> gatePromise;
-    auto gateFuture = gatePromise.get_future().share();
-
-    std::vector<int> executionOrder;
-    std::mutex orderMutex;
-
-    // Task 0 occupies the only worker until the gate is opened
-    auto blocker = coordinator.submit(
-        RepositoryId("r0"), OperationKind::PassiveRead, TaskPriority::NormalBackground,
-        [gateFuture] { gateFuture.wait(); });
-
-    // Enqueue 5 NormalBackground tasks (id 1..5)
-    std::vector<std::future<void>> bgFutures;
-    for (int i = 1; i <= 5; ++i) {
-        bgFutures.push_back(coordinator.submit(
-            RepositoryId("bg-" + std::to_string(i)),
-            OperationKind::PassiveRead,
-            TaskPriority::NormalBackground,
-            [i, &executionOrder, &orderMutex] {
-                std::scoped_lock lk(orderMutex);
-                executionOrder.push_back(i);
-            }));
-    }
-
-    // Enqueue a HighActiveRepo task last (id 99)
-    auto highFuture = coordinator.submit(
-        RepositoryId("active-repo"),
-        OperationKind::PassiveRead,
-        TaskPriority::HighActiveRepo,
-        [&executionOrder, &orderMutex] {
-            std::scoped_lock lk(orderMutex);
-            executionOrder.push_back(99);
-        });
-
-    gatePromise.set_value();
-    blocker.get();
-    highFuture.get();
-    for (auto& f : bgFutures) {
-        f.get();
-    }
-
-    REQUIRE(executionOrder.size() == 6);
-    REQUIRE(executionOrder.front() == 99);
 }
 
 #ifdef _WIN32

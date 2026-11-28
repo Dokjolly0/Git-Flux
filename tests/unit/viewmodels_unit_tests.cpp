@@ -35,7 +35,6 @@
 #include "core/modules/git/bl/git_rebase_service.hpp"
 #include "core/modules/git/bl/git_conflict_service.hpp"
 #include "core/modules/git/bl/git_repository_watcher_service.hpp"
-#include "core/modules/git/bl/async_git_service.hpp"
 #include "core/modules/git/bl/multi_repo_batch_coordinator.hpp"
 #include "core/modules/tasks/bl/background_task_runner.hpp"
 

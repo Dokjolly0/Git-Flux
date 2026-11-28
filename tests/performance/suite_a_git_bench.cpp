@@ -1,19 +1,10 @@
 #include <catch2/benchmark/catch_benchmark.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include "core/modules/git/bl/operation_coordinator.hpp"
 #include "core/modules/git/bl/porcelain_status_parser.hpp"
-#include "core/modules/repositories/bo/repository_id.hpp"
 #include "fixture_generator.hpp"
 #include "infrastructure/git/git_discovery.hpp"
-#include "infrastructure/git/native/native_git_batch_session.hpp"
 #include "infrastructure/git/native/native_git_executor.hpp"
-
-#ifdef GF_HAS_QT_ADAPTER
-#include "infrastructure/git/qt/qt_git_batch_session.hpp"
-#include "infrastructure/git/qt/qt_git_executor.hpp"
-#include <QCoreApplication>
-#endif
 
 #include <algorithm>
 #include <chrono>
@@ -22,24 +13,12 @@
 #include <iostream>
 #include <numeric>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace
 {
     using Clock = std::chrono::steady_clock;
-
-#ifdef GF_HAS_QT_ADAPTER
-    void ensureQtApp()
-    {
-        if (!QCoreApplication::instance())
-        {
-            static int argc = 1;
-            static char appName[] = "gf_bench_suite_a";
-            static char* argv[] = {appName, nullptr};
-            static QCoreApplication app(argc, argv);
-        }
-    }
-#endif
 
     struct SampleStats
     {
@@ -74,55 +53,14 @@ namespace
             .maxMs = samplesMs.back()
         };
     }
-
-    [[nodiscard]] std::vector<std::string> loadCommitOids(
-        gf::git::ports::IGitCommandExecutor& exec,
-        const std::filesystem::path& repoPath,
-        std::size_t count)
-    {
-        const auto res = exec.execute({
-            .args = {"rev-list", std::format("--max-count={}", count), "HEAD"},
-            .workingDirectory = repoPath,
-            .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks
-        });
-        std::vector<std::string> oids;
-        if (!res || !res->succeeded())
-        {
-            return oids;
-        }
-        std::size_t pos = 0;
-        while (pos < res->stdoutBytes.size())
-        {
-            const auto nl = res->stdoutBytes.find('\n', pos);
-            if (nl == std::string::npos)
-            {
-                break;
-            }
-            std::string s = res->stdoutBytes.substr(pos, nl - pos);
-            if (!s.empty() && s.back() == '\r')
-            {
-                s.pop_back();
-            }
-            if (!s.empty())
-            {
-                oids.push_back(std::move(s));
-            }
-            pos = nl + 1;
-        }
-        return oids;
-    }
 } // namespace
 
 TEST_CASE (
-"Suite A - Report Comparativo Completo (Win32 vs Qt, Shim vs Direct, Concurrency Sweep, Batch Pipe)"
+"Suite A - Report Native Git & Fixture 50k"
 ,
 "[report][suite-a]"
 )
  {
-#ifdef GF_HAS_QT_ADAPTER
-    ensureQtApp();
-#endif
-
     const auto gitInfo = gf::infra::git::GitDiscovery::discover();
     REQUIRE(gitInfo.has_value());
 
@@ -174,19 +112,6 @@ TEST_CASE (
         .exec = std::make_unique<gf::infra::git::NativeGitCommandExecutor>(gitInfo->directBinaryPath)
     });
 
-#ifdef GF_HAS_QT_ADAPTER
-    if (gitInfo->isWindowsCmdShim) {
-        variants.push_back({
-            .name = "Qt 6 (QProcess)         + cmd\\git.exe (shim)",
-            .exec = std::make_unique<gf::infra::git::QtGitCommandExecutor>(gitInfo->discoveredInPath)
-        });
-    }
-    variants.push_back({
-        .name = std::format("Qt 6 (QProcess)         + direct {}", kGitBinaryName),
-        .exec = std::make_unique<gf::infra::git::QtGitCommandExecutor>(gitInfo->directBinaryPath)
-    });
-#endif
-
     const gf::git::bo::GitCommand statusCmd{
         .args = {"status", "--porcelain=v2", "-z", "--branch"},
         .workingDirectory = singleRepoPath,
@@ -222,213 +147,7 @@ TEST_CASE (
     std::cout << "\n";
 
     // -------------------------------------------------------------------------
-    // 2. A.3: Concurrency Sweep on a fleet of 30 Repositories + Active-Repo Priority
-    // -------------------------------------------------------------------------
-    const auto fleetDir = tempDir.path() / "fleet_30";
-    auto fleetRes = generator.generateRepoFleet({
-        .rootDir = fleetDir,
-        .repoCount = 30,
-        .commitsPerRepo = 40,
-        .seed = 42
-    });
-    REQUIRE(fleetRes.has_value());
-
-    std::cout << std::format(
-        "### A.3 — Refresh stato su 30 Repository (generati in {} ms) — Concurrency Sweep\n\n",
-        fleetRes->elapsed.count());
-    std::cout << std::format("| Adapter (direct {}) | Concurrency | Wall-Clock 30 Repo (ms) | Active Repo Latency (ms) |\n",
-                             kGitBinaryName);
-    std::cout << "| :--- | ---: | ---: | ---: |\n";
-
-    const std::size_t concurrencies[] = {1, 2, 4, 8, 12, 16};
-
-    auto runFleetSweep = [&](std::string_view adapterTitle, auto makeExecutorFn) {
-        for (const std::size_t conc : concurrencies) {
-            constexpr int kRepeats = 3;
-            std::vector<double> totalSamples;
-            std::vector<double> activeRepoSamples;
-
-            for (int rep = 0; rep < kRepeats; ++rep) {
-                gf::git::bl::OperationCoordinator coordinator(conc);
-                auto sharedExec = makeExecutorFn();
-
-                const auto tStart = Clock::now();
-                std::vector<std::future<void>> bgFutures;
-                bgFutures.reserve(fleetRes->repoPaths.size());
-
-                // Enqueue 29 repos as NormalBackground
-                for (std::size_t i = 0; i < fleetRes->repoPaths.size() - 1; ++i) {
-                    const auto& rp = fleetRes->repoPaths[i];
-                    bgFutures.push_back(coordinator.submit(
-                        gf::repositories::bo::RepositoryId(std::format("repo-{}", i)),
-                        gf::git::bl::OperationKind::PassiveRead,
-                        gf::git::bl::TaskPriority::NormalBackground,
-                        [&sharedExec, rp] {
-                            auto r = sharedExec->execute({
-                                .args = {"status", "--porcelain=v2", "-z", "--branch"},
-                                .workingDirectory = rp,
-                                .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks
-                            });
-                            if (r && r->succeeded()) {
-                                [[maybe_unused]] const auto parsed = gf::git::bl::PorcelainStatusParser::parse(r->stdoutBytes);
-                            }
-                        }));
-                }
-
-                // The last repo (index 29) is submitted LAST but with HighActiveRepo priority!
-                const auto& activePath = fleetRes->repoPaths.back();
-                auto activeFuture = coordinator.submit(
-                    gf::repositories::bo::RepositoryId("repo-active"),
-                    gf::git::bl::OperationKind::PassiveRead,
-                    gf::git::bl::TaskPriority::HighActiveRepo,
-                    [&sharedExec, activePath, tStart]() -> double {
-                        auto r = sharedExec->execute({
-                            .args = {"status", "--porcelain=v2", "-z", "--branch"},
-                            .workingDirectory = activePath,
-                            .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks
-                        });
-                        if (r && r->succeeded()) {
-                            [[maybe_unused]] const auto parsed = gf::git::bl::PorcelainStatusParser::parse(r->stdoutBytes);
-                        }
-                        return std::chrono::duration<double, std::milli>(Clock::now() - tStart).count();
-                    });
-
-                const double activeMs = activeFuture.get();
-                for (auto& f : bgFutures) {
-                    f.get();
-                }
-                const auto totalMs = std::chrono::duration<double, std::milli>(Clock::now() - tStart).count();
-
-                totalSamples.push_back(totalMs);
-                activeRepoSamples.push_back(activeMs);
-            }
-
-            const auto totSt = computeStats(std::move(totalSamples));
-            const auto actSt = computeStats(std::move(activeRepoSamples));
-            std::cout << std::format("| {} | {} | {:.1f} | {:.1f} |\n",
-                                     adapterTitle, conc, totSt.meanMs, actSt.meanMs);
-        }
-    };
-
-    runFleetSweep(kNativeAdapterName, [&] {
-        return std::make_unique<gf::infra::git::NativeGitCommandExecutor>(gitInfo->directBinaryPath);
-    });
-
-#ifdef GF_HAS_QT_ADAPTER
-    runFleetSweep("Qt 6 (QProcess)", [&] {
-        return std::make_unique<gf::infra::git::QtGitCommandExecutor>(gitInfo->directBinaryPath);
-    });
-#endif
-    std::cout << "\n";
-
-    // -------------------------------------------------------------------------
-    // 3. A.4: Read 150 commits: Single-Shot Process vs Persistent Pipe `cat-file --batch`
-    // -------------------------------------------------------------------------
-    gf::infra::git::NativeGitCommandExecutor oidLoader(gitInfo->directBinaryPath);
-    const auto oids = loadCommitOids(oidLoader, singleRepoPath, 150);
-    REQUIRE(oids.size() == 150);
-
-    std::cout << "### A.4 — Lettura metadati di 150 commit: 150 processi singoli vs 1 pipe `git cat-file --batch`\n\n";
-    std::cout << "| Strategia | Tempo Totale 150 commit (ms) | Media per commit (ms) | Speedup |\n";
-    std::cout << "| :--- | ---: | ---: | ---: |\n";
-
-    // Measure Native Single-Shot
-    double nativeSingleShotMs = 0.0;
-    {
-#ifdef _WIN32
-        constexpr auto kNativeSpawnLabel = "CreateProcessW";
-#else
-        constexpr auto kNativeSpawnLabel = "posix_spawn";
-#endif
-        const auto t0 = Clock::now();
-        for (const auto& oid : oids) {
-            auto r = oidLoader.execute({
-                .args = {"cat-file", "commit", oid},
-                .workingDirectory = singleRepoPath,
-                .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks
-            });
-            REQUIRE((r.has_value() && r->succeeded()));
-        }
-        nativeSingleShotMs = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
-        std::cout << std::format("| Native Single-Shot (150x {}) | {:.1f} | {:.3f} | 1.0x (baseline) |\n",
-                                 kNativeSpawnLabel, nativeSingleShotMs, nativeSingleShotMs / 150.0);
-    }
-
-#ifdef GF_HAS_QT_ADAPTER
-    double qtSingleShotMs = 0.0;
-    {
-        gf::infra::git::QtGitCommandExecutor qtExec(gitInfo->directBinaryPath);
-        const auto t0 = Clock::now();
-        for (const auto& oid : oids)
-        {
-            auto r = qtExec.execute({
-                .args = {"cat-file", "commit", oid},
-                .workingDirectory = singleRepoPath,
-                .lockPolicy = gf::git::bo::GitLockPolicy::NoOptionalLocks
-            });
-            REQUIRE((r.has_value() && r->succeeded()));
-        }
-        qtSingleShotMs = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
-        std::cout << std::format("| Qt 6 Single-Shot (150x QProcess) | {:.1f} | {:.3f} | {:.2f}x |\n",
-                                 qtSingleShotMs, qtSingleShotMs / 150.0, nativeSingleShotMs / qtSingleShotMs);
-    }
-#endif
-
-    // Measure Persistent Batch Session Native (includes pipe spawn cost + 150 queries!)
-    {
-        gf::infra::git::NativeGitBatchSessionFactory batchFactory(gitInfo->directBinaryPath);
-        const auto t0 = Clock::now();
-        auto session = batchFactory.openSession(singleRepoPath);
-        REQUIRE(session.has_value());
-        for (const auto& oid : oids) {
-            auto obj = (*session)->readObject(oid);
-            REQUIRE(obj.has_value());
-        }
-        const auto batchIncludeOpenMs = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
-
-        // Measure on warm session (warm pipe)
-        const auto tWarm = Clock::now();
-        for (const auto& oid : oids) {
-            auto obj = (*session)->readObject(oid);
-            REQUIRE(obj.has_value());
-        }
-        const auto batchWarmMs = std::chrono::duration<double, std::milli>(Clock::now() - tWarm).count();
-
-        std::cout << std::format("| Native Batch Pipe (open + 150 query) | {:.2f} | {:.4f} | **{:.1f}x** |\n",
-                                 batchIncludeOpenMs, batchIncludeOpenMs / 150.0, nativeSingleShotMs / batchIncludeOpenMs);
-        std::cout << std::format("| Native Batch Pipe (warm session, 150 query) | {:.2f} | {:.4f} | **{:.1f}x** |\n",
-                                 batchWarmMs, batchWarmMs / 150.0, nativeSingleShotMs / std::max(0.01, batchWarmMs));
-    }
-
-#ifdef GF_HAS_QT_ADAPTER
-    {
-        gf::infra::git::QtGitBatchSessionFactory qtBatchFactory(gitInfo->directBinaryPath);
-        const auto t0 = Clock::now();
-        auto session = qtBatchFactory.openSession(singleRepoPath);
-        REQUIRE(session.has_value());
-        for (const auto& oid : oids) {
-            auto obj = (*session)->readObject(oid);
-            REQUIRE(obj.has_value());
-        }
-        const auto batchIncludeOpenMs = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
-
-        const auto tWarm = Clock::now();
-        for (const auto& oid : oids) {
-            auto obj = (*session)->readObject(oid);
-            REQUIRE(obj.has_value());
-        }
-        const auto batchWarmMs = std::chrono::duration<double, std::milli>(Clock::now() - tWarm).count();
-
-        std::cout << std::format("| Qt 6 Batch Pipe (open + 150 query) | {:.2f} | {:.4f} | **{:.1f}x** |\n",
-                                 batchIncludeOpenMs, batchIncludeOpenMs / 150.0, nativeSingleShotMs / batchIncludeOpenMs);
-        std::cout << std::format("| Qt 6 Batch Pipe (warm session, 150 query) | {:.2f} | {:.4f} | **{:.1f}x** |\n",
-                                 batchWarmMs, batchWarmMs / 150.0, nativeSingleShotMs / std::max(0.01, batchWarmMs));
-    }
-#endif
-    std::cout << "\n";
-
-    // -------------------------------------------------------------------------
-    // 4. Verify fixture generator throughput with 50,000 commits for Suites C/D
+    // 2. Verify fixture generator throughput with 50,000 commits for Suites C/D
     // -------------------------------------------------------------------------
     const auto repo50kPath = tempDir.path() / "monorepo_50k";
     auto repo50kRes = generator.generateFastImportRepo({
@@ -468,13 +187,5 @@ TEST_CASE (
 
     BENCHMARK("PorcelainStatusParser::parse (clean repo header)") {
         return gf::git::bl::PorcelainStatusParser::parse(rawStatus->stdoutBytes);
-    };
-
-    gf::infra::git::NativeGitBatchSessionFactory factory(gitInfo->directBinaryPath);
-    auto session = factory.openSession(repoPath);
-    REQUIRE(session.has_value());
-
-    BENCHMARK("NativeGitBatchSession::readObject(\"HEAD\") via warm pipe") {
-        return (*session)->readObject("HEAD");
     };
 }

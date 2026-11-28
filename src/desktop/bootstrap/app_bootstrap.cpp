@@ -116,8 +116,6 @@ namespace gf::desktop
         m_watcherService->startAutoFlush();
 
         m_taskRunner = std::make_unique<tasks::bl::BackgroundTaskRunner>(4);
-        m_asyncGitService = std::make_unique<git::bl::AsyncGitService>(*m_taskRunner, *m_remoteMergeService,
-                                                                       *m_workingTreeService);
         m_batchCoordinator = std::make_unique<git::bl::MultiRepoBatchCoordinator>(
             *m_repoService, *m_groupService, *m_workspaceService,
             *m_remoteMergeService, *m_workingTreeService, *m_taskRunner
@@ -244,44 +242,14 @@ namespace gf::desktop
         return *m_homeHubVm;
     }
 
-    QuickOpenViewModel& AppBootstrap::quickOpenViewModel() noexcept
-    {
-        return *m_quickOpenVm;
-    }
-
     WorkspaceSessionViewModel& AppBootstrap::workspaceSessionViewModel() noexcept
     {
         return *m_workspaceSessionVm;
     }
 
-    TerminalSessionViewModel& AppBootstrap::terminalSessionViewModel() noexcept
-    {
-        return *m_terminalVm;
-    }
-
-    BatchOperationsViewModel& AppBootstrap::batchOperationsViewModel() noexcept
-    {
-        return *m_batchOperationsVm;
-    }
-
-    viewmodels::GitProfilesViewModel& AppBootstrap::gitProfilesViewModel() noexcept
-    {
-        return *m_gitProfilesVm;
-    }
-
     ThemeManager& AppBootstrap::themeManager() noexcept
     {
         return *m_themeManager;
-    }
-
-    git::bl::GitRepositoryWatcherService& AppBootstrap::watcherService() noexcept
-    {
-        return *m_watcherService;
-    }
-
-    git::bl::MultiRepoBatchCoordinator& AppBootstrap::batchCoordinator() noexcept
-    {
-        return *m_batchCoordinator;
     }
 
     repositories::bl::RepositoryService& AppBootstrap::repositoryService() noexcept
