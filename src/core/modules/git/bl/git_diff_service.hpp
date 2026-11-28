@@ -67,6 +67,14 @@ namespace gf::git::bl
                           const std::string& filePath,
                           int contextLines) const;
 
+        /// Extracts the cumulative diff for a single file across a revision range (`baseRevision..headSha`).
+        [[nodiscard]] std::expected<bo::FileDiff, ports::GitOpsError>
+        getCommitRangeFileDiff(const std::filesystem::path& repoPath,
+                               const std::string& baseRevision,
+                               const std::string& headSha,
+                               const std::string& filePath,
+                               int contextLines = 3) const;
+
         /// Extracts UTF-8 file content from working tree (empty / "WORKTREE"), index (":0" / "INDEX"), or a Git revision.
         [[nodiscard]] std::expected<std::string, ports::GitOpsError>
         getFileContent(const std::filesystem::path& repoPath,

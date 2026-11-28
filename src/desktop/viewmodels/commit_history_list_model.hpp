@@ -92,6 +92,30 @@ namespace gf::desktop
         // SHA of the commit HEAD points to (attached or detached), empty when it isn't in the list.
         [[nodiscard]] QString headSha() const noexcept { return m_headSha; }
 
+        struct MultiSelectRangeAnalysis
+        {
+            QStringList shas;
+            bool isContiguousRange = false;
+            bool blockedByBranchScope = false;
+            QString baseRevision;
+            QString headSha;
+            QString referenceBranch;
+        };
+
+        /// Returns true if `index` refers to a real Git commit (not WIP and not a stash entry).
+        [[nodiscard]] Q_INVOKABLE bool isSelectableCommitRow(int index) const noexcept;
+        /// Returns true if `shaA` and `shaB` lie on the same `--first-parent` chain in the DAG.
+        [[nodiscard]] bool isOnFirstParentLine(const QString& shaA, const QString& shaB) const;
+        /// Resolves a Shift+Click range between `anchorIndex` and `targetIndex`.
+        /// When `branchOnly` is true, follows only the `--first-parent` chain between the two commits.
+        [[nodiscard]] MultiSelectRangeAnalysis resolveRangeSelection(int anchorIndex, int targetIndex, bool branchOnly) const;
+        /// Filters `shas` keeping only commits on the `--first-parent` line of `anchorSha`, ordered as in the view.
+        [[nodiscard]] QStringList filterCommitsByFirstParentLine(const QStringList& shas, const QString& anchorSha) const;
+        /// Orders `shas` according to the current history list and checks whether they form a contiguous `--first-parent` chain.
+        [[nodiscard]] MultiSelectRangeAnalysis analyzeSelection(const QStringList& shas, const QString& anchorSha) const;
+        /// Returns the inferred branch label for a commit SHA, or empty if unknown.
+        [[nodiscard]] QString inferredBranchForSha(const QString& sha) const;
+
         [[nodiscard]] static QString cachedAvatarForEmail(const QString& rawEmail);
         static void cacheAvatarForEmail(const QString& rawEmail, const QString& avatarUrl);
 

@@ -1,3 +1,4 @@
+#include "core/modules/git/bl/git_diff_service.hpp"
 #include "core/modules/git/bl/git_history_service.hpp"
 #include "infrastructure/git/git_discovery.hpp"
 #include "infrastructure/git/native/native_git_executor.hpp"
@@ -269,5 +270,143 @@ TEST_CASE (
         auto delBad = historyService.deleteTag(sandbox.root, "nonexistent-tag");
         REQUIRE_FALSE(delBad.has_value());
         CHECK(delBad.error().kind == gf::git::ports::GitOpsError::Kind::TagNotFound);
+    }
+}
+
+TEST_CASE("Multi-commit changes summary and range diff across real Git repository", "[integration][history][multiselect]")
+{
+    auto gitPath = gf::infra::git::GitDiscovery::discover();
+    REQUIRE(gitPath.has_value());
+
+    HistoryTestSandbox sandbox;
+    gf::infra::git::NativeGitCommandExecutor executor(gitPath->discoveredInPath);
+    gf::infra::git::NativeRepositoryGitOps gitOps(executor);
+    gf::git::bl::GitHistoryService historyService(gitOps);
+    gf::git::bl::GitDiffService diffService(gitOps);
+
+    auto runGit = [&](std::vector<std::string> args)
+    {
+        auto res = executor.execute(gf::git::bo::GitCommand{
+            .args = std::move(args),
+            .workingDirectory = sandbox.root,
+            .lockPolicy = gf::git::bo::GitLockPolicy::Standard
+        });
+        REQUIRE(res.has_value());
+        REQUIRE(res->exitCode == 0);
+        return res->stdoutBytes;
+    };
+
+    auto headSha = [&]()
+    {
+        std::string s = runGit({"rev-parse", "HEAD"});
+        while (!s.empty() && (s.back() == '\r' || s.back() == '\n')) s.pop_back();
+        return s;
+    };
+
+    runGit({"init", "-b", "main"});
+    runGit({"config", "user.name", "Tester"});
+    runGit({"config", "user.email", "tester@gitflux.local"});
+
+    // C1 (root commit): adds shared.txt + base.txt
+    sandbox.writeFile("shared.txt", "line1\n");
+    sandbox.writeFile("base.txt", "base\n");
+    runGit({"add", "."});
+    runGit({"commit", "-m", "C1: initial"});
+    const std::string c1 = headSha();
+
+    // C2: modifies shared.txt (adds line2) + adds temp.txt
+    sandbox.writeFile("shared.txt", "line1\nline2\n");
+    sandbox.writeFile("temp.txt", "temporary\n");
+    runGit({"add", "."});
+    runGit({"commit", "-m", "C2: add line2 and temp"});
+    const std::string c2 = headSha();
+
+    // Parallel branch feat: adds feat.txt
+    runGit({"checkout", "-b", "feat"});
+    sandbox.writeFile("feat.txt", "feature line\n");
+    runGit({"add", "."});
+    runGit({"commit", "-m", "F1: feature work"});
+    const std::string f1 = headSha();
+
+    // Back to main: C3 modifies shared.txt (adds line3) and removes temp.txt (net cancel of temp.txt across C2..C3!)
+    runGit({"checkout", "main"});
+    sandbox.writeFile("shared.txt", "line1\nline2\nline3\n");
+    std::filesystem::remove(sandbox.root / "temp.txt");
+    runGit({"add", "-A"});
+    runGit({"commit", "-m", "C3: add line3 and drop temp"});
+    const std::string c3 = headSha();
+
+    SECTION("Contiguous range C2..C3 computes net diff cancelling temp.txt and preserves per-commit attribution")
+    {
+        auto res = historyService.getMultiCommitChanges(sandbox.root, {c3, c2}, true, c1, c3);
+        REQUIRE(res.has_value());
+        CHECK(res->isContiguousRange);
+        CHECK(res->rangeBaseRevision == c1);
+        CHECK(res->rangeHeadSha == c3);
+
+        // Net diff across C1..C3 has ONLY shared.txt (+2 lines), because temp.txt was added in C2 and deleted in C3!
+        REQUIRE(res->aggregatedFiles.size() == 1);
+        CHECK(res->aggregatedFiles[0].path == "shared.txt");
+        CHECK(res->aggregatedFiles[0].additions == 2);
+        CHECK(res->aggregatedFiles[0].deletions == 0);
+        // Attribution shows BOTH C3 and C2 touched shared.txt
+        REQUIRE(res->aggregatedFiles[0].commits.size() == 2);
+        CHECK(res->aggregatedFiles[0].commits[0].commitSha == c3);
+        CHECK(res->aggregatedFiles[0].commits[1].commitSha == c2);
+
+        // Per-commit groups preserve exact files of each commit (including temp.txt in both C3 and C2)
+        REQUIRE(res->perCommitGroups.size() == 2);
+        CHECK(res->perCommitGroups[0].commitSha == c3);
+        CHECK(res->perCommitGroups[0].files.size() == 2);
+        CHECK(res->perCommitGroups[1].commitSha == c2);
+        CHECK(res->perCommitGroups[1].files.size() == 2);
+
+        // Range diff on shared.txt shows both added lines (+line2, +line3)
+        auto diffRes = diffService.getCommitRangeFileDiff(sandbox.root, c1, c3, "shared.txt", 3);
+        REQUIRE(diffRes.has_value());
+        CHECK(diffRes->additionsCount == 2);
+        CHECK(diffRes->deletionsCount == 0);
+    }
+
+    SECTION("Contiguous range starting at root commit C1..C3 uses Git empty tree")
+    {
+        constexpr const char* kEmptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+        auto res = historyService.getMultiCommitChanges(sandbox.root, {c3, c2, c1}, true, kEmptyTree, c3);
+        REQUIRE(res.has_value());
+        REQUIRE(res->aggregatedFiles.size() == 2); // base.txt + shared.txt
+
+        auto diffRes = diffService.getCommitRangeFileDiff(sandbox.root, kEmptyTree, c3, "shared.txt", 3);
+        REQUIRE(diffRes.has_value());
+        CHECK(diffRes->additionsCount == 3);
+    }
+
+    SECTION("Sparse cross-branch selection C3 + F1 aggregates via git show --no-walk")
+    {
+        auto res = historyService.getMultiCommitChanges(sandbox.root, {c3, f1}, false, {}, {});
+        REQUIRE(res.has_value());
+        CHECK_FALSE(res->isContiguousRange);
+        REQUIRE(res->perCommitGroups.size() == 2);
+        CHECK(res->perCommitGroups[0].commitSha == c3);
+        CHECK(res->perCommitGroups[1].commitSha == f1);
+
+        bool foundFeat = false;
+        bool foundShared = false;
+        for (const auto& f : res->aggregatedFiles)
+        {
+            if (f.path == "feat.txt")
+            {
+                foundFeat = true;
+                REQUIRE(f.commits.size() == 1);
+                CHECK(f.commits[0].commitSha == f1);
+            }
+            if (f.path == "shared.txt")
+            {
+                foundShared = true;
+                REQUIRE(f.commits.size() == 1);
+                CHECK(f.commits[0].commitSha == c3);
+            }
+        }
+        CHECK(foundFeat);
+        CHECK(foundShared);
     }
 }

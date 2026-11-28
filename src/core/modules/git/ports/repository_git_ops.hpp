@@ -149,6 +149,40 @@ namespace gf::git::ports
             return getCommitFileDiff(repoPath, commitSha, filePath);
         }
 
+        /// Retrieves aggregated and per-commit file changes across multiple selected commits.
+        /// When `isContiguousRange` is true and `baseRevision`/`headSha` are non-empty, aggregated
+        /// files reflect the net diff `baseRevision..headSha` while still populating per-commit attribution.
+        [[nodiscard]] virtual std::expected<bo::MultiCommitChangesSummary, GitOpsError>
+        getMultiCommitChanges(const std::filesystem::path& repoPath,
+                              const std::vector<std::string>& commitShas,
+                              const bool isContiguousRange,
+                              const std::string& baseRevision,
+                              const std::string& headSha)
+        {
+            (void)repoPath;
+            (void)commitShas;
+            (void)isContiguousRange;
+            (void)baseRevision;
+            (void)headSha;
+            return bo::MultiCommitChangesSummary{};
+        }
+
+        /// Retrieves the unified diff for a single file across a revision range (`baseRevision..headSha`).
+        [[nodiscard]] virtual std::expected<bo::FileDiff, GitOpsError>
+        getCommitRangeFileDiffWithContext(const std::filesystem::path& repoPath,
+                                          const std::string& baseRevision,
+                                          const std::string& headSha,
+                                          const std::string& filePath,
+                                          const int contextLines)
+        {
+            (void)repoPath;
+            (void)baseRevision;
+            (void)headSha;
+            (void)filePath;
+            (void)contextLines;
+            return bo::FileDiff{};
+        }
+
         /// Retrieves UTF-8 text content of a file from working tree (empty / "WORKTREE"), index (":0" / "INDEX"), or a commit/revision.
         [[nodiscard]] virtual std::expected<std::string, GitOpsError>
         getFileContent(const std::filesystem::path& repoPath,

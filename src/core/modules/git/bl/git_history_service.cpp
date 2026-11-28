@@ -153,6 +153,35 @@ namespace gf::git::bl
         return m_gitOps.getCommitFiles(repoPath, commitSha);
     }
 
+    std::expected<bo::MultiCommitChangesSummary, ports::GitOpsError>
+    GitHistoryService::getMultiCommitChanges(const std::filesystem::path& repoPath,
+                                             const std::vector<std::string>& commitShas,
+                                             const bool isContiguousRange,
+                                             const std::string& baseRevision,
+                                             const std::string& headSha) const
+    {
+        if (auto valid = validateRepoPath(repoPath); !valid)
+        {
+            return std::unexpected(valid.error());
+        }
+
+        std::vector<std::string> cleanShas;
+        cleanShas.reserve(commitShas.size());
+        for (const auto& sha : commitShas)
+        {
+            if (!sha.empty() && sha != "WIP")
+            {
+                cleanShas.push_back(sha);
+            }
+        }
+        if (cleanShas.empty())
+        {
+            return bo::MultiCommitChangesSummary{};
+        }
+
+        return m_gitOps.getMultiCommitChanges(repoPath, cleanShas, isContiguousRange, baseRevision, headSha);
+    }
+
     std::expected<std::vector<std::string>, ports::GitOpsError>
     GitHistoryService::listTrackedFiles(const std::filesystem::path& repoPath) const
     {

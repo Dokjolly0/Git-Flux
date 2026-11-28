@@ -33,6 +33,14 @@ namespace gf::git::bl
         [[nodiscard]] std::expected<std::vector<bo::CommitFileChange>, ports::GitOpsError>
         getCommitFiles(const std::filesystem::path& repoPath, const std::string& commitSha) const;
 
+        /// Returns aggregated and per-commit file changes across multiple selected commits.
+        [[nodiscard]] std::expected<bo::MultiCommitChangesSummary, ports::GitOpsError>
+        getMultiCommitChanges(const std::filesystem::path& repoPath,
+                              const std::vector<std::string>& commitShas,
+                              bool isContiguousRange = false,
+                              const std::string& baseRevision = {},
+                              const std::string& headSha = {}) const;
+
         /// Returns the list of tracked files in the repository (`git ls-files`).
         [[nodiscard]] std::expected<std::vector<std::string>, ports::GitOpsError>
         listTrackedFiles(const std::filesystem::path& repoPath) const;

@@ -216,6 +216,10 @@ namespace gf::desktop
         // They return whether a request was started.
         Q_INVOKABLE bool loadDiff(const QString& repoPath, const QString& filePath, const QString& scope);
         Q_INVOKABLE bool loadCommitFileDiff(const QString& repoPath, const QString& commitSha, const QString& filePath);
+        Q_INVOKABLE bool loadCommitRangeFileDiff(const QString& repoPath,
+                                                 const QString& baseRevision,
+                                                 const QString& headSha,
+                                                 const QString& filePath);
         Q_INVOKABLE bool loadBlame(const QString& repoPath, const QString& revision, const QString& filePath);
         Q_INVOKABLE void clear();
 

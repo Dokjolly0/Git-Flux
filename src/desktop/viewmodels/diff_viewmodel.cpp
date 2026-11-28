@@ -692,6 +692,10 @@ namespace gf::desktop
         }
         if (!m_currentRevision.isEmpty())
         {
+            if (m_lastScope.startsWith(QStringLiteral("range:")))
+            {
+                return loadCommitRangeFileDiff(m_currentRepoPath, m_lastScope.mid(6), m_currentRevision, m_filePath);
+            }
             return loadCommitFileDiff(m_currentRepoPath, m_currentRevision, m_filePath);
         }
         const QString scope = m_lastScope.isEmpty() ? QStringLiteral("unstaged") : m_lastScope;
@@ -1760,6 +1764,108 @@ namespace gf::desktop
                                     return;
                                 }
                                 applyFetchedDiff(repoPath, filePath, commitSha, QString(), contextLines, fetch);
+                            });
+        return true;
+    }
+
+    bool DiffViewModel::loadCommitRangeFileDiff(const QString& repoPath,
+                                                const QString& baseRevision,
+                                                const QString& headSha,
+                                                const QString& filePath)
+    {
+        if (repoPath.isEmpty() || baseRevision.isEmpty() || headSha.isEmpty() || filePath.isEmpty())
+        {
+            clear();
+            return false;
+        }
+
+        const auto id = m_diffRequest.next();
+        cancelPendingBlame();
+        setLoadingFilePath(filePath);
+        setLoading(true);
+
+        auto& service = m_diffService;
+        const auto rPath = gf::core::utf8ToPath(repoPath.toStdString());
+        const std::string fPath = filePath.toStdString();
+        const std::string baseStr = baseRevision.toStdString();
+        const std::string headStr = headSha.toStdString();
+        const int contextLines = m_contextLines;
+        const QString rangeScope = QStringLiteral("range:") + baseRevision;
+        auto comparedWith = isShowingDiff(repoPath, filePath, headSha, rangeScope, contextLines) ? m_lastDiff : nullptr;
+
+        m_readExecutor->run(this,
+                            [&service, isCurrent = m_diffRequest.guard(id), rPath, fPath, baseStr, headStr,
+                                contextLines, comparedWith = std::move(comparedWith)]()
+                            {
+                                DiffFetch fetch;
+                                fetch.comparedWith = comparedWith;
+                                if (!isCurrent())
+                                {
+                                    fetch.skipped = true;
+                                    return fetch;
+                                }
+                                fetch.diff = service.getCommitRangeFileDiff(rPath, baseStr, headStr, fPath, contextLines);
+                                if (!isCurrent())
+                                {
+                                    fetch.skipped = true;
+                                    return fetch;
+                                }
+                                if (*fetch.diff)
+                                {
+                                    const auto& diff = **fetch.diff;
+                                    constexpr std::string_view kEmptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+                                    if (isMarkdownDiff(diff, fPath))
+                                    {
+                                        const std::string mdRev = diff.isDeletedFile ? baseStr : headStr;
+                                        if (mdRev != kEmptyTree)
+                                        {
+                                            fetch.markdownContent = readMarkdownContent(
+                                                service, rPath, fPath, diff, mdRev, "");
+                                        }
+                                        fetch.deletedNotice =
+                                            "File eliminato nell'intervallo selezionato — visualizzata la versione precedente.";
+                                        if (!isCurrent())
+                                        {
+                                            fetch.skipped = true;
+                                            return fetch;
+                                        }
+                                    }
+                                    if (shouldInspectRichFile(diff, fPath))
+                                    {
+                                        fetch.inspectedRichFile = true;
+                                        fetch.inspectPath = diff.displayPath().empty() ? fPath : diff.displayPath();
+                                        const std::string oldP = diff.oldPath.empty() ? fPath : diff.oldPath;
+                                        const std::string newP = diff.newPath.empty() ? fPath : diff.newPath;
+                                        if (!diff.isNewFile && baseStr != kEmptyTree)
+                                        {
+                                            fetch.oldBlob = readSideBlob(service, rPath, baseStr, "", oldP);
+                                        }
+                                        if (!isCurrent())
+                                        {
+                                            fetch.skipped = true;
+                                            return fetch;
+                                        }
+                                        if (!diff.isDeletedFile)
+                                        {
+                                            fetch.newBlob = readSideBlob(service, rPath, headStr, "", newP);
+                                        }
+                                        if (!isCurrent())
+                                        {
+                                            fetch.skipped = true;
+                                            return fetch;
+                                        }
+                                    }
+                                }
+                                prepareFetch(fetch, isCurrent);
+                                return fetch;
+                            },
+                            [this, id, repoPath, headSha, rangeScope, filePath, contextLines](DiffFetch fetch)
+                            {
+                                if (!m_diffRequest.isCurrent(id) || fetch.skipped)
+                                {
+                                    return;
+                                }
+                                applyFetchedDiff(repoPath, filePath, headSha, rangeScope, contextLines, fetch);
                             });
         return true;
     }

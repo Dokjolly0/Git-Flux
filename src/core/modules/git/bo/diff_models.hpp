@@ -90,6 +90,52 @@ namespace gf::git::bo
         bool isBinary = false;
     };
 
+    struct CommitFileAttribution
+    {
+        std::string commitSha{};
+        std::string shortSha{};
+        std::string subject{};
+        std::string authorName{};
+        FileChangeStatus status{FileChangeStatus::Modified};
+        int additions = 0;
+        int deletions = 0;
+        bool isBinary = false;
+    };
+
+    struct MultiCommitFileChange
+    {
+        std::string path{};
+        std::string oldPath{};
+        FileChangeStatus status{FileChangeStatus::Modified};
+        int additions = 0;
+        int deletions = 0;
+        bool isBinary = false;
+        std::vector<CommitFileAttribution> commits{};
+    };
+
+    struct CommitChangesGroup
+    {
+        std::string commitSha{};
+        std::string shortSha{};
+        std::string subject{};
+        std::string authorName{};
+        std::string authorDateIso{};
+        std::vector<CommitFileChange> files{};
+        int totalAdditions = 0;
+        int totalDeletions = 0;
+    };
+
+    struct MultiCommitChangesSummary
+    {
+        bool isContiguousRange = false;
+        std::string rangeBaseRevision{};
+        std::string rangeHeadSha{};
+        std::vector<MultiCommitFileChange> aggregatedFiles{};
+        std::vector<CommitChangesGroup> perCommitGroups{};
+        int totalAdditions = 0;
+        int totalDeletions = 0;
+    };
+
     struct BlameLine
     {
         std::string commitSha{};

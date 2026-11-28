@@ -5605,3 +5605,151 @@ TEST_CASE("WorkspaceSessionViewModel clusters tabs by group and exposes multi-gr
     sessionVm.closeAllTabs();
     std::filesystem::remove_all(baseDir, ec);
 }
+
+TEST_CASE("Multi-commit selection follows --first-parent by default, supports cross-branch flag and UI branch filter", "[viewmodels][multiselect]")
+{
+    ensureQtApp();
+
+    // Build an interleaved multi-branch DAG with a merge commit:
+    // row 0: C5 (develop) -> parent0 = C4
+    // row 1: F2 (feat-x)  -> parent0 = F1
+    // row 2: C4 (merge)   -> parent0 = C3, parent1 = M1 (side branch merged into develop)
+    // row 3: M1 (side)    -> parent0 = C2
+    // row 4: F1 (feat-x)  -> parent0 = C2
+    // row 5: C3 (develop) -> parent0 = C2
+    // row 6: C2 (develop) -> parent0 = C1
+    // row 7: C1 (root)    -> parents = {}
+    auto makeCommit = [](const char* sha, const char* subject, std::vector<std::string> parents,
+                         std::vector<std::string> decs = {})
+    {
+        gf::git::bo::GitCommitLogItem item;
+        item.sha = sha;
+        item.shortSha = std::string(sha).substr(0, std::min<std::size_t>(7, std::strlen(sha)));
+        item.subject = subject;
+        item.authorName = "Dev";
+        item.authorEmail = "dev@local";
+        item.authorDateIso = "2026-11-27T12:00:00Z";
+        item.parents = std::move(parents);
+        item.refDecorations = std::move(decs);
+        return item;
+    };
+
+    std::vector<gf::git::bo::GitCommitLogItem> dag = {
+        makeCommit("c500000", "C5 tip", {"c400000"}, {"HEAD -> develop"}),
+        makeCommit("f200000", "F2 feat", {"f100000"}, {"feat-x"}),
+        makeCommit("c400000", "C4 merge side", {"c300000", "m100000"}),
+        makeCommit("m100000", "M1 side commit", {"c200000"}),
+        makeCommit("f100000", "F1 feat", {"c200000"}),
+        makeCommit("c300000", "C3 develop", {"c200000"}),
+        makeCommit("c200000", "C2 common", {"c100000"}),
+        makeCommit("c100000", "C1 root", {})
+    };
+
+    MockFullGitOps mockOps;
+    mockOps.setCommitLog(dag);
+    mockOps.branchesToReturn = {
+        gf::git::bo::GitBranch{.name = "develop", .isCurrent = true},
+        gf::git::bo::GitBranch{.name = "feat-x", .isCurrent = false}
+    };
+
+    gf::git::bl::GitBranchService branchSvc(mockOps);
+    gf::git::bl::GitHistoryService histSvc(mockOps);
+    gf::git::bl::GitRemoteMergeService remoteSvc(mockOps);
+    gf::desktop::BranchManagerViewModel vm(branchSvc, histSvc, remoteSvc);
+
+    const auto tmpDir = std::filesystem::temp_directory_path() / "gf_vm_multiselect_test";
+    std::filesystem::create_directories(tmpDir);
+    vm.setRepositoryPath(QString::fromStdString(tmpDir.string()));
+    REQUIRE(vm.waitForIdle());
+    REQUIRE(vm.commitHistory()->rowCount() == 8);
+
+    SECTION("Default mode (BranchOnly) selects strictly --first-parent chain and excludes interleaved/merged side commits")
+    {
+        REQUIRE_FALSE(vm.allowCrossBranchMultiSelect());
+        REQUIRE(vm.multiSelectBranchFilterActive());
+
+        // Select C5 (row 0), then Shift+Click C3 (row 5)
+        vm.selectSingleCommit(0);
+        REQUIRE(vm.selectCommitRangeTo(5));
+
+        // Must contain ONLY C5 -> C4 -> C3 (skipping F2, M1, F1!)
+        REQUIRE(vm.selectedCommitShas() == QStringList({QStringLiteral("c500000"), QStringLiteral("c400000"), QStringLiteral("c300000")}));
+        REQUIRE(vm.effectiveSelectedCommitShas() == vm.selectedCommitShas());
+        REQUIRE(vm.isMultiSelectActive());
+        REQUIRE(vm.isMultiSelectContiguousRange());
+        REQUIRE(vm.multiSelectRangeBase() == QStringLiteral("c200000"));
+        REQUIRE(vm.multiSelectRangeHead() == QStringLiteral("c500000"));
+
+        // Shift+Click on F2 (row 1, different branch) is blocked in default branch-only mode
+        REQUIRE_FALSE(vm.selectCommitRangeTo(1));
+        CHECK_FALSE(vm.statusMessage().isEmpty());
+
+        // Ctrl+Click on M1 (row 3, second parent of merge C4, NOT first-parent) is blocked in branch-only mode
+        REQUIRE_FALSE(vm.toggleCommitSelectionAt(3));
+
+        // Ctrl+Click on C1 (row 7, on --first-parent line) IS allowed, making selection non-contiguous (skips C2)
+        REQUIRE(vm.toggleCommitSelectionAt(7));
+        REQUIRE(vm.selectedCommitShas() == QStringList({
+            QStringLiteral("c500000"), QStringLiteral("c400000"),
+            QStringLiteral("c300000"), QStringLiteral("c100000")
+        }));
+        REQUIRE_FALSE(vm.isMultiSelectContiguousRange());
+
+        // Shift+Click to root C1 sets empty tree as baseRevision
+        vm.selectSingleCommit(0);
+        REQUIRE(vm.selectCommitRangeTo(7));
+        REQUIRE(vm.isMultiSelectContiguousRange());
+        REQUIRE(vm.multiSelectRangeBase() == QStringLiteral("4b825dc642cb6eb9a060e54bf8d69288fbee4904"));
+    }
+
+    SECTION("Cross-branch flag enables cross-branch selection, while UI branch toggle narrows/restores without losing raw selection")
+    {
+        vm.setAllowCrossBranchMultiSelect(true);
+        REQUIRE(vm.allowCrossBranchMultiSelect());
+        REQUIRE_FALSE(vm.multiSelectBranchFilterActive());
+
+        // Click C5 (row 0), Shift+Click C3 (row 5): includes interleaved F2, M1, F1 across branches
+        vm.selectSingleCommit(0);
+        REQUIRE(vm.selectCommitRangeTo(5));
+        REQUIRE(vm.selectedCommitsCount() == 6);
+        REQUIRE(vm.effectiveSelectedCommitsCount() == 6);
+        REQUIRE_FALSE(vm.isMultiSelectContiguousRange());
+        REQUIRE(vm.isShaSelected(QStringLiteral("f200000")));
+        REQUIRE(vm.isShaEffectivelySelected(QStringLiteral("f200000")));
+
+        // Toggle UI "Solo branch" filter ON -> narrows effective selection to C5 -> C4 -> C3 and upgrades to contiguous range!
+        vm.setMultiSelectBranchFilterActive(true);
+        REQUIRE(vm.multiSelectBranchFilterActive());
+        REQUIRE(vm.selectedCommitsCount() == 6); // raw selection preserved!
+        REQUIRE(vm.effectiveSelectedCommitShas() == QStringList({
+            QStringLiteral("c500000"), QStringLiteral("c400000"), QStringLiteral("c300000")
+        }));
+        REQUIRE(vm.isMultiSelectContiguousRange());
+        REQUIRE(vm.isShaSelected(QStringLiteral("f200000")));
+        REQUIRE_FALSE(vm.isShaEffectivelySelected(QStringLiteral("f200000")));
+
+        // Toggle UI "Solo branch" filter OFF -> restores full 6-commit cross-branch selection!
+        vm.setMultiSelectBranchFilterActive(false);
+        REQUIRE(vm.effectiveSelectedCommitsCount() == 6);
+        REQUIRE_FALSE(vm.isMultiSelectContiguousRange());
+        REQUIRE(vm.isShaEffectivelySelected(QStringLiteral("f200000")));
+
+        // Ctrl+Click toggles individual commit from another branch cleanly
+        vm.selectSingleCommit(0);
+        REQUIRE(vm.toggleCommitSelectionAt(1)); // add F2
+        REQUIRE(vm.selectedCommitShas() == QStringList({QStringLiteral("c500000"), QStringLiteral("f200000")}));
+        REQUIRE(vm.toggleCommitSelectionAt(1)); // remove F2 -> back to single commit C5
+        REQUIRE(vm.selectedCommitShas() == QStringList({QStringLiteral("c500000")}));
+        REQUIRE_FALSE(vm.hasRawMultiSelection());
+
+        // Esc / clearMultiSelection collapses back to anchor
+        REQUIRE(vm.selectCommitRangeTo(5));
+        REQUIRE(vm.hasRawMultiSelection());
+        vm.clearMultiSelection();
+        REQUIRE_FALSE(vm.hasRawMultiSelection());
+        REQUIRE(vm.selectedCommitShas() == QStringList({QStringLiteral("c500000")}));
+    }
+
+    std::error_code ec;
+    std::filesystem::remove_all(tmpDir, ec);
+}

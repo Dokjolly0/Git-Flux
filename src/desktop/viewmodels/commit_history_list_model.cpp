@@ -805,6 +805,257 @@ namespace gf::desktop
         return remoteCandidate;
     }
 
+    namespace
+    {
+        constexpr const char* kGitEmptyTreeSha = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+    }
+
+    bool CommitHistoryListModel::isSelectableCommitRow(const int index) const noexcept
+    {
+        if (index < 0 || static_cast<std::size_t>(index) >= m_commits.size())
+        {
+            return false;
+        }
+        const auto& c = m_commits[static_cast<std::size_t>(index)];
+        if (c.sha.empty() || c.sha == "WIP")
+        {
+            return false;
+        }
+        if (static_cast<std::size_t>(index) < m_graphItems.size() && m_graphItems[static_cast<std::size_t>(index)].isStash)
+        {
+            return false;
+        }
+        return true;
+    }
+
+    QString CommitHistoryListModel::inferredBranchForSha(const QString& sha) const
+    {
+        const auto it = m_inferredBranches.find(sha.toStdString());
+        return (it != m_inferredBranches.end()) ? it->second.name : QString{};
+    }
+
+    bool CommitHistoryListModel::isOnFirstParentLine(const QString& shaA, const QString& shaB) const
+    {
+        if (shaA.isEmpty() || shaB.isEmpty()) return false;
+        if (shaA == shaB) return true;
+
+        const std::string a = shaA.toStdString();
+        const std::string b = shaB.toStdString();
+
+        auto walksFirstParentTo = [&](const std::string& startSha, const std::string& targetSha) -> bool
+        {
+            const auto startIt = m_rawShaToIdx.find(startSha);
+            if (startIt == m_rawShaToIdx.end()) return false;
+            int cur = startIt->second;
+            const std::size_t maxSteps = m_rawCommits.size() + 1;
+            for (std::size_t step = 0; step < maxSteps && cur >= 0 && static_cast<std::size_t>(cur) < m_rawCommits.size(); ++step)
+            {
+                if (m_rawCommits[static_cast<std::size_t>(cur)].sha == targetSha)
+                {
+                    return true;
+                }
+                const auto& parents = m_rawCommits[static_cast<std::size_t>(cur)].parents;
+                if (parents.empty()) return false;
+                if (parents.front() == targetSha) return true;
+                const auto nextIt = m_rawShaToIdx.find(parents.front());
+                if (nextIt == m_rawShaToIdx.end()) return false;
+                cur = nextIt->second;
+            }
+            return false;
+        };
+
+        return walksFirstParentTo(a, b) || walksFirstParentTo(b, a);
+    }
+
+    CommitHistoryListModel::MultiSelectRangeAnalysis
+    CommitHistoryListModel::analyzeSelection(const QStringList& shas, const QString& anchorSha) const
+    {
+        MultiSelectRangeAnalysis out;
+        out.referenceBranch = inferredBranchForSha(anchorSha);
+        if (shas.isEmpty())
+        {
+            return out;
+        }
+
+        // Deduplicate and order according to the current commit list (newest -> oldest)
+        std::unordered_set<std::string> requested;
+        requested.reserve(static_cast<std::size_t>(shas.size()));
+        for (const QString& s : shas)
+        {
+            if (!s.isEmpty() && s != QStringLiteral("WIP"))
+            {
+                requested.insert(s.toStdString());
+            }
+        }
+
+        for (std::size_t i = 0; i < m_commits.size(); ++i)
+        {
+            if (!isSelectableCommitRow(static_cast<int>(i))) continue;
+            if (requested.contains(m_commits[i].sha))
+            {
+                out.shas.append(QString::fromStdString(m_commits[i].sha));
+            }
+        }
+
+        if (out.shas.size() < 2)
+        {
+            return out;
+        }
+
+        // Verify whether ordered shas form an exact contiguous `--first-parent` chain:
+        // for every i in [0 .. N-2], shas[i].parents[0] == shas[i + 1].
+        bool contiguous = true;
+        for (int i = 0; i + 1 < out.shas.size(); ++i)
+        {
+            const auto it = m_rawShaToIdx.find(out.shas[i].toStdString());
+            if (it == m_rawShaToIdx.end())
+            {
+                contiguous = false;
+                break;
+            }
+            const auto& parents = m_rawCommits[static_cast<std::size_t>(it->second)].parents;
+            if (parents.empty() || parents.front() != out.shas[i + 1].toStdString())
+            {
+                contiguous = false;
+                break;
+            }
+        }
+
+        if (contiguous)
+        {
+            out.isContiguousRange = true;
+            out.headSha = out.shas.front();
+            const std::string oldestSha = out.shas.back().toStdString();
+            if (const auto it = m_rawShaToIdx.find(oldestSha); it != m_rawShaToIdx.end())
+            {
+                const auto& oldestParents = m_rawCommits[static_cast<std::size_t>(it->second)].parents;
+                if (!oldestParents.empty())
+                {
+                    out.baseRevision = QString::fromStdString(oldestParents.front());
+                }
+                else
+                {
+                    out.baseRevision = QString::fromLatin1(kGitEmptyTreeSha);
+                }
+            }
+            else
+            {
+                out.baseRevision = out.shas.back() + QStringLiteral("^");
+            }
+        }
+
+        return out;
+    }
+
+    CommitHistoryListModel::MultiSelectRangeAnalysis
+    CommitHistoryListModel::resolveRangeSelection(const int anchorIndex,
+                                                  const int targetIndex,
+                                                  const bool branchOnly) const
+    {
+        MultiSelectRangeAnalysis out;
+        if (!isSelectableCommitRow(anchorIndex) || !isSelectableCommitRow(targetIndex))
+        {
+            return out;
+        }
+
+        const QString anchorSha = QString::fromStdString(m_commits[static_cast<std::size_t>(anchorIndex)].sha);
+        const QString targetSha = QString::fromStdString(m_commits[static_cast<std::size_t>(targetIndex)].sha);
+        out.referenceBranch = inferredBranchForSha(anchorSha);
+
+        if (anchorIndex == targetIndex)
+        {
+            out.shas = {anchorSha};
+            return out;
+        }
+
+        if (branchOnly)
+        {
+            // Follow strictly the `--first-parent` chain between anchor and target (in either direction).
+            auto buildFirstParentChain = [&](const std::string& newerSha, const std::string& olderSha) -> QStringList
+            {
+                QStringList chain;
+                const auto startIt = m_rawShaToIdx.find(newerSha);
+                if (startIt == m_rawShaToIdx.end()) return chain;
+
+                int cur = startIt->second;
+                const std::size_t maxSteps = m_rawCommits.size() + 1;
+                for (std::size_t step = 0; step < maxSteps && cur >= 0 && static_cast<std::size_t>(cur) < m_rawCommits.size(); ++step)
+                {
+                    const auto& c = m_rawCommits[static_cast<std::size_t>(cur)];
+                    chain.append(QString::fromStdString(c.sha));
+                    if (c.sha == olderSha)
+                    {
+                        return chain;
+                    }
+                    if (c.parents.empty())
+                    {
+                        break;
+                    }
+                    const auto nextIt = m_rawShaToIdx.find(c.parents.front());
+                    if (nextIt == m_rawShaToIdx.end())
+                    {
+                        break;
+                    }
+                    cur = nextIt->second;
+                }
+                return {};
+            };
+
+            QStringList chain = buildFirstParentChain(anchorSha.toStdString(), targetSha.toStdString());
+            if (chain.isEmpty())
+            {
+                chain = buildFirstParentChain(targetSha.toStdString(), anchorSha.toStdString());
+            }
+
+            if (chain.isEmpty())
+            {
+                // Anchor and target are NOT on the same `--first-parent` branch line.
+                out.shas = {anchorSha};
+                out.blockedByBranchScope = true;
+                return out;
+            }
+
+            return analyzeSelection(chain, anchorSha);
+        }
+
+        // Cross-branch mode: include every selectable row between min and max indices.
+        const int low = std::min(anchorIndex, targetIndex);
+        const int high = std::max(anchorIndex, targetIndex);
+        QStringList rawRange;
+        rawRange.reserve(high - low + 1);
+        for (int i = low; i <= high; ++i)
+        {
+            if (isSelectableCommitRow(i))
+            {
+                rawRange.append(QString::fromStdString(m_commits[static_cast<std::size_t>(i)].sha));
+            }
+        }
+        return analyzeSelection(rawRange, anchorSha);
+    }
+
+    QStringList CommitHistoryListModel::filterCommitsByFirstParentLine(const QStringList& shas,
+                                                                       const QString& anchorSha) const
+    {
+        if (shas.isEmpty() || anchorSha.isEmpty())
+        {
+            return shas;
+        }
+        QStringList filtered;
+        filtered.reserve(shas.size());
+        for (const QString& sha : shas)
+        {
+            if (isOnFirstParentLine(anchorSha, sha))
+            {
+                filtered.append(sha);
+            }
+        }
+        if (filtered.isEmpty())
+        {
+            filtered.append(anchorSha);
+        }
+        return filtered;
+    }
+
     void CommitHistoryListModel::rebuildGraph()
     {
         m_graphItems.clear();

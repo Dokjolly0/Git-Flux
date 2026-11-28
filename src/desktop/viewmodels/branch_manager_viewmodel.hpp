@@ -48,6 +48,24 @@ namespace gf::desktop
         Q_PROPERTY(BranchListModel* branchList READ branchList CONSTANT)
         Q_PROPERTY(CommitHistoryListModel* commitHistory READ commitHistory CONSTANT)
 
+        // Multi-commit selection state & scope flag (ready for future Settings persistence)
+        Q_PROPERTY(bool allowCrossBranchMultiSelect READ allowCrossBranchMultiSelect WRITE setAllowCrossBranchMultiSelect NOTIFY multiSelectSettingsChanged)
+        Q_PROPERTY(bool multiSelectBranchFilterActive READ multiSelectBranchFilterActive WRITE setMultiSelectBranchFilterActive NOTIFY multiSelectChanged)
+        Q_PROPERTY(QStringList selectedCommitShas READ selectedCommitShas NOTIFY multiSelectChanged)
+        Q_PROPERTY(QStringList effectiveSelectedCommitShas READ effectiveSelectedCommitShas NOTIFY multiSelectChanged)
+        Q_PROPERTY(bool isMultiSelectActive READ isMultiSelectActive NOTIFY multiSelectChanged)
+        Q_PROPERTY(bool hasRawMultiSelection READ hasRawMultiSelection NOTIFY multiSelectChanged)
+        Q_PROPERTY(int selectedCommitsCount READ selectedCommitsCount NOTIFY multiSelectChanged)
+        Q_PROPERTY(int effectiveSelectedCommitsCount READ effectiveSelectedCommitsCount NOTIFY multiSelectChanged)
+        Q_PROPERTY(QString multiSelectAnchorSha READ multiSelectAnchorSha NOTIFY multiSelectChanged)
+        Q_PROPERTY(QString multiSelectReferenceBranch READ multiSelectReferenceBranch NOTIFY multiSelectChanged)
+        Q_PROPERTY(bool isMultiSelectContiguousRange READ isMultiSelectContiguousRange NOTIFY multiSelectChanged)
+        Q_PROPERTY(QString multiSelectRangeBase READ multiSelectRangeBase NOTIFY multiSelectChanged)
+        Q_PROPERTY(QString multiSelectRangeHead READ multiSelectRangeHead NOTIFY multiSelectChanged)
+        Q_PROPERTY(QString multiSelectViewMode READ multiSelectViewMode WRITE setMultiSelectViewMode NOTIFY multiSelectViewModeChanged)
+        Q_PROPERTY(bool isLoadingMultiCommitFiles READ isLoadingMultiCommitFiles NOTIFY multiSelectLoadingChanged)
+        Q_PROPERTY(int multiSelectRevision READ multiSelectRevision NOTIFY multiSelectChanged)
+
     public:
         /// Standalone: owns a private executor.
         explicit BranchManagerViewModel(git::bl::GitBranchService& branchService,
@@ -90,6 +108,29 @@ namespace gf::desktop
 
         [[nodiscard]] BranchListModel* branchList() noexcept { return &m_branchListModel; }
         [[nodiscard]] CommitHistoryListModel* commitHistory() noexcept { return &m_commitHistoryModel; }
+
+        [[nodiscard]] bool allowCrossBranchMultiSelect() const noexcept { return m_allowCrossBranchMultiSelect; }
+        Q_INVOKABLE void setAllowCrossBranchMultiSelect(bool allow);
+        [[nodiscard]] bool multiSelectBranchFilterActive() const noexcept
+        {
+            return !m_allowCrossBranchMultiSelect || m_multiSelectBranchFilterActive;
+        }
+        Q_INVOKABLE void setMultiSelectBranchFilterActive(bool active);
+        [[nodiscard]] QStringList selectedCommitShas() const noexcept { return m_selectedCommitShas; }
+        [[nodiscard]] QStringList effectiveSelectedCommitShas() const noexcept { return m_effectiveSelectedShas; }
+        [[nodiscard]] bool isMultiSelectActive() const noexcept { return m_effectiveSelectedShas.size() > 1; }
+        [[nodiscard]] bool hasRawMultiSelection() const noexcept { return m_selectedCommitShas.size() > 1; }
+        [[nodiscard]] int selectedCommitsCount() const noexcept { return static_cast<int>(m_selectedCommitShas.size()); }
+        [[nodiscard]] int effectiveSelectedCommitsCount() const noexcept { return static_cast<int>(m_effectiveSelectedShas.size()); }
+        [[nodiscard]] QString multiSelectAnchorSha() const noexcept { return m_multiSelectAnchorSha; }
+        [[nodiscard]] QString multiSelectReferenceBranch() const noexcept { return m_multiSelectReferenceBranch; }
+        [[nodiscard]] bool isMultiSelectContiguousRange() const noexcept { return m_isMultiSelectContiguousRange; }
+        [[nodiscard]] QString multiSelectRangeBase() const noexcept { return m_multiSelectRangeBase; }
+        [[nodiscard]] QString multiSelectRangeHead() const noexcept { return m_multiSelectRangeHead; }
+        [[nodiscard]] QString multiSelectViewMode() const noexcept { return m_multiSelectViewMode; }
+        Q_INVOKABLE void setMultiSelectViewMode(const QString& mode);
+        [[nodiscard]] bool isLoadingMultiCommitFiles() const noexcept { return m_isLoadingMultiCommitFiles; }
+        [[nodiscard]] int multiSelectRevision() const noexcept { return m_multiSelectRevision; }
 
     Q_INVOKABLE void setRepositoryPath(const QString& path);
     /// Requests a reload of branches, history and remotes. Requests are coalesced and the git
@@ -140,6 +181,17 @@ namespace gf::desktop
     /// Asynchronous, latest wins: the files arrive with commitFilesLoaded(commitSha, files).
     Q_INVOKABLE void requestCommitFiles(const QString& commitSha);
 
+    // Multi-commit selection operations
+    Q_INVOKABLE void selectSingleCommit(int rowIndex);
+    Q_INVOKABLE void setSelectionAnchorSha(const QString& sha);
+    Q_INVOKABLE bool selectCommitRangeTo(int targetIndex);
+    Q_INVOKABLE bool toggleCommitSelectionAt(int rowIndex);
+    Q_INVOKABLE void clearMultiSelection();
+    [[nodiscard]] Q_INVOKABLE bool isShaSelected(const QString& sha) const;
+    [[nodiscard]] Q_INVOKABLE bool isShaEffectivelySelected(const QString& sha) const;
+    /// Asynchronous, latest wins: results arrive with multiCommitFilesLoaded(summary).
+    Q_INVOKABLE void requestMultiCommitFiles();
+
     /// Asynchronous: the filtered history is applied (and fileHistoryPathChanged emitted) when
     /// `git log --follow` completes; a newer request or clearFileHistory() supersedes it.
     Q_INVOKABLE bool loadFileHistory(const QString& filePath);
@@ -168,6 +220,11 @@ namespace gf::desktop
         // Emitted after the commit history has been reloaded, so the commit is in the model.
         void followHeadRequested(const QString& headSha);
         void commitFilesLoaded(const QString& commitSha, const QVariantList& files);
+        void multiCommitFilesLoaded(const QVariantMap& summary);
+        void multiSelectChanged();
+        void multiSelectSettingsChanged();
+        void multiSelectViewModeChanged();
+        void multiSelectLoadingChanged();
         void repositoryFilesLoaded(const QStringList& files);
         void fastForwardCheckReady(const QString& targetBranch, const QString& sourceBranch, bool possible);
         // Emitted when a push is rejected because history diverged or remote refs conflict and
@@ -200,6 +257,8 @@ namespace gf::desktop
                                const QString& statusMessage = QString());
         void setConflicts(const std::vector<std::string>& files);
         void setStatusMessage(const QString& message);
+        void recomputeMultiSelectionState(bool triggerReload);
+        void resetMultiSelectionState();
         // Marks operation `id` as the running network operation `kind` (see remoteOperation).
         void beginRemoteOperation(int id, const QString& kind);
         void endRemoteOperation(int id);
@@ -236,9 +295,25 @@ namespace gf::desktop
         quint64 m_generation = 0;          // bumped when repo/filter changes: stale results are dropped
 
         LatestRequest m_commitFilesRequest;
+        LatestRequest m_multiCommitFilesRequest;
         LatestRequest m_fileHistoryRequest;
         LatestRequest m_repositoryFilesRequest;
         LatestRequest m_fastForwardRequest;
+
+        bool m_allowCrossBranchMultiSelect = false; // Default: branch-only (--first-parent)
+        bool m_multiSelectBranchFilterActive = true;
+        QStringList m_selectedCommitShas;
+        QStringList m_effectiveSelectedShas;
+        QSet<QString> m_selectedShaSet;
+        QSet<QString> m_effectiveShaSet;
+        QString m_multiSelectAnchorSha;
+        QString m_multiSelectReferenceBranch;
+        bool m_isMultiSelectContiguousRange = false;
+        QString m_multiSelectRangeBase;
+        QString m_multiSelectRangeHead;
+        QString m_multiSelectViewMode = QStringLiteral("total");
+        bool m_isLoadingMultiCommitFiles = false;
+        int m_multiSelectRevision = 0;
 
         SerialGitExecutor* m_executor = nullptr;
         // Declared last: destroyed first, waiting for their tasks while this object is alive.

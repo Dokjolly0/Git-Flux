@@ -17,8 +17,16 @@ Rectangle {
     property var commitFiles: []
     property var selectedFile: null
     property bool isDiffOpen: false
-    readonly property bool isWipSelected: (root.selectedCommit !== null && root.selectedCommit.sha === "WIP")
-    readonly property bool isStashSelected: (root.selectedCommit !== null && root.selectedCommit.isStash === true)
+    readonly property bool isMultiSelectMode: Boolean(root.branchManager && root.branchManager.hasRawMultiSelection)
+    readonly property string multiSelectViewMode: (root.branchManager && root.branchManager.multiSelectViewMode) ? root.branchManager.multiSelectViewMode : "total"
+    property var multiCommitSummary: null
+    property var multiCommitGroups: []
+    property bool multiCommitsListExpanded: false
+    property var collapsedMultiCommitShas: ({})
+    property string activeDiffCommitSha: ""
+    property var activeDiffFileCommits: []
+    readonly property bool isWipSelected: (!root.isMultiSelectMode && root.selectedCommit !== null && root.selectedCommit.sha === "WIP")
+    readonly property bool isStashSelected: (!root.isMultiSelectMode && root.selectedCommit !== null && root.selectedCommit.isStash === true)
 
     function resolveStashIndex(selector) {
         if (selector) {
@@ -103,9 +111,61 @@ Rectangle {
         target: root.branchManager
 
         function onCommitFilesLoaded(commitSha, files) {
+            if (root.isMultiSelectMode) return;
             if (!root.selectedCommit || root.selectedCommit.sha !== commitSha) return;
             root.commitFiles = files || [];
             root.updateTreeItems();
+        }
+
+        function onMultiCommitFilesLoaded(summary) {
+            if (!root.isMultiSelectMode) return;
+            root.multiCommitSummary = summary || null;
+            root.multiCommitGroups = (summary && summary.perCommitGroups) ? summary.perCommitGroups : [];
+            root.commitFiles = (summary && summary.aggregatedFiles) ? summary.aggregatedFiles : [];
+            root.updateTreeItems();
+
+            // If diff is currently open for a file in this multi-selection, refresh its commit attribution chips
+            if (root.isDiffOpen && root.selectedFile) {
+                let matched = null;
+                for (let i = 0; i < root.commitFiles.length; ++i) {
+                    if (root.commitFiles[i].path === root.selectedFile.path) {
+                        matched = root.commitFiles[i];
+                        break;
+                    }
+                }
+                if (matched) {
+                    root.selectedFile = matched;
+                    root.activeDiffFileCommits = matched.commits || [];
+                    if (root.activeDiffCommitSha === "" && root.branchManager && root.branchManager.isMultiSelectContiguousRange && root.sessionVm && root.sessionVm.commitDiffViewer) {
+                        root.sessionVm.commitDiffViewer.loadCommitRangeFileDiff(
+                            root.sessionVm.activeRepoPath,
+                            root.branchManager.multiSelectRangeBase,
+                            root.branchManager.multiSelectRangeHead,
+                            matched.path);
+                    }
+                } else {
+                    root.closeFileDiff();
+                }
+            }
+        }
+
+        function onMultiSelectChanged() {
+            if (!root.branchManager) return;
+            if (!root.branchManager.hasRawMultiSelection) {
+                root.multiCommitSummary = null;
+                root.multiCommitGroups = [];
+                root.activeDiffCommitSha = "";
+                root.activeDiffFileCommits = [];
+                // Sync selectedCommit to anchor if returning from multi-select via Esc / clear
+                const anchor = root.branchManager.multiSelectAnchorSha;
+                if (anchor && anchor !== "" && root.branchManager.commitHistory) {
+                    const idx = root.branchManager.commitHistory.indexOfSha(anchor);
+                    if (idx >= 0 && (!root.selectedCommit || root.selectedCommit.sha !== anchor)) {
+                        commitTableListView.currentIndex = idx;
+                        root.selectedCommit = root.branchManager.commitHistory.getCommit(idx);
+                    }
+                }
+            }
         }
 
         function onFileHistoryPathChanged() {
@@ -686,6 +746,44 @@ Rectangle {
                             font.pixelSize: 11
                             elide: Text.ElideRight
                             Layout.fillWidth: true
+                        }
+
+                        // Multi-commit attribution pill badge ("N commit")
+                        Rectangle {
+                            visible: root.isMultiSelectMode && (modelData.commitCount || 0) > 1
+                            height: 16
+                            implicitWidth: multiCommitPillText.implicitWidth + 10
+                            radius: 8
+                            color: "#0C2A44"
+                            border.color: Qt.alpha("#38BDF8", 0.45)
+                            border.width: 1
+
+                            Text {
+                                id: multiCommitPillText
+                                anchors.centerIn: parent
+                                text: (modelData.commitCount || 0) + " commit"
+                                color: "#38BDF8"
+                                font.pixelSize: 9
+                                font.bold: true
+                            }
+
+                            MouseArea {
+                                id: multiCommitPillHover
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                acceptedButtons: Qt.NoButton
+                                ToolTip.visible: containsMouse
+                                ToolTip.delay: 250
+                                ToolTip.text: {
+                                    const list = modelData.commits || [];
+                                    const lines = [];
+                                    for (let i = 0; i < Math.min(list.length, 8); ++i) {
+                                        lines.push(list[i].shortSha + " · " + list[i].subject);
+                                    }
+                                    if (list.length > 8) lines.push("+" + (list.length - 8) + " altri...");
+                                    return lines.join("\n");
+                                }
+                            }
                         }
 
                         // Untracked pill badge
@@ -1475,13 +1573,75 @@ Rectangle {
         root.autoSelectFirstCommit();
     }
 
+    function handleCommitRowClick(rowIndex, modifiers) {
+        if (!root.branchManager || !root.branchManager.commitHistory) return;
+        const isShift = (modifiers & Qt.ShiftModifier) !== 0;
+        const isCtrl = (modifiers & Qt.ControlModifier) !== 0;
+
+        if (isShift && root.branchManager.commitHistory.isSelectableCommitRow(rowIndex)) {
+            if (root.branchManager.selectCommitRangeTo(rowIndex)) {
+                commitTableListView.currentIndex = rowIndex;
+                commitTableListView.positionViewAtIndex(rowIndex, ListView.Contain);
+                if (!root.selectedCommit) {
+                    root.selectedCommit = root.branchManager.commitHistory.getCommit(rowIndex);
+                }
+                root.selectedFile = null;
+                root.isDiffOpen = false;
+                root.activeDiffCommitSha = "";
+                root.activeDiffFileCommits = [];
+            }
+            return;
+        }
+        if (isCtrl && root.branchManager.commitHistory.isSelectableCommitRow(rowIndex)) {
+            if (root.branchManager.toggleCommitSelectionAt(rowIndex)) {
+                commitTableListView.currentIndex = rowIndex;
+                if (!root.selectedCommit) {
+                    root.selectedCommit = root.branchManager.commitHistory.getCommit(rowIndex);
+                }
+                root.selectedFile = null;
+                root.isDiffOpen = false;
+                root.activeDiffCommitSha = "";
+                root.activeDiffFileCommits = [];
+            }
+            return;
+        }
+        root.selectCommitByIndex(rowIndex);
+    }
+
+    function filterFilesForCommitGroup(files) {
+        if (!files || files.length === 0) return [];
+        const q = (root.fileSearchQuery || "").trim().toLowerCase();
+        const cat = root.fileCategoryFilter || "all";
+        const out = [];
+        for (let i = 0; i < files.length; ++i) {
+            const f = files[i];
+            if (cat !== "all") {
+                const st = (f.status || "M").toUpperCase();
+                if (cat === "M" && st !== "M") continue;
+                if (cat === "A" && st !== "A" && st !== "C") continue;
+                if (cat === "D" && st !== "D") continue;
+                if (cat === "R" && st !== "R") continue;
+            }
+            if (q !== "" && (!f.path || f.path.toLowerCase().indexOf(q) === -1)) continue;
+            out.push(f);
+        }
+        return out;
+    }
+
     function selectCommit(commit) {
         root.selectedCommit = commit;
         root.selectedFile = null;
         root.isDiffOpen = false;
         root.commitFiles = [];
+        root.multiCommitSummary = null;
+        root.multiCommitGroups = [];
+        root.activeDiffCommitSha = "";
+        root.activeDiffFileCommits = [];
         root.fileCategoryFilter = "all";
         root.collapsedFolders = ({});
+        if (root.branchManager) {
+            root.branchManager.setSelectionAnchorSha(commit ? commit.sha : "");
+        }
         if (!commit || !root.branchManager) {
             if (root.sessionVm && root.sessionVm.commitDiffViewer) {
                 root.sessionVm.commitDiffViewer.clear();
@@ -1709,10 +1869,60 @@ Rectangle {
         root.updateTreeItems();
     }
 
+    function openMultiCommitFileDiff(file, specificCommitSha) {
+        if (!file || !root.sessionVm || !root.sessionVm.commitDiffViewer) return;
+        const repoPath = root.sessionVm.activeRepoPath;
+
+        // Resolve full attribution commits list for this path from aggregated files
+        let commitsForFile = file.commits || [];
+        if (commitsForFile.length === 0 && root.commitFiles) {
+            for (let i = 0; i < root.commitFiles.length; ++i) {
+                if (root.commitFiles[i].path === file.path && root.commitFiles[i].commits) {
+                    commitsForFile = root.commitFiles[i].commits;
+                    break;
+                }
+            }
+        }
+        root.selectedFile = file;
+        root.activeDiffFileCommits = commitsForFile;
+        root.isDiffOpen = true;
+
+        if (specificCommitSha && specificCommitSha !== "") {
+            root.activeDiffCommitSha = specificCommitSha;
+            root.sessionVm.commitDiffViewer.loadCommitFileDiff(repoPath, specificCommitSha, file.path);
+            return;
+        }
+
+        if (root.branchManager && root.branchManager.isMultiSelectContiguousRange &&
+            root.branchManager.multiSelectRangeBase !== "" && root.branchManager.multiSelectRangeHead !== "") {
+            root.activeDiffCommitSha = "";
+            root.sessionVm.commitDiffViewer.loadCommitRangeFileDiff(
+                repoPath,
+                root.branchManager.multiSelectRangeBase,
+                root.branchManager.multiSelectRangeHead,
+                file.path);
+            return;
+        }
+
+        // Non-contiguous / cross-branch selection: open the newest commit that touched this file
+        if (commitsForFile.length > 0) {
+            root.activeDiffCommitSha = commitsForFile[0].sha;
+            root.sessionVm.commitDiffViewer.loadCommitFileDiff(repoPath, commitsForFile[0].sha, file.path);
+        }
+    }
+
     function openFileDiff(file) {
         // Conflicted file in the WIP: resolve it (its diff would only show the markers).
         if (file && file.isConflicted === true && root.isWipSelected) {
             root.conflictResolveRequested(file.path);
+            return;
+        }
+        if (root.isMultiSelectMode) {
+            if (root.isDiffOpen && root.selectedFile && file && root.selectedFile.path === file.path && root.activeDiffCommitSha === "") {
+                root.closeFileDiff();
+                return;
+            }
+            root.openMultiCommitFileDiff(file, "");
             return;
         }
         if (root.isDiffOpen && root.selectedFile && file
@@ -1722,6 +1932,8 @@ Rectangle {
             return;
         }
         root.selectedFile = file;
+        root.activeDiffCommitSha = "";
+        root.activeDiffFileCommits = [];
         root.isDiffOpen = true;
         if (!file || !root.selectedCommit || !root.sessionVm) return;
         const repoPath = root.sessionVm.activeRepoPath;
@@ -1767,6 +1979,8 @@ Rectangle {
     function closeFileDiff() {
         root.isDiffOpen = false;
         root.selectedFile = null;
+        root.activeDiffCommitSha = "";
+        root.activeDiffFileCommits = [];
     }
 
     Component.onCompleted: {
@@ -2072,6 +2286,7 @@ Rectangle {
                         }
 
                         Rectangle {
+                            visible: !root.isMultiSelectMode
                             Layout.preferredHeight: 24
                             implicitWidth: detachedCreateText.implicitWidth + 18
                             radius: 4
@@ -2342,15 +2557,29 @@ Rectangle {
                     }
                     Keys.onUpPressed: function (event) {
                         if (commitTableListView.currentIndex > 0) {
-                            root.selectCommitByIndex(commitTableListView.currentIndex - 1);
+                            if ((event.modifiers & Qt.ShiftModifier) !== 0) {
+                                root.handleCommitRowClick(commitTableListView.currentIndex - 1, Qt.ShiftModifier);
+                            } else {
+                                root.selectCommitByIndex(commitTableListView.currentIndex - 1);
+                            }
                         }
                         event.accepted = true;
                     }
                     Keys.onDownPressed: function (event) {
                         if (commitTableListView.currentIndex < commitTableListView.count - 1) {
-                            root.selectCommitByIndex(commitTableListView.currentIndex + 1);
+                            if ((event.modifiers & Qt.ShiftModifier) !== 0) {
+                                root.handleCommitRowClick(commitTableListView.currentIndex + 1, Qt.ShiftModifier);
+                            } else {
+                                root.selectCommitByIndex(commitTableListView.currentIndex + 1);
+                            }
                         }
                         event.accepted = true;
+                    }
+                    Keys.onEscapePressed: function (event) {
+                        if (root.isMultiSelectMode && root.branchManager) {
+                            root.branchManager.clearMultiSelection();
+                            event.accepted = true;
+                        }
                     }
                     Keys.onPressed: function (event) {
                         if ((event.modifiers & Qt.ControlModifier) !== 0 && (event.key === Qt.Key_F || event.key === Qt.Key_Find)) {
@@ -2399,7 +2628,12 @@ Rectangle {
                         width: commitTableListView.width
                         height: 36
 
-                        property bool isSelected: (root.selectedCommit && root.selectedCommit.sha === commitRow.sha)
+                        readonly property int _msRev: root.branchManager ? root.branchManager.multiSelectRevision : 0
+                        readonly property bool isMultiRawSelected: (_msRev >= 0 && root.isMultiSelectMode && root.branchManager && root.branchManager.isShaSelected(commitRow.sha))
+                        readonly property bool isMultiEffSelected: (_msRev >= 0 && root.isMultiSelectMode && root.branchManager && root.branchManager.isShaEffectivelySelected(commitRow.sha))
+                        property bool isSelected: root.isMultiSelectMode
+                            ? commitRow.isMultiEffSelected
+                            : (root.selectedCommit && root.selectedCommit.sha === commitRow.sha)
                         property bool isHoveredTargetRow: (root.draggingBranchName !== "" && root.hoveredTargetBranch !== "" && commitRow.structuredDecorations && commitRow.structuredDecorations.length > 0 && root.hasBranchDecoration(commitRow.structuredDecorations, root.hoveredTargetBranch))
                         readonly property bool showHoverBranchBadge: rowHover.hovered
                             && root.draggingBranchName === ""
@@ -2443,7 +2677,9 @@ Rectangle {
                             ? "#1E3A8A55"
                             : (isSelected
                                 ? "#1A2E4C" // GitKraken blue row selection
-                                : (rowHover.hovered ? "#161B2288" : "transparent"))
+                                : (commitRow.isMultiRawSelected
+                                    ? "#131F3388" // Selected cross-branch commit temporarily excluded by branch filter
+                                    : (rowHover.hovered ? "#161B2288" : "transparent")))
                         border.color: commitRow.isHoveredTargetRow ? "#38BDF8" : "transparent"
                         border.width: commitRow.isHoveredTargetRow ? 1.5 : 0
 
@@ -2453,8 +2689,8 @@ Rectangle {
                             anchors.top: parent.top
                             anchors.bottom: parent.bottom
                             width: 3
-                            color: "#38BDF8"
-                            visible: commitRow.isSelected
+                            color: commitRow.isSelected ? "#38BDF8" : "#64748B"
+                            visible: commitRow.isSelected || commitRow.isMultiRawSelected
                         }
 
                         MouseArea {
@@ -2465,6 +2701,10 @@ Rectangle {
                             cursorShape: Qt.PointingHandCursor
                             onClicked: function (mouse) {
                                 commitTableListView.forceActiveFocus();
+                                if (mouse.button === Qt.LeftButton) {
+                                    root.handleCommitRowClick(commitRow.index, mouse.modifiers);
+                                    return;
+                                }
                                 root.selectCommitByIndex(commitRow.index);
                                 if (mouse.button === Qt.RightButton) {
                                     if (commitRow.sha === "WIP") {
@@ -3410,13 +3650,139 @@ Rectangle {
             // 1B. FULL-SIZE DIFF & BLAME VIEWER (Visible when root.isDiffOpen)
             // Replaces the commit table in the main screen just like GitKraken!
             // ------------------------------------------
-            DiffViewerPanel {
+            ColumnLayout {
                 anchors.fill: parent
                 visible: root.isDiffOpen
-                showBackButton: true
-                diffViewer: root.sessionVm ? root.sessionVm.commitDiffViewer : null
-                onBackRequested: {
-                    root.closeFileDiff();
+                spacing: 0
+
+                // Multi-commit diff attribution bar: switch between cumulative diff and per-commit diffs
+                Rectangle {
+                    visible: root.isMultiSelectMode && root.selectedFile !== null && (root.activeDiffFileCommits.length > 0 || (root.branchManager && root.branchManager.isMultiSelectContiguousRange))
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 36
+                    color: "#0B1220"
+                    border.color: "#1E293B"
+                    border.width: 1
+
+                    Flickable {
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
+                        contentWidth: diffCommitChipsRow.implicitWidth
+                        contentHeight: height
+                        clip: true
+                        flickableDirection: Flickable.HorizontalFlick
+
+                        Row {
+                            id: diffCommitChipsRow
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 6
+
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "Confronto:"
+                                color: "#64748B"
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+
+                            // Cumulative range diff chip (when contiguous --first-parent range)
+                            Rectangle {
+                                visible: Boolean(root.branchManager && root.branchManager.isMultiSelectContiguousRange)
+                                height: 24
+                                width: totalDiffChipText.implicitWidth + 16
+                                radius: 12
+                                color: root.activeDiffCommitSha === "" ? "#0C4A6E" : (totalDiffChipMa.containsMouse ? "#172536" : "#111927")
+                                border.color: root.activeDiffCommitSha === "" ? "#38BDF8" : "#263549"
+                                border.width: 1
+
+                                Text {
+                                    id: totalDiffChipText
+                                    anchors.centerIn: parent
+                                    text: "∑ Diff totale (" + (root.branchManager ? root.branchManager.effectiveSelectedCommitsCount : 0) + " commit)"
+                                    color: root.activeDiffCommitSha === "" ? "#E0F2FE" : "#94A3B8"
+                                    font.pixelSize: 11
+                                    font.bold: root.activeDiffCommitSha === ""
+                                }
+
+                                MouseArea {
+                                    id: totalDiffChipMa
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (root.selectedFile) {
+                                            root.openMultiCommitFileDiff(root.selectedFile, "");
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Individual commit attribution chips
+                            Repeater {
+                                model: root.activeDiffFileCommits
+
+                                delegate: Rectangle {
+                                    id: commitAttrChip
+                                    required property var modelData
+                                    readonly property bool isActiveChip: root.activeDiffCommitSha === commitAttrChip.modelData.sha
+                                    height: 24
+                                    width: Math.min(240, chipInnerRow.implicitWidth + 16)
+                                    radius: 12
+                                    color: commitAttrChip.isActiveChip ? "#1E3A5F" : (chipMa.containsMouse ? "#172536" : "#111927")
+                                    border.color: commitAttrChip.isActiveChip ? "#38BDF8" : "#263549"
+                                    border.width: 1
+
+                                    Row {
+                                        id: chipInnerRow
+                                        anchors.centerIn: parent
+                                        spacing: 5
+                                        Text {
+                                            text: commitAttrChip.modelData.shortSha || ""
+                                            color: commitAttrChip.isActiveChip ? "#38BDF8" : "#7DD3FC"
+                                            font.family: "monospace"
+                                            font.pixelSize: 10
+                                            font.bold: true
+                                        }
+                                        Text {
+                                            text: commitAttrChip.modelData.subject || ""
+                                            color: commitAttrChip.isActiveChip ? "#F8FAFC" : "#CBD5E1"
+                                            font.pixelSize: 10
+                                            elide: Text.ElideRight
+                                            width: Math.min(implicitWidth, 155)
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        id: chipMa
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        ToolTip.visible: containsMouse
+                                        ToolTip.delay: 300
+                                        ToolTip.text: (commitAttrChip.modelData.shortSha || "") + " — " + (commitAttrChip.modelData.subject || "") +
+                                                      (commitAttrChip.modelData.authorName ? ("\nAutore: " + commitAttrChip.modelData.authorName) : "") +
+                                                      "\n+" + (commitAttrChip.modelData.additions || 0) + " / -" + (commitAttrChip.modelData.deletions || 0)
+                                        onClicked: {
+                                            if (root.selectedFile) {
+                                                root.openMultiCommitFileDiff(root.selectedFile, commitAttrChip.modelData.sha);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                DiffViewerPanel {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    showBackButton: true
+                    diffViewer: root.sessionVm ? root.sessionVm.commitDiffViewer : null
+                    onBackRequested: {
+                        root.closeFileDiff();
+                    }
                 }
             }
                 }
@@ -3496,7 +3862,7 @@ Rectangle {
             // Placeholder when no commit is selected
             Rectangle {
                 anchors.centerIn: parent
-                visible: root.selectedCommit === null
+                visible: root.selectedCommit === null && !root.isMultiSelectMode
                 color: "transparent"
                 width: 260
                 height: 120
@@ -3520,13 +3886,362 @@ Rectangle {
                 anchors.fill: parent
                 anchors.margins: 16
                 spacing: 12
-                visible: root.selectedCommit !== null
+                visible: root.selectedCommit !== null || root.isMultiSelectMode
 
-                // Commit info when NOT WIP
+                // ==========================================
+                // MULTI-COMMIT SELECTION SUMMARY HEADER
+                // ==========================================
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    visible: root.isMultiSelectMode
+
+                    // Top bar: N commits selected + stats + clear button
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Rectangle {
+                            Layout.preferredHeight: 22
+                            implicitWidth: multiBadgeText.implicitWidth + 14
+                            radius: 11
+                            color: "#0C2A44"
+                            border.color: "#38BDF8"
+                            border.width: 1
+
+                            Text {
+                                id: multiBadgeText
+                                anchors.centerIn: parent
+                                text: {
+                                    if (!root.branchManager) return "";
+                                    const eff = root.branchManager.effectiveSelectedCommitsCount;
+                                    const raw = root.branchManager.selectedCommitsCount;
+                                    if (eff < raw) {
+                                        return eff + " di " + raw + " commit";
+                                    }
+                                    return eff + " commit selezionati";
+                                }
+                                color: "#38BDF8"
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+                        }
+
+                        // Net/total +/- stats
+                        RowLayout {
+                            spacing: 5
+                            visible: root.multiCommitSummary !== null
+                            Text {
+                                text: "+" + (root.multiCommitSummary ? (root.multiCommitSummary.totalAdditions || 0) : 0)
+                                color: "#34D399"
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+                            Text {
+                                text: "-" + (root.multiCommitSummary ? (root.multiCommitSummary.totalDeletions || 0) : 0)
+                                color: "#F87171"
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+                        }
+
+                        Text {
+                            visible: Boolean(root.branchManager && root.branchManager.isLoadingMultiCommitFiles)
+                            text: "⏳"
+                            font.pixelSize: 11
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        // Clear multi-selection (Esc)
+                        Rectangle {
+                            Layout.preferredWidth: 24
+                            Layout.preferredHeight: 24
+                            radius: 4
+                            color: clearMultiMa.containsMouse ? "#1E293B" : "transparent"
+                            border.color: clearMultiMa.containsMouse ? "#475569" : "transparent"
+                            border.width: 1
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "✕"
+                                color: "#94A3B8"
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+
+                            MouseArea {
+                                id: clearMultiMa
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                ToolTip.visible: containsMouse
+                                ToolTip.text: "Torna alla selezione singola (Esc)"
+                                onClicked: {
+                                    if (root.branchManager) {
+                                        root.branchManager.clearMultiSelection();
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Controls row: [ Totale | Per commit ] + [ Solo branch ] + [ Cross-branch flag ]
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        // Segmented view mode switcher: Totale vs Per commit
+                        Rectangle {
+                            height: 24
+                            width: 162
+                            radius: 5
+                            color: "#0D1117"
+                            border.color: "#30363D"
+                            border.width: 1
+
+                            RowLayout {
+                                anchors.fill: parent
+                                spacing: 0
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    radius: 4
+                                    color: root.multiSelectViewMode === "total" ? "#2563EB" : (msTotalMa.containsMouse ? "#1F242C" : "transparent")
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "∑ Totale"
+                                        color: root.multiSelectViewMode === "total" ? "#FFFFFF" : "#94A3B8"
+                                        font.pixelSize: 11
+                                        font.bold: root.multiSelectViewMode === "total"
+                                    }
+                                    MouseArea {
+                                        id: msTotalMa
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            if (root.branchManager) root.branchManager.multiSelectViewMode = "total";
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    radius: 4
+                                    color: root.multiSelectViewMode === "by_commit" ? "#2563EB" : (msByCommitMa.containsMouse ? "#1F242C" : "transparent")
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "Per commit"
+                                        color: root.multiSelectViewMode === "by_commit" ? "#FFFFFF" : "#94A3B8"
+                                        font.pixelSize: 11
+                                        font.bold: root.multiSelectViewMode === "by_commit"
+                                    }
+                                    MouseArea {
+                                        id: msByCommitMa
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            if (root.branchManager) root.branchManager.multiSelectViewMode = "by_commit";
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Quick UI toggle: Solo branch (--first-parent filter, always accessible even with cross-branch enabled!)
+                        Rectangle {
+                            id: branchFilterPill
+                            readonly property bool isFilterOn: Boolean(root.branchManager && root.branchManager.multiSelectBranchFilterActive)
+                            readonly property bool canToggleFilter: Boolean(root.branchManager && root.branchManager.allowCrossBranchMultiSelect)
+                            readonly property string branchLabel: (root.branchManager && root.branchManager.multiSelectReferenceBranch !== "")
+                                ? root.branchManager.multiSelectReferenceBranch
+                                : "questo branch"
+                            height: 24
+                            width: branchFilterRow.implicitWidth + 16
+                            radius: 5
+                            color: branchFilterPill.isFilterOn ? "#083529" : (branchFilterMa.containsMouse ? "#1E293B" : "#111827")
+                            border.color: branchFilterPill.isFilterOn ? "#10B981" : "#334155"
+                            border.width: 1
+                            opacity: branchFilterPill.canToggleFilter ? 1.0 : 0.92
+
+                            Row {
+                                id: branchFilterRow
+                                anchors.centerIn: parent
+                                spacing: 5
+                                Text {
+                                    text: branchFilterPill.isFilterOn ? "✓" : "○"
+                                    color: branchFilterPill.isFilterOn ? "#34D399" : "#94A3B8"
+                                    font.pixelSize: 10
+                                    font.bold: true
+                                }
+                                Text {
+                                    text: "Solo " + branchFilterPill.branchLabel
+                                    color: branchFilterPill.isFilterOn ? "#6EE7B7" : "#CBD5E1"
+                                    font.pixelSize: 11
+                                    font.bold: branchFilterPill.isFilterOn
+                                }
+                            }
+
+                            MouseArea {
+                                id: branchFilterMa
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: branchFilterPill.canToggleFilter ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                ToolTip.visible: containsMouse
+                                ToolTip.delay: 250
+                                ToolTip.text: branchFilterPill.canToggleFilter
+                                    ? "Confronta al volo solo i commit sulla linea (--first-parent) di " + branchFilterPill.branchLabel
+                                    : "Filtro branch attivo di default (--first-parent). Attiva 'Cross-branch' per includere altri branch."
+                                onClicked: {
+                                    if (root.branchManager && root.branchManager.allowCrossBranchMultiSelect) {
+                                        root.branchManager.multiSelectBranchFilterActive = !root.branchManager.multiSelectBranchFilterActive;
+                                    }
+                                }
+                            }
+                        }
+
+                        // Mode flag toggle (future Settings option): allow Cross-branch selection
+                        Rectangle {
+                            id: crossBranchPill
+                            readonly property bool isCrossOn: Boolean(root.branchManager && root.branchManager.allowCrossBranchMultiSelect)
+                            height: 24
+                            width: crossBranchRow.implicitWidth + 16
+                            radius: 5
+                            color: crossBranchPill.isCrossOn ? "#2B1547" : (crossBranchMa.containsMouse ? "#1E293B" : "#111827")
+                            border.color: crossBranchPill.isCrossOn ? "#A855F7" : "#334155"
+                            border.width: 1
+
+                            Row {
+                                id: crossBranchRow
+                                anchors.centerIn: parent
+                                spacing: 5
+                                Text {
+                                    text: "⎇"
+                                    color: crossBranchPill.isCrossOn ? "#C084FC" : "#94A3B8"
+                                    font.pixelSize: 11
+                                }
+                                Text {
+                                    text: "Cross-branch"
+                                    color: crossBranchPill.isCrossOn ? "#E9D5FF" : "#CBD5E1"
+                                    font.pixelSize: 11
+                                    font.bold: crossBranchPill.isCrossOn
+                                }
+                            }
+
+                            MouseArea {
+                                id: crossBranchMa
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                ToolTip.visible: containsMouse
+                                ToolTip.delay: 250
+                                ToolTip.text: crossBranchPill.isCrossOn
+                                    ? "Modalità cross-branch attiva: Shift/Ctrl+Click include anche altri branch"
+                                    : "Attiva per consentire selezione e confronto tra commit di branch diversi"
+                                onClicked: {
+                                    if (root.branchManager) {
+                                        root.branchManager.allowCrossBranchMultiSelect = !root.branchManager.allowCrossBranchMultiSelect;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Mode explanation hint + collapsible selected commits preview
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Text {
+                            text: (root.branchManager && root.branchManager.isMultiSelectContiguousRange)
+                                ? "Diff netto cumulativo (range --first-parent)"
+                                : "Aggregazione multi-commit (non contigui)"
+                            color: "#64748B"
+                            font.pixelSize: 10
+                            elide: Text.ElideRight
+                            Layout.fillWidth: true
+                        }
+
+                        Text {
+                            text: root.multiCommitsListExpanded ? "Nascondi commit ▴" : "Mostra commit ▾"
+                            color: expandCommitsMa.containsMouse ? "#7DD3FC" : "#38BDF8"
+                            font.pixelSize: 10
+                            font.bold: true
+                            MouseArea {
+                                id: expandCommitsMa
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.multiCommitsListExpanded = !root.multiCommitsListExpanded
+                            }
+                        }
+                    }
+
+                    // Collapsible compact list of selected commits
+                    Rectangle {
+                        visible: root.multiCommitsListExpanded && root.multiCommitGroups.length > 0
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Math.min(140, multiCommitPreviewList.contentHeight + 8)
+                        radius: 6
+                        color: "#0B111B"
+                        border.color: "#1E293B"
+                        border.width: 1
+                        clip: true
+
+                        ListView {
+                            id: multiCommitPreviewList
+                            anchors.fill: parent
+                            anchors.margins: 4
+                            model: root.multiCommitGroups
+                            spacing: 2
+                            clip: true
+                            delegate: RowLayout {
+                                id: previewRow
+                                required property var modelData
+                                width: multiCommitPreviewList.width
+                                height: 22
+                                spacing: 6
+
+                                Text {
+                                    text: previewRow.modelData.shortSha || ""
+                                    color: "#38BDF8"
+                                    font.family: "monospace"
+                                    font.pixelSize: 10
+                                    font.bold: true
+                                }
+                                Text {
+                                    text: previewRow.modelData.subject || ""
+                                    color: "#E2E8F0"
+                                    font.pixelSize: 11
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+                                Text {
+                                    text: "+" + (previewRow.modelData.totalAdditions || 0)
+                                    color: "#34D399"
+                                    font.pixelSize: 10
+                                    visible: (previewRow.modelData.totalAdditions || 0) > 0
+                                }
+                                Text {
+                                    text: "-" + (previewRow.modelData.totalDeletions || 0)
+                                    color: "#F87171"
+                                    font.pixelSize: 10
+                                    visible: (previewRow.modelData.totalDeletions || 0) > 0
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Commit info when NOT WIP and NOT Multi-Select
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 12
-                    visible: !root.isWipSelected
+                    visible: !root.isWipSelected && !root.isMultiSelectMode
 
                     // Top bar: commit sha (or stash header & quick actions)
                     RowLayout {
@@ -3684,7 +4399,7 @@ Rectangle {
 
                         // Quick action: Create branch at this commit
                         Rectangle {
-                            visible: !root.isStashSelected
+                            visible: !root.isStashSelected && !root.isMultiSelectMode
                             Layout.preferredHeight: 24
                             implicitWidth: createBranchHereText.implicitWidth + 18
                             radius: 4
@@ -4206,6 +4921,7 @@ Rectangle {
                 // RIGA 2: MODALITÀ DI VISUALIZZAZIONE E CONTROLLI
                 // ==========================================
                 RowLayout {
+                    visible: !(root.isMultiSelectMode && root.multiSelectViewMode === "by_commit")
                     Layout.fillWidth: true
                     spacing: 8
 
@@ -4454,18 +5170,242 @@ Rectangle {
                 }
 
                 // ==========================================
-                // COMMIT / STASH FILES LIST (when not WIP)
+                // COMMIT / STASH / MULTI-COMMIT TOTAL FILES LIST (when not WIP)
                 // ==========================================
                 CommitFilesListBody {
-                    visible: !root.isWipSelected
+                    visible: !root.isWipSelected && (!root.isMultiSelectMode || root.multiSelectViewMode === "total")
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     pathFiles: root.sortedPathFiles
                     treeModel: root.treeItems
                     treeScope: "commit:"
                     emptyText: root.totalFilesCount === 0
-                        ? "Nessun file modificato in questo commit"
+                        ? (root.isMultiSelectMode ? "Nessuna modifica netta nei commit selezionati" : "Nessun file modificato in questo commit")
                         : "Nessun file corrisponde al filtro selezionato"
+                }
+
+                // ==========================================
+                // MULTI-COMMIT PER-COMMIT BREAKDOWN VIEW
+                // ==========================================
+                ListView {
+                    id: multiCommitBreakdownList
+                    visible: root.isMultiSelectMode && root.multiSelectViewMode === "by_commit"
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    spacing: 8
+                    model: root.multiCommitGroups
+                    boundsBehavior: Flickable.StopAtBounds
+                    SmoothWheelScroller {}
+                    ScrollBar.vertical: FluxScrollBar {}
+
+                    delegate: Rectangle {
+                        id: groupCard
+                        required property var modelData
+                        readonly property var visibleGroupFiles: root.filterFilesForCommitGroup(groupCard.modelData.files)
+                        readonly property bool isCollapsed: Boolean(root.collapsedMultiCommitShas[groupCard.modelData.sha])
+                        width: multiCommitBreakdownList.width
+                        height: groupCardCol.implicitHeight + 12
+                        radius: 6
+                        color: "#0D131F"
+                        border.color: "#1E293B"
+                        border.width: 1
+
+                        ColumnLayout {
+                            id: groupCardCol
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 6
+                            spacing: 4
+
+                            // Commit group header
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 30
+                                radius: 4
+                                color: groupHeaderMa.containsMouse ? "#162033" : "#111827"
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 8
+                                    anchors.rightMargin: 8
+                                    spacing: 6
+
+                                    Text {
+                                        text: groupCard.isCollapsed ? "▸" : "▾"
+                                        color: "#64748B"
+                                        font.pixelSize: 10
+                                    }
+                                    Rectangle {
+                                        Layout.preferredHeight: 18
+                                        implicitWidth: grpShaTxt.implicitWidth + 10
+                                        radius: 4
+                                        color: "#0C2A44"
+                                        Text {
+                                            id: grpShaTxt
+                                            anchors.centerIn: parent
+                                            text: groupCard.modelData.shortSha || ""
+                                            color: "#38BDF8"
+                                            font.family: "monospace"
+                                            font.pixelSize: 10
+                                            font.bold: true
+                                        }
+                                    }
+                                    Text {
+                                        text: groupCard.modelData.subject || ""
+                                        color: "#F1F5F9"
+                                        font.pixelSize: 11
+                                        font.bold: true
+                                        elide: Text.ElideRight
+                                        Layout.fillWidth: true
+                                    }
+                                    Text {
+                                        text: groupCard.visibleGroupFiles.length + " file"
+                                        color: "#64748B"
+                                        font.pixelSize: 10
+                                    }
+                                    Text {
+                                        text: "+" + (groupCard.modelData.totalAdditions || 0)
+                                        color: "#34D399"
+                                        font.pixelSize: 10
+                                        font.bold: true
+                                        visible: (groupCard.modelData.totalAdditions || 0) > 0
+                                    }
+                                    Text {
+                                        text: "-" + (groupCard.modelData.totalDeletions || 0)
+                                        color: "#F87171"
+                                        font.pixelSize: 10
+                                        font.bold: true
+                                        visible: (groupCard.modelData.totalDeletions || 0) > 0
+                                    }
+                                }
+
+                                MouseArea {
+                                    id: groupHeaderMa
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    ToolTip.visible: containsMouse
+                                    ToolTip.delay: 300
+                                    ToolTip.text: (groupCard.modelData.shortSha || "") + " — " + (groupCard.modelData.subject || "") +
+                                                  (groupCard.modelData.authorName ? ("\nAutore: " + groupCard.modelData.authorName) : "")
+                                    onClicked: {
+                                        const next = Object.assign({}, root.collapsedMultiCommitShas);
+                                        if (next[groupCard.modelData.sha]) {
+                                            delete next[groupCard.modelData.sha];
+                                        } else {
+                                            next[groupCard.modelData.sha] = true;
+                                        }
+                                        root.collapsedMultiCommitShas = next;
+                                    }
+                                }
+                            }
+
+                            // Files in this commit
+                            Repeater {
+                                model: groupCard.isCollapsed ? [] : groupCard.visibleGroupFiles
+
+                                delegate: Rectangle {
+                                    id: grpFileRow
+                                    required property var modelData
+                                    readonly property bool isSelectedHere: Boolean(
+                                        root.isDiffOpen && root.selectedFile &&
+                                        root.selectedFile.path === grpFileRow.modelData.path &&
+                                        root.activeDiffCommitSha === groupCard.modelData.sha)
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 26
+                                    radius: 4
+                                    color: grpFileRow.isSelectedHere ? "#1A2E4C" : (grpFileMa.containsMouse ? "#151F30" : "transparent")
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 16
+                                        anchors.rightMargin: 8
+                                        spacing: 6
+
+                                        Rectangle {
+                                            Layout.preferredWidth: 16
+                                            Layout.preferredHeight: 16
+                                            radius: 3
+                                            color: {
+                                                const st = (grpFileRow.modelData.status || "M");
+                                                if (st === "A" || st === "C") return "#064E3B";
+                                                if (st === "D") return "#450A0A";
+                                                if (st === "R") return "#0C4A6E";
+                                                return "#451A03";
+                                            }
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: grpFileRow.modelData.status || "M"
+                                                color: {
+                                                    const st = (grpFileRow.modelData.status || "M");
+                                                    if (st === "A" || st === "C") return "#34D399";
+                                                    if (st === "D") return "#F87171";
+                                                    if (st === "R") return "#38BDF8";
+                                                    return "#FBBF24";
+                                                }
+                                                font.pixelSize: 9
+                                                font.bold: true
+                                            }
+                                        }
+
+                                        Text {
+                                            text: root.getDirectory(grpFileRow.modelData.path)
+                                            color: "#64748B"
+                                            font.pixelSize: 10
+                                            elide: Text.ElideMiddle
+                                            Layout.maximumWidth: Math.max(40, Math.floor(grpFileRow.width * 0.38))
+                                            visible: text !== ""
+                                        }
+
+                                        Text {
+                                            text: root.getFilename(grpFileRow.modelData.path)
+                                            color: grpFileRow.isSelectedHere ? "#38BDF8" : "#E2E8F0"
+                                            font.pixelSize: 11
+                                            font.bold: true
+                                            elide: Text.ElideRight
+                                            Layout.fillWidth: true
+                                        }
+
+                                        Text {
+                                            text: "+" + (grpFileRow.modelData.additions || 0)
+                                            color: "#34D399"
+                                            font.pixelSize: 10
+                                            font.bold: true
+                                            visible: (grpFileRow.modelData.additions || 0) > 0
+                                        }
+
+                                        Text {
+                                            text: "-" + (grpFileRow.modelData.deletions || 0)
+                                            color: "#F87171"
+                                            font.pixelSize: 10
+                                            font.bold: true
+                                            visible: (grpFileRow.modelData.deletions || 0) > 0
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        id: grpFileMa
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            root.openMultiCommitFileDiff(grpFileRow.modelData, groupCard.modelData.sha);
+                                        }
+                                    }
+                                }
+                            }
+
+                            Text {
+                                visible: !groupCard.isCollapsed && groupCard.visibleGroupFiles.length === 0
+                                text: "Nessun file corrispondente al filtro"
+                                color: "#64748B"
+                                font.pixelSize: 10
+                                Layout.leftMargin: 16
+                            }
+                        }
+                    }
                 }
 
                 // ==========================================

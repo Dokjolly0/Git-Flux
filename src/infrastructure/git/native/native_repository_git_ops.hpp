@@ -62,6 +62,20 @@ namespace gf::infra::git
                                      const std::string& filePath,
                                      int contextLines) override;
 
+        [[nodiscard]] std::expected<gf::git::bo::MultiCommitChangesSummary, gf::git::ports::GitOpsError>
+        getMultiCommitChanges(const std::filesystem::path& repoPath,
+                              const std::vector<std::string>& commitShas,
+                              bool isContiguousRange,
+                              const std::string& baseRevision,
+                              const std::string& headSha) override;
+
+        [[nodiscard]] std::expected<gf::git::bo::FileDiff, gf::git::ports::GitOpsError>
+        getCommitRangeFileDiffWithContext(const std::filesystem::path& repoPath,
+                                          const std::string& baseRevision,
+                                          const std::string& headSha,
+                                          const std::string& filePath,
+                                          int contextLines) override;
+
         [[nodiscard]] std::expected<std::string, gf::git::ports::GitOpsError>
         getFileContent(const std::filesystem::path& repoPath,
                        const std::string& revision,

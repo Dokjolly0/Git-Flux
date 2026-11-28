@@ -159,6 +159,36 @@ namespace gf::git::bl
         return m_gitOps.getCommitFileDiffWithContext(repoPath, commitSha, filePath, contextLines);
     }
 
+    std::expected<bo::FileDiff, ports::GitOpsError>
+    GitDiffService::getCommitRangeFileDiff(const std::filesystem::path& repoPath,
+                                           const std::string& baseRevision,
+                                           const std::string& headSha,
+                                           const std::string& filePath,
+                                           const int contextLines) const
+    {
+        if (auto validRepo = validateRepoPath(repoPath); !validRepo)
+        {
+            return std::unexpected(validRepo.error());
+        }
+
+        if (auto validPath = validateRelativeFilePath(filePath); !validPath)
+        {
+            return std::unexpected(validPath.error());
+        }
+
+        if (baseRevision.empty() || headSha.empty())
+        {
+            return std::unexpected(ports::GitOpsError{
+                .kind = ports::GitOpsError::Kind::InvalidOperation,
+                .exitCode = -1,
+                .message = "Revisioni di intervallo non valide per il diff",
+                .command = "diff"
+            });
+        }
+
+        return m_gitOps.getCommitRangeFileDiffWithContext(repoPath, baseRevision, headSha, filePath, contextLines);
+    }
+
     std::expected<std::string, ports::GitOpsError>
     GitDiffService::getFileContent(const std::filesystem::path& repoPath,
                                    const std::string& revision,
