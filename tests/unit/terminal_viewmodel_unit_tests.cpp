@@ -694,4 +694,55 @@ TEST_CASE("TerminalDockPanel keeps prompt focus for Ctrl+V and Up/Down after cli
         CHECK(cmdInput->hasActiveFocus());
         CHECK(cmdInput->property("text").toString() == QStringLiteral("git diff --stat"));
     }
+
+    SECTION("While a command is running, prompt highlights stdin mode and disables Up/Down history")
+    {
+        auto* promptBar = panelItem->findChild<QQuickItem*>(QStringLiteral("promptBar"));
+        auto* promptTopBorder = panelItem->findChild<QQuickItem*>(QStringLiteral("promptTopBorder"));
+        REQUIRE(promptBar != nullptr);
+        REQUIRE(promptTopBorder != nullptr);
+        CHECK_FALSE(promptBar->property("isStdinMode").toBool());
+        CHECK(promptTopBorder->property("height").toInt() == 1);
+
+        // Start a command that waits for one line on stdin
+#ifdef _WIN32
+        vm.executeCommand(QStringLiteral("set /p line= && echo GOT:%line%"));
+#else
+        vm.executeCommand(QStringLiteral("read line && echo \"GOT:$line\""));
+#endif
+        REQUIRE(QTest::qWaitFor([&]() { return vm.isRunning(); }, 3000));
+        QCoreApplication::processEvents();
+
+        CHECK(promptBar->property("isStdinMode").toBool());
+        CHECK(promptTopBorder->property("height").toInt() == 2);
+
+        // Pressing Up/Down on cmdInput must NOT inject old shell commands while running
+        cmdInput->forceActiveFocus();
+        QCoreApplication::processEvents();
+        QTest::keyClick(&window, Qt::Key_Up);
+        QCoreApplication::processEvents();
+        CHECK(cmdInput->property("text").toString().isEmpty());
+
+        QTest::keyClick(&window, Qt::Key_Down);
+        QCoreApplication::processEvents();
+        CHECK(cmdInput->property("text").toString().isEmpty());
+
+        // Interactive stdin input still works and completes the waiting command
+        QGuiApplication::clipboard()->setText(QStringLiteral("hello_stdin"));
+        QTest::keyClick(&window, Qt::Key_V, Qt::ControlModifier);
+        QCoreApplication::processEvents();
+        QTest::keyClick(&window, Qt::Key_Return);
+        REQUIRE(vm.waitForIdle(5000));
+        QCoreApplication::processEvents();
+
+        CHECK_FALSE(vm.isRunning());
+        CHECK_FALSE(promptBar->property("isStdinMode").toBool());
+        CHECK(promptTopBorder->property("height").toInt() == 1);
+        CHECK(outputEdit->property("text").toString().contains(QStringLiteral("GOT:hello_stdin")));
+
+        // Once finished, Up navigates command history again
+        QTest::keyClick(&window, Qt::Key_Up);
+        QCoreApplication::processEvents();
+        CHECK(cmdInput->property("text").toString().contains(QStringLiteral("echo")));
+    }
 }

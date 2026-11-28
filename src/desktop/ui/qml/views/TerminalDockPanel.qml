@@ -64,7 +64,7 @@ Rectangle {
     }
 
     function navigateCommandHistory(direction) {
-        if (!terminalVm) return;
+        if (!terminalVm || terminalVm.isRunning) return;
         if (terminalVm.hasCompletions) {
             completionPopup.moveSelection(direction);
         } else {
@@ -1245,17 +1245,22 @@ Rectangle {
         // =====================================================================
         Rectangle {
             id: promptBar
+            objectName: "promptBar"
+            readonly property bool isStdinMode: Boolean(panelRoot.terminalVm && panelRoot.terminalVm.isRunning)
             visible: !panelRoot.isPagerOpen
             Layout.fillWidth: true
             Layout.preferredHeight: 40
-            color: "#0C121C"
+            color: isStdinMode ? "#14100A" : "#0C121C"
+            Behavior on color { ColorAnimation { duration: 120 } }
 
             Rectangle {
+                id: promptTopBorder
+                objectName: "promptTopBorder"
                 anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.right: parent.right
-                height: 1
-                color: cmdInput.activeFocus ? "#244366" : "#1A2434"
+                height: promptBar.isStdinMode ? 2 : 1
+                color: promptBar.isStdinMode ? "#F59E0B" : (cmdInput.activeFocus ? "#244366" : "#1A2434")
                 Behavior on color { ColorAnimation { duration: 120 } }
             }
 
@@ -1308,13 +1313,34 @@ Rectangle {
                     font.pixelSize: 11
                 }
 
-                // Prompt Arrow (changes to stdin indicator while a process is running)
+                // Prompt Arrow (changes to high-visibility stdin pill while a process is running)
                 Text {
-                    text: (panelRoot.terminalVm && panelRoot.terminalVm.isRunning) ? "stdin ›" : "❯"
-                    color: (panelRoot.terminalVm && panelRoot.terminalVm.isRunning) ? "#F59E0B" : "#00E5FF"
+                    visible: !promptBar.isStdinMode
+                    text: "❯"
+                    color: "#00E5FF"
                     font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
                     font.pixelSize: 13
                     font.bold: true
+                }
+
+                Rectangle {
+                    visible: promptBar.isStdinMode
+                    Layout.preferredHeight: 20
+                    implicitWidth: stdinPillText.implicitWidth + 12
+                    radius: 5
+                    color: "#2A1B07"
+                    border.color: "#F59E0B"
+                    border.width: 1
+
+                    Text {
+                        id: stdinPillText
+                        anchors.centerIn: parent
+                        text: "stdin ›"
+                        color: "#FBBF24"
+                        font.family: (typeof gfMonoFont !== "undefined") ? gfMonoFont : "monospace"
+                        font.pixelSize: 10
+                        font.bold: true
+                    }
                 }
 
                 // Input Container with Inline Ghost Text
@@ -1343,10 +1369,10 @@ Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
                         anchors.left: parent.left
                         visible: cmdInput.text.length === 0
-                        text: (panelRoot.terminalVm && panelRoot.terminalVm.isRunning)
-                            ? "Scrivi input per il processo in esecuzione (oppure Ctrl+C per interrompere)..."
+                        text: promptBar.isStdinMode
+                            ? "Modalità stdin: scrivi input per il processo attivo (Ctrl+C per interrompere)..."
                             : "Scrivi un comando Git (es. git c...) o shell — Tab completa, Ctrl+Spazio suggerimenti"
-                        color: "#475569"
+                        color: promptBar.isStdinMode ? "#9A7B4F" : "#475569"
                         font.family: cmdInput.font.family
                         font.pixelSize: 12
                         elide: Text.ElideRight
