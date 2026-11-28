@@ -91,7 +91,6 @@ namespace gf::terminal::bl
             case bo::ScriptKind::Batch: return "Script Batch";
             case bo::ScriptKind::PosixShell: return "Script Shell";
             case bo::ScriptKind::Python: return "Script Python";
-            case bo::ScriptKind::Unknown:
             default: return "File";
             }
         }
@@ -1082,15 +1081,8 @@ namespace gf::terminal::bl
             }
             else if (explicitTrigger && seg.activePrefix.empty())
             {
-                // When explicitly pressing Ctrl+Space after any other git command, offer its flags + files
-                if (const auto opts = catalog.cachedOptionsFor(subcommand); opts.has_value())
-                {
-                    addOptionCompletions(*opts, "", result.items);
-                }
-                else
-                {
-                    result.needsSubcommandOptionsLoad = true;
-                }
+                // When explicitly pressing Ctrl+Space after any other git command, offer files
+                // (subcommand flags are appended uniformly below).
                 addFilesystemCompletions(workingDir, "", false, result.items, seen, 300);
             }
         }
