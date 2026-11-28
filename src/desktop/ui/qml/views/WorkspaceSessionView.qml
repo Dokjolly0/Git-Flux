@@ -1088,8 +1088,8 @@ Rectangle {
                     }
                     ToolTip.visible: hovered
                     ToolTip.text: root.isTerminalVisible
-                        ? "Nascondi terminale integrato (Ctrl+`)"
-                        : "Apri terminale integrato nella root del repository (Ctrl+`)"
+                        ? "Nascondi terminale integrato (Ctrl+T)"
+                        : "Apri terminale integrato nella root del repository (Ctrl+T)"
                     onClicked: {
                         if (root.terminalVm) {
                             root.terminalVm.toggleVisible();

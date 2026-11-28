@@ -77,6 +77,48 @@ Rectangle {
         }
     }
 
+    function requestCloseTab(index) {
+        if (!terminalVm) return;
+        const tabs = terminalVm.tabs;
+        if (!tabs || index < 0 || index >= tabs.length) return;
+        const tab = tabs[index];
+        if (tab && tab.isRunning) {
+            closeRunningTabDialog.pendingTabIndex = index;
+            closeRunningTabDialog.pendingTabTitle = tab.title || "Terminal";
+            closeRunningTabDialog.open();
+            return;
+        }
+        terminalVm.closeTab(index);
+        if (terminalVm.isVisible) {
+            focusInput();
+        }
+    }
+
+    function handleTerminalTabShortcut(event) {
+        if (!terminalVm) return false;
+        const ctrl = (event.modifiers & Qt.ControlModifier) !== 0;
+        const shift = (event.modifiers & Qt.ShiftModifier) !== 0;
+        const alt = (event.modifiers & Qt.AltModifier) !== 0;
+        const meta = (event.modifiers & Qt.MetaModifier) !== 0;
+
+        // Ctrl+Shift+T: open a new terminal tab
+        if (ctrl && shift && !alt && !meta && event.key === Qt.Key_T) {
+            event.accepted = true;
+            terminalVm.createTab("");
+            focusInput();
+            return true;
+        }
+
+        // Ctrl+W: close the active terminal tab (asks confirmation if a command is running)
+        if (ctrl && !shift && !alt && !meta && event.key === Qt.Key_W) {
+            event.accepted = true;
+            requestCloseTab(terminalVm.activeTabIndex);
+            return true;
+        }
+
+        return false;
+    }
+
     function scrollOutputToBottom() {
         const maxY = Math.max(0, outputFlickable.contentHeight - outputFlickable.height);
         programmaticScroll = true;
@@ -364,9 +406,7 @@ Rectangle {
                                             font.bold: true
                                         }
                                         onClicked: {
-                                            if (panelRoot.terminalVm) {
-                                                panelRoot.terminalVm.closeTab(termTabRect.tabIdx);
-                                            }
+                                            panelRoot.requestCloseTab(termTabRect.tabIdx);
                                         }
                                     }
                                 }
@@ -406,7 +446,7 @@ Rectangle {
                                         verticalAlignment: Text.AlignVCenter
                                     }
                                     ToolTip.visible: hovered
-                                    ToolTip.text: "Nuova scheda terminale nella root del repository"
+                                    ToolTip.text: "Nuova scheda terminale nella root del repository (Ctrl+Shift+T)"
                                     onClicked: {
                                         if (panelRoot.terminalVm) {
                                             panelRoot.terminalVm.createTab("");
@@ -660,7 +700,7 @@ Rectangle {
                         verticalAlignment: Text.AlignVCenter
                     }
                     ToolTip.visible: hovered
-                    ToolTip.text: "Nascondi terminale (Ctrl+`)"
+                    ToolTip.text: "Nascondi terminale (Ctrl+T)"
                     onClicked: {
                         if (panelRoot.terminalVm) {
                             panelRoot.terminalVm.isVisible = false;
@@ -813,6 +853,7 @@ Rectangle {
                     }
 
                     Keys.onPressed: function (event) {
+                        if (panelRoot.handleTerminalTabShortcut(event)) return;
                         const ctrl = (event.modifiers & Qt.ControlModifier) !== 0;
                         const alt = (event.modifiers & Qt.AltModifier) !== 0;
                         const shift = (event.modifiers & Qt.ShiftModifier) !== 0;
@@ -1014,6 +1055,7 @@ Rectangle {
                     }
 
                     Keys.onPressed: function (event) {
+                        if (panelRoot.handleTerminalTabShortcut(event)) return;
                         if (!panelRoot.terminalVm) return;
                         const key = event.key;
                         const ctrl = (event.modifiers & Qt.ControlModifier) !== 0;
@@ -1510,6 +1552,7 @@ Rectangle {
                         }
 
                         Keys.onPressed: function (event) {
+                            if (panelRoot.handleTerminalTabShortcut(event)) return;
                             if (!panelRoot.terminalVm) return;
 
                             // Ctrl+Space: force open autocomplete popup
@@ -1539,13 +1582,6 @@ Rectangle {
                                     panelRoot.terminalVm.setActiveInputDraft("", 0);
                                     panelRoot.terminalVm.dismissCompletions();
                                 }
-                                return;
-                            }
-
-                            // Ctrl+Shift+T: open a new terminal tab
-                            if ((event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier) && event.key === Qt.Key_T) {
-                                event.accepted = true;
-                                panelRoot.terminalVm.createTab("");
                                 return;
                             }
                         }
@@ -1581,6 +1617,115 @@ Rectangle {
 
         onItemAccepted: function (idx) {
             panelRoot.applyAcceptedCompletion(idx);
+        }
+    }
+
+    // =========================================================================
+    // 5. CONFIRMATION DIALOG WHEN CLOSING A TAB WITH A RUNNING COMMAND
+    // =========================================================================
+    Dialog {
+        id: closeRunningTabDialog
+        objectName: "closeRunningTabDialog"
+        property int pendingTabIndex: -1
+        property string pendingTabTitle: ""
+
+        anchors.centerIn: Overlay.overlay
+        width: 430
+        modal: true
+        padding: 18
+        header: null
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        onOpened: cancelCloseTabBtn.forceActiveFocus()
+        onClosed: {
+            pendingTabIndex = -1;
+            if (panelRoot.terminalVm && panelRoot.terminalVm.isVisible) {
+                panelRoot.focusInput();
+            }
+        }
+
+        background: FluxModalBackground {}
+
+        contentItem: ColumnLayout {
+            spacing: 14
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+
+                Rectangle {
+                    width: 36
+                    height: 36
+                    radius: 10
+                    color: "#2A1B07"
+                    border.color: "#F59E0B"
+                    border.width: 1
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "⚠"
+                        color: "#FBBF24"
+                        font.pixelSize: 16
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 3
+
+                    Text {
+                        text: "Comando in esecuzione"
+                        color: "#F8FAFC"
+                        font.pixelSize: 14
+                        font.bold: true
+                    }
+
+                    Text {
+                        text: "Nella scheda \"" + closeRunningTabDialog.pendingTabTitle + "\" c'è ancora un processo attivo.\nVuoi terminarlo e chiudere la scheda?"
+                        color: "#94A3B8"
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                Item { Layout.fillWidth: true }
+
+                FluxActionButton {
+                    id: cancelCloseTabBtn
+                    objectName: "cancelCloseTabBtn"
+                    text: "Annulla"
+                    Layout.preferredHeight: 30
+                    onClicked: closeRunningTabDialog.close()
+                }
+
+                FluxActionButton {
+                    id: confirmCloseTabBtn
+                    objectName: "confirmCloseTabBtn"
+                    text: "Termina e chiudi"
+                    Layout.preferredHeight: 30
+                    baseColor: "#5C1924"
+                    hoverColor: "#7F1D1D"
+                    baseBorderColor: "#EF4444"
+                    textColor: "#FCA5A5"
+                    fontBold: true
+                    onClicked: {
+                        const idx = closeRunningTabDialog.pendingTabIndex;
+                        closeRunningTabDialog.close();
+                        if (panelRoot.terminalVm && idx >= 0 && idx < panelRoot.terminalVm.tabs.length) {
+                            panelRoot.terminalVm.closeTab(idx);
+                            if (panelRoot.terminalVm.isVisible) {
+                                panelRoot.focusInput();
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

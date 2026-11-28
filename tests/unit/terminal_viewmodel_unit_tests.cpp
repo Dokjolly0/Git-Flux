@@ -745,4 +745,76 @@ TEST_CASE("TerminalDockPanel keeps prompt focus for Ctrl+V and Up/Down after cli
         QCoreApplication::processEvents();
         CHECK(cmdInput->property("text").toString().contains(QStringLiteral("echo")));
     }
+
+    SECTION("Ctrl+Shift+T opens new terminal tabs and Ctrl+W closes idle tabs or confirms on running tabs")
+    {
+        REQUIRE(vm.tabs().size() == 1);
+        REQUIRE(vm.isVisible());
+        cmdInput->forceActiveFocus();
+        QCoreApplication::processEvents();
+
+        // Ctrl+Shift+T opens tab 2
+        QTest::keyClick(&window, Qt::Key_T, Qt::ControlModifier | Qt::ShiftModifier);
+        QCoreApplication::processEvents();
+        REQUIRE(vm.tabs().size() == 2);
+        CHECK(vm.activeTabIndex() == 1);
+        CHECK(cmdInput->hasActiveFocus());
+
+        // Ctrl+Shift+N does NOT open a terminal tab anymore (stays at 2)
+        QTest::keyClick(&window, Qt::Key_N, Qt::ControlModifier | Qt::ShiftModifier);
+        QCoreApplication::processEvents();
+        CHECK(vm.tabs().size() == 2);
+
+        // Start a running command in tab 2
+#ifdef _WIN32
+        vm.executeCommand(QStringLiteral("set /p line="));
+#else
+        vm.executeCommand(QStringLiteral("read line"));
+#endif
+        REQUIRE(QTest::qWaitFor([&]() { return vm.isRunning(); }, 3000));
+        QCoreApplication::processEvents();
+
+        auto* closeDialog = panelObj->findChild<QObject*>(QStringLiteral("closeRunningTabDialog"));
+        REQUIRE(closeDialog != nullptr);
+        CHECK_FALSE(closeDialog->property("opened").toBool());
+
+        // Ctrl+W on running tab opens confirmation dialog instead of closing immediately
+        QTest::keyClick(&window, Qt::Key_W, Qt::ControlModifier);
+        QCoreApplication::processEvents();
+        REQUIRE(closeDialog->property("opened").toBool());
+        CHECK(vm.tabs().size() == 2);
+        CHECK(vm.isRunning());
+
+        // Clicking Cancel keeps the running tab open and restores focus to prompt
+        auto* cancelBtn = panelObj->findChild<QQuickItem*>(QStringLiteral("cancelCloseTabBtn"));
+        REQUIRE(cancelBtn != nullptr);
+        QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, centerInWindow(cancelBtn));
+        QCoreApplication::processEvents();
+        CHECK_FALSE(closeDialog->property("opened").toBool());
+        CHECK(vm.tabs().size() == 2);
+        CHECK(vm.isRunning());
+        CHECK(cmdInput->hasActiveFocus());
+
+        // Ctrl+W again -> Confirm terminates running command and closes tab 2
+        QTest::keyClick(&window, Qt::Key_W, Qt::ControlModifier);
+        QCoreApplication::processEvents();
+        REQUIRE(closeDialog->property("opened").toBool());
+        auto* confirmBtn = panelObj->findChild<QQuickItem*>(QStringLiteral("confirmCloseTabBtn"));
+        REQUIRE(confirmBtn != nullptr);
+        QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, centerInWindow(confirmBtn));
+        QCoreApplication::processEvents();
+
+        CHECK_FALSE(closeDialog->property("opened").toBool());
+        REQUIRE(vm.tabs().size() == 1);
+        CHECK(vm.isVisible());
+        CHECK_FALSE(vm.isRunning());
+        CHECK(cmdInput->hasActiveFocus());
+
+        // Ctrl+W on the remaining idle tab closes immediately without dialog and hides the dock
+        QTest::keyClick(&window, Qt::Key_W, Qt::ControlModifier);
+        QCoreApplication::processEvents();
+        CHECK_FALSE(closeDialog->property("opened").toBool());
+        CHECK(vm.tabs().isEmpty());
+        CHECK_FALSE(vm.isVisible());
+    }
 }

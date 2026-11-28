@@ -161,9 +161,9 @@ ApplicationWindow {
         }
     }
 
-    // Toggle Integrated Bottom Terminal (Ctrl+` / Ctrl+J)
+    // Toggle Integrated Bottom Terminal (Ctrl+T)
     Shortcut {
-        sequences: ["Ctrl+`", "Ctrl+J"]
+        sequence: "Ctrl+T"
         enabled: appWindow.currentView === "session"
         onActivated: {
             if (typeof terminalSessionVm !== "undefined" && terminalSessionVm) {
