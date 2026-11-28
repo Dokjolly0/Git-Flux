@@ -3,11 +3,8 @@
 #include "core/modules/git/bl/git_working_tree_service.hpp"
 #include "core/modules/git/bl/git_staging_service.hpp"
 #include "core/shared/utf8_path.hpp"
+#include "desktop/services/desktop_viewmodel_utils.hpp"
 #include "desktop/services/serial_git_executor.hpp"
-
-#include <QCoreApplication>
-#include <QElapsedTimer>
-#include <QThread>
 
 #include <expected>
 #include <filesystem>
@@ -269,18 +266,10 @@ namespace gf::desktop
 
     bool WorkingTreeViewModel::waitForIdle(int timeoutMs)
     {
-        QElapsedTimer timer;
-        timer.start();
-        while (m_refreshInFlight || m_refreshQueued || m_pendingOperations > 0)
+        return waitUntilIdle(timeoutMs, [this]()
         {
-            if (timer.elapsed() > timeoutMs)
-            {
-                return false;
-            }
-            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
-            QThread::msleep(1);
-        }
-        return true;
+            return !m_refreshInFlight && !m_refreshQueued && m_pendingOperations <= 0;
+        });
     }
 
     QVariantList WorkingTreeViewModel::getStagedFiles() const

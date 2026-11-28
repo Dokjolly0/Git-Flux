@@ -195,6 +195,14 @@ namespace gf::desktop
     private:
         void setStatus(const QString& msg);
         void setLastError(const QString& error);
+        [[nodiscard]] QVariantMap buildAvailableRepoMap(const gf::repositories::bo::Repository& repo) const;
+        template <typename MemberId, typename VectorMemberFn>
+        bool addMemberToWorkspace(const QString& workspaceId,
+                                  const QString& memberIdStr,
+                                  VectorMemberFn memberVector,
+                                  const QString& invalidParamMsg,
+                                  const QString& alreadyPresentMsg,
+                                  const QString& addedMsgTemplate);
 
         gf::repositories::bl::RepositoryService& m_repoService;
         gf::groups::bl::GroupService& m_groupService;

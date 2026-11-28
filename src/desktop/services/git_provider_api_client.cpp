@@ -9,6 +9,54 @@
 
 namespace gf::desktop::services
 {
+    namespace
+    {
+        QNetworkRequest createApiRequest(const QUrl& url,
+                                         const QByteArray& acceptHeader = {},
+                                         const QByteArray& authHeaderName = {},
+                                         const QByteArray& authHeaderValue = {})
+        {
+            QNetworkRequest request(url);
+            request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
+            request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("GitFlux-Desktop"));
+            if (!acceptHeader.isEmpty())
+            {
+                request.setRawHeader("Accept", acceptHeader);
+            }
+            if (!authHeaderName.isEmpty() && !authHeaderValue.isEmpty())
+            {
+                request.setRawHeader(authHeaderName, authHeaderValue);
+            }
+            return request;
+        }
+
+        QString extractJsonApiErrorMessage(const QByteArray& body)
+        {
+            const auto errDoc = QJsonDocument::fromJson(body);
+            if (!errDoc.isObject())
+            {
+                return {};
+            }
+            const auto errObj = errDoc.object();
+            if (errObj.contains(QStringLiteral("error")))
+            {
+                const auto subErr = errObj.value(QStringLiteral("error"));
+                if (subErr.isObject())
+                {
+                    return subErr.toObject().value(QStringLiteral("message")).toString();
+                }
+                if (subErr.isString())
+                {
+                    return subErr.toString();
+                }
+            }
+            if (errObj.contains(QStringLiteral("message")))
+            {
+                return errObj.value(QStringLiteral("message")).toString();
+            }
+            return {};
+        }
+    } // namespace
     GitProviderApiClient::GitProviderApiClient(QNetworkAccessManager* nam, QObject* parent)
         : QObject(parent), m_nam(nam)
     {
@@ -60,15 +108,12 @@ namespace gf::desktop::services
             return;
         }
 
-        QNetworkRequest request(url);
-        request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
-        request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("GitFlux-Desktop"));
-        request.setRawHeader("Accept", "application/vnd.github+json");
+        auto request = createApiRequest(
+            url,
+            "application/vnd.github+json",
+            token.isEmpty() ? QByteArray{} : QByteArray("Authorization"),
+            token.isEmpty() ? QByteArray{} : QStringLiteral("Bearer %1").arg(token).toUtf8());
         request.setRawHeader("X-GitHub-Api-Version", "2022-11-28");
-        if (!token.isEmpty())
-        {
-            request.setRawHeader("Authorization", QStringLiteral("Bearer %1").arg(token).toUtf8());
-        }
 
         auto* reply = m_nam->get(request);
         connect(reply, &QNetworkReply::finished, this, [this, reply, profileId]()
@@ -77,13 +122,7 @@ namespace gf::desktop::services
             if (reply->error() != QNetworkReply::NoError)
             {
                 const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-                const auto errData = reply->readAll();
-                QString apiMsg;
-                const auto errDoc = QJsonDocument::fromJson(errData);
-                if (errDoc.isObject() && errDoc.object().contains(QStringLiteral("message")))
-                {
-                    apiMsg = errDoc.object().value(QStringLiteral("message")).toString();
-                }
+                const QString apiMsg = extractJsonApiErrorMessage(reply->readAll());
 
                 if (statusCode == 401)
                 {
@@ -158,13 +197,10 @@ namespace gf::desktop::services
         if (baseUrl.endsWith(QLatin1Char('/'))) baseUrl.chop(1);
 
         const QUrl url(QStringLiteral("%1/projects?membership=true&per_page=100&order_by=updated_at").arg(baseUrl));
-        QNetworkRequest request(url);
-        request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
-        request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("GitFlux-Desktop"));
-        if (!token.isEmpty())
-        {
-            request.setRawHeader("PRIVATE-TOKEN", token.toUtf8());
-        }
+        const auto request = createApiRequest(
+            url, {},
+            token.isEmpty() ? QByteArray{} : QByteArray("PRIVATE-TOKEN"),
+            token.isEmpty() ? QByteArray{} : token.toUtf8());
 
         auto* reply = m_nam->get(request);
         connect(reply, &QNetworkReply::finished, this, [this, reply, profileId]()
@@ -239,11 +275,7 @@ namespace gf::desktop::services
         // Bitbucket Cloud API 2.0 requires workspace-scoped repository listing.
         // Step 1: Discover workspaces accessible to the user via /2.0/user/workspaces
         const QUrl workspacesUrl(QStringLiteral("https://api.bitbucket.org/2.0/user/workspaces?pagelen=100"));
-        QNetworkRequest request(workspacesUrl);
-        request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
-        request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("GitFlux-Desktop"));
-        request.setRawHeader("Accept", "application/json");
-        request.setRawHeader("Authorization", authHeaderVal);
+        const auto request = createApiRequest(workspacesUrl, "application/json", "Authorization", authHeaderVal);
 
         auto* reply = m_nam->get(request);
         connect(reply, &QNetworkReply::finished, this, [this, reply, profileId, authHeaderVal, profile]()
@@ -252,29 +284,7 @@ namespace gf::desktop::services
             if (reply->error() != QNetworkReply::NoError)
             {
                 const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-                const auto errData = reply->readAll();
-                QString apiMsg;
-                const auto errDoc = QJsonDocument::fromJson(errData);
-                if (errDoc.isObject())
-                {
-                    const auto errObj = errDoc.object();
-                    if (errObj.contains(QStringLiteral("error")))
-                    {
-                        const auto subErr = errObj.value(QStringLiteral("error"));
-                        if (subErr.isObject())
-                        {
-                            apiMsg = subErr.toObject().value(QStringLiteral("message")).toString();
-                        }
-                        else if (subErr.isString())
-                        {
-                            apiMsg = subErr.toString();
-                        }
-                    }
-                    else if (errObj.contains(QStringLiteral("message")))
-                    {
-                        apiMsg = errObj.value(QStringLiteral("message")).toString();
-                    }
-                }
+                const QString apiMsg = extractJsonApiErrorMessage(reply->readAll());
 
                 if (!apiMsg.isEmpty())
                 {
@@ -346,11 +356,7 @@ namespace gf::desktop::services
                 const QUrl repoUrl(
                     QStringLiteral("https://api.bitbucket.org/2.0/repositories/%1?pagelen=100&sort=-updated_on").
                     arg(slug));
-                QNetworkRequest repoReq(repoUrl);
-                repoReq.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
-                repoReq.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("GitFlux-Desktop"));
-                repoReq.setRawHeader("Accept", "application/json");
-                repoReq.setRawHeader("Authorization", authHeaderVal);
+                const auto repoReq = createApiRequest(repoUrl, "application/json", "Authorization", authHeaderVal);
 
                 auto* repoReply = m_nam->get(repoReq);
                 connect(repoReply, &QNetworkReply::finished, this, [this, repoReply, profileId, state]()
@@ -468,14 +474,10 @@ namespace gf::desktop::services
             url = QUrl(baseApi + QStringLiteral("/repos/search?limit=100"));
         }
 
-        QNetworkRequest request(url);
-        request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
-        request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("GitFlux-Desktop"));
-        request.setRawHeader("Accept", "application/json");
-        if (!token.isEmpty())
-        {
-            request.setRawHeader("Authorization", QStringLiteral("token %1").arg(token).toUtf8());
-        }
+        const auto request = createApiRequest(
+            url, "application/json",
+            token.isEmpty() ? QByteArray{} : QByteArray("Authorization"),
+            token.isEmpty() ? QByteArray{} : QStringLiteral("token %1").arg(token).toUtf8());
 
         auto* reply = m_nam->get(request);
         connect(reply, &QNetworkReply::finished, this, [this, reply, profileId]()

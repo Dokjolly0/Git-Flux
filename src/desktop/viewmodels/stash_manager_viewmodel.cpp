@@ -2,11 +2,8 @@
 
 #include "core/modules/git/bl/git_stash_service.hpp"
 #include "core/shared/utf8_path.hpp"
+#include "desktop/services/desktop_viewmodel_utils.hpp"
 #include "desktop/services/serial_git_executor.hpp"
-
-#include <QCoreApplication>
-#include <QElapsedTimer>
-#include <QThread>
 
 #include <expected>
 
@@ -218,17 +215,6 @@ namespace gf::desktop
 
     bool StashManagerViewModel::waitForIdle(int timeoutMs)
     {
-        QElapsedTimer timer;
-        timer.start();
-        while (m_pendingTasks > 0)
-        {
-            if (timer.elapsed() > timeoutMs)
-            {
-                return false;
-            }
-            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
-            QThread::msleep(1);
-        }
-        return true;
+        return waitUntilIdle(timeoutMs, [this]() { return m_pendingTasks <= 0; });
     }
 } // namespace gf::desktop

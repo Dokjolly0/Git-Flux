@@ -253,6 +253,12 @@ namespace gf::desktop
         // Reports an operation outcome: status bar, operationCompleted and operationFinished.
         void completeOperation(int operationId, bool success, const QString& message,
                                const QString& statusMessage = QString());
+        void handleMergeOutcome(int id, bool sameRepo, bool ok, const QString& errorMessage,
+                                bool hasConflict, const std::vector<std::string>& conflictedFiles,
+                                const QString& sourceBranch);
+        void handleRebaseOutcome(int id, bool sameRepo, bool ok, const QString& errorMessage,
+                                 bool hasConflict, const std::vector<std::string>& conflictedFiles,
+                                 const QString& okMessage, const QString& switchedBranch);
         void setConflicts(const std::vector<std::string>& files);
         void setStatusMessage(const QString& message);
         void recomputeMultiSelectionState(bool triggerReload);

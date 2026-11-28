@@ -1,7 +1,5 @@
 #include "desktop/viewmodels/workspace_session_viewmodel.hpp"
-#include <QThread>
-#include <QElapsedTimer>
-#include <QCoreApplication>
+#include "desktop/services/desktop_viewmodel_utils.hpp"
 
 #include "core/modules/git/bl/git_conflict_service.hpp"
 #include "core/modules/git/bl/git_repository_watcher_service.hpp"
@@ -963,26 +961,15 @@ namespace gf::desktop
 
     bool WorkspaceSessionViewModel::waitForIdle(int timeoutMs)
     {
-        QElapsedTimer timer;
-        timer.start();
         // A completion may queue follow-up work (an operation refreshes the working tree, which
         // reloads the history...): idle means everything is quiet at the same time.
         // waitForIdle(0) on a child is a non-blocking "is it idle?" check.
-        while (true)
+        return waitUntilIdle(timeoutMs, [this]()
         {
-            if (m_pendingOperations == 0 && m_workingTree.waitForIdle(0) && m_commitBox.waitForIdle(0)
+            return m_pendingOperations == 0 && m_workingTree.waitForIdle(0) && m_commitBox.waitForIdle(0)
                 && m_branchManager.waitForIdle(0) && m_stashManager.waitForIdle(0)
-                && m_conflictResolver.waitForIdle(0))
-            {
-                return true;
-            }
-            if (timer.elapsed() > timeoutMs)
-            {
-                return false;
-            }
-            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
-            QThread::msleep(1);
-        }
+                && m_conflictResolver.waitForIdle(0);
+        });
     }
 
     bool WorkspaceSessionViewModel::openConflictResolver(const QString& relativePath)

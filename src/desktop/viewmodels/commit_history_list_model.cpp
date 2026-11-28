@@ -1,18 +1,14 @@
 #include "desktop/viewmodels/commit_history_list_model.hpp"
+#include "desktop/services/author_avatar_helper.hpp"
 
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QMutex>
-#include <QMutexLocker>
 #include <QNetworkReply>
 #include <QNetworkRequest>
-#include <QSettings>
 #include <QUrl>
 
-#include <QCryptographicHash>
 #include <QDateTime>
-#include <QHash>
 #include <QRegularExpression>
 #include <QVariantMap>
 #include <algorithm>
@@ -25,19 +21,6 @@ namespace gf::desktop
 {
     namespace
     {
-        const QStringList kAuthorPalette = {
-            QStringLiteral("#6366F1"), // Indigo
-            QStringLiteral("#06B6D4"), // Cyan
-            QStringLiteral("#10B981"), // Emerald
-            QStringLiteral("#F59E0B"), // Amber
-            QStringLiteral("#EC4899"), // Pink
-            QStringLiteral("#8B5CF6"), // Purple
-            QStringLiteral("#14B8A6"), // Teal
-            QStringLiteral("#3B82F6"), // Blue
-            QStringLiteral("#E11D48"), // Rose
-            QStringLiteral("#84CC16") // Lime
-        };
-
         const QStringList kGraphPalette = {
             QStringLiteral("#06B6D4"), // Cyan (main)
             QStringLiteral("#A855F7"), // Purple
@@ -49,134 +32,13 @@ namespace gf::desktop
             QStringLiteral("#8B5CF6") // Violet
         };
 
-        QString computeAvatarUrl(const QString& name, const QString& rawEmail)
-        {
-            QString email = rawEmail.trimmed().toLower();
-            QString cleanName = name.trimmed();
-
-            // 1. If email is a GitHub noreply address
-            if (email.endsWith(QLatin1String("users.noreply.github.com")))
-            {
-                int atIdx = email.indexOf(QLatin1Char('@'));
-                if (atIdx > 0)
-                {
-                    QString userPart = email.left(atIdx);
-                    int plusIdx = userPart.indexOf(QLatin1Char('+'));
-                    if (plusIdx >= 0) userPart = userPart.mid(plusIdx + 1);
-                    if (!userPart.isEmpty())
-                    {
-                        return QStringLiteral("https://github.com/%1.png?size=64").arg(userPart);
-                    }
-                }
-            }
-
-            // 2. If name is a single username token without spaces (e.g. "Dokjolly0")
-            if (!cleanName.isEmpty() && !cleanName.contains(QLatin1Char(' ')))
-            {
-                return QStringLiteral("https://github.com/%1.png?size=64").arg(cleanName);
-            }
-
-            // 2.5 Check email-to-GitHub-avatar cache
-            if (!email.isEmpty())
-            {
-                QString cached = CommitHistoryListModel::cachedAvatarForEmail(email);
-                if (!cached.isEmpty())
-                {
-                    return cached;
-                }
-            }
-
-            // 3. Fallback to Gravatar MD5
-            if (!email.isEmpty())
-            {
-                QByteArray hash = QCryptographicHash::hash(email.toUtf8(), QCryptographicHash::Md5).toHex();
-                return QStringLiteral("https://www.gravatar.com/avatar/%1?s=64&d=identicon").arg(
-                    QString::fromLatin1(hash));
-            }
-
-            return QStringLiteral("https://www.gravatar.com/avatar/?d=mp");
-        }
-
         QString computeCommitAvatarUrl(const git::bo::GitCommitLogItem& c)
         {
-            QString authorName = QString::fromStdString(c.authorName).trimmed();
-            QString authorEmail = QString::fromStdString(c.authorEmail).trimmed().toLower();
-            QString committerName = QString::fromStdString(c.committerName).trimmed();
-            QString committerEmail = QString::fromStdString(c.committerEmail).trimmed().toLower();
-
-            // 1. Check if authorName is a single-word GitHub username (e.g. Dokjolly0)
-            if (!authorName.isEmpty() && !authorName.contains(QLatin1Char(' ')))
-            {
-                return QStringLiteral("https://github.com/%1.png?size=64").arg(authorName);
-            }
-
-            // 2. Check if authorEmail is GitHub noreply
-            if (authorEmail.endsWith(QLatin1String("users.noreply.github.com")))
-            {
-                int atIdx = authorEmail.indexOf(QLatin1Char('@'));
-                if (atIdx > 0)
-                {
-                    QString userPart = authorEmail.left(atIdx);
-                    int plusIdx = userPart.indexOf(QLatin1Char('+'));
-                    if (plusIdx >= 0) userPart = userPart.mid(plusIdx + 1);
-                    if (!userPart.isEmpty())
-                    {
-                        return QStringLiteral("https://github.com/%1.png?size=64").arg(userPart);
-                    }
-                }
-            }
-
-            // 3. Check if committerName is a single-word GitHub username (e.g. Dokjolly0 when author has full real name)
-            if (!authorEmail.isEmpty())
-            {
-                QString cached = CommitHistoryListModel::cachedAvatarForEmail(authorEmail);
-                if (!cached.isEmpty())
-                {
-                    return cached;
-                }
-            }
-            if (!committerName.isEmpty() && !committerName.contains(QLatin1Char(' ')) &&
-                committerName.compare(QLatin1String("GitHub"), Qt::CaseInsensitive) != 0)
-            {
-                return QStringLiteral("https://github.com/%1.png?size=64").arg(committerName);
-            }
-
-            // 4. Check if committerEmail is GitHub noreply
-            if (committerEmail.endsWith(QLatin1String("users.noreply.github.com")))
-            {
-                int atIdx = committerEmail.indexOf(QLatin1Char('@'));
-                if (atIdx > 0)
-                {
-                    QString userPart = committerEmail.left(atIdx);
-                    int plusIdx = userPart.indexOf(QLatin1Char('+'));
-                    if (plusIdx >= 0) userPart = userPart.mid(plusIdx + 1);
-                    if (!userPart.isEmpty())
-                    {
-                        return QStringLiteral("https://github.com/%1.png?size=64").arg(userPart);
-                    }
-                }
-            }
-
-            // 4.5 Check email-to-GitHub-avatar cache for committerEmail
-            if (!committerEmail.isEmpty())
-            {
-                QString cached = CommitHistoryListModel::cachedAvatarForEmail(committerEmail);
-                if (!cached.isEmpty())
-                {
-                    return cached;
-                }
-            }
-
-            // 5. Fallback to Gravatar MD5
-            QString emailForGravatar = !authorEmail.isEmpty() ? authorEmail : committerEmail;
-            if (!emailForGravatar.isEmpty())
-            {
-                QByteArray hash = QCryptographicHash::hash(emailForGravatar.toUtf8(), QCryptographicHash::Md5).toHex();
-                return QStringLiteral("https://www.gravatar.com/avatar/%1?s=64&d=identicon").arg(
-                    QString::fromLatin1(hash));
-            }
-
-            return QStringLiteral("https://www.gravatar.com/avatar/?d=mp");
+            return AuthorAvatarHelper::computeCommitAvatarUrl(
+                QString::fromStdString(c.authorName),
+                QString::fromStdString(c.authorEmail),
+                QString::fromStdString(c.committerName),
+                QString::fromStdString(c.committerEmail));
         }
 
         QString formatCommitDate(const QString& isoStr)
@@ -187,31 +49,6 @@ namespace gf::desktop
                 return isoStr;
             }
             return dt.toString(QStringLiteral("dd/MM/yyyy @ HH:mm"));
-        }
-
-        QString computeInitials(const QString& name)
-        {
-            QString clean = name.trimmed();
-            if (clean.isEmpty()) return QStringLiteral("??");
-
-            QStringList parts = clean.split(QLatin1Char(' '), Qt::SkipEmptyParts);
-            if (parts.size() >= 2)
-            {
-                return QString(parts[0].front().toUpper()) + QString(parts[1].front().toUpper());
-            }
-            if (clean.length() >= 2)
-            {
-                return clean.left(2).toUpper();
-            }
-            return clean.toUpper();
-        }
-
-        QString computeAuthorColor(const QString& name, const QString& email)
-        {
-            QString key = email.isEmpty() ? name : email;
-            const size_t hash = qHash(key);
-            const int idx = static_cast<int>(hash % kAuthorPalette.size());
-            return kAuthorPalette[idx];
         }
 
         // `git log %D` marks the checked-out commit as "HEAD -> <branch>", or plain "HEAD" when detached.
@@ -527,9 +364,9 @@ namespace gf::desktop
                 QVariantMap entry;
                 entry[QStringLiteral("name")] = displayName;
                 entry[QStringLiteral("email")] = email;
-                entry[QStringLiteral("avatarUrl")] = computeAvatarUrl(displayName, email);
-                entry[QStringLiteral("initials")] = computeInitials(displayName);
-                entry[QStringLiteral("color")] = computeAuthorColor(displayName, email);
+                entry[QStringLiteral("avatarUrl")] = AuthorAvatarHelper::computeAvatarUrl(displayName, email);
+                entry[QStringLiteral("initials")] = AuthorAvatarHelper::computeInitials(displayName);
+                entry[QStringLiteral("color")] = AuthorAvatarHelper::computeAuthorColor(displayName, email);
                 result.append(entry);
             }
             return result;
@@ -601,9 +438,10 @@ namespace gf::desktop
         case AuthorAvatarUrlRole:
             return computeCommitAvatarUrl(c);
         case AuthorInitialsRole:
-            return computeInitials(QString::fromStdString(c.authorName));
+            return AuthorAvatarHelper::computeInitials(QString::fromStdString(c.authorName));
         case AuthorColorRole:
-            return computeAuthorColor(QString::fromStdString(c.authorName), QString::fromStdString(c.authorEmail));
+            return AuthorAvatarHelper::computeAuthorColor(QString::fromStdString(c.authorName),
+                                                            QString::fromStdString(c.authorEmail));
         case StructuredDecorationsRole:
             return computeStructuredDecorations(c.refDecorations);
         case CommitterNameRole:
@@ -613,9 +451,10 @@ namespace gf::desktop
         case CommitterDateFormattedRole:
             return formatCommitDate(QString::fromStdString(c.committerDateIso));
         case CommitterAvatarUrlRole:
-            return computeAvatarUrl(QString::fromStdString(c.committerName), QString::fromStdString(c.committerEmail));
+            return AuthorAvatarHelper::computeAvatarUrl(QString::fromStdString(c.committerName),
+                                                        QString::fromStdString(c.committerEmail));
         case CommitterInitialsRole:
-            return computeInitials(QString::fromStdString(c.committerName));
+            return AuthorAvatarHelper::computeInitials(QString::fromStdString(c.committerName));
         case GraphLaneRole:
             return (idx < m_graphItems.size()) ? m_graphItems[idx].lane : 0;
         case GraphColorRole:
@@ -701,18 +540,19 @@ namespace gf::desktop
         map[QStringLiteral("authorDate")] = QString::fromStdString(c.authorDateIso);
         map[QStringLiteral("authorDateFormatted")] = formatCommitDate(QString::fromStdString(c.authorDateIso));
         map[QStringLiteral("authorAvatarUrl")] = computeCommitAvatarUrl(c);
-        map[QStringLiteral("authorInitials")] = computeInitials(QString::fromStdString(c.authorName));
-        map[QStringLiteral("authorColor")] = computeAuthorColor(QString::fromStdString(c.authorName),
-                                                                QString::fromStdString(c.authorEmail));
+        map[QStringLiteral("authorInitials")] = AuthorAvatarHelper::computeInitials(QString::fromStdString(c.authorName));
+        map[QStringLiteral("authorColor")] = AuthorAvatarHelper::computeAuthorColor(
+            QString::fromStdString(c.authorName), QString::fromStdString(c.authorEmail));
 
         map[QStringLiteral("coAuthors")] = computeCoAuthors(c);
 
         map[QStringLiteral("committerName")] = QString::fromStdString(c.committerName);
         map[QStringLiteral("committerEmail")] = QString::fromStdString(c.committerEmail);
         map[QStringLiteral("committerDateFormatted")] = formatCommitDate(QString::fromStdString(c.committerDateIso));
-        map[QStringLiteral("committerAvatarUrl")] = computeAvatarUrl(QString::fromStdString(c.committerName),
-                                                                     QString::fromStdString(c.committerEmail));
-        map[QStringLiteral("committerInitials")] = computeInitials(QString::fromStdString(c.committerName));
+        map[QStringLiteral("committerAvatarUrl")] = AuthorAvatarHelper::computeAvatarUrl(
+            QString::fromStdString(c.committerName), QString::fromStdString(c.committerEmail));
+        map[QStringLiteral("committerInitials")] = AuthorAvatarHelper::computeInitials(
+            QString::fromStdString(c.committerName));
 
         QStringList decList;
         for (const auto& d : c.refDecorations) decList << QString::fromStdString(d);
@@ -1658,67 +1498,14 @@ namespace gf::desktop
         rebuildGraph();
     }
 
-    namespace
-    {
-        QMutex& avatarCacheMutex()
-        {
-            static QMutex s_mutex;
-            return s_mutex;
-        }
-
-        QHash<QString, QString>& avatarMemoryCache()
-        {
-            static QHash<QString, QString> s_cache;
-            static bool s_loaded = false;
-            if (!s_loaded)
-            {
-                s_loaded = true;
-                QSettings settings(QStringLiteral("GitFlux"), QStringLiteral("GitFlux"));
-                settings.beginGroup(QStringLiteral("AvatarEmailCache"));
-                const QStringList keys = settings.childKeys();
-                for (const QString& key : keys)
-                {
-                    const QString val = settings.value(key).toString();
-                    if (!val.isEmpty())
-                    {
-                        s_cache.insert(key, val);
-                    }
-                }
-                settings.endGroup();
-            }
-            return s_cache;
-        }
-    } // namespace
-
     QString CommitHistoryListModel::cachedAvatarForEmail(const QString& rawEmail)
     {
-        const QString email = rawEmail.trimmed().toLower();
-        if (email.isEmpty() || email == QLatin1String("noreply@github.com"))
-        {
-            return {};
-        }
-        QMutexLocker locker(&avatarCacheMutex());
-        return avatarMemoryCache().value(email);
+        return AuthorAvatarHelper::cachedAvatarForEmail(rawEmail);
     }
 
     void CommitHistoryListModel::cacheAvatarForEmail(const QString& rawEmail, const QString& avatarUrl)
     {
-        const QString email = rawEmail.trimmed().toLower();
-        if (email.isEmpty() || email == QLatin1String("noreply@github.com") || avatarUrl.isEmpty())
-        {
-            return;
-        }
-        QMutexLocker locker(&avatarCacheMutex());
-        auto& cache = avatarMemoryCache();
-        if (cache.value(email) == avatarUrl)
-        {
-            return;
-        }
-        cache.insert(email, avatarUrl);
-        QSettings settings(QStringLiteral("GitFlux"), QStringLiteral("GitFlux"));
-        settings.beginGroup(QStringLiteral("AvatarEmailCache"));
-        settings.setValue(email, avatarUrl);
-        settings.endGroup();
+        AuthorAvatarHelper::cacheAvatarForEmail(rawEmail, avatarUrl);
     }
 
     void CommitHistoryListModel::indexAvatarsFromCommits()

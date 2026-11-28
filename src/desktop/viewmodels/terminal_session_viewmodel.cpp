@@ -1,4 +1,5 @@
 #include "desktop/viewmodels/terminal_session_viewmodel.hpp"
+#include "desktop/services/desktop_viewmodel_utils.hpp"
 
 #include "core/modules/terminal/bl/ansi_parser.hpp"
 #include "core/modules/terminal/bl/command_line_tokenizer.hpp"
@@ -6,12 +7,9 @@
 #include "core/shared/accent_palette.hpp"
 #include "core/shared/utf8_path.hpp"
 
-#include <QCoreApplication>
 #include <QDir>
-#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QMetaObject>
-#include <QThread>
 
 #include <algorithm>
 #include <cctype>
@@ -1986,22 +1984,9 @@ namespace gf::desktop
 
     bool TerminalSessionViewModel::waitForIdle(const int timeoutMs)
     {
-        QElapsedTimer timer;
-        timer.start();
-        while (timer.elapsed() < timeoutMs)
+        return waitUntilIdleDraining(timeoutMs, [this]()
         {
-            QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
-            if (!anyTabRunning() && m_bgPool.activeThreadCount() == 0)
-            {
-                // One extra pass to drain queued invocations posted just as worker finished
-                QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
-                if (!anyTabRunning() && m_bgPool.activeThreadCount() == 0)
-                {
-                    return true;
-                }
-            }
-            QThread::msleep(10);
-        }
-        return !anyTabRunning() && m_bgPool.activeThreadCount() == 0;
+            return !anyTabRunning() && m_bgPool.activeThreadCount() == 0;
+        });
     }
 } // namespace gf::desktop

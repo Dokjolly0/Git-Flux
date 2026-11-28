@@ -1,16 +1,11 @@
 #include "desktop/viewmodels/git_profiles_viewmodel.hpp"
+#include "desktop/services/desktop_viewmodel_utils.hpp"
 #include "core/shared/env_var.hpp"
-#include <QCoreApplication>
-#include <QEventLoop>
-#include <QThread>
-#include <QElapsedTimer>
 
 #include <QUrl>
-#include <QClipboard>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QGuiApplication>
 
 #include <algorithm>
 #include <cctype>
@@ -158,18 +153,7 @@ namespace gf::desktop::viewmodels
 
     bool GitProfilesViewModel::waitForIdle(int timeoutMs)
     {
-        QElapsedTimer timer;
-        timer.start();
-        while (m_pendingCrypto > 0)
-        {
-            if (timer.elapsed() > timeoutMs)
-            {
-                return false;
-            }
-            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
-            QThread::msleep(1);
-        }
-        return true;
+        return gf::desktop::waitUntilIdle(timeoutMs, [this]() { return m_pendingCrypto <= 0; });
     }
 
     void GitProfilesViewModel::initialize()
@@ -1007,10 +991,7 @@ namespace gf::desktop::viewmodels
 
     void GitProfilesViewModel::copyToClipboard(const QString& text)
     {
-        if (auto* cb = QGuiApplication::clipboard())
-        {
-            cb->setText(text);
-        }
+        gf::desktop::copyTextToClipboard(text);
     }
 
     namespace

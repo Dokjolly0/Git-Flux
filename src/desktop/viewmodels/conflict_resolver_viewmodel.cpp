@@ -2,10 +2,7 @@
 
 #include "core/modules/git/bl/git_conflict_service.hpp"
 #include "core/modules/git/bl/conflict_marker_parser.hpp"
-
-#include <QCoreApplication>
-#include <QElapsedTimer>
-#include <QThread>
+#include "desktop/services/desktop_viewmodel_utils.hpp"
 
 namespace gf::desktop
 {
@@ -235,17 +232,6 @@ namespace gf::desktop
 
     bool ConflictResolverViewModel::waitForIdle(int timeoutMs)
     {
-        QElapsedTimer timer;
-        timer.start();
-        while (m_isBusy || m_isLoading)
-        {
-            if (timer.elapsed() > timeoutMs)
-            {
-                return false;
-            }
-            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
-            QThread::msleep(1);
-        }
-        return true;
+        return waitUntilIdle(timeoutMs, [this]() { return !m_isBusy && !m_isLoading; });
     }
 } // namespace gf::desktop

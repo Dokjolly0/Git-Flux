@@ -68,6 +68,7 @@ namespace gf::desktop
     private:
         void onProgressUpdate(const gf::git::bo::BatchProgressUpdate& update);
         void onReportCompleted(const gf::git::bo::BatchOperationReport& report);
+        void beginBatchOperation(const QString& operationName, const QString& statusMessage);
 
         /// Shared between this object and the callbacks handed to the coordinator, which run on
         /// background threads and may outlive this view model (e.g. a cancelled batch finishing

@@ -1,5 +1,6 @@
 #include "desktop/viewmodels/diff_viewmodel.hpp"
-#include "desktop/viewmodels/commit_history_list_model.hpp"
+#include "desktop/services/author_avatar_helper.hpp"
+#include "desktop/services/desktop_viewmodel_utils.hpp"
 #include "desktop/services/diff_image_provider.hpp"
 
 #include "core/shared/utf8_path.hpp"
@@ -8,20 +9,14 @@
 #include "core/modules/syntax/markdown_parser.hpp"
 #include "core/modules/syntax/syntax_highlighter.hpp"
 
-#include <QClipboard>
-#include <QCoreApplication>
-#include <QCryptographicHash>
 #include <QDesktopServices>
 #include <QDir>
-#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QFontDatabase>
-#include <QGuiApplication>
 #include <QHash>
 #include <QStandardPaths>
 #include <QStringList>
-#include <QThread>
 #include <QUrl>
 #include <QVariantMap>
 #include <algorithm>
@@ -35,75 +30,6 @@ namespace gf::desktop
     {
         constexpr std::size_t kMaxRenderedDiffLines = 5000;
         constexpr int kMaxVisualLineLength = 4096;
-
-        const QStringList kBlameColors = {
-            QStringLiteral("#6366F1"),
-            QStringLiteral("#06B6D4"),
-            QStringLiteral("#10B981"),
-            QStringLiteral("#F59E0B"),
-            QStringLiteral("#EC4899"),
-            QStringLiteral("#8B5CF6"),
-            QStringLiteral("#14B8A6"),
-            QStringLiteral("#3B82F6"),
-            QStringLiteral("#E11D48"),
-            QStringLiteral("#84CC16")
-        };
-
-        QString computeBlameAvatar(const QString& rawName, const QString& rawEmail)
-        {
-            QString email = rawEmail.trimmed().toLower();
-            QString cleanName = rawName.trimmed();
-            if (!cleanName.isEmpty() && !cleanName.contains(QLatin1Char(' ')) &&
-                cleanName.compare(QLatin1String("GitHub"), Qt::CaseInsensitive) != 0)
-            {
-                return QStringLiteral("https://github.com/%1.png?size=64").arg(cleanName);
-            }
-            if (email.isEmpty())
-            {
-                return QStringLiteral("https://www.gravatar.com/avatar/?d=mp");
-            }
-            if (email.endsWith(QLatin1String("users.noreply.github.com")))
-            {
-                int atIdx = email.indexOf(QLatin1Char('@'));
-                if (atIdx > 0)
-                {
-                    QString userPart = email.left(atIdx);
-                    int plusIdx = userPart.indexOf(QLatin1Char('+'));
-                    if (plusIdx >= 0) userPart = userPart.mid(plusIdx + 1);
-                    if (!userPart.isEmpty())
-                    {
-                        return QStringLiteral("https://github.com/%1.png?size=64").arg(userPart);
-                    }
-                }
-            }
-            QString cached = CommitHistoryListModel::cachedAvatarForEmail(email);
-            if (!cached.isEmpty())
-            {
-                return cached;
-            }
-            QByteArray hash = QCryptographicHash::hash(email.toUtf8(), QCryptographicHash::Md5).toHex();
-            return QStringLiteral("https://www.gravatar.com/avatar/%1?s=64&d=identicon").arg(QString::fromLatin1(hash));
-        }
-
-        QString computeBlameInitials(const QString& name)
-        {
-            QString clean = name.trimmed();
-            if (clean.isEmpty()) return QStringLiteral("??");
-            QStringList parts = clean.split(QLatin1Char(' '), Qt::SkipEmptyParts);
-            if (parts.size() >= 2)
-            {
-                return QString(parts[0].front().toUpper()) + QString(parts[1].front().toUpper());
-            }
-            if (clean.length() >= 2) return clean.left(2).toUpper();
-            return clean.toUpper();
-        }
-
-        QString computeBlameColor(const QString& key)
-        {
-            const size_t hash = qHash(key);
-            const int idx = static_cast<int>(hash % kBlameColors.size());
-            return kBlameColors[idx];
-        }
 
         QString blockKindToString(gf::core::syntax::MarkdownBlockKind kind)
         {
@@ -502,18 +428,7 @@ namespace gf::desktop
 
     bool DiffViewModel::waitForIdle(int timeoutMs)
     {
-        QElapsedTimer timer;
-        timer.start();
-        while (m_isLoading || m_isBlameLoading)
-        {
-            if (timer.elapsed() > timeoutMs)
-            {
-                return false;
-            }
-            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
-            QThread::msleep(1);
-        }
-        return true;
+        return waitUntilIdle(timeoutMs, [this]() { return !m_isLoading && !m_isBlameLoading; });
     }
 
     void DiffViewModel::setViewMode(const QString& mode)
@@ -691,13 +606,7 @@ namespace gf::desktop
 
     void DiffViewModel::copyToClipboard(const QString& text) const
     {
-        if (qGuiApp)
-        {
-            if (auto* cb = QGuiApplication::clipboard())
-            {
-                cb->setText(text);
-            }
-        }
+        copyTextToClipboard(text);
     }
 
     QString DiffViewModel::extractSelectedText(const QString& target,
@@ -1934,11 +1843,12 @@ namespace gf::desktop
                                     map[QStringLiteral("richContent")] = QString::fromStdString(
                                         gf::core::syntax::SyntaxHighlighter::highlightLine(
                                             bl.content, langInfo.language, mdState));
-                                    map[QStringLiteral("avatarUrl")] = computeBlameAvatar(
+                                    map[QStringLiteral("avatarUrl")] = AuthorAvatarHelper::computeAvatarUrl(
                                         QString::fromStdString(bl.author), QString::fromStdString(bl.authorEmail));
-                                    map[QStringLiteral("initials")] = computeBlameInitials(
+                                    map[QStringLiteral("initials")] = AuthorAvatarHelper::computeInitials(
                                         QString::fromStdString(bl.author));
-                                    map[QStringLiteral("color")] = computeBlameColor(QString::fromStdString(bl.author));
+                                    map[QStringLiteral("color")] = AuthorAvatarHelper::computeColorForKey(
+                                        QString::fromStdString(bl.author));
                                     fetch.lines.append(map);
                                 }
                                 return fetch;

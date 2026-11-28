@@ -60,6 +60,18 @@ namespace gf::desktop
         };
     }
 
+    void BatchOperationsViewModel::beginBatchOperation(const QString& operationName, const QString& statusMessage)
+    {
+        m_isRunning = true;
+        m_progressPercentage = 0;
+        m_currentOperationName = operationName;
+        m_statusMessage = statusMessage;
+        m_currentRepoName.clear();
+        emit isRunningChanged();
+        emit progressChanged();
+        emit statusMessageChanged();
+    }
+
     void BatchOperationsViewModel::fetchGroup(const QString& groupId, const QString& remoteName)
     {
         if (groupId.isEmpty() || m_isRunning)
@@ -67,14 +79,7 @@ namespace gf::desktop
             return;
         }
 
-        m_isRunning = true;
-        m_progressPercentage = 0;
-        m_currentOperationName = "Fetch Gruppo";
-        m_statusMessage = "Avvio fetch su gruppo...";
-        m_currentRepoName.clear();
-        emit isRunningChanged();
-        emit progressChanged();
-        emit statusMessageChanged();
+        beginBatchOperation(QStringLiteral("Fetch Gruppo"), QStringLiteral("Avvio fetch su gruppo..."));
 
         m_currentOperationId = QString::fromStdString(m_coordinator.executeGroupFetchAsync(
             groupId.toStdString(),
@@ -91,14 +96,7 @@ namespace gf::desktop
             return;
         }
 
-        m_isRunning = true;
-        m_progressPercentage = 0;
-        m_currentOperationName = "Fetch Workspace";
-        m_statusMessage = "Avvio fetch su workspace...";
-        m_currentRepoName.clear();
-        emit isRunningChanged();
-        emit progressChanged();
-        emit statusMessageChanged();
+        beginBatchOperation(QStringLiteral("Fetch Workspace"), QStringLiteral("Avvio fetch su workspace..."));
 
         m_currentOperationId = QString::fromStdString(m_coordinator.executeWorkspaceFetchAsync(
             workspaceId.toStdString(),
@@ -129,14 +127,7 @@ namespace gf::desktop
             return;
         }
 
-        m_isRunning = true;
-        m_progressPercentage = 0;
-        m_currentOperationName = "Fetch Selezionati";
-        m_statusMessage = "Avvio fetch su repository...";
-        m_currentRepoName.clear();
-        emit isRunningChanged();
-        emit progressChanged();
-        emit statusMessageChanged();
+        beginBatchOperation(QStringLiteral("Fetch Selezionati"), QStringLiteral("Avvio fetch su repository..."));
 
         m_currentOperationId = QString::fromStdString(m_coordinator.executeBatchFetchAsync(
             targets,

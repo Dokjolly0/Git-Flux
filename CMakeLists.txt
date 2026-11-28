@@ -277,6 +277,7 @@ if (GF_BUILD_DESKTOP)
             src/desktop/services/ssh_connection_probe.cpp
             src/desktop/services/diff_image_provider.cpp
             src/desktop/services/diff_file_inspector.cpp
+            src/desktop/services/author_avatar_helper.cpp
             src/desktop/viewmodels/remote_repo_list_model.cpp
             src/desktop/viewmodels/git_profiles_viewmodel.cpp
             src/desktop/viewmodels/terminal_completion_list_model.cpp

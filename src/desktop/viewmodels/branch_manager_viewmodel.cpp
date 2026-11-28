@@ -1,4 +1,5 @@
 #include "desktop/viewmodels/branch_manager_viewmodel.hpp"
+#include "desktop/services/desktop_viewmodel_utils.hpp"
 
 #include "core/modules/git/bl/git_branch_service.hpp"
 #include "core/modules/git/bl/git_history_service.hpp"
@@ -8,11 +9,6 @@
 
 #include <algorithm>
 
-#include <QClipboard>
-#include <QCoreApplication>
-#include <QElapsedTimer>
-#include <QGuiApplication>
-#include <QThread>
 #include <QUrl>
 #include <QUrlQuery>
 
@@ -22,6 +18,14 @@
 
 namespace gf::desktop
 {
+    namespace
+    {
+        // Drop targets may be remote badges ("origin/foo"): local target name strips "origin/".
+        QString localBranchName(const QString& name)
+        {
+            return name.startsWith(QLatin1String("origin/")) ? name.mid(7) : name;
+        }
+    } // namespace
     /// Result of the git reads behind a refresh, produced on the worker thread and
     /// applied to the Qt models on the GUI thread.
     struct BranchManagerViewModel::RefreshSnapshot
@@ -343,18 +347,10 @@ namespace gf::desktop
 
     bool BranchManagerViewModel::waitForIdle(int timeoutMs)
     {
-        QElapsedTimer timer;
-        timer.start();
-        while (m_refreshScheduled || m_refreshRunning || m_pendingOperations > 0)
+        return waitUntilIdle(timeoutMs, [this]()
         {
-            if (timer.elapsed() > timeoutMs)
-            {
-                return false;
-            }
-            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
-            QThread::msleep(1);
-        }
-        return true;
+            return !m_refreshScheduled && !m_refreshRunning && m_pendingOperations <= 0;
+        });
     }
 
     void BranchManagerViewModel::updateBusy()
@@ -1035,6 +1031,74 @@ namespace gf::desktop
         return true;
     }
 
+    void BranchManagerViewModel::handleMergeOutcome(int id,
+                                                    bool sameRepo,
+                                                    bool ok,
+                                                    const QString& errorMessage,
+                                                    bool hasConflict,
+                                                    const std::vector<std::string>& conflictedFiles,
+                                                    const QString& sourceBranch)
+    {
+        if (!ok)
+        {
+            completeOperation(id, false, errorMessage);
+            return;
+        }
+        if (hasConflict)
+        {
+            if (sameRepo)
+            {
+                setConflicts(conflictedFiles);
+                refresh();
+            }
+            completeOperation(id, false, QStringLiteral("Conflitti di merge rilevati"),
+                              QStringLiteral("Conflitti di merge rilevati in %1 file")
+                              .arg(conflictedFiles.size()));
+            return;
+        }
+        if (sameRepo)
+        {
+            setConflicts({});
+            m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
+            refresh();
+        }
+        completeOperation(id, true, QStringLiteral("Merge completato"),
+                          QStringLiteral("Merge di %1 completato con successo").arg(sourceBranch));
+    }
+
+    void BranchManagerViewModel::handleRebaseOutcome(int id,
+                                                     bool sameRepo,
+                                                     bool ok,
+                                                     const QString& errorMessage,
+                                                     bool hasConflict,
+                                                     const std::vector<std::string>& conflictedFiles,
+                                                     const QString& okMessage,
+                                                     const QString& switchedBranch)
+    {
+        if (!ok)
+        {
+            completeOperation(id, false, errorMessage);
+            return;
+        }
+        if (hasConflict)
+        {
+            if (sameRepo)
+            {
+                setConflicts(conflictedFiles);
+                refresh();
+            }
+            completeOperation(id, false, QStringLiteral("Conflitti rilevati durante il rebase"));
+            return;
+        }
+        if (sameRepo)
+        {
+            m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
+            refresh();
+            emit branchSwitched(switchedBranch.isEmpty() ? m_currentBranch : switchedBranch);
+        }
+        completeOperation(id, true, okMessage);
+    }
+
     bool BranchManagerViewModel::mergeBranch(const QString& sourceBranch, bool noFf)
     {
         if (m_repoPath.empty() || sourceBranch.isEmpty())
@@ -1055,29 +1119,13 @@ namespace gf::desktop
             {
                 if (!res)
                 {
-                    completeOperation(id, false, QString::fromStdString(res.error().message));
+                    handleMergeOutcome(id, sameRepo, false, QString::fromStdString(res.error().message),
+                                       false, {}, sourceBranch);
                     return;
                 }
-                if (res->status == git::bo::MergeStatus::Conflict)
-                {
-                    if (sameRepo)
-                    {
-                        setConflicts(res->conflictedFiles);
-                        refresh(); // the target branch may have been checked out first
-                    }
-                    completeOperation(id, false, QStringLiteral("Conflitti di merge rilevati"),
-                                      QStringLiteral("Conflitti di merge rilevati in %1 file")
-                                      .arg(res->conflictedFiles.size()));
-                    return;
-                }
-                if (sameRepo)
-                {
-                    setConflicts({});
-                    m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
-                    refresh();
-                }
-                completeOperation(id, true, QStringLiteral("Merge completato"),
-                                  QStringLiteral("Merge di %1 completato con successo").arg(sourceBranch));
+                handleMergeOutcome(id, sameRepo, true, {},
+                                   res->status == git::bo::MergeStatus::Conflict,
+                                   res->conflictedFiles, sourceBranch);
             });
         return true;
     }
@@ -1749,26 +1797,13 @@ namespace gf::desktop
             {
                 if (!res)
                 {
-                    completeOperation(id, false, QString::fromStdString(res.error().message));
+                    handleRebaseOutcome(id, sameRepo, false, QString::fromStdString(res.error().message),
+                                        false, {}, okMessage, {});
                     return;
                 }
-                if (res->status == git::bo::RebaseStatus::Conflict)
-                {
-                    if (sameRepo)
-                    {
-                        setConflicts(res->conflictedFiles);
-                        refresh();
-                    }
-                    completeOperation(id, false, QStringLiteral("Conflitti rilevati durante il rebase"));
-                    return;
-                }
-                if (sameRepo)
-                {
-                    m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
-                    refresh();
-                    emit branchSwitched(m_currentBranch);
-                }
-                completeOperation(id, true, okMessage);
+                handleRebaseOutcome(id, sameRepo, true, {},
+                                    res->status == git::bo::RebaseStatus::Conflict,
+                                    res->conflictedFiles, okMessage, {});
             });
         return true;
     }
@@ -1804,26 +1839,13 @@ namespace gf::desktop
             {
                 if (!res)
                 {
-                    completeOperation(id, false, QString::fromStdString(res.error().message));
+                    handleRebaseOutcome(id, sameRepo, false, QString::fromStdString(res.error().message),
+                                        false, {}, okMessage, switchedTo);
                     return;
                 }
-                if (res->status == git::bo::RebaseStatus::Conflict)
-                {
-                    if (sameRepo)
-                    {
-                        setConflicts(res->conflictedFiles);
-                        refresh();
-                    }
-                    completeOperation(id, false, QStringLiteral("Conflitti rilevati durante il rebase"));
-                    return;
-                }
-                if (sameRepo)
-                {
-                    m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
-                    refresh();
-                    emit branchSwitched(switchedTo.isEmpty() ? m_currentBranch : switchedTo);
-                }
-                completeOperation(id, true, okMessage);
+                handleRebaseOutcome(id, sameRepo, true, {},
+                                    res->status == git::bo::RebaseStatus::Conflict,
+                                    res->conflictedFiles, okMessage, switchedTo);
             });
         return true;
     }
@@ -1835,12 +1857,7 @@ namespace gf::desktop
             return false;
         }
 
-        QString effectiveTarget = targetBranch;
-        if (effectiveTarget.startsWith(QLatin1String("origin/")))
-        {
-            effectiveTarget = effectiveTarget.mid(7);
-        }
-
+        const QString effectiveTarget = localBranchName(targetBranch);
         if (m_currentBranch == effectiveTarget)
         {
             return mergeBranch(sourceBranch, noFf);
@@ -1870,41 +1887,16 @@ namespace gf::desktop
             {
                 if (!res)
                 {
-                    completeOperation(id, false, QString::fromStdString(res.error().message));
+                    handleMergeOutcome(id, sameRepo, false, QString::fromStdString(res.error().message),
+                                       false, {}, sourceBranch);
                     return;
                 }
-                if (res->status == git::bo::MergeStatus::Conflict)
-                {
-                    if (sameRepo)
-                    {
-                        setConflicts(res->conflictedFiles);
-                        refresh(); // the target branch may have been checked out first
-                    }
-                    completeOperation(id, false, QStringLiteral("Conflitti di merge rilevati"),
-                                      QStringLiteral("Conflitti di merge rilevati in %1 file")
-                                      .arg(res->conflictedFiles.size()));
-                    return;
-                }
-                if (sameRepo)
-                {
-                    setConflicts({});
-                    m_followHeadPending = true; // select HEAD once the reload lands, even if it did not move
-                    refresh();
-                }
-                completeOperation(id, true, QStringLiteral("Merge completato"),
-                                  QStringLiteral("Merge di %1 completato con successo").arg(sourceBranch));
+                handleMergeOutcome(id, sameRepo, true, {},
+                                   res->status == git::bo::MergeStatus::Conflict,
+                                   res->conflictedFiles, sourceBranch);
             });
         return true;
     }
-
-    namespace
-    {
-        // Drop targets may be remote badges ("origin/foo"): fast-forward always applies to the local branch.
-        QString localBranchName(const QString& name)
-        {
-            return name.startsWith(QLatin1String("origin/")) ? name.mid(7) : name;
-        }
-    } // namespace
 
     void BranchManagerViewModel::requestFastForwardCheck(const QString& targetBranch, const QString& sourceBranch)
     {
@@ -1990,10 +1982,7 @@ namespace gf::desktop
 
     void BranchManagerViewModel::copyToClipboard(const QString& text)
     {
-        if (auto* cb = QGuiApplication::clipboard())
-        {
-            cb->setText(text);
-        }
+        copyTextToClipboard(text);
     }
 
     QString BranchManagerViewModel::buildPullRequestUrl(const QString& sourceBranch,

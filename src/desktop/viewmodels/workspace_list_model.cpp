@@ -1,37 +1,16 @@
 #include "desktop/viewmodels/workspace_list_model.hpp"
+#include "desktop/services/desktop_viewmodel_utils.hpp"
 #include "core/modules/workspaces/bo/workspace.hpp"
 #include "core/modules/workspaces/bl/workspace_service.hpp"
 #include "core/modules/groups/bl/group_service.hpp"
 #include "core/modules/groups/bo/group.hpp"
 
-#include <chrono>
-#include <ctime>
 #include <unordered_set>
 
 namespace gf::desktop
 {
     namespace
     {
-        QString formatTimestampMs(std::int64_t epochMs)
-        {
-            if (epochMs <= 0)
-            {
-                return QStringLiteral("-");
-            }
-            const auto time = static_cast<std::time_t>(epochMs / 1000);
-            std::tm tmBuffer{};
-#if defined(_WIN32)
-            gmtime_s(&tmBuffer, &time);
-#else
-            gmtime_r(&time, &tmBuffer);
-#endif
-            return QString::asprintf("%04d-%02d-%02d %02d:%02d",
-                                     tmBuffer.tm_year + 1900,
-                                     tmBuffer.tm_mon + 1,
-                                     tmBuffer.tm_mday,
-                                     tmBuffer.tm_hour,
-                                     tmBuffer.tm_min);
-        }
 
         QString formatSummary(int groupCount, int directRepoCount)
         {

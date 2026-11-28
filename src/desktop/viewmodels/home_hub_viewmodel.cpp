@@ -1,4 +1,5 @@
 #include "desktop/viewmodels/home_hub_viewmodel.hpp"
+#include "desktop/services/desktop_viewmodel_utils.hpp"
 
 #include "core/modules/repositories/bl/repository_service.hpp"
 #include "core/modules/repositories/bo/repository.hpp"
@@ -14,13 +15,24 @@
 #include <QSettings>
 #include <QDesktopServices>
 #include <QProcess>
-#include <QClipboard>
-#include <QGuiApplication>
 #include <QStandardPaths>
 #include <QDebug>
 
 namespace gf::desktop
 {
+    namespace
+    {
+        QVariantMap buildAvailableGroupMap(const gf::groups::bo::Group& grp)
+        {
+            QVariantMap map;
+            map[QStringLiteral("id")] = QString::fromStdString(grp.id.value());
+            map[QStringLiteral("name")] = QString::fromStdString(grp.name);
+            const auto col = grp.resolvedColor();
+            map[QStringLiteral("groupColor")] = QString::fromUtf8(col.data(), static_cast<qsizetype>(col.size()));
+            map[QStringLiteral("repositoryCount")] = static_cast<int>(grp.repositoryIds.size());
+            return map;
+        }
+    } // namespace
     HomeHubViewModel::HomeHubViewModel(gf::repositories::bl::RepositoryService& repoService,
                                        gf::groups::bl::GroupService& groupService,
                                        gf::workspaces::bl::WorkspaceService& workspaceService,
@@ -973,9 +985,8 @@ namespace gf::desktop
 
     void HomeHubViewModel::copyToClipboard(const QString& text)
     {
-        if (auto* cb = QGuiApplication::clipboard())
+        if (copyTextToClipboard(text))
         {
-            cb->setText(text);
             setStatus(QStringLiteral("Copiato negli appunti: %1").arg(text));
         }
     }
@@ -1209,23 +1220,76 @@ namespace gf::desktop
 
         for (const auto& repo : *allRepos)
         {
-            bool alreadyInGroup = std::find(existingRepoIds.begin(), existingRepoIds.end(), repo.id) != existingRepoIds.
-                end();
+            const bool alreadyInGroup =
+                std::find(existingRepoIds.begin(), existingRepoIds.end(), repo.id) != existingRepoIds.end();
             if (!alreadyInGroup)
             {
-                QVariantMap map;
-                const QString rIdQStr = QString::fromStdString(repo.id.value());
-                map[QStringLiteral("id")] = rIdQStr;
-                map[QStringLiteral("displayName")] = QString::fromStdString(repo.displayName);
-                map[QStringLiteral("localPath")] = QString::fromStdString(repo.localPath.string());
-                auto cached = m_repoModel ? m_repoModel->findById(rIdQStr) : std::nullopt;
-                map[QStringLiteral("branch")] = cached ? cached->branch : QString();
-                map[QStringLiteral("isMissing")] = (repo.pathStatus ==
-                    gf::repositories::bo::RepositoryPathStatus::Missing);
-                list.append(map);
+                list.append(buildAvailableRepoMap(repo));
             }
         }
         return list;
+    }
+
+    QVariantMap HomeHubViewModel::buildAvailableRepoMap(const gf::repositories::bo::Repository& repo) const
+    {
+        QVariantMap map;
+        const QString rIdQStr = QString::fromStdString(repo.id.value());
+        map[QStringLiteral("id")] = rIdQStr;
+        map[QStringLiteral("displayName")] = QString::fromStdString(repo.displayName);
+        map[QStringLiteral("localPath")] = QString::fromStdString(repo.localPath.string());
+        const auto cached = m_repoModel ? m_repoModel->findById(rIdQStr) : std::nullopt;
+        map[QStringLiteral("branch")] = cached ? cached->branch : QString();
+        map[QStringLiteral("isMissing")] = (repo.pathStatus == gf::repositories::bo::RepositoryPathStatus::Missing);
+        return map;
+    }
+
+    template <typename MemberId, typename VectorMemberFn>
+    bool HomeHubViewModel::addMemberToWorkspace(const QString& workspaceId,
+                                                const QString& memberIdStr,
+                                                VectorMemberFn memberVector,
+                                                const QString& invalidParamMsg,
+                                                const QString& alreadyPresentMsg,
+                                                const QString& addedMsgTemplate)
+    {
+        const auto wsIdStr = workspaceId.trimmed().toStdString();
+        const auto mIdStr = memberIdStr.trimmed().toStdString();
+        auto failWith = [this](const QString& err) -> bool
+        {
+            setLastError(err);
+            emit errorOccurred(err);
+            return false;
+        };
+
+        if (wsIdStr.empty() || mIdStr.empty())
+        {
+            return failWith(invalidParamMsg);
+        }
+
+        auto wsOptExp = m_workspaceService.getWorkspace(gf::workspaces::bo::WorkspaceId{wsIdStr});
+        if (!wsOptExp || !wsOptExp->has_value())
+        {
+            return failWith(QStringLiteral("Workspace non trovato."));
+        }
+
+        auto ws = **wsOptExp;
+        MemberId targetId{mIdStr};
+        auto& vec = memberVector(ws);
+        if (std::find(vec.begin(), vec.end(), targetId) != vec.end())
+        {
+            return failWith(alreadyPresentMsg);
+        }
+
+        vec.push_back(std::move(targetId));
+        if (auto updateRes = m_workspaceService.updateWorkspaceComposition(ws.id, ws.groupIds, ws.directRepositoryIds);
+            !updateRes)
+        {
+            return failWith(QStringLiteral("Impossibile aggiornare la composizione del workspace."));
+        }
+
+        setStatus(addedMsgTemplate.arg(QString::fromStdString(ws.name)));
+        refreshAll();
+        emit workspacesChanged();
+        return true;
     }
 
     QVariantList HomeHubViewModel::getAvailableRepositoriesForWorkspace(const QString& workspaceId) const
@@ -1249,19 +1313,11 @@ namespace gf::desktop
 
         for (const auto& repo : *allRepos)
         {
-            bool alreadyInWs = std::find(existingIds.begin(), existingIds.end(), repo.id.value()) != existingIds.end();
+            const bool alreadyInWs =
+                std::find(existingIds.begin(), existingIds.end(), repo.id.value()) != existingIds.end();
             if (!alreadyInWs)
             {
-                QVariantMap map;
-                const QString rIdQStr = QString::fromStdString(repo.id.value());
-                map[QStringLiteral("id")] = rIdQStr;
-                map[QStringLiteral("displayName")] = QString::fromStdString(repo.displayName);
-                map[QStringLiteral("localPath")] = QString::fromStdString(repo.localPath.string());
-                auto cached = m_repoModel ? m_repoModel->findById(rIdQStr) : std::nullopt;
-                map[QStringLiteral("branch")] = cached ? cached->branch : QString();
-                map[QStringLiteral("isMissing")] = (repo.pathStatus ==
-                    gf::repositories::bo::RepositoryPathStatus::Missing);
-                list.append(map);
+                list.append(buildAvailableRepoMap(repo));
             }
         }
         return list;
@@ -1278,17 +1334,11 @@ namespace gf::desktop
 
         for (const auto& grp : *allGroups)
         {
-            bool containsRepo = std::find(grp.repositoryIds.begin(), grp.repositoryIds.end(),
-                                          gf::repositories::bo::RepositoryId{rId}) != grp.repositoryIds.end();
+            const bool containsRepo = std::find(grp.repositoryIds.begin(), grp.repositoryIds.end(),
+                                                gf::repositories::bo::RepositoryId{rId}) != grp.repositoryIds.end();
             if (!containsRepo)
             {
-                QVariantMap map;
-                map[QStringLiteral("id")] = QString::fromStdString(grp.id.value());
-                map[QStringLiteral("name")] = QString::fromStdString(grp.name);
-                const auto col = grp.resolvedColor();
-                map[QStringLiteral("groupColor")] = QString::fromUtf8(col.data(), static_cast<qsizetype>(col.size()));
-                map[QStringLiteral("repositoryCount")] = static_cast<int>(grp.repositoryIds.size());
-                list.append(map);
+                list.append(buildAvailableGroupMap(grp));
             }
         }
         return list;
@@ -1296,51 +1346,12 @@ namespace gf::desktop
 
     bool HomeHubViewModel::addRepositoryToWorkspace(const QString& workspaceId, const QString& repoId)
     {
-        const auto wsIdStr = workspaceId.trimmed().toStdString();
-        const auto rIdStr = repoId.trimmed().toStdString();
-        if (wsIdStr.empty() || rIdStr.empty())
-        {
-            const QString err = QStringLiteral("Parametri non validi per l'aggiunta al workspace.");
-            setLastError(err);
-            emit errorOccurred(err);
-            return false;
-        }
-
-        auto wsOptExp = m_workspaceService.getWorkspace(gf::workspaces::bo::WorkspaceId{wsIdStr});
-        if (!wsOptExp || !wsOptExp->has_value())
-        {
-            const QString err = QStringLiteral("Workspace non trovato.");
-            setLastError(err);
-            emit errorOccurred(err);
-            return false;
-        }
-
-        auto ws = **wsOptExp;
-        gf::repositories::bo::RepositoryId targetRepoId{rIdStr};
-        auto it = std::find(ws.directRepositoryIds.begin(), ws.directRepositoryIds.end(), targetRepoId);
-        if (it != ws.directRepositoryIds.end())
-        {
-            const QString err = QStringLiteral("Il repository fa già parte di questo workspace.");
-            setLastError(err);
-            emit errorOccurred(err);
-            return false;
-        }
-
-        ws.directRepositoryIds.push_back(targetRepoId);
-        auto updateRes = m_workspaceService.updateWorkspaceComposition(ws.id, ws.groupIds, ws.directRepositoryIds);
-        if (!updateRes)
-        {
-            const QString err = QStringLiteral("Impossibile aggiornare la composizione del workspace.");
-            setLastError(err);
-            emit errorOccurred(err);
-            return false;
-        }
-
-        setStatus(
-            QStringLiteral("Repository aggiunto al workspace '%1'").arg(QString::fromStdString(ws.name)));
-        refreshAll();
-        emit workspacesChanged();
-        return true;
+        return addMemberToWorkspace<gf::repositories::bo::RepositoryId>(
+            workspaceId, repoId,
+            [](auto& ws) -> auto& { return ws.directRepositoryIds; },
+            QStringLiteral("Parametri non validi per l'aggiunta al workspace."),
+            QStringLiteral("Il repository fa già parte di questo workspace."),
+            QStringLiteral("Repository aggiunto al workspace '%1'"));
     }
 
     bool HomeHubViewModel::removeRepositoryFromWorkspace(const QString& workspaceId, const QString& repoId)
@@ -1369,50 +1380,12 @@ namespace gf::desktop
 
     bool HomeHubViewModel::addGroupToWorkspace(const QString& workspaceId, const QString& groupId)
     {
-        const auto wsIdStr = workspaceId.trimmed().toStdString();
-        const auto gIdStr = groupId.trimmed().toStdString();
-        if (wsIdStr.empty() || gIdStr.empty())
-        {
-            const QString err = QStringLiteral("Parametri non validi per l'aggiunta del gruppo al workspace.");
-            setLastError(err);
-            emit errorOccurred(err);
-            return false;
-        }
-
-        auto wsOptExp = m_workspaceService.getWorkspace(gf::workspaces::bo::WorkspaceId{wsIdStr});
-        if (!wsOptExp || !wsOptExp->has_value())
-        {
-            const QString err = QStringLiteral("Workspace non trovato.");
-            setLastError(err);
-            emit errorOccurred(err);
-            return false;
-        }
-
-        auto ws = **wsOptExp;
-        gf::groups::bo::GroupId targetGrpId{gIdStr};
-        auto it = std::find(ws.groupIds.begin(), ws.groupIds.end(), targetGrpId);
-        if (it != ws.groupIds.end())
-        {
-            const QString err = QStringLiteral("Il gruppo fa già parte di questo workspace.");
-            setLastError(err);
-            emit errorOccurred(err);
-            return false;
-        }
-
-        ws.groupIds.push_back(targetGrpId);
-        auto updateRes = m_workspaceService.updateWorkspaceComposition(ws.id, ws.groupIds, ws.directRepositoryIds);
-        if (!updateRes)
-        {
-            const QString err = QStringLiteral("Impossibile aggiornare la composizione del workspace.");
-            setLastError(err);
-            emit errorOccurred(err);
-            return false;
-        }
-
-        setStatus(QStringLiteral("Gruppo aggiunto al workspace '%1'").arg(QString::fromStdString(ws.name)));
-        refreshAll();
-        emit workspacesChanged();
-        return true;
+        return addMemberToWorkspace<gf::groups::bo::GroupId>(
+            workspaceId, groupId,
+            [](auto& ws) -> auto& { return ws.groupIds; },
+            QStringLiteral("Parametri non validi per l'aggiunta del gruppo al workspace."),
+            QStringLiteral("Il gruppo fa già parte di questo workspace."),
+            QStringLiteral("Gruppo aggiunto al workspace '%1'"));
     }
 
     bool HomeHubViewModel::removeGroupFromWorkspace(const QString& workspaceId, const QString& groupId)
@@ -1467,16 +1440,10 @@ namespace gf::desktop
 
         for (const auto& grp : *allGroups)
         {
-            bool alreadyInWs = std::find(existingGrpIds.begin(), existingGrpIds.end(), grp.id) != existingGrpIds.end();
+            const bool alreadyInWs = std::find(existingGrpIds.begin(), existingGrpIds.end(), grp.id) != existingGrpIds.end();
             if (!alreadyInWs)
             {
-                QVariantMap map;
-                map[QStringLiteral("id")] = QString::fromStdString(grp.id.value());
-                map[QStringLiteral("name")] = QString::fromStdString(grp.name);
-                const auto col = grp.resolvedColor();
-                map[QStringLiteral("groupColor")] = QString::fromUtf8(col.data(), static_cast<qsizetype>(col.size()));
-                map[QStringLiteral("repositoryCount")] = static_cast<int>(grp.repositoryIds.size());
-                list.append(map);
+                list.append(buildAvailableGroupMap(grp));
             }
         }
         return list;
