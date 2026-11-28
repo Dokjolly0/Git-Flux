@@ -18,7 +18,6 @@
 #else
 #include <cerrno>
 #include <csignal>
-#include <cstring>
 #include <fcntl.h>
 #include <spawn.h>
 #include <sys/wait.h>
@@ -363,12 +362,10 @@ namespace gf::infra::git
 #endif
     } // namespace
 
-    NativeGitCommandExecutor::NativeGitCommandExecutor(std::filesystem::path gitExecutablePath,
-                                                       std::string label)
+    NativeGitCommandExecutor::NativeGitCommandExecutor(std::filesystem::path gitExecutablePath)
         : gitExecutablePath_(std::move(gitExecutablePath))
-          , label_(std::move(label))
 #ifdef _WIN32
-    , envBlockStandard_(buildGitEnvironmentBlock(false))
+        , envBlockStandard_(buildGitEnvironmentBlock(false))
         , envBlockNoLocks_(buildGitEnvironmentBlock(true))
 #endif
     {
@@ -587,10 +584,6 @@ namespace gf::infra::git
                 waitHandles[handleCount] = errCh.event.h;
                 waitChannels[handleCount] = &errCh;
                 ++handleCount;
-            }
-            if (handleCount == 0)
-            {
-                break;
             }
 
             DWORD procHandleIndex = 0xFFFFFFFFu;

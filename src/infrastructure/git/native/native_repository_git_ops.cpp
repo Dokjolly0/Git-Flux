@@ -1947,8 +1947,7 @@ namespace gf::infra::git
                     start = end + 1;
                     // Longest matching remote prefix wins (remotes may contain '/')
                     if (!remote.empty() && checkoutTarget.size() > remote.size() + 1 &&
-                        checkoutTarget.compare(0, remote.size() + 1, remote + "/") == 0 &&
-                        checkoutTarget.size() - remote.size() - 1 > 0)
+                        checkoutTarget.compare(0, remote.size() + 1, remote + "/") == 0)
                     {
                         if (std::string candidate = checkoutTarget.substr(remote.size() + 1);
                             localName.empty() || candidate.size() < localName.size())
@@ -4167,7 +4166,6 @@ namespace gf::infra::git
         std::string flag = "--mixed";
         if (mode == "soft") flag = "--soft";
         else if (mode == "hard") flag = "--hard";
-        else if (mode == "mixed") flag = "--mixed";
 
         const gf::git::bo::GitCommand cmd{
             .args = {"reset", flag, commitSha},

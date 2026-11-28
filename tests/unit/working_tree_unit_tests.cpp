@@ -24,11 +24,6 @@ namespace
         int exitCodeToReturn = 0;
         mutable GitCommand lastCommand;
 
-        [[nodiscard]] std::string_view adapterName() const noexcept override
-        {
-            return "mock-executor";
-        }
-
         using IGitCommandExecutor::execute;
 
         [[nodiscard]] std::expected<GitProcessResult, GitExecutionError>

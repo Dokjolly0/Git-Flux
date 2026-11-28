@@ -60,10 +60,9 @@ namespace gf::infra::git::credentials
         return {path};
     }
 
-    std::pair<std::string, std::string> SystemCredentialDetector::detectGlobalGitUser() const
+    std::string SystemCredentialDetector::detectGlobalGitUserName() const
     {
         std::string name;
-        std::string email;
 
         // Check ~/.gitconfig
         const auto gitConfigPath = m_homeDir / ".gitconfig";
@@ -81,27 +80,17 @@ namespace gf::infra::git::credentials
                     inUserSection = line == "[user]";
                     continue;
                 }
-                if (inUserSection)
+                if (inUserSection && line.starts_with("name"))
                 {
-                    if (line.starts_with("name"))
+                    if (const auto eq = line.find('='); eq != std::string::npos)
                     {
-                        if (const auto eq = line.find('='); eq != std::string::npos)
-                        {
-                            name = trim(line.substr(eq + 1));
-                        }
-                    }
-                    else if (line.starts_with("email"))
-                    {
-                        if (const auto eq = line.find('='); eq != std::string::npos)
-                        {
-                            email = trim(line.substr(eq + 1));
-                        }
+                        name = trim(line.substr(eq + 1));
                     }
                 }
             }
         }
 
-        return {name, email};
+        return name;
     }
 
     void SystemCredentialDetector::parseSshConfig(std::vector<core::git::bo::GitProviderProfile>& profiles) const
@@ -353,7 +342,7 @@ namespace gf::infra::git::credentials
     {
         std::vector<core::git::bo::GitProviderProfile> profiles;
 
-        const auto [userName, userEmail] = detectGlobalGitUser();
+        const std::string userName = detectGlobalGitUserName();
 
         // 1. Standard GitHub Profile
         {

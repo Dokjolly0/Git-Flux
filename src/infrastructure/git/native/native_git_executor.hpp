@@ -10,15 +10,7 @@ namespace gf::infra::git
     class NativeGitCommandExecutor final : public gf::git::ports::IGitCommandExecutor
     {
     public:
-        explicit NativeGitCommandExecutor(std::filesystem::path gitExecutablePath,
-                                          std::string label = "native-os");
-
-        [[nodiscard]] std::string_view adapterName() const noexcept override { return label_; }
-
-        [[nodiscard]] const std::filesystem::path& executablePath() const noexcept
-        {
-            return gitExecutablePath_;
-        }
+        explicit NativeGitCommandExecutor(std::filesystem::path gitExecutablePath);
 
         using gf::git::ports::IGitCommandExecutor::execute;
 
@@ -33,8 +25,9 @@ namespace gf::infra::git
 
     private:
         std::filesystem::path gitExecutablePath_;
-        std::string label_;
+#ifdef _WIN32
         std::wstring envBlockStandard_;
         std::wstring envBlockNoLocks_;
+#endif
     };
 } // namespace gf::infra::git

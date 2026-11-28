@@ -124,11 +124,6 @@ namespace gf::infra::persistence::sqlite
         return {};
     }
 
-    std::int64_t SqliteConnection::lastInsertRowId() const noexcept
-    {
-        return db_ ? sqlite3_last_insert_rowid(db_) : 0;
-    }
-
     int SqliteConnection::changes() const noexcept
     {
         return db_ ? sqlite3_changes(db_) : 0;

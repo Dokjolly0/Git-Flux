@@ -18,11 +18,6 @@ namespace gf::infra::terminal
         start(const gf::terminal::bo::TerminalExecutionRequest& request,
               gf::terminal::bo::TerminalExecutionCallbacks callbacks) override;
 
-        [[nodiscard]] const std::filesystem::path& gitExecutablePath() const noexcept
-        {
-            return m_gitExecutablePath;
-        }
-
     private:
         std::filesystem::path m_gitExecutablePath;
         std::vector<gf::terminal::bo::TerminalShellInfo> m_availableShells;

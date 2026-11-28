@@ -42,7 +42,6 @@ namespace gf::infra::persistence::sqlite
         [[nodiscard]] std::expected<void, SqliteError>
         execute(std::string_view sql) const;
 
-        [[nodiscard]] std::int64_t lastInsertRowId() const noexcept;
         [[nodiscard]] int changes() const noexcept;
 
     private:
@@ -67,8 +66,6 @@ namespace gf::infra::persistence::sqlite
 
         [[nodiscard]] std::expected<void, SqliteError> commit();
         void rollback() noexcept;
-
-        [[nodiscard]] bool isCommitted() const noexcept { return committed_; }
 
     private:
         explicit SqliteTransaction(SqliteConnection* conn) noexcept;

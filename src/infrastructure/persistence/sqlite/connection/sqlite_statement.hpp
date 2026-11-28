@@ -26,8 +26,6 @@ namespace gf::infra::persistence::sqlite
         [[nodiscard]] static std::expected<SqliteStatement, SqliteError>
         prepare(const SqliteConnection& conn, std::string_view sql);
 
-        [[nodiscard]] bool isValid() const noexcept { return stmt_ != nullptr; }
-
         [[nodiscard]] std::expected<void, SqliteError> bindText(int index, std::string_view text) const;
         [[nodiscard]] std::expected<void, SqliteError> bindInt64(int index, std::int64_t value) const;
         [[nodiscard]] std::expected<void, SqliteError> bindInt(int index, int value) const;

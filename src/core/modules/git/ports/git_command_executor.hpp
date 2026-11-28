@@ -4,7 +4,6 @@
 
 #include <expected>
 #include <stop_token>
-#include <string_view>
 
 namespace gf::git::ports
 {
@@ -12,8 +11,6 @@ namespace gf::git::ports
     {
     public:
         virtual ~IGitCommandExecutor() = default;
-
-        [[nodiscard]] virtual std::string_view adapterName() const noexcept = 0;
 
         [[nodiscard]] std::expected<bo::GitProcessResult, bo::GitExecutionError>
         execute(const bo::GitCommand& command)

@@ -9,8 +9,6 @@ namespace gf::infra::persistence::sqlite
     class SchemaMigrator
     {
     public:
-        static constexpr int kTargetSchemaVersion = 1;
-
         [[nodiscard]] static std::expected<int, SqliteError>
         getCurrentVersion(SqliteConnection& conn);
 

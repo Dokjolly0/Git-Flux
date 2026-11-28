@@ -2,7 +2,6 @@
 #include "infrastructure/persistence/sqlite/connection/sqlite_statement.hpp"
 
 #include <sqlite3.h>
-#include <sstream>
 
 namespace gf::infra::persistence::workspaces
 {

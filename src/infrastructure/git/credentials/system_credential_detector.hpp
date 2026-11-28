@@ -15,8 +15,8 @@ namespace gf::infra::git::credentials
         /// Detects all Git provider profiles configured on the system (SSH config, SSH keys, env vars, git config).
         [[nodiscard]] std::vector<core::git::bo::GitProviderProfile> detectProfiles() const;
 
-        /// Reads user.name and user.email from global git config.
-        [[nodiscard]] std::pair<std::string, std::string> detectGlobalGitUser() const;
+        /// Reads user.name from global git config.
+        [[nodiscard]] std::string detectGlobalGitUserName() const;
 
     private:
         std::filesystem::path m_homeDir;
