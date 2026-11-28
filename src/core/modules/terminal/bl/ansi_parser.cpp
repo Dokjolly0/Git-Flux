@@ -1,4 +1,5 @@
 #include "core/modules/terminal/bl/ansi_parser.hpp"
+#include "core/shared/html_utils.hpp"
 
 #include <algorithm>
 #include <array>
@@ -83,55 +84,6 @@ namespace gf::terminal::bl
             }
             const int gray = 8 + (index - 232) * 10;
             return rgbToHex(gray, gray, gray);
-        }
-
-        [[nodiscard]] std::string escapeHtmlPreservingSpaces(const std::string_view text)
-        {
-            std::string out;
-            out.reserve(text.size() + 16);
-            bool prevWasSpace = true; // preserve leading spaces as &nbsp;
-            for (const char ch : text)
-            {
-                switch (ch)
-                {
-                case '&':
-                    out.append("&amp;");
-                    prevWasSpace = false;
-                    break;
-                case '<':
-                    out.append("&lt;");
-                    prevWasSpace = false;
-                    break;
-                case '>':
-                    out.append("&gt;");
-                    prevWasSpace = false;
-                    break;
-                case '"':
-                    out.append("&quot;");
-                    prevWasSpace = false;
-                    break;
-                case '\t':
-                    out.append("&nbsp;&nbsp;&nbsp;&nbsp;");
-                    prevWasSpace = true;
-                    break;
-                case ' ':
-                    if (prevWasSpace)
-                    {
-                        out.append("&nbsp;");
-                    }
-                    else
-                    {
-                        out.push_back(' ');
-                    }
-                    prevWasSpace = true;
-                    break;
-                default:
-                    out.push_back(ch);
-                    prevWasSpace = false;
-                    break;
-                }
-            }
-            return out;
         }
 
         [[nodiscard]] std::string resolveCarriageReturns(const std::string_view rawLine)
@@ -294,7 +246,7 @@ namespace gf::terminal::bl
             {
                 return;
             }
-            const std::string escaped = escapeHtmlPreservingSpaces(span.text);
+            const std::string escaped = core::escapeHtmlPreservingSpaces(span.text);
             const auto& st = span.style;
             const bool hasStyle = !st.fgColor.empty() || !st.bgColor.empty() ||
                                   st.bold || st.dim || st.italic || st.underline;

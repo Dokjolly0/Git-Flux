@@ -1,5 +1,7 @@
 #include "core/modules/syntax/markdown_parser.hpp"
+#include "core/modules/syntax/markdown_scan_utils.hpp"
 #include "core/modules/syntax/syntax_highlighter.hpp"
+#include "core/shared/html_utils.hpp"
 #include "core/shared/string_utils.hpp"
 
 #include <algorithm>
@@ -15,7 +17,7 @@ namespace gf::core::syntax
     {
         [[nodiscard]] constexpr bool mdIsSpace(const char c) noexcept
         {
-            return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+            return isAsciiWhitespace(c);
         }
 
         [[nodiscard]] constexpr bool mdIsDigit(const char c) noexcept
@@ -23,18 +25,9 @@ namespace gf::core::syntax
             return c >= '0' && c <= '9';
         }
 
-        [[nodiscard]] constexpr char mdToLowerAscii(const char c) noexcept
-        {
-            return core::toLowerAsciiChar(c);
-        }
-
         [[nodiscard]] constexpr std::size_t utf8SeqLen(const unsigned char b) noexcept
         {
-            if (b < 0x80) return 1;
-            if ((b & 0xE0) == 0xC0) return 2;
-            if ((b & 0xF0) == 0xE0) return 3;
-            if ((b & 0xF8) == 0xF0) return 4;
-            return 1;
+            return core::utf8SeqLen(b);
         }
 
         [[nodiscard]] constexpr std::string_view trimSpaces(const std::string_view sv) noexcept
@@ -105,25 +98,7 @@ namespace gf::core::syntax
 
         [[nodiscard]] std::string escapeInlineText(const std::string_view text)
         {
-            std::string out;
-            out.reserve(text.size() + 8);
-            for (const char c : text)
-            {
-                switch (c)
-                {
-                case '&': out.append("&amp;");
-                    break;
-                case '<': out.append("&lt;");
-                    break;
-                case '>': out.append("&gt;");
-                    break;
-                case '"': out.append("&quot;");
-                    break;
-                default: out.push_back(c);
-                    break;
-                }
-            }
-            return out;
+            return core::escapeHtmlBasic(text);
         }
 
         [[nodiscard]] std::string escapeHrefAttr(const std::string_view url)
@@ -152,92 +127,10 @@ namespace gf::core::syntax
         [[nodiscard]] std::optional<BracketLink> parseBracketLink(const std::string_view sv,
                                                                   const std::size_t startPos) noexcept
         {
-            const std::size_t n = sv.size();
-            if (startPos >= n) return std::nullopt;
+            const auto span = detail::scanBracketLinkSpan(sv, startPos);
+            if (!span) return std::nullopt;
 
-            bool isImg = false;
-            std::size_t openBracket = startPos;
-            if (sv[startPos] == '!')
-            {
-                if (startPos + 1 >= n || sv[startPos + 1] != '[') return std::nullopt;
-                isImg = true;
-                openBracket = startPos + 1;
-            }
-            else if (sv[startPos] != '[')
-            {
-                return std::nullopt;
-            }
-
-            int depth = 1;
-            std::size_t k = openBracket + 1;
-            std::size_t closeBracket = std::string_view::npos;
-            while (k < n)
-            {
-                if (sv[k] == '\\' && k + 1 < n)
-                {
-                    k += 2;
-                    continue;
-                }
-                if (sv[k] == '`')
-                {
-                    ++k;
-                    while (k < n && sv[k] != '`') ++k;
-                    if (k < n) ++k;
-                    continue;
-                }
-                if (sv[k] == '[')
-                {
-                    ++depth;
-                }
-                else if (sv[k] == ']')
-                {
-                    --depth;
-                    if (depth == 0)
-                    {
-                        closeBracket = k;
-                        break;
-                    }
-                }
-                ++k;
-            }
-
-            if (closeBracket == std::string_view::npos || closeBracket + 1 >= n || sv[closeBracket + 1] != '(')
-            {
-                return std::nullopt;
-            }
-
-            const std::size_t urlStart = closeBracket + 2;
-            int parenDepth = 1;
-            std::size_t p = urlStart;
-            std::size_t closeParen = std::string_view::npos;
-            while (p < n)
-            {
-                if (sv[p] == '\\' && p + 1 < n)
-                {
-                    p += 2;
-                    continue;
-                }
-                if (sv[p] == '(')
-                {
-                    ++parenDepth;
-                }
-                else if (sv[p] == ')')
-                {
-                    --parenDepth;
-                    if (parenDepth == 0)
-                    {
-                        closeParen = p;
-                        break;
-                    }
-                }
-                ++p;
-            }
-            if (closeParen == std::string_view::npos)
-            {
-                return std::nullopt;
-            }
-
-            std::string_view urlPart = trimSpaces(sv.substr(urlStart, closeParen - urlStart));
+            std::string_view urlPart = trimSpaces(span->rawUrl);
             // Strip optional link title `url "title"`
             if (!urlPart.empty() && urlPart.front() == '<')
             {
@@ -246,19 +139,16 @@ namespace gf::core::syntax
                     urlPart = urlPart.substr(1, gt - 1);
                 }
             }
-            else
+            else if (const auto sp = urlPart.find(' '); sp != std::string_view::npos)
             {
-                if (const auto sp = urlPart.find(' '); sp != std::string_view::npos)
-                {
-                    urlPart = trimSpaces(urlPart.substr(0, sp));
-                }
+                urlPart = trimSpaces(urlPart.substr(0, sp));
             }
 
             return BracketLink{
-                .isImage = isImg,
-                .label = sv.substr(openBracket + 1, closeBracket - openBracket - 1),
+                .isImage = span->isImage,
+                .label = span->label,
                 .url = urlPart,
-                .endPos = closeParen + 1
+                .endPos = span->parenClose + 1
             };
         }
 
@@ -410,30 +300,14 @@ namespace gf::core::syntax
 
         [[nodiscard]] std::optional<HeadingInfo> tryExtractHeading(const std::string_view line) noexcept
         {
-            std::size_t leadingCols = 0;
-            std::size_t leadIdx = 0;
-            while (leadIdx < line.size() && (line[leadIdx] == ' ' || line[leadIdx] == '\t'))
-            {
-                leadingCols += line[leadIdx] == '\t' ? 4 : 1;
-                ++leadIdx;
-            }
+            const auto [leadIdx, leadingCols] = detail::scanLeadingIndent(line);
             if (leadingCols >= 4) return std::nullopt;
 
             const std::string_view trimmed = trimSpaces(line.substr(leadIdx));
-            if (trimmed.empty() || trimmed[0] != '#') return std::nullopt;
+            const auto hashes = detail::matchAtxHeadingHashes(trimmed);
+            if (!hashes) return std::nullopt;
 
-            std::size_t hashes = 0;
-            while (hashes < trimmed.size() && hashes < 7 && trimmed[hashes] == '#')
-            {
-                ++hashes;
-            }
-            if (hashes == 0 || hashes > 6) return std::nullopt;
-            if (hashes < trimmed.size() && trimmed[hashes] != ' ' && trimmed[hashes] != '\t')
-            {
-                return std::nullopt;
-            }
-
-            std::string_view rest = trimSpaces(trimmed.substr(hashes));
+            std::string_view rest = trimSpaces(trimmed.substr(*hashes));
             // Remove optional closing ATX hashes (`## Title ##`)
             while (!rest.empty() && rest.back() == '#')
             {
@@ -446,26 +320,14 @@ namespace gf::core::syntax
             }
 
             return HeadingInfo{
-                .level = static_cast<int>(hashes),
+                .level = static_cast<int>(*hashes),
                 .title = rest
             };
         }
 
         [[nodiscard]] bool isThematicBreak(const std::string_view line) noexcept
         {
-            const std::string_view s = trimSpaces(line);
-            if (s.empty()) return false;
-            char marker = '\0';
-            int count = 0;
-            for (const char c : s)
-            {
-                if (c == ' ' || c == '\t') continue;
-                if (c != '-' && c != '*' && c != '_') return false;
-                if (marker == '\0') marker = c;
-                else if (c != marker) return false;
-                ++count;
-            }
-            return count >= 3;
+            return detail::isThematicBreakLine(trimSpaces(line));
         }
 
         struct FenceOpenInfo
@@ -477,26 +339,16 @@ namespace gf::core::syntax
 
         [[nodiscard]] std::optional<FenceOpenInfo> tryExtractFenceOpen(const std::string_view line) noexcept
         {
-            std::size_t indent = 0;
-            while (indent < line.size() && indent < 4 && line[indent] == ' ') ++indent;
-            if (indent >= 4) return std::nullopt;
+            const auto match = detail::matchFenceOpen(line);
+            if (!match) return std::nullopt;
 
-            const std::string_view s = line.substr(indent);
-            if (s.size() < 3 || (s[0] != '`' && s[0] != '~')) return std::nullopt;
-            const char fChar = s[0];
-            std::size_t len = 0;
-            while (len < s.size() && s[len] == fChar) ++len;
-            if (len < 3) return std::nullopt;
-
-            const std::string_view info = trimSpaces(s.substr(len));
-            if (fChar == '`' && info.find('`') != std::string_view::npos) return std::nullopt;
-
+            const std::string_view info = trimSpaces(match->infoRaw);
             std::size_t tagEnd = 0;
             while (tagEnd < info.size() && !mdIsSpace(info[tagEnd])) ++tagEnd;
 
             return FenceOpenInfo{
-                .fenceChar = fChar,
-                .fenceLen = len,
+                .fenceChar = match->fenceChar,
+                .fenceLen = match->fenceLen,
                 .langTag = std::string(info.substr(0, tagEnd))
             };
         }
@@ -505,17 +357,7 @@ namespace gf::core::syntax
                                         const char fenceChar,
                                         const std::size_t minLen) noexcept
         {
-            std::size_t indent = 0;
-            while (indent < line.size() && indent < 4 && line[indent] == ' ') ++indent;
-            if (indent >= 4) return false;
-
-            const std::string_view s = line.substr(indent);
-            if (s.empty() || s[0] != fenceChar) return false;
-            std::size_t len = 0;
-            while (len < s.size() && s[len] == fenceChar) ++len;
-            if (len < minLen) return false;
-
-            return trimSpaces(s.substr(len)).empty();
+            return detail::matchFenceClose(line, fenceChar, minLen).has_value();
         }
 
         struct ListItemInfo
@@ -774,7 +616,7 @@ namespace gf::core::syntax
             }
             else if (c >= 'A' && c <= 'Z')
             {
-                slug.push_back(mdToLowerAscii(c));
+                slug.push_back(core::toLowerAsciiChar(c));
                 started = true;
             }
             else if (c == ' ')
@@ -830,43 +672,15 @@ namespace gf::core::syntax
             // Inline code span (`code` or ``code``)
             if (c == '`')
             {
-                const std::size_t tickStart = i;
-                while (i < n && text[i] == '`') ++i;
-                const std::size_t tickLen = i - tickStart;
-
-                std::size_t search = i;
-                bool found = false;
-                std::size_t codeEnd = i;
-                std::size_t afterClose = i;
-                while (search < n)
+                if (const auto span = detail::scanInlineCodeSpan(text, i); span.found)
                 {
-                    if (text[search] == '`')
-                    {
-                        std::size_t runEnd = search;
-                        while (runEnd < n && text[runEnd] == '`') ++runEnd;
-                        if (runEnd - search == tickLen)
-                        {
-                            found = true;
-                            codeEnd = search;
-                            afterClose = runEnd;
-                            break;
-                        }
-                        search = runEnd;
-                    }
-                    else
-                    {
-                        ++search;
-                    }
-                }
-
-                if (found)
-                {
-                    out.append(formatInlineCodeHtml(text.substr(i, codeEnd - i)));
-                    i = afterClose;
+                    out.append(formatInlineCodeHtml(text.substr(span.contentStart, span.contentEnd - span.contentStart)));
+                    i = span.closeEnd;
                 }
                 else
                 {
-                    out.append(text.substr(tickStart, tickLen));
+                    out.append(text.substr(i, span.tickLen));
+                    i = span.contentStart;
                 }
                 continue;
             }
@@ -976,21 +790,7 @@ namespace gf::core::syntax
                 (i == 0 || mdIsSpace(text[i - 1]) || text[i - 1] == '('))
             {
                 const std::size_t start = i;
-                int parenDepth = 0;
-                while (i < n && !mdIsSpace(text[i]) && text[i] != '"' && text[i] != '<' && text[i] != '>')
-                {
-                    if (text[i] == '(') ++parenDepth;
-                    else if (text[i] == ')')
-                    {
-                        if (parenDepth == 0) break;
-                        --parenDepth;
-                    }
-                    ++i;
-                }
-                while (i > start && (text[i - 1] == '.' || text[i - 1] == ',' || text[i - 1] == ';'))
-                {
-                    --i;
-                }
+                i = detail::scanBareHttpUrlEnd(text, i, false);
                 const std::string_view url = text.substr(start, i - start);
                 out.append("<a href=\"");
                 out.append(escapeHrefAttr(url));
@@ -1042,31 +842,8 @@ namespace gf::core::syntax
             // Italic *...*
             if (c == '*' && !(i + 1 < n && text[i + 1] == '*') && i + 1 < n && !mdIsSpace(text[i + 1]))
             {
-                std::size_t search = i + 1;
-                std::size_t closePos = std::string_view::npos;
-                while (search < n)
-                {
-                    if (text[search] == '\\' && search + 1 < n)
-                    {
-                        search += 2;
-                        continue;
-                    }
-                    if (text[search] == '*')
-                    {
-                        if (search + 1 < n && text[search + 1] == '*')
-                        {
-                            search += 2;
-                            continue;
-                        }
-                        if (!mdIsSpace(text[search - 1]))
-                        {
-                            closePos = search;
-                        }
-                        break;
-                    }
-                    ++search;
-                }
-                if (closePos != std::string_view::npos)
+                if (const auto closePos = detail::findClosingItalicAsterisk(text, i);
+                    closePos != std::string_view::npos)
                 {
                     out.append("<i>");
                     out.append(renderInlineHtml(text.substr(i + 1, closePos - (i + 1))));

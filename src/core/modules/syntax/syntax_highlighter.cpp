@@ -1,4 +1,7 @@
 #include "core/modules/syntax/syntax_highlighter.hpp"
+#include "core/modules/syntax/markdown_scan_utils.hpp"
+#include "core/shared/html_utils.hpp"
+#include "core/shared/string_utils.hpp"
 
 #include <algorithm>
 #include <string_view>
@@ -14,7 +17,7 @@ namespace gf::core::syntax
 
         [[nodiscard]] constexpr bool asciiIsSpace(const char c) noexcept
         {
-            return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\v' || c == '\f';
+            return isAsciiWhitespace(c);
         }
 
         [[nodiscard]] constexpr bool asciiIsDigit(const char c) noexcept
@@ -29,16 +32,12 @@ namespace gf::core::syntax
 
         [[nodiscard]] constexpr char asciiToLower(const char c) noexcept
         {
-            return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
+            return core::toLowerAsciiChar(c);
         }
 
         [[nodiscard]] constexpr std::size_t utf8SequenceLength(const unsigned char leadByte) noexcept
         {
-            if (leadByte < 0x80) return 1;
-            if ((leadByte & 0xE0) == 0xC0) return 2;
-            if ((leadByte & 0xF0) == 0xE0) return 3;
-            if ((leadByte & 0xF8) == 0xF0) return 4;
-            return 1;
+            return core::utf8SeqLen(leadByte);
         }
 
         [[nodiscard]] std::size_t clampUtf8Boundary(const std::string_view text, const std::size_t maxBytes) noexcept
@@ -291,44 +290,18 @@ namespace gf::core::syntax
                 // 5. Inline code span (`code` or ``code``)
                 if (c == '`')
                 {
-                    const std::size_t tickStart = i;
-                    while (i < n && text[i] == '`') ++i;
-                    const std::size_t tickCount = i - tickStart;
-
-                    // Find matching closing tick run of exact length
-                    std::size_t search = i;
-                    bool foundClose = false;
-                    std::size_t closeEnd = i;
-                    while (search < n)
-                    {
-                        if (text[search] == '`')
-                        {
-                            std::size_t runEnd = search;
-                            while (runEnd < n && text[runEnd] == '`') ++runEnd;
-                            if (runEnd - search == tickCount)
-                            {
-                                foundClose = true;
-                                closeEnd = runEnd;
-                                break;
-                            }
-                            search = runEnd;
-                        }
-                        else
-                        {
-                            ++search;
-                        }
-                    }
-                    if (foundClose)
+                    if (const auto span = detail::scanInlineCodeSpan(text, i); span.found)
                     {
                         tokens.push_back({
                             .type = TokenType::MarkdownCode,
-                            .text = std::string(text.substr(tickStart, closeEnd - tickStart))
+                            .text = std::string(text.substr(i, span.closeEnd - i))
                         });
-                        i = closeEnd;
+                        i = span.closeEnd;
                     }
                     else
                     {
-                        pushMergedToken(tokens, defaultType, text.substr(tickStart, tickCount));
+                        pushMergedToken(tokens, defaultType, text.substr(i, span.tickLen));
+                        i = span.contentStart;
                     }
                     continue;
                 }
@@ -371,28 +344,7 @@ namespace gf::core::syntax
                     (i == 0 || !isIdentChar(text[i - 1])))
                 {
                     const std::size_t start = i;
-                    int parenDepth = 0;
-                    while (i < n && !asciiIsSpace(text[i]) && text[i] != '"' && text[i] != '<' && text[i] != '>')
-                    {
-                        if (text[i] == '(')
-                        {
-                            ++parenDepth;
-                        }
-                        else if (text[i] == ')')
-                        {
-                            if (parenDepth == 0) break;
-                            --parenDepth;
-                        }
-                        else if (text[i] == ']')
-                        {
-                            break;
-                        }
-                        ++i;
-                    }
-                    while (i > start && (text[i - 1] == '.' || text[i - 1] == ',' || text[i - 1] == ';'))
-                    {
-                        --i;
-                    }
+                    i = detail::scanBareHttpUrlEnd(text, i, true);
                     tokens.push_back({
                         .type = TokenType::MarkdownLink,
                         .text = std::string(text.substr(start, i - start))
@@ -403,91 +355,25 @@ namespace gf::core::syntax
                 // 8. Links & Images: [text](url) or ![alt](url) or nested badge [![alt](img)](url)
                 if ((c == '!' && i + 1 < n && text[i + 1] == '[') || c == '[')
                 {
-                    const bool isImage = c == '!';
-                    const std::size_t bracketOpen = isImage ? i + 1 : i;
-
-                    // Find balanced closing ']' skipping inline code
-                    int bracketDepth = 1;
-                    std::size_t k = bracketOpen + 1;
-                    std::size_t bracketClose = std::string_view::npos;
-                    while (k < n)
+                    if (const auto span = detail::scanBracketLinkSpan(text, i))
                     {
-                        if (text[k] == '\\' && k + 1 < n)
+                        tokens.push_back({.type = TokenType::Punctuation, .text = span->isImage ? "![" : "["});
+                        if (span->label.find("![") != std::string_view::npos)
                         {
-                            k += 2;
-                            continue;
+                            appendMarkdownInlineTokens(tokens, span->label, TokenType::MarkdownLink, false);
                         }
-                        if (text[k] == '`')
+                        else
                         {
-                            ++k;
-                            while (k < n && text[k] != '`') ++k;
-                            if (k < n) ++k;
-                            continue;
+                            tokens.push_back({.type = TokenType::MarkdownLink, .text = std::string(span->label)});
                         }
-                        if (text[k] == '[')
-                        {
-                            ++bracketDepth;
-                        }
-                        else if (text[k] == ']')
-                        {
-                            --bracketDepth;
-                            if (bracketDepth == 0)
-                            {
-                                bracketClose = k;
-                                break;
-                            }
-                        }
-                        ++k;
-                    }
-
-                    if (bracketClose != std::string_view::npos && bracketClose + 1 < n && text[bracketClose + 1] == '(')
-                    {
-                        const std::size_t urlStart = bracketClose + 2;
-                        int parenDepth = 1;
-                        std::size_t p = urlStart;
-                        std::size_t parenClose = std::string_view::npos;
-                        while (p < n)
-                        {
-                            if (text[p] == '\\' && p + 1 < n)
-                            {
-                                p += 2;
-                                continue;
-                            }
-                            if (text[p] == '(') ++parenDepth;
-                            else if (text[p] == ')')
-                            {
-                                --parenDepth;
-                                if (parenDepth == 0)
-                                {
-                                    parenClose = p;
-                                    break;
-                                }
-                            }
-                            ++p;
-                        }
-
-                        if (parenClose != std::string_view::npos)
-                        {
-                            tokens.push_back({.type = TokenType::Punctuation, .text = isImage ? "![" : "["});
-                            if (const std::string_view labelSlice =
-                                    text.substr(bracketOpen + 1, bracketClose - bracketOpen - 1);
-                                labelSlice.find("![") != std::string_view::npos)
-                            {
-                                appendMarkdownInlineTokens(tokens, labelSlice, TokenType::MarkdownLink, false);
-                            }
-                            else
-                            {
-                                tokens.push_back({.type = TokenType::MarkdownLink, .text = std::string(labelSlice)});
-                            }
-                            tokens.push_back({.type = TokenType::Punctuation, .text = "]("});
-                            tokens.push_back({
-                                .type = TokenType::Comment,
-                                .text = std::string(text.substr(urlStart, parenClose - urlStart))
-                            });
-                            tokens.push_back({.type = TokenType::Punctuation, .text = ")"});
-                            i = parenClose + 1;
-                            continue;
-                        }
+                        tokens.push_back({.type = TokenType::Punctuation, .text = "]("});
+                        tokens.push_back({
+                            .type = TokenType::Comment,
+                            .text = std::string(span->rawUrl)
+                        });
+                        tokens.push_back({.type = TokenType::Punctuation, .text = ")"});
+                        i = span->parenClose + 1;
+                        continue;
                     }
                 }
 
@@ -509,31 +395,8 @@ namespace gf::core::syntax
                 // 10. Italic (*...*)
                 if (c == '*' && !(i + 1 < n && text[i + 1] == '*') && i + 1 < n && !asciiIsSpace(text[i + 1]))
                 {
-                    std::size_t search = i + 1;
-                    std::size_t endPos = std::string_view::npos;
-                    while (search < n)
-                    {
-                        if (text[search] == '\\' && search + 1 < n)
-                        {
-                            search += 2;
-                            continue;
-                        }
-                        if (text[search] == '*')
-                        {
-                            if (search + 1 < n && text[search + 1] == '*')
-                            {
-                                search += 2;
-                                continue;
-                            }
-                            if (!asciiIsSpace(text[search - 1]))
-                            {
-                                endPos = search;
-                            }
-                            break;
-                        }
-                        ++search;
-                    }
-                    if (endPos != std::string_view::npos)
+                    if (const auto endPos = detail::findClosingItalicAsterisk(text, i);
+                        endPos != std::string_view::npos)
                     {
                         tokens.push_back({
                             .type = TokenType::MarkdownItalic,
@@ -601,21 +464,6 @@ namespace gf::core::syntax
             }
         }
 
-        bool isThematicBreakLine(const std::string_view s) noexcept
-        {
-            char marker = '\0';
-            int count = 0;
-            for (const char c : s)
-            {
-                if (c == ' ' || c == '\t') continue;
-                if (c != '-' && c != '*' && c != '_') return false;
-                if (marker == '\0') marker = c;
-                else if (c != marker) return false;
-                ++count;
-            }
-            return count >= 3;
-        }
-
         [[nodiscard]] std::string_view tokenColor(const TokenType type) noexcept
         {
             switch (type)
@@ -645,93 +493,39 @@ namespace gf::core::syntax
             }
         }
 
-        [[nodiscard]] std::string escapeHtmlWrapFriendly(const std::string_view text, const bool atLineStart) noexcept
+        void appendStyledTokenSpan(std::string& html,
+                                   const TokenType type,
+                                   const std::string_view escaped)
         {
-            std::string out;
-            out.reserve(text.size() * 11 / 10);
-            std::size_t i = 0;
-            const std::size_t n = text.size();
-            while (i < n)
+            if (type == TokenType::Whitespace || type == TokenType::PlainText)
             {
-                switch (const char c = text[i])
-                {
-                case '&': out.append("&amp;");
-                    ++i;
-                    break;
-                case '<': out.append("&lt;");
-                    ++i;
-                    break;
-                case '>': out.append("&gt;");
-                    ++i;
-                    break;
-                case '"': out.append("&quot;");
-                    ++i;
-                    break;
-                case ' ':
-                case '\t':
-                    {
-                        const bool isLeading = atLineStart && i == 0;
-                        std::size_t runEnd = i;
-                        std::size_t visualSpaces = 0;
-                        while (runEnd < n && (text[runEnd] == ' ' || text[runEnd] == '\t'))
-                        {
-                            visualSpaces += text[runEnd] == '\t' ? 4 : 1;
-                            ++runEnd;
-                        }
-                        if (isLeading)
-                        {
-                            for (std::size_t k = 0; k < visualSpaces; ++k)
-                            {
-                                out.append("&nbsp;");
-                            }
-                        }
-                        else if (visualSpaces == 1)
-                        {
-                            out.push_back(' ');
-                        }
-                        else
-                        {
-                            for (std::size_t k = 0; k + 1 < visualSpaces; ++k)
-                            {
-                                out.append("&nbsp;");
-                            }
-                            out.push_back(' ');
-                        }
-                        i = runEnd;
-                        break;
-                    }
-                default:
-                    out.push_back(c);
-                    ++i;
-                    break;
-                }
+                html.append(escaped);
+                return;
             }
-            return out;
-        }
 
-        [[nodiscard]] std::string escapeHtmlForPre(const std::string_view text) noexcept
-        {
-            std::string out;
-            out.reserve(text.size() * 11 / 10);
-            for (const char c : text)
+            html.append("<span style=\"color:");
+            html.append(tokenColor(type));
+
+            if (type == TokenType::Keyword ||
+                type == TokenType::MarkdownHeading ||
+                type == TokenType::MarkdownMarker ||
+                type == TokenType::MarkdownBold)
             {
-                switch (c)
-                {
-                case '&': out.append("&amp;");
-                    break;
-                case '<': out.append("&lt;");
-                    break;
-                case '>': out.append("&gt;");
-                    break;
-                case '"': out.append("&quot;");
-                    break;
-                case '\t': out.append("    ");
-                    break;
-                default: out.push_back(c);
-                    break;
-                }
+                html.append(";font-weight:bold");
             }
-            return out;
+            else if (type == TokenType::Type)
+            {
+                html.append(";font-weight:600");
+            }
+            else if (type == TokenType::Comment ||
+                type == TokenType::MarkdownItalic ||
+                type == TokenType::MarkdownQuote)
+            {
+                html.append(";font-style:italic");
+            }
+            html.append(";\">");
+            html.append(escaped);
+            html.append("</span>");
         }
 
         std::string renderTokensToHtml(const std::vector<Token>& tokens) noexcept
@@ -747,53 +541,7 @@ namespace gf::core::syntax
                 const bool atLineStart = isFirstToken;
                 isFirstToken = false;
 
-                const std::string escaped = escapeHtmlWrapFriendly(text, atLineStart);
-
-                if (type == TokenType::Whitespace || type == TokenType::PlainText)
-                {
-                    html.append(escaped);
-                    continue;
-                }
-
-                const std::string_view color = tokenColor(type);
-
-                if (type == TokenType::Keyword ||
-                    type == TokenType::MarkdownHeading ||
-                    type == TokenType::MarkdownMarker ||
-                    type == TokenType::MarkdownBold)
-                {
-                    html.append("<span style=\"color:");
-                    html.append(color);
-                    html.append(";font-weight:bold;\">");
-                    html.append(escaped);
-                    html.append("</span>");
-                }
-                else if (type == TokenType::Type)
-                {
-                    html.append("<span style=\"color:");
-                    html.append(color);
-                    html.append(";font-weight:600;\">");
-                    html.append(escaped);
-                    html.append("</span>");
-                }
-                else if (type == TokenType::Comment ||
-                    type == TokenType::MarkdownItalic ||
-                    type == TokenType::MarkdownQuote)
-                {
-                    html.append("<span style=\"color:");
-                    html.append(color);
-                    html.append(";font-style:italic;\">");
-                    html.append(escaped);
-                    html.append("</span>");
-                }
-                else
-                {
-                    html.append("<span style=\"color:");
-                    html.append(color);
-                    html.append(";\">");
-                    html.append(escaped);
-                    html.append("</span>");
-                }
+                appendStyledTokenSpan(html, type, core::escapeHtmlWrapFriendly(text, atLineStart));
             }
 
             return html;
@@ -802,29 +550,7 @@ namespace gf::core::syntax
 
     std::string SyntaxHighlighter::escapeHtml(const std::string_view text) noexcept
     {
-        std::string out;
-        out.reserve(text.size() * 11 / 10);
-        for (const char c : text)
-        {
-            switch (c)
-            {
-            case '&': out.append("&amp;");
-                break;
-            case '<': out.append("&lt;");
-                break;
-            case '>': out.append("&gt;");
-                break;
-            case '"': out.append("&quot;");
-                break;
-            case ' ': out.append("&nbsp;");
-                break;
-            case '\t': out.append("&nbsp;&nbsp;&nbsp;&nbsp;");
-                break;
-            default: out.push_back(c);
-                break;
-            }
-        }
-        return out;
+        return core::escapeHtmlStrictSpaces(text);
     }
 
     std::vector<Token> SyntaxHighlighter::tokenizeMarkdownLine(const std::string_view line,
@@ -837,57 +563,33 @@ namespace gf::core::syntax
         }
 
         // Count leading indentation
-        std::size_t wsEnd = 0;
-        std::size_t wsColumns = 0;
-        while (wsEnd < line.size() && (line[wsEnd] == ' ' || line[wsEnd] == '\t'))
-        {
-            wsColumns += line[wsEnd] == '\t' ? 4 : 1;
-            ++wsEnd;
-        }
-
+        const auto [wsEnd, wsColumns] = detail::scanLeadingIndent(line);
         const std::string_view trimmed = line.substr(wsEnd);
 
         // 1. Inside an open fenced code block
         if (state.inCodeFence)
         {
-            if (wsColumns <= 3 && !trimmed.empty() && trimmed[0] == state.fenceChar)
+            if (const auto closeFence = detail::matchFenceClose(line, state.fenceChar, state.fenceLength))
             {
-                std::size_t fenceEnd = 0;
-                while (fenceEnd < trimmed.size() && trimmed[fenceEnd] == state.fenceChar)
+                if (closeFence->wsEnd > 0)
                 {
-                    ++fenceEnd;
+                    tokens.push_back({.type = TokenType::Whitespace, .text = std::string(line.substr(0, closeFence->wsEnd))});
                 }
-                bool onlyTrailingWs = true;
-                for (std::size_t k = fenceEnd; k < trimmed.size(); ++k)
+                tokens.push_back({
+                    .type = TokenType::MarkdownMarker,
+                    .text = std::string(trimmed.substr(0, closeFence->fenceLen))
+                });
+                if (closeFence->fenceLen < trimmed.size())
                 {
-                    if (trimmed[k] != ' ' && trimmed[k] != '\t' && trimmed[k] != '\r')
-                    {
-                        onlyTrailingWs = false;
-                        break;
-                    }
-                }
-                if (fenceEnd >= state.fenceLength && onlyTrailingWs)
-                {
-                    if (wsEnd > 0)
-                    {
-                        tokens.push_back({.type = TokenType::Whitespace, .text = std::string(line.substr(0, wsEnd))});
-                    }
                     tokens.push_back({
-                        .type = TokenType::MarkdownMarker,
-                        .text = std::string(trimmed.substr(0, fenceEnd))
+                        .type = TokenType::Whitespace,
+                        .text = std::string(trimmed.substr(closeFence->fenceLen))
                     });
-                    if (fenceEnd < trimmed.size())
-                    {
-                        tokens.push_back({
-                            .type = TokenType::Whitespace,
-                            .text = std::string(trimmed.substr(fenceEnd))
-                        });
-                    }
-                    state.inCodeFence = false;
-                    state.fenceLength = 0;
-                    state.fenceLanguage = Language::Unknown;
-                    return tokens;
                 }
+                state.inCodeFence = false;
+                state.fenceLength = 0;
+                state.fenceLanguage = Language::Unknown;
+                return tokens;
             }
 
             if (state.fenceLanguage != Language::Unknown)
@@ -908,33 +610,22 @@ namespace gf::core::syntax
         }
 
         // 2. Check opening fenced code block (``` or ~~~ with 0-3 leading spaces)
-        if (wsColumns <= 3 && trimmed.size() >= 3 && (trimmed[0] == '`' || trimmed[0] == '~'))
+        if (const auto openFence = detail::matchFenceOpen(line))
         {
-            const char fChar = trimmed[0];
-            std::size_t fLen = 0;
-            while (fLen < trimmed.size() && trimmed[fLen] == fChar)
+            if (openFence->wsEnd > 0)
             {
-                ++fLen;
+                tokens.push_back({.type = TokenType::Whitespace, .text = std::string(line.substr(0, openFence->wsEnd))});
             }
-            const std::string_view infoRaw = trimmed.substr(fLen);
-            if (const bool invalidBacktickInfo = fChar == '`' && infoRaw.find('`') != std::string_view::npos;
-                fLen >= 3 && !invalidBacktickInfo)
+            tokens.push_back({.type = TokenType::MarkdownMarker, .text = std::string(trimmed.substr(0, openFence->fenceLen))});
+            if (!openFence->infoRaw.empty())
             {
-                if (wsEnd > 0)
-                {
-                    tokens.push_back({.type = TokenType::Whitespace, .text = std::string(line.substr(0, wsEnd))});
-                }
-                tokens.push_back({.type = TokenType::MarkdownMarker, .text = std::string(trimmed.substr(0, fLen))});
-                if (!infoRaw.empty())
-                {
-                    tokens.push_back({.type = TokenType::Type, .text = std::string(infoRaw)});
-                }
-                state.inCodeFence = true;
-                state.fenceChar = fChar;
-                state.fenceLength = fLen;
-                state.fenceLanguage = LanguageDetector::fromCodeFenceInfo(infoRaw);
-                return tokens;
+                tokens.push_back({.type = TokenType::Type, .text = std::string(openFence->infoRaw)});
             }
+            state.inCodeFence = true;
+            state.fenceChar = openFence->fenceChar;
+            state.fenceLength = openFence->fenceLen;
+            state.fenceLanguage = LanguageDetector::fromCodeFenceInfo(openFence->infoRaw);
+            return tokens;
         }
 
         // Emit leading whitespace if any
@@ -948,27 +639,21 @@ namespace gf::core::syntax
         }
 
         // 3. ATX Heading (# Title)
-        if (wsColumns <= 3 && trimmed[0] == '#')
+        if (wsColumns <= 3)
         {
-            std::size_t hashCount = 0;
-            while (hashCount < trimmed.size() && hashCount < 7 && trimmed[hashCount] == '#')
-            {
-                ++hashCount;
-            }
-            if (hashCount <= 6 && (hashCount == trimmed.size() || trimmed[hashCount] == ' ' || trimmed[hashCount] ==
-                '\t'))
+            if (const auto hashCount = detail::matchAtxHeadingHashes(trimmed))
             {
                 tokens.push_back({
                     .type = TokenType::MarkdownMarker,
-                    .text = std::string(trimmed.substr(0, hashCount))
+                    .text = std::string(trimmed.substr(0, *hashCount))
                 });
-                appendMarkdownInlineTokens(tokens, trimmed.substr(hashCount), TokenType::MarkdownHeading, false);
+                appendMarkdownInlineTokens(tokens, trimmed.substr(*hashCount), TokenType::MarkdownHeading, false);
                 return tokens;
             }
         }
 
         // 4. Thematic Break (---, ***, ___)
-        if (wsColumns <= 3 && isThematicBreakLine(trimmed))
+        if (wsColumns <= 3 && detail::isThematicBreakLine(trimmed))
         {
             tokens.push_back({.type = TokenType::Comment, .text = std::string(trimmed)});
             return tokens;
@@ -1525,9 +1210,9 @@ namespace gf::core::syntax
             if (constexpr std::size_t kMaxRenderLineChars = 4096; line.size() > kMaxRenderLineChars)
             {
                 const std::size_t safeLen = clampUtf8Boundary(line, kMaxRenderLineChars);
-                return escapeHtmlWrapFriendly(line.substr(0, safeLen), true) + " &hellip;";
+                return core::escapeHtmlWrapFriendly(line.substr(0, safeLen), true) + " &hellip;";
             }
-            return escapeHtmlWrapFriendly(line, true);
+            return core::escapeHtmlWrapFriendly(line, true);
         }
 
         const auto tokens = lang == Language::Markdown
@@ -1600,36 +1285,13 @@ namespace gf::core::syntax
             if (constexpr std::size_t kMaxPreLineHighlight = 1024;
                 lang == Language::Unknown || line.size() > kMaxPreLineHighlight)
             {
-                html.append(escapeHtmlForPre(line));
+                html.append(core::escapeHtmlForPre(line));
             }
             else
             {
                 for (const auto tokens = tokenize(line, lang); const auto& [type, text] : tokens)
                 {
-                    const std::string esc = escapeHtmlForPre(text);
-                    if (type == TokenType::Whitespace || type == TokenType::PlainText)
-                    {
-                        html.append(esc);
-                        continue;
-                    }
-                    const std::string_view color = tokenColor(type);
-                    html.append("<span style=\"color:");
-                    html.append(color);
-                    if (type == TokenType::Keyword)
-                    {
-                        html.append(";font-weight:bold");
-                    }
-                    else if (type == TokenType::Type)
-                    {
-                        html.append(";font-weight:600");
-                    }
-                    else if (type == TokenType::Comment)
-                    {
-                        html.append(";font-style:italic");
-                    }
-                    html.append(";\">");
-                    html.append(esc);
-                    html.append("</span>");
+                    appendStyledTokenSpan(html, type, core::escapeHtmlForPre(text));
                 }
             }
 

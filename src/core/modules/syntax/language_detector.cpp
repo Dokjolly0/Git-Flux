@@ -1,28 +1,140 @@
 #include "core/modules/syntax/language_detector.hpp"
 #include "core/shared/string_utils.hpp"
 
+#include <array>
+
 namespace gf::core::syntax
 {
     namespace
     {
+        struct LangEntry
+        {
+            std::string_view key;
+            Language lang;
+        };
+
+        constexpr auto kCommonKeyTable = std::to_array<LangEntry>({
+            {"cpp", Language::Cpp}, {"cxx", Language::Cpp}, {"cc", Language::Cpp},
+            {"hpp", Language::Cpp}, {"hxx", Language::Cpp},
+            {"c", Language::C}, {"h", Language::C},
+            {"cs", Language::CSharp},
+            {"java", Language::Java},
+            {"kt", Language::Kotlin}, {"kts", Language::Kotlin},
+            {"swift", Language::Swift},
+            {"py", Language::Python},
+            {"ts", Language::TypeScript}, {"mts", Language::TypeScript}, {"tsx", Language::TypeScript},
+            {"js", Language::JavaScript}, {"mjs", Language::JavaScript},
+            {"cjs", Language::JavaScript}, {"jsx", Language::JavaScript},
+            {"rs", Language::Rust},
+            {"go", Language::Go},
+            {"rb", Language::Ruby},
+            {"php", Language::Php},
+            {"html", Language::Html}, {"htm", Language::Html},
+            {"css", Language::Css}, {"scss", Language::Css}, {"sass", Language::Css}, {"less", Language::Css},
+            {"json", Language::Json}, {"jsonc", Language::Json},
+            {"yaml", Language::Yaml}, {"yml", Language::Yaml},
+            {"xml", Language::Xml}, {"svg", Language::Xml}, {"plist", Language::Xml},
+            {"xaml", Language::Xaml}, {"axaml", Language::Xaml},
+            {"sql", Language::Sql},
+            {"sh", Language::Shell}, {"bash", Language::Shell}, {"zsh", Language::Shell},
+            {"ps1", Language::PowerShell},
+            {"qml", Language::Qml},
+            {"md", Language::Markdown}, {"markdown", Language::Markdown},
+            {"cmake", Language::CMake}
+        });
+
+        constexpr auto kExtOnlyTable = std::to_array<LangEntry>({
+            {"hh", Language::Cpp}, {"inl", Language::Cpp}, {"tpp", Language::Cpp},
+            {"csx", Language::CSharp},
+            {"pyw", Language::Python}, {"pyi", Language::Python},
+            {"cts", Language::TypeScript},
+            {"config", Language::Xml}, {"csproj", Language::Xml}, {"vcxproj", Language::Xml},
+            {"psm1", Language::PowerShell},
+            {"qmltypes", Language::Qml},
+            {"mdown", Language::Markdown}, {"mkd", Language::Markdown}, {"mdx", Language::Markdown}
+        });
+
+        constexpr auto kFenceOnlyTable = std::to_array<LangEntry>({
+            {"c++", Language::Cpp},
+            {"csharp", Language::CSharp}, {"c#", Language::CSharp},
+            {"kotlin", Language::Kotlin},
+            {"python", Language::Python}, {"python3", Language::Python},
+            {"javascript", Language::JavaScript},
+            {"typescript", Language::TypeScript},
+            {"rust", Language::Rust},
+            {"golang", Language::Go},
+            {"ruby", Language::Ruby},
+            {"postgres", Language::Sql}, {"postgresql", Language::Sql},
+            {"mysql", Language::Sql}, {"sqlite", Language::Sql},
+            {"shell", Language::Shell}, {"shellsession", Language::Shell},
+            {"pwsh", Language::PowerShell}, {"powershell", Language::PowerShell},
+            {"make", Language::Makefile}, {"makefile", Language::Makefile},
+            {"docker", Language::Docker}, {"dockerfile", Language::Docker}
+        });
+
+        constexpr auto kPlainTextTags = std::to_array<std::string_view>({
+            "text", "txt", "plain", "plaintext", "ascii", "tree", "console", "output", "log", "diff"
+        });
+
+        struct LangMeta
+        {
+            Language lang;
+            std::string_view name;
+            std::string_view icon;
+        };
+
+        constexpr auto kLanguageMetaTable = std::to_array<LangMeta>({
+            {Language::Cpp, "C++", "⚡"},
+            {Language::C, "C", "🅲"},
+            {Language::CSharp, "C#", "♯"},
+            {Language::Java, "Java", "☕"},
+            {Language::Kotlin, "Kotlin", "🅺"},
+            {Language::Swift, "Swift", "🦅"},
+            {Language::Python, "Python", "🐍"},
+            {Language::TypeScript, "TypeScript", "🟦"},
+            {Language::JavaScript, "JavaScript", "🟨"},
+            {Language::Rust, "Rust", "🦀"},
+            {Language::Go, "Go", "🐹"},
+            {Language::Ruby, "Ruby", "💎"},
+            {Language::Php, "PHP", "🐘"},
+            {Language::Html, "HTML", "🌐"},
+            {Language::Css, "CSS", "🎨"},
+            {Language::Json, "JSON", "📋"},
+            {Language::Yaml, "YAML", "📜"},
+            {Language::Xml, "XML", "📑"},
+            {Language::Xaml, "XAML", "📐"},
+            {Language::Sql, "SQL", "🗄️"},
+            {Language::Shell, "Bash", "🐚"},
+            {Language::PowerShell, "PowerShell", "💻"},
+            {Language::Qml, "QML", "🔮"},
+            {Language::Markdown, "Markdown", "📝"},
+            {Language::CMake, "CMake", "🛠️"},
+            {Language::Makefile, "Makefile", "⚙️"},
+            {Language::Docker, "Docker", "🐳"},
+            {Language::Git, "Git", "🌿"}
+        });
+
+        template <std::size_t N>
+        [[nodiscard]] constexpr Language findInTable(const std::array<LangEntry, N>& table,
+                                                     const std::string_view key) noexcept
+        {
+            for (const auto& entry : table)
+            {
+                if (entry.key == key) return entry.lang;
+            }
+            return Language::Unknown;
+        }
+
         std::string_view extractFileName(const std::string_view path) noexcept
         {
             const auto pos = path.find_last_of("/\\");
-            if (pos == std::string_view::npos)
-            {
-                return path;
-            }
-            return path.substr(pos + 1);
+            return pos == std::string_view::npos ? path : path.substr(pos + 1);
         }
 
         std::string_view extractExtension(const std::string_view fileName) noexcept
         {
             const auto pos = fileName.rfind('.');
-            if (pos == std::string_view::npos || pos == 0)
-            {
-                return "";
-            }
-            return fileName.substr(pos);
+            return (pos == std::string_view::npos || pos == 0) ? std::string_view{} : fileName.substr(pos);
         }
     } // namespace
 
@@ -38,96 +150,33 @@ namespace gf::core::syntax
 
     Language LanguageDetector::fromExtension(const std::string_view ext) noexcept
     {
-        const std::string lower = toLowerAscii(ext);
-
-        // C / C++
-        if (lower == ".cpp" || lower == ".cxx" || lower == ".cc" || lower == ".hpp" ||
-            lower == ".hxx" || lower == ".hh" || lower == ".inl" || lower == ".tpp")
+        std::string lower = toLowerAscii(ext);
+        if (!lower.starts_with('.'))
         {
-            return Language::Cpp;
+            return Language::Unknown;
         }
-        if (lower == ".c" || lower == ".h")
+        lower.erase(0, 1);
+
+        if (const auto lang = findInTable(kCommonKeyTable, lower); lang != Language::Unknown)
         {
-            return Language::C;
+            return lang;
         }
-
-        // C#
-        if (lower == ".cs" || lower == ".csx") return Language::CSharp;
-
-        // Java / Kotlin
-        if (lower == ".java") return Language::Java;
-        if (lower == ".kt" || lower == ".kts") return Language::Kotlin;
-
-        // Swift
-        if (lower == ".swift") return Language::Swift;
-
-        // Python
-        if (lower == ".py" || lower == ".pyw" || lower == ".pyi") return Language::Python;
-
-        // TypeScript / JavaScript
-        if (lower == ".ts" || lower == ".mts" || lower == ".cts" || lower == ".tsx") return Language::TypeScript;
-        if (lower == ".js" || lower == ".mjs" || lower == ".cjs" || lower == ".jsx") return Language::JavaScript;
-
-        // Rust
-        if (lower == ".rs") return Language::Rust;
-
-        // Go
-        if (lower == ".go") return Language::Go;
-
-        // Ruby / PHP
-        if (lower == ".rb") return Language::Ruby;
-        if (lower == ".php") return Language::Php;
-
-        // Web / Styles
-        if (lower == ".html" || lower == ".htm") return Language::Html;
-        if (lower == ".css" || lower == ".scss" || lower == ".sass" || lower == ".less") return Language::Css;
-
-        // Data / Config
-        if (lower == ".json" || lower == ".jsonc") return Language::Json;
-        if (lower == ".yaml" || lower == ".yml") return Language::Yaml;
-        if (lower == ".xml" || lower == ".svg" || lower == ".plist" || lower == ".config" || lower == ".csproj" || lower
-            == ".vcxproj") return Language::Xml;
-        if (lower == ".xaml" || lower == ".axaml") return Language::Xaml;
-
-        // SQL
-        if (lower == ".sql") return Language::Sql;
-
-        // Shell / Scripting
-        if (lower == ".sh" || lower == ".bash" || lower == ".zsh") return Language::Shell;
-        if (lower == ".ps1" || lower == ".psm1") return Language::PowerShell;
-
-        // QML / Qt
-        if (lower == ".qml" || lower == ".qmltypes") return Language::Qml;
-
-        // Markdown / Docs
-        if (lower == ".md" || lower == ".markdown" || lower == ".mdown" ||
-            lower == ".mkd" || lower == ".mdx")
-        {
-            return Language::Markdown;
-        }
-
-        // Build tools
-        if (lower == ".cmake") return Language::CMake;
-
-        return Language::Unknown;
+        return findInTable(kExtOnlyTable, lower);
     }
 
     Language LanguageDetector::fromCodeFenceInfo(std::string_view infoString) noexcept
     {
-        while (!infoString.empty() &&
-            (infoString.front() == ' ' || infoString.front() == '\t'))
+        while (!infoString.empty() && (infoString.front() == ' ' || infoString.front() == '\t'))
         {
             infoString.remove_prefix(1);
         }
-        if (infoString.empty())
-        {
-            return Language::Unknown;
-        }
+        if (infoString.empty()) return Language::Unknown;
 
         std::size_t endPos = 0;
         while (endPos < infoString.size())
         {
-            if (const char c = infoString[endPos]; c == ' ' || c == '\t' || c == '{' || c == ',' || c == ';' || c == ':')
+            if (const char c = infoString[endPos];
+                c == ' ' || c == '\t' || c == '{' || c == ',' || c == ';' || c == ':')
             {
                 break;
             }
@@ -139,47 +188,17 @@ namespace gf::core::syntax
         {
             tag.erase(0, 1);
         }
-
-        if (tag.empty() || tag == "text" || tag == "txt" || tag == "plain" ||
-            tag == "plaintext" || tag == "ascii" || tag == "tree" ||
-            tag == "console" || tag == "output" || tag == "log" || tag == "diff")
+        if (tag.empty()) return Language::Unknown;
+        for (const auto plain : kPlainTextTags)
         {
-            return Language::Unknown;
+            if (tag == plain) return Language::Unknown;
         }
 
-        if (tag == "cpp" || tag == "c++" || tag == "cc" || tag == "cxx" || tag == "hpp" || tag == "hxx") return
-            Language::Cpp;
-        if (tag == "c" || tag == "h") return Language::C;
-        if (tag == "cs" || tag == "csharp" || tag == "c#") return Language::CSharp;
-        if (tag == "java") return Language::Java;
-        if (tag == "kt" || tag == "kts" || tag == "kotlin") return Language::Kotlin;
-        if (tag == "swift") return Language::Swift;
-        if (tag == "py" || tag == "python" || tag == "python3") return Language::Python;
-        if (tag == "js" || tag == "javascript" || tag == "jsx" || tag == "mjs" || tag == "cjs") return
-            Language::JavaScript;
-        if (tag == "ts" || tag == "typescript" || tag == "tsx" || tag == "mts") return Language::TypeScript;
-        if (tag == "rs" || tag == "rust") return Language::Rust;
-        if (tag == "go" || tag == "golang") return Language::Go;
-        if (tag == "rb" || tag == "ruby") return Language::Ruby;
-        if (tag == "php") return Language::Php;
-        if (tag == "html" || tag == "htm") return Language::Html;
-        if (tag == "css" || tag == "scss" || tag == "sass" || tag == "less") return Language::Css;
-        if (tag == "json" || tag == "jsonc") return Language::Json;
-        if (tag == "yaml" || tag == "yml") return Language::Yaml;
-        if (tag == "xml" || tag == "svg" || tag == "plist") return Language::Xml;
-        if (tag == "xaml" || tag == "axaml") return Language::Xaml;
-        if (tag == "sql" || tag == "postgres" || tag == "postgresql" || tag == "mysql" || tag == "sqlite") return
-            Language::Sql;
-        if (tag == "sh" || tag == "bash" || tag == "zsh" || tag == "shell" || tag == "shellsession") return
-            Language::Shell;
-        if (tag == "ps1" || tag == "pwsh" || tag == "powershell") return Language::PowerShell;
-        if (tag == "qml") return Language::Qml;
-        if (tag == "md" || tag == "markdown") return Language::Markdown;
-        if (tag == "cmake") return Language::CMake;
-        if (tag == "make" || tag == "makefile") return Language::Makefile;
-        if (tag == "docker" || tag == "dockerfile") return Language::Docker;
-
-        return Language::Unknown;
+        if (const auto lang = findInTable(kCommonKeyTable, tag); lang != Language::Unknown)
+        {
+            return lang;
+        }
+        return findInTable(kFenceOnlyTable, tag);
     }
 
     LanguageInfo LanguageDetector::detect(const std::string_view filePath) noexcept
@@ -190,48 +209,19 @@ namespace gf::core::syntax
         }
 
         const std::string_view fileName = extractFileName(filePath);
-
-        // 1. Check exact filename
         Language lang = fromFileName(fileName);
-
-        // 2. If unknown, check extension
         if (lang == Language::Unknown)
         {
-            const std::string_view ext = extractExtension(fileName);
-            lang = fromExtension(ext);
+            lang = fromExtension(extractExtension(fileName));
         }
 
-        switch (lang)
+        for (const auto& meta : kLanguageMetaTable)
         {
-        case Language::Cpp: return {.language = Language::Cpp, .name = "C++", .icon = "⚡"};
-        case Language::C: return {.language = Language::C, .name = "C", .icon = "🅲"};
-        case Language::CSharp: return {.language = Language::CSharp, .name = "C#", .icon = "♯"};
-        case Language::Java: return {.language = Language::Java, .name = "Java", .icon = "☕"};
-        case Language::Kotlin: return {.language = Language::Kotlin, .name = "Kotlin", .icon = "🅺"};
-        case Language::Swift: return {.language = Language::Swift, .name = "Swift", .icon = "🦅"};
-        case Language::Python: return {.language = Language::Python, .name = "Python", .icon = "🐍"};
-        case Language::TypeScript: return {.language = Language::TypeScript, .name = "TypeScript", .icon = "🟦"};
-        case Language::JavaScript: return {.language = Language::JavaScript, .name = "JavaScript", .icon = "🟨"};
-        case Language::Rust: return {.language = Language::Rust, .name = "Rust", .icon = "🦀"};
-        case Language::Go: return {.language = Language::Go, .name = "Go", .icon = "🐹"};
-        case Language::Ruby: return {.language = Language::Ruby, .name = "Ruby", .icon = "💎"};
-        case Language::Php: return {.language = Language::Php, .name = "PHP", .icon = "🐘"};
-        case Language::Html: return {.language = Language::Html, .name = "HTML", .icon = "🌐"};
-        case Language::Css: return {.language = Language::Css, .name = "CSS", .icon = "🎨"};
-        case Language::Json: return {.language = Language::Json, .name = "JSON", .icon = "📋"};
-        case Language::Yaml: return {.language = Language::Yaml, .name = "YAML", .icon = "📜"};
-        case Language::Xml: return {.language = Language::Xml, .name = "XML", .icon = "📑"};
-        case Language::Xaml: return {.language = Language::Xaml, .name = "XAML", .icon = "📐"};
-        case Language::Sql: return {.language = Language::Sql, .name = "SQL", .icon = "🗄️"};
-        case Language::Shell: return {.language = Language::Shell, .name = "Bash", .icon = "🐚"};
-        case Language::PowerShell: return {.language = Language::PowerShell, .name = "PowerShell", .icon = "💻"};
-        case Language::Qml: return {.language = Language::Qml, .name = "QML", .icon = "🔮"};
-        case Language::Markdown: return {.language = Language::Markdown, .name = "Markdown", .icon = "📝"};
-        case Language::CMake: return {.language = Language::CMake, .name = "CMake", .icon = "🛠️"};
-        case Language::Makefile: return {.language = Language::Makefile, .name = "Makefile", .icon = "⚙️"};
-        case Language::Docker: return {.language = Language::Docker, .name = "Docker", .icon = "🐳"};
-        case Language::Git: return {.language = Language::Git, .name = "Git", .icon = "🌿"};
-        default: return {.language = Language::Unknown, .name = "Plain Text", .icon = "📄"};
+            if (meta.lang == lang)
+            {
+                return {.language = meta.lang, .name = std::string(meta.name), .icon = std::string(meta.icon)};
+            }
         }
+        return {.language = Language::Unknown, .name = "Plain Text", .icon = "📄"};
     }
 } // namespace gf::core::syntax

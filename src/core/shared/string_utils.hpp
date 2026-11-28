@@ -66,4 +66,13 @@ namespace gf::core
             text.erase(0, kUtf8Bom.size());
         }
     }
+
+    [[nodiscard]] constexpr std::size_t utf8SeqLen(const unsigned char leadByte) noexcept
+    {
+        if (leadByte < 0x80) return 1;
+        if ((leadByte & 0xE0) == 0xC0) return 2;
+        if ((leadByte & 0xF0) == 0xE0) return 3;
+        if ((leadByte & 0xF8) == 0xF0) return 4;
+        return 1;
+    }
 } // namespace gf::core
