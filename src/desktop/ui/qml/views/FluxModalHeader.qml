@@ -47,7 +47,6 @@ Rectangle {
 
         Button {
             id: closeBtn
-            text: "✕"
             Layout.preferredWidth: 26
             Layout.preferredHeight: 26
             hoverEnabled: true

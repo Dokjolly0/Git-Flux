@@ -134,7 +134,6 @@ Dialog {
                 }
 
                 Button {
-                    text: "📂 Sfoglia..."
                     Layout.preferredHeight: 36
                     Layout.preferredWidth: 96
                     hoverEnabled: true

@@ -19,7 +19,6 @@ ApplicationWindow {
     }
 
     Item {
-        id: tooltipInitializer
         visible: false
         Component.onCompleted: {
             if (ToolTip.toolTip) {
@@ -76,7 +75,6 @@ ApplicationWindow {
 
     // Multi-Repo Session View (Working Tree, Staging, Diff Viewer)
     WorkspaceSessionView {
-        id: workspaceSessionView
         anchors.fill: parent
         visible: appWindow.currentView === "session"
         sessionVm: (typeof workspaceSessionVm !== "undefined") ? workspaceSessionVm : null

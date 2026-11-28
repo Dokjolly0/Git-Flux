@@ -6,8 +6,6 @@ Item {
     id: root
     visible: false
 
-    signal closed()
-
     signal sessionStarted(var repoIds)
 
     function open() {
@@ -17,7 +15,6 @@ Item {
 
     function close() {
         visible = false;
-        root.closed();
     }
 
     Connections {
@@ -41,7 +38,6 @@ Item {
 
     // Modal container
     Rectangle {
-        id: modalContainer
         width: Math.min(parent.width - 64, 840)
         height: Math.min(parent.height - 64, 570)
         anchors.centerIn: parent
@@ -513,7 +509,6 @@ Item {
                 spacing: 12
 
                 Text {
-                    id: footerTip
                     text: "Le sessioni rapide non modificano i file di configurazione del workspace."
                     color: "#64748B"
                     font.pixelSize: 11
@@ -551,7 +546,6 @@ Item {
 
                 Button {
                     enabled: quickOpenVm.resolvedRepositoriesCount > 0
-                    text: "Apri Sessione Rapida (" + quickOpenVm.resolvedRepositoriesCount + " Repo)"
                     Layout.preferredHeight: 36
                     leftPadding: 18
                     rightPadding: 18

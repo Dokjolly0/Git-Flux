@@ -354,7 +354,6 @@ Rectangle {
 
                                     // Colored Group Header Chip (clickable to collapse/expand, hoverable to highlight all member tabs)
                                     Rectangle {
-                                        id: groupChip
                                         visible: !clusterBox.isUngrouped
                                         Layout.preferredHeight: 26
                                         Layout.alignment: Qt.AlignVCenter
@@ -864,7 +863,6 @@ Rectangle {
 
                 // 4. STASH CAPSULE SPLIT BUTTON (Shown only when WIP has local changes)
                 Rectangle {
-                    id: stashCapsule
                     objectName: "topbarStashButton"
                     visible: root.hasWipChanges
                     Layout.preferredHeight: 32
@@ -952,7 +950,6 @@ Rectangle {
 
                 // 5. QUICK POP CAPSULE SPLIT BUTTON (Shown only when at least one stash exists)
                 Rectangle {
-                    id: popCapsule
                     objectName: "topbarPopButton"
                     visible: root.hasStashes
                     Layout.preferredHeight: 32
@@ -1440,7 +1437,6 @@ Rectangle {
     // LIVE WORKING TREE REACTIVITY (Auto-polling & Window Focus)
     // ==========================================
     Timer {
-        id: workingTreeWatcherTimer
         interval: 1500
         repeat: true
         running: root.visible && root.sessionVm && root.sessionVm.hasOpenTabs

@@ -395,7 +395,6 @@ Dialog {
             }
 
             FluxActionButton {
-                id: saveBtn
                 text: root.isSaving
                     ? "Salvataggio..."
                     : (root.isHead ? "✓ Salva Modifiche" : "✓ Salva e Riscrivi")

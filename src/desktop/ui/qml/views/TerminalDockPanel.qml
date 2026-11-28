@@ -485,7 +485,6 @@ Rectangle {
 
     // Rounded inner surface matching the Floating Island aesthetic
     Rectangle {
-        id: islandBody
         objectName: "terminalIslandBody"
         anchors.fill: parent
         anchors.margins: 1
@@ -1492,7 +1491,6 @@ Rectangle {
         // 3A. PAGER FOOTER BAR (shown while pager is open)
         // =====================================================================
         Rectangle {
-            id: pagerFooterBar
             visible: panelRoot.isPagerOpen
             Layout.fillWidth: true
             Layout.preferredHeight: 38
@@ -1689,7 +1687,6 @@ Rectangle {
             }
 
             RowLayout {
-                id: promptRow
                 anchors.fill: parent
                 anchors.leftMargin: 12
                 anchors.rightMargin: 12

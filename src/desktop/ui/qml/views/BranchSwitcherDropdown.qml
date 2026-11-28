@@ -273,7 +273,6 @@ Rectangle {
                 model: root.branchManager ? root.branchManager.branchList : null
 
                 delegate: Rectangle {
-                    id: delegateRect
                     readonly property bool matchesFilter: searchField.text.length === 0
                         || model.name.toLowerCase().includes(searchField.text.toLowerCase())
                     width: branchListView.width

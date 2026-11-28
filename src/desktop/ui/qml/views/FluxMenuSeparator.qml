@@ -2,8 +2,6 @@ import QtQuick
 import QtQuick.Controls
 
 MenuSeparator {
-    id: control
-
     padding: 0
     topPadding: 4
     bottomPadding: 4

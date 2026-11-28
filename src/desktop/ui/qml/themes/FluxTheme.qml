@@ -1,8 +1,6 @@
 import QtQuick
 
 QtObject {
-    id: theme
-
     // When AppBootstrap registers `gfTheme` (ThemeManager), all properties bind reactively
     // to the active preset (Dark, Light, or custom). Standalone QML tests fall back to Dark.
     readonly property var _live: (typeof gfTheme !== "undefined" && gfTheme) ? gfTheme : null

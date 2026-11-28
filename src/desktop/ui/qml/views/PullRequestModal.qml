@@ -277,7 +277,6 @@ Dialog {
             }
 
             FluxActionButton {
-                id: openBrowserBtn
                 text: "🌐 Apri nel Browser"
                 Layout.preferredHeight: 34
                 Layout.preferredWidth: 160

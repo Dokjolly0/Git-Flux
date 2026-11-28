@@ -884,7 +884,6 @@ Rectangle {
                     visible: root.hasBothImgs && root.hasDiffImg && root.imageMode === "diff"
 
                     Rectangle {
-                        id: diffFrame
                         anchors.fill: parent
                         radius: 10
                         color: "#0A0E15"

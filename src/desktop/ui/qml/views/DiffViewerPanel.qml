@@ -427,7 +427,6 @@ Rectangle {
         }
 
         Timer {
-            id: autoScrollTimer
             interval: 28
             repeat: true
             running: selMouse.isSelecting && selMouse.listView !== null && (
@@ -688,7 +687,6 @@ Rectangle {
     }
 
     component ContextOptionItem: FluxMenuItem {
-        id: optItem
         font.pixelSize: 11
     }
 
@@ -1513,7 +1511,6 @@ Rectangle {
                     }
 
                     WheelHandler {
-                        id: inlineHWheel
                         target: null
                         orientation: Qt.Horizontal
                         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
@@ -1533,7 +1530,6 @@ Rectangle {
                     }
 
                     WheelHandler {
-                        id: inlineShiftWheel
                         target: null
                         orientation: Qt.Vertical
                         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
@@ -1928,7 +1924,6 @@ Rectangle {
                         }
 
                         WheelHandler {
-                            id: splitHWheel
                             target: null
                             orientation: Qt.Horizontal
                             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
@@ -1948,7 +1943,6 @@ Rectangle {
                         }
 
                         WheelHandler {
-                            id: splitShiftWheel
                             target: null
                             orientation: Qt.Vertical
                             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
@@ -2386,7 +2380,6 @@ Rectangle {
                                         }
 
                                         Canvas {
-                                            id: blameCornerMask
                                             anchors.fill: parent
                                             visible: blameAvatarImg.status === Image.Ready
                                             onVisibleChanged: if (visible) requestPaint()
@@ -2492,7 +2485,6 @@ Rectangle {
                     }
 
                     WheelHandler {
-                        id: blameHWheel
                         target: null
                         orientation: Qt.Horizontal
                         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
@@ -2512,7 +2504,6 @@ Rectangle {
                     }
 
                     WheelHandler {
-                        id: blameShiftWheel
                         target: null
                         orientation: Qt.Vertical
                         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen

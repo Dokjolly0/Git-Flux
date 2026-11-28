@@ -649,7 +649,6 @@ Dialog {
                 Item { Layout.fillWidth: true }
 
                 Button {
-                    text: "Annulla"
                     Layout.preferredHeight: 32
                     onClicked: customServerPopup.close()
                     contentItem: Text {
@@ -668,7 +667,6 @@ Dialog {
                 }
 
                 Button {
-                    text: "＋ Aggiungi server"
                     Layout.preferredHeight: 32
                     enabled: customHostField.text.trim().length > 0
                     onClicked: customServerPopup.submit()
@@ -714,7 +712,6 @@ Dialog {
     }
 
     contentItem: ColumnLayout {
-        id: mainModalLayout
         spacing: 0
 
         // ==========================================
@@ -1354,7 +1351,6 @@ Dialog {
 
                                 Button {
                                     id: saveTokenBtn
-                                    text: "💾 Salva e Carica"
                                     Layout.preferredHeight: 32
                                     enabled: tokenSecretInput.text.trim().length > 0 || tokenUsernameInput.text.trim().length > 0
                                     onClicked: {
@@ -1384,7 +1380,6 @@ Dialog {
 
                                 Button {
                                     visible: Boolean(root.profilesVm && root.profilesVm.activeProfileHasToken)
-                                    text: "🗑 Rimuovi"
                                     Layout.preferredHeight: 32
                                     onClicked: {
                                         if (root.profilesVm) {
@@ -1448,7 +1443,6 @@ Dialog {
                                 }
                             }
                             Button {
-                                text: "🔑 Inserisci Token"
                                 Layout.preferredHeight: 28
                                 onClicked: root.showTokenConfig = true
                                 background: Rectangle {
@@ -1488,7 +1482,6 @@ Dialog {
                                 Layout.fillWidth: true
                             }
                             Button {
-                                text: "Modifica"
                                 Layout.preferredHeight: 24
                                 onClicked: root.showTokenConfig = true
                                 background: Rectangle {
@@ -1518,7 +1511,6 @@ Dialog {
 
                         // Compact Clickable Selector Box
                         Rectangle {
-                            id: repoSelectorBox
                             Layout.fillWidth: true
                             height: 42
                             radius: 6
@@ -1623,7 +1615,6 @@ Dialog {
                                 }
 
                                 Button {
-                                    text: "Scegli ▼"
                                     Layout.preferredHeight: 22
                                     onClicked: {
                                         root.showRepoPicker = true;
@@ -1641,7 +1632,6 @@ Dialog {
 
                         // Expandable Dropdown Drawer for Repository Selection
                         Rectangle {
-                            id: repoPickerContainer
                             Layout.fillWidth: true
                             visible: root.showRepoPicker
                             implicitHeight: repoPickerLayout.implicitHeight + 16
@@ -1691,7 +1681,6 @@ Dialog {
 
                                     Button {
                                         visible: searchField.text.length > 0
-                                        text: "✕"
                                         Layout.preferredWidth: 32
                                         Layout.preferredHeight: 32
                                         onClicked: searchField.text = ""
@@ -1773,7 +1762,6 @@ Dialog {
                                             Layout.fillWidth: true
                                         }
                                         Button {
-                                            text: "Inserisci Token"
                                             Layout.preferredHeight: 24
                                             onClicked: root.showTokenConfig = true
                                             background: Rectangle {
@@ -2033,7 +2021,6 @@ Dialog {
                             }
 
                             Button {
-                                text: "Sfoglia..."
                                 Layout.preferredHeight: 34
                                 Layout.preferredWidth: 84
                                 enabled: !(root.effectiveHubVm && root.effectiveHubVm.isCloning)
@@ -2080,7 +2067,6 @@ Dialog {
                                 }
 
                                 Button {
-                                    text: "📁 Sfoglia..."
                                     Layout.preferredHeight: 26
                                     onClicked: {
                                         root.destFolderMissing = false;
@@ -2269,7 +2255,6 @@ Dialog {
                                     implicitHeight: 8
                                     clip: true
                                     Rectangle {
-                                        id: barFill
                                         width: cloneProgressBar.indeterminate
                                             ? parent.width * 0.35
                                             : Math.max(8, parent.width * cloneProgressBar.visualPosition)

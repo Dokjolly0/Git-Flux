@@ -766,7 +766,6 @@ Rectangle {
                             }
 
                             MouseArea {
-                                id: multiCommitPillHover
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 acceptedButtons: Qt.NoButton
@@ -1423,16 +1422,6 @@ Rectangle {
         } else if (root.branchManager && root.branchManager.fileHistoryPath !== "") {
             root.branchManager.clearFileHistory();
             root.autoSelectFirstCommit();
-            event.accepted = true;
-        }
-    }
-
-    Keys.onPressed: function (event) {
-        if ((event.modifiers & Qt.ControlModifier) !== 0 && (event.key === Qt.Key_F || event.key === Qt.Key_Find)) {
-            root.focusCommitSearch();
-            event.accepted = true;
-        } else if ((event.modifiers & Qt.ControlModifier) !== 0 && event.key === Qt.Key_H) {
-            root.openFileHistoryPicker();
             event.accepted = true;
         }
     }
@@ -2241,7 +2230,6 @@ Rectangle {
 
                 // Detached HEAD warning banner
                 Rectangle {
-                    id: detachedBanner
                     visible: root.branchManager !== null && root.branchManager.isDetached
                     Layout.fillWidth: true
                     Layout.preferredHeight: visible ? 40 : 0
@@ -2316,7 +2304,6 @@ Rectangle {
 
                 // Table Header Bar (aligned 1:1 with commit rows, resizable on all column boundaries)
                 Rectangle {
-                    id: tableHeaderBar
                     Layout.fillWidth: true
                     Layout.preferredHeight: 32
                     color: "#161B22"
@@ -2531,7 +2518,6 @@ Rectangle {
 
                 // Commit Table List + Persistent Branch Drag Controller
                 Item {
-                    id: commitListContainer
                     Layout.fillWidth: true
                     Layout.fillHeight: true
 
@@ -2579,42 +2565,21 @@ Rectangle {
                             event.accepted = true;
                         }
                     }
-                    Keys.onPressed: function (event) {
-                        if ((event.modifiers & Qt.ControlModifier) !== 0 && (event.key === Qt.Key_F || event.key === Qt.Key_Find)) {
-                            root.focusCommitSearch();
-                            event.accepted = true;
-                        } else if ((event.modifiers & Qt.ControlModifier) !== 0 && event.key === Qt.Key_H) {
-                            root.openFileHistoryPicker();
-                            event.accepted = true;
-                        }
-                    }
 
                     delegate: Rectangle {
                         id: commitRow
                         required property string sha
-                        required property string shortSha
                         required property string subject
-                        required property string body
                         required property string authorName
-                        required property string authorEmail
                         required property string authorDate
                         required property string authorDateFormatted
-                        required property var decorations
-                        required property var parents
                         required property string authorAvatarUrl
                         required property string authorInitials
-                        required property string authorColor
                         required property var structuredDecorations
-                        required property string committerName
-                        required property string committerEmail
-                        required property string committerDateFormatted
-                        required property string committerAvatarUrl
-                        required property string committerInitials
                         required property int graphLane
                         required property string graphColor
                         required property var graphRoutes
                         required property bool isMerge
-                        required property bool isOrphan
                         required property bool isStash
                         required property string stashSelector
                         required property int branchCommitCount
@@ -3125,7 +3090,6 @@ Rectangle {
                                 clip: true
 
                                 Canvas {
-                                    id: graphCanvas
                                     anchors.fill: parent
                                     onWidthChanged: requestPaint()
                                     property var routes: commitRow.graphRoutes || []
@@ -3264,7 +3228,6 @@ Rectangle {
                                     }
 
                                     Canvas {
-                                        id: nodeCornerMask
                                         anchors.fill: parent
                                         visible: nodeAvatarImg.status === Image.Ready
                                         property string maskBg: commitRow.isHoveredTargetRow
@@ -3473,7 +3436,6 @@ Rectangle {
                     cursorShape: isDragging ? Qt.ClosedHandCursor : Qt.PointingHandCursor
 
                     property string pendingBranchName: ""
-                    property string pendingBranchType: ""
                     property int pendingRowIndex: -1
                     property point pressPos: Qt.point(0, 0)
                     property bool isDragging: false
@@ -3483,7 +3445,6 @@ Rectangle {
 
                     function resetPendingState() {
                         pendingBranchName = "";
-                        pendingBranchType = "";
                         pendingRowIndex = -1;
                         isDragging = false;
                         handledDoubleClick = false;
@@ -3514,7 +3475,6 @@ Rectangle {
                         }
 
                         pendingBranchName = hit.badge.name;
-                        pendingBranchType = hit.badge.type;
                         pendingRowIndex = hit.rowIdx;
                         pressPos = Qt.point(mouse.x, mouse.y);
                         lastViewportX = mouse.x;
@@ -3590,7 +3550,6 @@ Rectangle {
 
                 // VSync-locked smooth edge auto-scroll while dragging a branch card near top/bottom edges
                 FrameAnimation {
-                    id: dragAutoScrollAnim
                     running: branchDragOverlay.isDragging && commitTableListView.contentHeight > commitTableListView.height
 
                     onTriggered: {
@@ -3776,7 +3735,6 @@ Rectangle {
 
                 // Vertical Drag Resize Handle between Graph/Diff and Bottom Terminal
                 Rectangle {
-                    id: terminalResizeHandle
                     visible: root.isTerminalVisible
                     Layout.fillWidth: true
                     Layout.preferredHeight: 6
@@ -4502,7 +4460,6 @@ Rectangle {
                                 }
 
                                 Canvas {
-                                    id: cardCornerMask
                                     anchors.fill: parent
                                     visible: cardAvatarImg.status === Image.Ready
                                     onVisibleChanged: if (visible) requestPaint()
@@ -4753,7 +4710,7 @@ Rectangle {
                                 text: "📁"; font.pixelSize: 11
                             }
                             Text {
-                                text: root.totalFilesCount + (root.totalFilesCount === 1 ? " file" : " file")
+                                text: root.totalFilesCount + " file"
                                 color: root.fileCategoryFilter === "all" ? "#F1F5F9" : "#94A3B8"
                                 font.bold: true
                                 font.pixelSize: 11
@@ -5500,7 +5457,6 @@ Rectangle {
                     }
 
                     WipSectionCard {
-                        id: wipStagedSection
                         SplitView.fillHeight: root.wipStagedExpanded
                         SplitView.minimumHeight: root.wipStagedExpanded ? 76 : 34
                         SplitView.maximumHeight: root.wipStagedExpanded ? Infinity : 34
@@ -6451,7 +6407,6 @@ Rectangle {
                     Layout.fillWidth: true
                 }
                 Button {
-                    text: "Annulla"
                     Layout.preferredHeight: 32
                     leftPadding: 14
                     rightPadding: 14
@@ -6468,7 +6423,6 @@ Rectangle {
                     onClicked: deleteTagConfirmDialog.close()
                 }
                 Button {
-                    text: "Elimina"
                     Layout.preferredHeight: 32
                     leftPadding: 16
                     rightPadding: 16
@@ -6873,7 +6827,6 @@ Rectangle {
                 }
 
                 Button {
-                    text: "Mostra Cronologia"
                     Layout.preferredHeight: 32
                     leftPadding: 16
                     rightPadding: 16

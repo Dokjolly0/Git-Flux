@@ -131,7 +131,6 @@ Dialog {
                 }
 
                 delegate: Rectangle {
-                    id: hunkCard
                     width: hunksListView.width - 16
                     implicitHeight: cardLayout.implicitHeight + 22
                     color: "#121A27"

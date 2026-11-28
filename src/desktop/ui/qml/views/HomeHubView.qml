@@ -189,7 +189,7 @@ Item {
             feedbackBanner.showSuccess("Repository '" + repoName + "' aggiunto con successo!");
         }
 
-        function onLastSuccessMessageChanged(message) {
+        function onStatusMessageChanged(message) {
             if (message && message.length > 0) {
                 feedbackBanner.showSuccess(message);
             }
@@ -369,7 +369,6 @@ Item {
                                         font.pixelSize: 11
                                     }
                                     Text {
-                                        id: repoPillText
                                         text: "Repository"
                                         color: (homeHubVm && homeHubVm.showRepositories) ? "#38BDF8" : "#94A3B8"
                                         font.pixelSize: 11
@@ -412,7 +411,6 @@ Item {
                                         font.pixelSize: 11
                                     }
                                     Text {
-                                        id: grpPillText
                                         text: "Gruppi"
                                         color: (homeHubVm && homeHubVm.showGroups) ? "#E9D5FF" : "#94A3B8"
                                         font.pixelSize: 11
@@ -455,7 +453,6 @@ Item {
                                         font.pixelSize: 11
                                     }
                                     Text {
-                                        id: wsPillText
                                         text: "Workspace"
                                         color: (homeHubVm && homeHubVm.showWorkspaces) ? "#34D399" : "#94A3B8"
                                         font.pixelSize: 11
@@ -478,7 +475,6 @@ Item {
 
                     // Clone Repository Action
                     Button {
-                        text: "⬇ Clona"
                         Layout.preferredHeight: 36
                         leftPadding: 14
                         rightPadding: 14
@@ -519,7 +515,6 @@ Item {
 
                     // Quick Open Action
                     Button {
-                        text: "⚡ Quick Open"
                         Layout.preferredHeight: 36
                         leftPadding: 14
                         rightPadding: 14
@@ -676,7 +671,6 @@ Item {
                 // COLUMN 1: REPOSITORIES
                 // -------------------------------------------------------------
                 Rectangle {
-                    id: repoCol
                     visible: Boolean(homeHubVm && homeHubVm.showRepositories)
                     SplitView.preferredWidth: parent.width / root.visibleColumnCount
                     SplitView.minimumWidth: 340
@@ -768,9 +762,7 @@ Item {
                                 required property string id
                                 required property string displayName
                                 required property string localPath
-                                required property string status
                                 required property bool isMissing
-                                required property string lastAccessedAt
                                 required property string branch
 
                                 width: repoListView.width
@@ -1194,7 +1186,6 @@ Item {
                 // COLUMN 2: GROUPS
                 // -------------------------------------------------------------
                 Rectangle {
-                    id: groupCol
                     visible: Boolean(homeHubVm && homeHubVm.showGroups)
                     SplitView.preferredWidth: parent.width / root.visibleColumnCount
                     SplitView.minimumWidth: 340
@@ -1699,7 +1690,6 @@ Item {
                 // COLUMN 3: WORKSPACES
                 // -------------------------------------------------------------
                 Rectangle {
-                    id: wsCol
                     visible: Boolean(homeHubVm && homeHubVm.showWorkspaces)
                     SplitView.preferredWidth: parent.width / root.visibleColumnCount
                     SplitView.minimumWidth: 340
@@ -3955,7 +3945,7 @@ Item {
                 }
                 Item { Layout.fillWidth: true }
                 Button {
-                    text: "Chiudi"; Layout.preferredHeight: 32; leftPadding: 18; rightPadding: 18; hoverEnabled: true
+                    Layout.preferredHeight: 32; leftPadding: 18; rightPadding: 18; hoverEnabled: true
                     background: Rectangle { color: parent.hovered ? "#DC2626" : "#B91C1C"; radius: 8; border.color: "#EF4444"; border.width: 1 }
                     contentItem: Text { text: "Chiudi"; color: "#FFFFFF"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                     onClicked: errorFeedbackDialog.close()
