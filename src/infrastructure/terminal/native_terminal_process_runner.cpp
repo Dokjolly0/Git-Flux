@@ -172,18 +172,6 @@ namespace gf::infra::terminal
             return result;
         }
 
-        [[nodiscard]] std::string wideToUtf8(const std::wstring_view wide)
-        {
-            if (wide.empty()) return {};
-            const int needed = WideCharToMultiByte(CP_UTF8, 0, wide.data(), static_cast<int>(wide.size()),
-                                                   nullptr, 0, nullptr, nullptr);
-            if (needed <= 0) return {};
-            std::string result(static_cast<std::size_t>(needed), '\0');
-            WideCharToMultiByte(CP_UTF8, 0, wide.data(), static_cast<int>(wide.size()),
-                                result.data(), needed, nullptr, nullptr);
-            return result;
-        }
-
         void appendQuotedWindowsArg(std::wstring& cmdLine, const std::wstring_view arg)
         {
             const bool needsQuotes = arg.empty() || arg.find_first_of(L" \t\n\v\"") != std::wstring_view::npos;
